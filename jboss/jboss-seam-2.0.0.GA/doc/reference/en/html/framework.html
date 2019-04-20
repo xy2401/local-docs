@@ -1,0 +1,402 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>Chapter&nbsp;11.&nbsp;The Seam Application Framework</title><link rel="stylesheet" href="../shared/css/html.css" type="text/css"><meta name="generator" content="DocBook XSL Stylesheets V1.65.1"><link rel="home" href="index.html" title="Seam - Contextual Components"><link rel="up" href="index.html" title="Seam - Contextual Components"><link rel="previous" href="groovy.html" title="Chapter&nbsp;10.&nbsp;Groovy integration"><link rel="next" href="drools.html" title="Chapter&nbsp;12.&nbsp;Seam and JBoss Rules"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="navheader"><table width="100%" summary="Navigation header"><tr><th colspan="3" align="center">Chapter&nbsp;11.&nbsp;The Seam Application Framework</th></tr><tr><td width="20%" align="left"><a accesskey="p" href="groovy.html">Prev</a>&nbsp;</td><th width="60%" align="center">&nbsp;</th><td width="20%" align="right">&nbsp;<a accesskey="n" href="drools.html">Next</a></td></tr></table><hr></div><div class="chapter" lang="en"><div class="titlepage"><div><div><h2 class="title"><a name="framework"></a>Chapter&nbsp;11.&nbsp;The Seam Application Framework</h2></div></div><div></div></div><p>
+        Seam makes it really easy to create applications by writing
+        plain Java classes with annotations, which don't need to extend
+        any special interfaces or superclasses. But we can simplify
+        some common programming tasks even further, by providing a set 
+        of pre-built components which can be re-used either by
+        configuration in <tt class="literal">components.xml</tt> (for very 
+        simple cases) or extension.
+    </p><p>
+        The <span class="emphasis"><em>Seam Application Framework</em></span> can reduce
+        the amount of code you need to write when doing basic database
+        access in a web application, using either Hibernate or JPA.
+    </p><p>
+        We should emphasize that the framework is extremely simple, 
+        just a handful of simple classes that are easy to understand
+        and extend. The "magic" is in Seam itself&#8212;the same magic
+        you use when creating any Seam application even without using 
+        this framework.
+    </p><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e6259"></a>11.1.&nbsp;Introduction</h2></div></div><div></div></div><p>
+            The components provided by the Seam application framework
+            may be used in one of two different approaches. The first
+            way is to install and configure an instance of the component
+            in <tt class="literal">components.xml</tt>, just like we have
+            done with other kinds of built-in Seam components. For
+            example, the following fragment from
+            <tt class="literal">components.xml</tt> installs a component
+            which can perform basic CRUD operations for a
+            <tt class="literal">Person</tt> entity:
+        </p><pre class="programlisting">&lt;framework:entity-home name="personHome" 
+                       entity-class="eg.Person" 
+                       entity-manager="#{personDatabase}"&gt;
+    &lt;framework:id&gt;#{param.personId}&lt;/framework:id&gt;
+&lt;/framework:entity-home&gt;</pre><p>
+            If that looks a bit too much like "programming in XML" for 
+            your taste, you can use extension instead:
+        </p><pre class="programlisting">@Stateful
+@Name("personHome")
+public class PersonHome extends EntityHome&lt;Person&gt; implements LocalPersonHome {
+    @RequestParameter String personId;
+    @In EntityManager personDatabase;
+    
+    public Object getId() { return personId; }
+    public EntityManager getEntityManager() { return personDatabase; }
+    
+}</pre><p>
+            The second approach has one huge advantage: you can easily add 
+            extra functionality, and override the built-in functionality
+            (the framework classes were carefully designed for extension
+            and customization).
+        </p><p>
+            A second advantage is that your classes may be EJB stateful
+            session beans, if you like. (They do not have to be, they 
+            can be plain JavaBean components if you prefer.)  If you are using
+            JBoss AS, you'll need 4.2.2.GA or later.
+        </p><p>
+            At this time, the Seam Application Framework provides just four
+            built-in components: <tt class="literal">EntityHome</tt> and
+            <tt class="literal">HibernateEntityHome</tt> for CRUD, along with
+            <tt class="literal">EntityQuery</tt> and <tt class="literal">HibernateEntityQuery</tt>
+            for queries.
+        </p><p>
+            The Home and Query components are written so that they can function
+            with a scope of session, event or conversation. Which scope you
+            use depends upon the state model you wish to use in your application.
+        </p><p>
+            The Seam Application Framework only works with Seam-managed
+            persistence contexts. By default, the components will look
+            for a persistence context named <tt class="literal">entityManager</tt>.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e6304"></a>11.2.&nbsp;Home objects</h2></div></div><div></div></div><p>
+            A Home object provides persistence operations for a particular entity
+            class. Suppose we have our trusty <tt class="literal">Person</tt> class:
+        </p><pre class="programlisting">@Entity
+public class Person {
+    @Id private Long id;
+    private String firstName;
+    private String lastName;
+    private Country nationality;
+    
+    //getters and setters...
+}</pre><p>
+            We can define a <tt class="literal">personHome</tt> component either via
+            configuration:
+        </p><pre class="programlisting">&lt;framework:entity-home name="personHome" entity-class="eg.Person" /&gt;</pre><p>
+            Or via extension:
+        </p><pre class="programlisting">@Name("personHome")
+public class PersonHome extends EntityHome&lt;Person&gt; {}</pre><p>
+            A Home object provides the following operations: <tt class="literal">persist()</tt>,
+            <tt class="literal">remove()</tt>, <tt class="literal">update()</tt> and 
+            <tt class="literal">getInstance()</tt>. Before you can call the 
+            <tt class="literal">remove()</tt>, or <tt class="literal">update()</tt> operations, you 
+            must first set the identifier of the object you are interested in, using the 
+            <tt class="literal">setId()</tt> method.
+        </p><p>
+            We can use a Home directly from a JSF page, for example:
+        </p><pre class="programlisting">&lt;h1&gt;Create Person&lt;/h1&gt;
+&lt;h:form&gt;
+    &lt;div&gt;First name: &lt;h:inputText value="#{personHome.instance.firstName}"/&gt;&lt;/div&gt;
+    &lt;div&gt;Last name: &lt;h:inputText value="#{personHome.instance.lastName}"/&gt;&lt;/div&gt;
+    &lt;div&gt;
+        &lt;h:commandButton value="Create Person" action="#{personHome.persist}"/&gt;
+    &lt;/div&gt;
+&lt;/h:form&gt;</pre><p>
+            Usually, it is much nicer to be able to refer to the <tt class="literal">Person</tt>
+            merely as <tt class="literal">person</tt>, so let's make that possible by adding a
+            line to <tt class="literal">components.xml</tt>:
+        </p><pre class="programlisting">&lt;factory name="person" 
+         value="#{personHome.instance}"/&gt;
+
+&lt;framework:entity-home name="personHome" 
+                       entity-class="eg.Person" /&gt;</pre><p>
+            (If we are using configuration.)
+            Or by adding a <tt class="literal">@Factory</tt> method to <tt class="literal">PersonHome</tt>:
+        </p><pre class="programlisting">@Name("personHome")
+public class PersonHome extends EntityHome&lt;Person&gt; {
+    
+    @Factory("person")
+    public Person initPerson() { return getInstance(); }
+    
+}</pre><p>
+            (If we are using extension.) 
+            This change simplifies our JSF page to the following:
+        </p><pre class="programlisting">&lt;h1&gt;Create Person&lt;/h1&gt;
+&lt;h:form&gt;
+    &lt;div&gt;First name: &lt;h:inputText value="#{person.firstName}"/&gt;&lt;/div&gt;
+    &lt;div&gt;Last name: &lt;h:inputText value="#{person.lastName}"/&gt;&lt;/div&gt;
+    &lt;div&gt;
+        &lt;h:commandButton value="Create Person" action="#{personHome.persist}"/&gt;
+    &lt;/div&gt;
+&lt;/h:form&gt;</pre><p>
+            Well, that lets us create new <tt class="literal">Person</tt> entries. Yes,
+            that is all the code that is required! Now, if we want to be able to 
+            display, update and delete pre-existing <tt class="literal">Person</tt> 
+            entries in the database, we need to be able to pass the entry
+            identifier to the <tt class="literal">PersonHome</tt>. Page parameters
+            are a great way to do that:
+        </p><pre class="programlisting">&lt;pages&gt;
+    &lt;page view-id="/editPerson.jsp"&gt;
+        &lt;param name="personId" value="#{personHome.id}"/&gt;
+    &lt;/page&gt;
+&lt;/pages&gt;</pre><p>
+            Now we can add the extra operations to our JSF page:
+        </p><pre class="programlisting">&lt;h1&gt;
+    &lt;h:outputText rendered="#{!personHome.managed}" value="Create Person"/&gt;
+    &lt;h:outputText rendered="#{personHome.managed}" value="Edit Person"/&gt;
+&lt;/h1&gt;
+&lt;h:form&gt;
+    &lt;div&gt;First name: &lt;h:inputText value="#{person.firstName}"/&gt;&lt;/div&gt;
+    &lt;div&gt;Last name: &lt;h:inputText value="#{person.lastName}"/&gt;&lt;/div&gt;
+    &lt;div&gt;
+        &lt;h:commandButton value="Create Person" action="#{personHome.persist}" rendered="#{!personHome.managed}"/&gt;
+        &lt;h:commandButton value="Update Person" action="#{personHome.update}" rendered="#{personHome.managed}"/&gt;
+        &lt;h:commandButton value="Delete Person" action="#{personHome.remove}" rendered="#{personHome.managed}"/&gt;
+    &lt;/div&gt;
+&lt;/h:form&gt;</pre><p>
+            When we link to the page with no request parameters, the page will 
+            be displayed as a "Create Person" page. When we provide a value for
+            the <tt class="literal">personId</tt> request parameter, it will be an
+            "Edit Person" page.
+        </p><p>
+            Suppose we need to create <tt class="literal">Person</tt> entries with their
+            nationality initialized. We can do that easily, via configuration:
+        </p><pre class="programlisting">&lt;factory name="person" 
+         value="#{personHome.instance}"/&gt;
+
+&lt;framework:entity-home name="personHome" 
+                       entity-class="eg.Person" 
+                       new-instance="#{newPerson}"/&gt;
+
+&lt;component name="newPerson" 
+           class="eg.Person"&gt;
+    &lt;property name="nationality"&gt;#{country}&lt;/property&gt;
+&lt;/component&gt;</pre><p>
+             Or by extension:
+         </p><pre class="programlisting">@Name("personHome")
+public class PersonHome extends EntityHome&lt;Person&gt; {
+    
+    @In Country country;
+    
+    @Factory("person")
+    public Person initPerson() { return getInstance(); }
+    
+    protected Person createInstance() {
+        return new Person(country);
+    }
+    
+}</pre><p>
+            Of course, the <tt class="literal">Country</tt> could be an object managed by
+            another Home object, for example, <tt class="literal">CountryHome</tt>.
+        </p><p>
+            To add more sophisticated operations (association management, etc), we can
+            just add methods to <tt class="literal">PersonHome</tt>.
+        </p><pre class="programlisting">@Name("personHome")
+public class PersonHome extends EntityHome&lt;Person&gt; {
+    
+    @In Country country;
+    
+    @Factory("person")
+    public Person initPerson() { return getInstance(); }
+    
+    protected Person createInstance() {
+        return new Person(country);
+    }
+    
+    public void migrate()
+    {
+        getInstance().setCountry(country);
+        update();
+    }
+    
+}</pre><p>
+			The Home object raises an <tt class="literal">org.jboss.seam.afterTransactionSuccess</tt> 
+			event when a transaction succeeds (a call to <tt class="literal">persist()</tt>, 
+			<tt class="literal">update()</tt> or <tt class="literal">remove()</tt> succeeds).  By observing 
+			this event we can refresh our queries when the underlying entities are changed.  If
+			we only want to refresh certain queries when a particular entity is persited, 
+			updated or removed we can observe the 
+			<tt class="literal">org.jboss.seam.afterTransactionSuccess.&lt;name&gt;</tt> 
+			event (where <tt class="literal">&lt;name&gt;</tt> is the name of the entity).
+		</p><p>
+            The Home object automatically displays faces messages when an operation is
+            successful. To customize these messages we can, again, use configuration:
+        </p><pre class="programlisting">&lt;factory name="person" 
+         value="#{personHome.instance}"/&gt;
+
+&lt;framework:entity-home name="personHome"
+                       entity-class="eg.Person"
+                       new-instance="#{newPerson}"&gt;
+    &lt;framework:created-message&gt;New person #{person.firstName} #{person.lastName} created&lt;/framework:created-message&gt;
+    &lt;framework:deleted-message&gt;Person #{person.firstName} #{person.lastName} deleted&lt;/framework:deleted-message&gt;
+    &lt;framework:updated-message&gt;Person #{person.firstName} #{person.lastName} updated&lt;/framework:updated-message&gt;
+&lt;/framework:entity-home&gt;
+
+&lt;component name="newPerson" 
+           class="eg.Person"&gt;
+    &lt;property name="nationality"&gt;#{country}&lt;/property&gt;
+&lt;/component&gt;</pre><p>
+             Or extension:
+         </p><pre class="programlisting">@Name("personHome")
+public class PersonHome extends EntityHome&lt;Person&gt; {
+    
+    @In Country country;
+    
+    @Factory("person")
+    public Person initPerson() { return getInstance(); }
+    
+    protected Person createInstance() {
+        return new Person(country);
+    }
+    
+    protected String getCreatedMessage() { return "New person #{person.firstName} #{person.lastName} created"; }
+    protected String getUpdatedMessage() { return "Person #{person.firstName} #{person.lastName} updated"; }
+    protected String getDeletedMessage() { return "Person #{person.firstName} #{person.lastName} deleted"; }
+    
+}</pre><p>
+            But the best way to specify the messages is to put them in a resource
+            bundle known to Seam (the bundle named <tt class="literal">messages</tt>,
+            by default).
+        </p><pre class="programlisting">Person_created=New person #{person.firstName} #{person.lastName} created
+Person_deleted=Person #{person.firstName} #{person.lastName} deleted
+Person_updated=Person #{person.firstName} #{person.lastName} updated</pre><p>
+            This enables internationalization, and keeps your code and configuration clean of
+            presentation concerns.
+        </p><p>
+            The final step is to add validation functionality to the page, using
+            <tt class="literal">&lt;s:validateAll&gt;</tt> and <tt class="literal">&lt;s:decorate&gt;</tt>,
+            but I'll leave that for you to figure out.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e6472"></a>11.3.&nbsp;Query objects</h2></div></div><div></div></div><p>
+            If we need a list of all <tt class="literal">Person</tt> instance in the database, we
+            can use a Query object. For example:
+        </p><pre class="programlisting">&lt;framework:entity-query name="people" 
+                        ejbql="select p from Person p"/&gt;</pre><p>
+            We can use it from a JSF page:
+        </p><pre class="programlisting">&lt;h1&gt;List of people&lt;/h1&gt;
+&lt;h:dataTable value="#{people.resultList}" var="person"&gt;
+    &lt;h:column&gt;
+        &lt;s:link view="/editPerson.jsp" value="#{person.firstName} #{person.lastName}"&gt;
+            &lt;f:param name="personId" value="#{person.id}"/&gt;
+        &lt;/s:link&gt;
+    &lt;/h:column&gt;
+&lt;/h:dataTable&gt;</pre><p>
+            We probably need to support pagination:
+        </p><pre class="programlisting">&lt;framework:entity-query name="people" 
+                        ejbql="select p from Person p" 
+                        order="lastName" 
+                        max-results="20"/&gt;</pre><p>
+            We'll use a page parameter to determine the page to display:
+        </p><pre class="programlisting">&lt;pages&gt;
+    &lt;page view-id="/searchPerson.jsp"&gt;
+        &lt;param name="firstResult" value="#{people.firstResult}"/&gt;
+    &lt;/page&gt;
+&lt;/pages&gt;</pre><p>
+            The JSF code for a pagination control is a bit verbose, but manageable:
+        </p><pre class="programlisting">&lt;h1&gt;Search for people&lt;/h1&gt;
+&lt;h:dataTable value="#{people.resultList}" var="person"&gt;
+    &lt;h:column&gt;
+        &lt;s:link view="/editPerson.jsp" value="#{person.firstName} #{person.lastName}"&gt;
+            &lt;f:param name="personId" value="#{person.id}"/&gt;
+        &lt;/s:link&gt;
+    &lt;/h:column&gt;
+&lt;/h:dataTable&gt;
+
+&lt;s:link view="/search.xhtml" rendered="#{people.previousExists}" value="First Page"&gt;
+    &lt;f:param name="firstResult" value="0"/&gt;
+&lt;/s:link&gt;
+
+&lt;s:link view="/search.xhtml" rendered="#{people.previousExists}" value="Previous Page"&gt;
+    &lt;f:param name="firstResult" value="#{people.previousFirstResult}"/&gt;
+&lt;/s:link&gt;
+
+&lt;s:link view="/search.xhtml" rendered="#{people.nextExists}" value="Next Page"&gt;
+    &lt;f:param name="firstResult" value="#{people.nextFirstResult}"/&gt;
+&lt;/s:link&gt;
+
+&lt;s:link view="/search.xhtml" rendered="#{people.nextExists}" value="Last Page"&gt;
+    &lt;f:param name="firstResult" value="#{people.lastFirstResult}"/&gt;
+&lt;/s:link&gt;</pre><p>
+            Real search screens let the user enter a bunch of optional search criteria
+            to narrow the list of results returned. The Query object lets you specify
+            optional "restrictions" to support this important usecase:
+        </p><pre class="programlisting">&lt;component name="examplePerson" class="Person"/&gt;
+        
+&lt;framework:entity-query name="people" 
+                        ejbql="select p from Person p" 
+                        order="lastName" 
+                        max-results="20"&gt;
+    &lt;framework:restrictions&gt;
+        &lt;value&gt;lower(firstName) like lower( concat(#{examplePerson.firstName},'%') )&lt;/value&gt;
+        &lt;value&gt;lower(lastName) like lower( concat(#{examplePerson.lastName},'%') )&lt;/value&gt;
+    &lt;/framework:restrictions&gt;
+&lt;/framework:entity-query&gt;</pre><p>
+            Notice the use of an "example" object.
+        </p><pre class="programlisting">&lt;h1&gt;Search for people&lt;/h1&gt;
+&lt;h:form&gt;
+    &lt;div&gt;First name: &lt;h:inputText value="#{examplePerson.firstName}"/&gt;&lt;/div&gt;
+    &lt;div&gt;Last name: &lt;h:inputText value="#{examplePerson.lastName}"/&gt;&lt;/div&gt;
+    &lt;div&gt;&lt;h:commandButton value="Search" action="/search.jsp"/&gt;&lt;/div&gt;
+&lt;/h:form&gt;
+
+&lt;h:dataTable value="#{people.resultList}" var="person"&gt;
+    &lt;h:column&gt;
+        &lt;s:link view="/editPerson.jsp" value="#{person.firstName} #{person.lastName}"&gt;
+            &lt;f:param name="personId" value="#{person.id}"/&gt;
+        &lt;/s:link&gt;
+    &lt;/h:column&gt;
+&lt;/h:dataTable&gt;</pre><p>
+			To refresh the query when the underlying entities change we observe the
+			<tt class="literal">org.jboss.seam.afterTransactionSuccess</tt> event:
+		</p><pre class="programlisting">&lt;event type="org.jboss.seam.afterTransactionSuccess"&gt;
+    &lt;action execute="#{people.refresh}" /&gt;
+&lt;/event&gt;</pre><p>
+			Or, to just refresh the query when the person entity is persisted, updated or 
+			removed through <tt class="literal">PersonHome</tt>:
+		</p><pre class="programlisting">&lt;event type="org.jboss.seam.afterTransactionSuccess.Person"&gt;
+    &lt;action execute="#{people.refresh}" /&gt;
+&lt;/event&gt;</pre><p>
+            The examples in this section have all shown reuse by configuration. However,
+            reuse by extension is equally possible for Query objects.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e6522"></a>11.4.&nbsp;Controller objects</h2></div></div><div></div></div><p>
+            A totally optional part of the Seam Application Framework is the class
+            <tt class="literal">Controller</tt> and its subclasses 
+            <tt class="literal">EntityController</tt>
+            <tt class="literal">HibernateEntityController</tt> and
+            <tt class="literal">BusinessProcessController</tt>. These classes provide 
+            nothing more than some convenience methods for access to commonly
+            used built-in components and methods of built-in components. They help
+            save a few keystrokes (characters can add up!) and provide a great
+            launchpad for new users to explore the rich functionality built in
+            to Seam.
+        </p><p>
+            For example, here is what <tt class="literal">RegisterAction</tt> from the
+            Seam registration example would look like:
+        </p><pre class="programlisting">@Stateless
+@Name("register")
+public class RegisterAction extends EntityController implements Register
+{
+
+   @In private User user;
+   
+   public String register()
+   {
+      List existing = createQuery("select u.username from User u where u.username=:username")
+         .setParameter("username", user.getUsername())
+         .getResultList();
+      
+      if ( existing.size()==0 )
+      {
+         persist(user);
+         info("Registered new user #{user.username}");
+         return "/registered.jspx";
+      }
+      else
+      {
+         addFacesMessage("User #{user.username} already exists");
+         return null;
+      }
+   }
+
+}</pre><p>
+            As you can see, its not an earthshattering improvement...
+        </p></div></div><div class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="groovy.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="u" href="index.html">Up</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="drools.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">Chapter&nbsp;10.&nbsp;Groovy integration&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right" valign="top">&nbsp;Chapter&nbsp;12.&nbsp;Seam and JBoss Rules</td></tr></table></div></body></html>

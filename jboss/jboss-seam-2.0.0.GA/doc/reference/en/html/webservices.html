@@ -1,0 +1,128 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>Chapter&nbsp;20.&nbsp;Web Services</title><link rel="stylesheet" href="../shared/css/html.css" type="text/css"><meta name="generator" content="DocBook XSL Stylesheets V1.65.1"><link rel="home" href="index.html" title="Seam - Contextual Components"><link rel="up" href="index.html" title="Seam - Contextual Components"><link rel="previous" href="cache.html" title="Chapter&nbsp;19.&nbsp;Caching"><link rel="next" href="remoting.html" title="Chapter&nbsp;21.&nbsp;Remoting"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="navheader"><table width="100%" summary="Navigation header"><tr><th colspan="3" align="center">Chapter&nbsp;20.&nbsp;Web Services</th></tr><tr><td width="20%" align="left"><a accesskey="p" href="cache.html">Prev</a>&nbsp;</td><th width="60%" align="center">&nbsp;</th><td width="20%" align="right">&nbsp;<a accesskey="n" href="remoting.html">Next</a></td></tr></table><hr></div><div class="chapter" lang="en"><div class="titlepage"><div><div><h2 class="title"><a name="webservices"></a>Chapter&nbsp;20.&nbsp;Web Services</h2></div></div><div></div></div><p>
+    Seam integrates with JBossWS to allow standard JEE web services to take full advantage of Seam's contextual framework,
+    including support for conversational web services. This chapter walks through the steps required to allow web 
+    services to run within a Seam environment.
+  </p><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e11781"></a>20.1.&nbsp;Configuration and Packaging</h2></div></div><div></div></div><p>
+      To allow Seam to intercept web service requests so that the necessary Seam contexts can be created for the request, 
+      a special SOAP handler must be configured; <tt class="literal">org.jboss.seam.webservice.SOAPRequestHandler</tt>
+      is a <tt class="literal">SOAPHandler</tt> implementation that does the work of managing Seam's lifecycle during the scope
+      of a web service request.  The easiest way to configure a project to use this handler, is to place a file called
+      <tt class="literal">standard-jaxws-endpoint-config.xml</tt> into the <tt class="literal">META-INF</tt> directory of the
+      <tt class="literal">jar</tt> file that contains the web service classes.  This file contains the following SOAP handler
+      configuration:
+    </p><pre class="programlisting">&lt;jaxws-config xmlns="urn:jboss:jaxws-config:2.0" 
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+              xmlns:javaee="http://java.sun.com/xml/ns/javaee"
+              xsi:schemaLocation="urn:jboss:jaxws-config:2.0 jaxws-config_2_0.xsd"&gt;
+   &lt;endpoint-config&gt;
+      &lt;config-name&gt;Seam WebService Endpoint&lt;/config-name&gt;
+      &lt;pre-handler-chains&gt;
+         &lt;javaee:handler-chain&gt;
+            &lt;javaee:protocol-bindings&gt;##SOAP11_HTTP&lt;/javaee:protocol-bindings&gt;
+            &lt;javaee:handler&gt;
+               &lt;javaee:handler-name&gt;SOAP Request Handler&lt;/javaee:handler-name&gt;
+               &lt;javaee:handler-class&gt;org.jboss.seam.webservice.SOAPRequestHandler&lt;/javaee:handler-class&gt;
+            &lt;/javaee:handler&gt;
+         &lt;/javaee:handler-chain&gt;
+      &lt;/pre-handler-chains&gt;
+   &lt;/endpoint-config&gt;
+&lt;/jaxws-config&gt;</pre></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e11803"></a>20.2.&nbsp;Conversational Web Services</h2></div></div><div></div></div><p>
+      So how are conversations propagated between web service requests?  Seam uses a SOAP header element present
+      in both the SOAP request and response messages to carry the conversation ID from the consumer to the service,
+      and back again.  Here's an example of a web service request that contains a conversation ID:
+    </p><pre class="programlisting">&lt;soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" 
+    xmlns:seam="http://seambay.example.seam.jboss.org/"&gt;
+  &lt;soapenv:Header&gt;
+    &lt;seam:conversationId xmlns:seam='http://www.jboss.org/seam/webservice'&gt;2&lt;/seam:conversationId&gt;
+  &lt;/soapenv:Header&gt;
+  &lt;soapenv:Body&gt;
+    &lt;seam:confirmAuction/&gt;
+  &lt;/soapenv:Body&gt;
+&lt;/soapenv:Envelope&gt;    
+    </pre><p>
+      As you can see in the above SOAP message, there is a <tt class="literal">conversationId</tt> element within the
+      SOAP header that contains the conversation ID for the request, in this case <tt class="literal">2</tt>.  
+      Unfortunately, because web services may be consumed by a variety of web service clients written in a 
+      variety of languages, it is up to the developer to implement conversation ID propagation between individual 
+      web services that are intended to be used within the scope of a single conversation.
+    </p><p>
+      An important thing to note is that the <tt class="literal">conversationId</tt> header element must be qualified
+      with a namespace of <tt class="literal">http://www.jboss.org/seam/webservice</tt>, otherwise Seam will not be
+      able to read the conversation ID from the request. Here's an example of a response to the above request message:
+    </p><pre class="programlisting">&lt;env:Envelope xmlns:env='http://schemas.xmlsoap.org/soap/envelope/'&gt;
+  &lt;env:Header&gt;
+    &lt;seam:conversationId xmlns:seam='http://www.jboss.org/seam/webservice'&gt;2&lt;/seam:conversationId&gt;
+  &lt;/env:Header&gt;
+  &lt;env:Body&gt;
+    &lt;confirmAuctionResponse xmlns="http://seambay.example.seam.jboss.org/"/&gt;
+  &lt;/env:Body&gt;
+&lt;/env:Envelope&gt;    
+    </pre><p>
+      As you can see, the response message contains the same <tt class="literal">conversationId</tt> element as the request.
+    </p><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e11833"></a>20.2.1.&nbsp;A Recommended Strategy</h3></div></div><div></div></div><p>
+        As web services must be implemented as either a stateless session bean or POJO, it is recommended that for
+        conversational web services, the web service acts as a facade to a conversational Seam component.
+      </p><div class="mediaobject" align="center"><img src="../shared/images/ws-strategy.png" align="middle"></div><p>
+        If the web service is written as a stateless session bean, then it is also possible to make it a Seam
+        component by giving it a <tt class="literal">@Name</tt>.  Doing this allows Seam's bijection (and other) 
+        features to be used in the web service class itself. 
+      </p></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e11848"></a>20.3.&nbsp;An example web service</h2></div></div><div></div></div><p>
+      Let's walk through an example web service.  The code in this section all comes from the seamBay example
+      application in Seam's <tt class="literal">/examples</tt> directory, and follows the recommended strategy as
+      described in the previous section.  Let's first take a look at the web service class and one of its web 
+      service methods:
+    </p><pre class="programlisting">@Stateless
+@WebService(name = "AuctionService", serviceName = "AuctionService")
+public class AuctionService implements AuctionServiceRemote
+{           
+   @WebMethod
+   public boolean login(String username, String password)
+   {
+      Identity.instance().setUsername(username);
+      Identity.instance().setPassword(password);
+      Identity.instance().login();
+      return Identity.instance().isLoggedIn();
+   }
+   
+   // snip
+}</pre><p>
+      As you can see, our web service is a stateless session bean, and is annotated using the JWS annotations 
+      from the <tt class="literal">javax.jws</tt> package, as defined by JSR-181.  The <tt class="literal">@WebService</tt> 
+      annotation tells the container that this class implements a web service, and the <tt class="literal">@WebMethod</tt> 
+      annotation on the <tt class="literal">login()</tt> method identifies the method as a web service method.  
+      The <tt class="literal">name</tt> and <tt class="literal">serviceName</tt> attributes in the <tt class="literal">@WebService</tt> 
+      annotation are optional.
+    </p><p>
+      As is required by the specification, each method that is to be exposed as a web service method must also be 
+      declared in the remote interface of the web service class (when the web service is a stateless session bean).  
+      In the above example, the <tt class="literal">AuctionServiceRemote</tt> interface must declare the <tt class="literal">login()</tt> 
+      method as it is annotated as a <tt class="literal">@WebMethod</tt>.
+    </p><p>
+      As you can see in the above code, the web service implements a <tt class="literal">login()</tt> method that 
+      delegates to Seam's built-in <tt class="literal">Identity</tt> component.  In keeping with our recommended strategy,
+      the web service is written as a simple facade, passing off the real work to a Seam component.  This allows
+      for the greatest reuse of business logic between web services and other clients.
+    </p><p>
+      Let's look at another example.  This web service method begins a new conversation by delegating to the
+      <tt class="literal">AuctionAction.createAuction()</tt> method:
+    </p><pre class="programlisting">   @WebMethod
+   public void createAuction(String title, String description, int categoryId)
+   {
+      AuctionAction action = (AuctionAction) Component.getInstance(AuctionAction.class, true);
+      action.createAuction();
+      action.setDetails(title, description, categoryId);
+   }</pre><p>
+      And here's the code from <tt class="literal">AuctionAction</tt>:
+    </p><pre class="programlisting">   @Begin
+   public void createAuction()
+   {
+      auction = new Auction();
+      auction.setAccount(authenticatedAccount);
+      auction.setStatus(Auction.STATUS_UNLISTED);        
+      durationDays = DEFAULT_AUCTION_DURATION;
+   }</pre><p>
+      From this we can see how web services can participate in long running conversations, by acting as a facade
+      and delegating the real work to a conversational Seam component.
+    </p></div></div><div class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="cache.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="u" href="index.html">Up</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="remoting.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">Chapter&nbsp;19.&nbsp;Caching&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right" valign="top">&nbsp;Chapter&nbsp;21.&nbsp;Remoting</td></tr></table></div></body></html>

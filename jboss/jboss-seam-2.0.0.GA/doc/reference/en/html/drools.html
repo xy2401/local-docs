@@ -1,0 +1,143 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>Chapter&nbsp;12.&nbsp;Seam and JBoss Rules</title><link rel="stylesheet" href="../shared/css/html.css" type="text/css"><meta name="generator" content="DocBook XSL Stylesheets V1.65.1"><link rel="home" href="index.html" title="Seam - Contextual Components"><link rel="up" href="index.html" title="Seam - Contextual Components"><link rel="previous" href="framework.html" title="Chapter&nbsp;11.&nbsp;The Seam Application Framework"><link rel="next" href="security.html" title="Chapter&nbsp;13.&nbsp;Security"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="navheader"><table width="100%" summary="Navigation header"><tr><th colspan="3" align="center">Chapter&nbsp;12.&nbsp;Seam and JBoss Rules</th></tr><tr><td width="20%" align="left"><a accesskey="p" href="framework.html">Prev</a>&nbsp;</td><th width="60%" align="center">&nbsp;</th><td width="20%" align="right">&nbsp;<a accesskey="n" href="security.html">Next</a></td></tr></table><hr></div><div class="chapter" lang="en"><div class="titlepage"><div><div><h2 class="title"><a name="drools"></a>Chapter&nbsp;12.&nbsp;Seam and JBoss Rules</h2></div></div><div></div></div><p>
+        Seam makes it easy to call JBoss Rules (Drools) rulebases from Seam
+        components or jBPM process definitions.
+    </p><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e6553"></a>12.1.&nbsp;Installing rules</h2></div></div><div></div></div><p>
+            The first step is to make an instance of <tt class="literal">org.drools.RuleBase</tt>
+            available in a Seam context variable. For testing purposes, Seam provides a built-in component
+            that compiles a static set of rules from the classpath. You can install
+            this component via <tt class="literal">components.xml</tt>:
+        </p><pre class="programlisting">&lt;drools:rule-base name="policyPricingRules"&gt;
+    &lt;drools:rule-files&gt;
+        &lt;value&gt;policyPricingRules&lt;/value&gt;
+    &lt;/drools:rule-files&gt;
+&lt;/drools:rule-base&gt;</pre><p>
+             This component compiles rules from a set of <tt class="literal">.drl</tt>
+             files and caches an instance of <tt class="literal">org.drools.RuleBase</tt>
+             in the Seam <tt class="literal">APPLICATION</tt> context. Note that it is 
+             quite likely that you will need to install multiple rule bases in a 
+             rule-driven application.
+         </p><p>
+             If you want to use a Drools DSL, you alse need to specify the DSL
+             definition:
+         </p><pre class="programlisting">&lt;drools:rule-base name="policyPricingRules" dsl-file="policyPricing.dsl"&gt;
+    &lt;drools:rule-files&gt;
+        &lt;value&gt;policyPricingRules&lt;/value&gt;
+    &lt;/drools:rule-files&gt;
+&lt;/drools:rule-base&gt;</pre><p>
+        In most rules-driven applications,
+            rules need to be dynamically deployable, so a production application will want to use a
+            Drools RuleAgent to manage the RuleBase.  The RuleAgent can connect to a Drools rule server (BRMS) 
+            or hot deploy rules packages from a local file repository.  The RulesAgent-managed RuleBase is
+            also configurable in <tt class="literal">components.xml</tt>:
+        </p><pre class="programlisting">&lt;drools:rule-agent name="insuranceRules" 
+                    configurationFile="/WEB-INF/deployedrules.properties" /&gt;</pre><p>The properties file contains properties specific to the RulesAgent. Here is an example configuration file from the
+        Drools example distribution.</p><pre class="programlisting">newInstance=true
+url=http://localhost:8080/drools-jbrms/org.drools.brms.JBRMS/package/org.acme.insurance/fmeyer
+localCacheDir=/Users/fernandomeyer/projects/jbossrules/drools-examples/drools-examples-brms/cache
+poll=30
+name=insuranceconfig</pre><p>It is also possible to configure the options on the component directly, bypassing the configuration file.</p><pre class="programlisting">&lt;drools:rule-agent name="insuranceRules"
+                   url="http://localhost:8080/drools-jbrms/org.drools.brms.JBRMS/package/org.acme.insurance/fmeyer"
+                   local-cache-dir="/Users/fernandomeyer/projects/jbossrules/drools-examples/drools-examples-brms/cache"
+                   poll="30"
+                   configuration-name="insuranceconfig" /&gt;</pre><p>
+             Next, we need to make an instance of <tt class="literal">org.drools.WorkingMemory</tt>
+             available to each conversation. (Each <tt class="literal">WorkingMemory</tt>
+             accumulates facts relating to the current conversation.)
+         </p><pre class="programlisting">&lt;drools:managed-working-memory name="policyPricingWorkingMemory" auto-create="true" rule-base="#{policyPricingRules}"/&gt;</pre><p>
+             Notice that we gave the <tt class="literal">policyPricingWorkingMemory</tt> a
+             reference back to our rule base via the <tt class="literal">ruleBase</tt>
+             configuration property.
+         </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e6614"></a>12.2.&nbsp;Using rules from a Seam component</h2></div></div><div></div></div><p>
+             We can now inject our <tt class="literal">WorkingMemory</tt> into any Seam component,
+             assert facts, and fire rules:
+         </p><pre class="programlisting">@In WorkingMemory policyPricingWorkingMemory;
+
+@In Policy policy;
+@In Customer customer;
+
+public void pricePolicy() throws FactException
+{
+    policyPricingWorkingMemory.assertObject(policy);
+    policyPricingWorkingMemory.assertObject(customer);
+    policyPricingWorkingMemory.fireAllRules();
+}</pre></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e6624"></a>12.3.&nbsp;Using rules from a jBPM process definition</h2></div></div><div></div></div><p>
+             You can even allow a rule base to act as a jBPM action handler, decision
+             handler, or assignment handler&#8212;in either a pageflow or business
+             process definition.
+         </p><pre class="programlisting">&lt;decision name="approval"&gt;
+         
+    &lt;handler class="org.jboss.seam.drools.DroolsDecisionHandler"&gt;
+        &lt;workingMemoryName&gt;orderApprovalRulesWorkingMemory&lt;/workingMemoryName&gt;
+        &lt;assertObjects&gt;
+            &lt;element&gt;#{customer}&lt;/element&gt;
+            &lt;element&gt;#{order}&lt;/element&gt;
+            &lt;element&gt;#{order.lineItems}&lt;/element&gt;
+        &lt;/assertObjects&gt;
+    &lt;/handler&gt;
+    
+    &lt;transition name="approved" to="ship"&gt;
+        &lt;action class="org.jboss.seam.drools.DroolsActionHandler"&gt;
+            &lt;workingMemoryName&gt;shippingRulesWorkingMemory&lt;/workingMemoryName&gt;
+            &lt;assertObjects&gt;
+                &lt;element&gt;#{customer}&lt;/element&gt;
+                &lt;element&gt;#{order}&lt;/element&gt;
+                &lt;element&gt;#{order.lineItems}&lt;/element&gt;
+            &lt;/assertObjects&gt;
+        &lt;/action&gt;
+    &lt;/transition&gt;
+    
+    &lt;transition name="rejected" to="cancelled"/&gt;
+    
+&lt;/decision&gt;</pre><p>
+             The <tt class="literal">&lt;assertObjects&gt;</tt> element specifies EL expressions that
+             return an object or collection of objects to be asserted as facts into the 
+             <tt class="literal">WorkingMemory</tt>.
+         </p><p>
+             There is also support for using Drools for jBPM task assignments:
+         </p><pre class="programlisting">&lt;task-node name="review"&gt;
+    &lt;task name="review" description="Review Order"&gt;
+        &lt;assignment handler="org.jboss.seam.drools.DroolsAssignmentHandler"&gt;
+            &lt;workingMemoryName&gt;orderApprovalRulesWorkingMemory&lt;/workingMemoryName&gt;
+            &lt;assertObjects&gt;
+                &lt;element&gt;#{actor}&lt;/element&gt;
+                &lt;element&gt;#{customer}&lt;/element&gt;
+                &lt;element&gt;#{order}&lt;/element&gt;
+                &lt;element&gt;#{order.lineItems}&lt;/element&gt;
+            &lt;/assertObjects&gt;
+        &lt;/assignment&gt;
+    &lt;/task&gt;
+    &lt;transition name="rejected" to="cancelled"/&gt;
+    &lt;transition name="approved" to="approved"/&gt;
+&lt;/task-node&gt;</pre><p>
+             Certain objects are available to the rules as Drools globals, namely
+             the jBPM <tt class="literal">Assignable</tt>, as <tt class="literal">assignable</tt>
+             and a Seam <tt class="literal">Decision</tt> object, as <tt class="literal">decision</tt>.
+             Rules which handle decisions should call <tt class="literal">decision.setOutcome("result")</tt>
+             to determine the result of the decision. Rules which perform assignments should
+             set the actor id using the <tt class="literal">Assignable</tt>.
+         </p><pre class="programlisting">package org.jboss.seam.examples.shop
+
+import org.jboss.seam.drools.Decision
+
+global Decision decision
+
+rule "Approve Order For Loyal Customer"
+  when
+    Customer( loyaltyStatus == "GOLD" )
+    Order( totalAmount &lt;= 10000 )
+  then
+    decision.setOutcome("approved");
+end</pre><pre class="programlisting">package org.jboss.seam.examples.shop
+
+import org.jbpm.taskmgmt.exe.Assignable
+
+global Assignable assignable
+
+rule "Assign Review For Small Order"
+  when
+    Order( totalAmount &lt;= 100 )
+  then
+    assignable.setPooledActors( new String[] {"reviewers"} );
+end</pre></div></div><div class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="framework.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="u" href="index.html">Up</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="security.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">Chapter&nbsp;11.&nbsp;The Seam Application Framework&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right" valign="top">&nbsp;Chapter&nbsp;13.&nbsp;Security</td></tr></table></div></body></html>

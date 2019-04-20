@@ -1,0 +1,349 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>Chapter&nbsp;31.&nbsp;Testing Seam applications</title><link rel="stylesheet" href="../shared/css/html.css" type="text/css"><meta name="generator" content="DocBook XSL Stylesheets V1.65.1"><link rel="home" href="index.html" title="Seam - Contextual Components"><link rel="up" href="index.html" title="Seam - Contextual Components"><link rel="previous" href="elenhancements.html" title="Chapter&nbsp;30.&nbsp;Expression language enhancements"><link rel="next" href="tools.html" title="Chapter&nbsp;32.&nbsp;Seam tools"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="navheader"><table width="100%" summary="Navigation header"><tr><th colspan="3" align="center">Chapter&nbsp;31.&nbsp;Testing Seam applications</th></tr><tr><td width="20%" align="left"><a accesskey="p" href="elenhancements.html">Prev</a>&nbsp;</td><th width="60%" align="center">&nbsp;</th><td width="20%" align="right">&nbsp;<a accesskey="n" href="tools.html">Next</a></td></tr></table><hr></div><div class="chapter" lang="en"><div class="titlepage"><div><div><h2 class="title"><a name="testing"></a>Chapter&nbsp;31.&nbsp;Testing Seam applications</h2></div></div><div></div></div><p>
+	    Most Seam applications will need at least two kinds of automated tests:
+	    <span class="emphasis"><em>unit tests</em></span>, which test a particular Seam component
+	    in isolation, and scripted <span class="emphasis"><em>integration tests</em></span> which
+	    exercise all Java layers of the application (that is, everything except the
+	    view pages).
+	</p><p>
+	   Both kinds of tests are very easy to write.
+	</p><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e19342"></a>31.1.&nbsp;Unit testing Seam components</h2></div></div><div></div></div><p>
+		    All Seam components are POJOs. This is a great place to start if you
+		    want easy unit testing. And since Seam emphasises the use of bijection 
+            for inter-component interactions and access to contextual objects, it's 
+            very easy to test a Seam component outside of its normal runtime 
+            environment.
+		</p><p>
+		    Consider the following Seam component:
+		</p><pre class="programlisting">@Stateless
+@Scope(EVENT)
+@Name("register")
+public class RegisterAction implements Register
+{
+   private User user;
+   private EntityManager em;
+
+   @In
+   public void setUser(User user) {
+       this.user = user;
+   }
+   
+   @PersistenceContext
+   public void setBookingDatabase(EntityManager em) {
+       this.em = em;
+   }
+   
+   public String register()
+   {
+      List existing = em.createQuery("select username from User where username=:username")
+         .setParameter("username", user.getUsername())
+         .getResultList();
+      if (existing.size()==0)
+      {
+         em.persist(user);
+         return "success";
+      }
+      else
+      {
+         return null;
+      }
+   }
+
+}</pre><p>
+            We could write a TestNG test for this component as follows:
+        </p><pre class="programlisting">public class RegisterActionTest
+{
+
+    @Test
+    public testRegisterAction()
+    {
+        EntityManager em = getEntityManagerFactory().createEntityManager();
+        em.getTransaction().begin();
+        
+        User gavin = new User();
+        gavin.setName("Gavin King");
+        gavin.setUserName("1ovthafew");
+        gavin.setPassword("secret");
+        
+        RegisterAction action = new RegisterAction();
+        action.setUser(gavin);
+        action.setBookingDatabase(em);
+        
+        assert "success".equals( action.register() );
+        
+        em.getTransaction().commit();
+        em.close();
+    }
+    
+    
+    private EntityManagerFactory emf;
+    
+    public EntityManagerFactory getEntityManagerFactory()
+    {
+        return emf;
+    }
+    
+    @BeforeClass
+    public void init() 
+    {
+        emf = Persistence.createEntityManagerFactory("myResourceLocalEntityManager");
+    }
+    
+    @AfterClass
+    public void destroy()
+    {
+        emf.close();
+    }
+    
+}
+</pre><p>
+            The Java Persistence API can be used with both Java SE and Java EE &#8212; 
+            when the above component is used inside an Application Server (Java 
+            EE) the container is responsible for transaction management, however 
+            in the unit test (Java SE) the transaction must be managed 
+            explicitly using a resource local entity manager. This requires
+            configuration in <tt class="literal">persistence.xml</tt>.
+       </p><p>    
+            Seam components don't usually depend directly upon container infrastructure,
+            so most unit testing as as easy as that!
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e19362"></a>31.2.&nbsp;Integration testing Seam components</h2></div></div><div></div></div><p>
+            Integration testing is slightly more difficult. In this case, we can't eliminate
+            the container infrastructure; indeed, that is part of what is being tested! At
+            the same time, we don't want to be forced to deploy our application to an
+            application server to run the automated tests. We need to be able to reproduce
+            just enough of the container infrastructure inside our testing environment to be 
+            able to exercise the whole application, without hurting performance too much.
+        </p><p>
+            The approach taken by Seam is to let you write tests that exercise your
+            components while running inside a pruned down container environment (Seam,
+            together with the JBoss Embedded container; n.b. JBoss Embedded requires
+            JDK 1.5 and does not work with JDK 1.6).
+        </p><pre class="programlisting">public class RegisterTest extends SeamTest
+{
+   
+   @Test
+   public void testRegisterComponent() throws Exception
+   {
+            
+      new ComponentTest() {
+
+         protected void testComponents() throws Exception
+         {
+            setValue("#{user.username}", "1ovthafew");
+            setValue("#{user.name}", "Gavin King");
+            setValue("#{user.password}", "secret");
+            assert invokeMethod("#{register.register}").equals("success");
+            assert getValue("#{user.username}").equals("1ovthafew");
+            assert getValue("#{user.name}").equals("Gavin King");
+            assert getValue("#{user.password}").equals("secret");
+         }
+         
+      }.run();
+      
+   }
+
+   ...
+   
+}</pre><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e19371"></a>31.2.1.&nbsp;Using mocks in integration tests</h3></div></div><div></div></div><p>
+                Occasionally, we need to be able to replace the implementation of some
+                Seam component that depends upon resources which are not available in 
+                the integration test environment. For example, suppose we have some
+                Seam component which is a facade to some payment processing system:
+            </p><pre class="programlisting">@Name("paymentProcessor")
+public class PaymentProcessor {
+    public boolean processPayment(Payment payment) { .... }
+}</pre><p>
+                For integration tests, we can mock out this component as follows:
+            </p><pre class="programlisting">@Name("paymentProcessor")
+@Install(precedence=MOCK)
+public class MockPaymentProcessor extends PaymentProcessor {
+    public void processPayment(Payment payment) {
+        return true;
+    }
+}</pre><p>
+                Since the <tt class="literal">MOCK</tt> precedence is higher than the default
+                precedence of application components, Seam will install the mock 
+                implementation whenever it is in the classpath. When deployed into 
+                production, the mock implementation is absent, so the real component
+                will be installed.
+            </p></div></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e19387"></a>31.3.&nbsp;Integration testing Seam application user interactions</h2></div></div><div></div></div><p>
+            An even harder problem is emulating user interactions. A third problem is where 
+            to put our assertions. Some test frameworks let us test the whole application
+            by reproducing user interactions with the web browser. These frameworks have
+            their place, but they are not appropriate for use at development time.
+        </p><p>
+            <tt class="literal">SeamTest</tt> lets you write <span class="emphasis"><em>scripted</em></span> tests,
+            in a simulated JSF environment. The role of a scripted test is to reproduce 
+            the interaction between the view and the Seam components. In other words, you 
+            get to pretend you are the JSF implementation!
+        </p><p>
+            This approach tests everything except the view.
+        </p><p>
+            Let's consider a JSP view for the component we unit tested above:
+        </p><pre class="programlisting">&lt;html&gt;
+ &lt;head&gt;
+  &lt;title&gt;Register New User&lt;/title&gt;
+ &lt;/head&gt;
+ &lt;body&gt;
+  &lt;f:view&gt;
+   &lt;h:form&gt;
+     &lt;table border="0"&gt;
+       &lt;tr&gt;
+         &lt;td&gt;Username&lt;/td&gt;
+         &lt;td&gt;&lt;h:inputText value="#{user.username}"/&gt;&lt;/td&gt;
+       &lt;/tr&gt;
+       &lt;tr&gt;
+         &lt;td&gt;Real Name&lt;/td&gt;
+         &lt;td&gt;&lt;h:inputText value="#{user.name}"/&gt;&lt;/td&gt;
+       &lt;/tr&gt;
+       &lt;tr&gt;
+         &lt;td&gt;Password&lt;/td&gt;
+         &lt;td&gt;&lt;h:inputSecret value="#{user.password}"/&gt;&lt;/td&gt;
+       &lt;/tr&gt;
+     &lt;/table&gt;
+     &lt;h:messages/&gt;
+     &lt;h:commandButton type="submit" value="Register" action="#{register.register}"/&gt;
+   &lt;/h:form&gt;
+  &lt;/f:view&gt;
+ &lt;/body&gt;
+&lt;/html&gt;</pre><p>
+            We want to test the registration functionality of our application (the stuff
+            that happens when the user clicks the Register button). We'll reproduce the JSF 
+            request lifecycle in an automated TestNG test:
+        </p><pre class="programlisting">public class RegisterTest extends SeamTest
+{
+   
+   @Test
+   public void testRegister() throws Exception
+   {
+            
+      new FacesRequest() {
+
+         @Override
+         protected void processValidations() throws Exception
+         {
+            validateValue("#{user.username}", "1ovthafew");
+            validateValue("#{user.name}", "Gavin King");
+            validateValue("#{user.password}", "secret");
+            assert !isValidationFailure();
+         }
+         
+         @Override
+         protected void updateModelValues() throws Exception
+         {
+            setValue("#{user.username}", "1ovthafew");
+            setValue("#{user.name}", "Gavin King");
+            setValue("#{user.password}", "secret");
+         }
+
+         @Override
+         protected void invokeApplication()
+         {
+            assert invokeMethod("#{register.register}").equals("success");
+         }
+
+         @Override
+         protected void renderResponse()
+         {
+            assert getValue("#{user.username}").equals("1ovthafew");
+            assert getValue("#{user.name}").equals("Gavin King");
+            assert getValue("#{user.password}").equals("secret");
+         }
+         
+      }.run();
+      
+   }
+
+   ...
+   
+}</pre><p>
+            Notice that we've extended <tt class="literal">SeamTest</tt>, which provides a 
+            Seam environment for our components, and written our test script as an 
+            anonymous class that extends <tt class="literal">SeamTest.FacesRequest</tt>, 
+            which provides an emulated JSF request lifecycle. (There is also a
+            <tt class="literal">SeamTest.NonFacesRequest</tt> for testing GET requests.)
+            We've written our code in methods which are named for the various JSF 
+            phases, to emulate the calls that JSF would make to our components. Then 
+            we've thrown in various assertions.
+        </p><p>
+            You'll find plenty of integration tests for the Seam example applications
+            which demonstrate more complex cases. There are instructions for running
+            these tests using Ant, or using the TestNG plugin for eclipse:
+        </p><div class="mediaobject" align="center"><img src="../shared/images/plugin-testng.png" align="middle"></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e19428"></a>31.3.1.&nbsp;Integration Testing with Mock Data</h3></div></div><div></div></div><p>
+            If you need to insert or clean data in your database before each 
+            test you can use Seam's integration with DBUnit.  To do this, extend 
+            DBUnitSeamTest rather than SeamTest.
+         </p><p>
+            You need to provide a dataset for DBUnit:
+         </p><pre class="programlisting">&lt;dataset&gt;
+   
+   &lt;ARTIST 
+      id="1"
+      dtype="Band"
+      name="Pink Floyd" /&gt;
+      
+   &lt;DISC
+      id="1"
+      name="Dark Side of the Moon"
+      artist_id="1" /&gt;
+      
+&lt;/dataset&gt;</pre><p>
+            and tell Seam about it by overriding <tt class="literal">prepareDBUnitOperations()</tt>:
+         </p><pre class="programlisting">protected void prepareDBUnitOperations() {
+    beforeTestOperations.add(
+       new DataSetOperation("my/datasets/BaseData.xml")
+    );
+ }</pre><p>
+           <tt class="literal">DataSetOperation</tt> defaults to <tt class="literal">DatabaseOperation.CLEAN_INSERT</tt>
+           if no other operation is specified as a constructor argument. The 
+           above example cleans all tables defined <tt class="literal">BaseData.xml</tt>, 
+           then inserts all rows declared in <tt class="literal">BaseData.xml</tt> 
+           before each <tt class="literal">@Test</tt> method is invoked.
+         </p><p>
+           If you require extra cleanup after a test method executes, add 
+           operations to <tt class="literal">afterTestOperations</tt> list.
+         </p><p>
+           You need to tell DBUnit about the datasource you are using by 
+           setting a TestNG test parameter named <tt class="literal">datasourceJndiName</tt>:
+         </p><pre class="programlisting">
+   &lt;parameter name="datasourceJndiName" value="java:/seamdiscsDatasource"/&gt;
+         </pre></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="testing.mail"></a>31.3.2.&nbsp;Integration Testing Seam Mail</h3></div></div><div></div></div><p>
+            Warning! This feature is still under development.
+          </p><p>
+            It's very easy to integration test your Seam Mail:
+          </p><pre class="programlisting">public class MailTest extends SeamTest {
+    
+   @Test
+   public void testSimpleMessage() throws Exception {
+        
+      new FacesRequest() {
+
+         @Override
+         protected void updateModelValues() throws Exception {
+            setValue("#{person.firstname}", "Pete");
+            setValue("#{person.lastname}", "Muir");
+            setValue("#{person.address}", "test@example.com");
+         }
+            
+         @Override
+         protected void invokeApplication() throws Exception {
+            MimeMessage renderedMessage = getRenderedMailMessage("/simple.xhtml");
+            assert renderedMessage.getAllRecipients().length == 1;
+            InternetAddress to = (InternetAddress) renderedMessage.getAllRecipients()[0];
+            assert to.getAddress().equals("test@example.com");
+         }
+            
+      }.run();       
+   }
+}</pre><p>
+            We create a new <tt class="literal">FacesRequest</tt> as normal.  Inside 
+            the invokeApplication hook we render the message using 
+            <tt class="literal">getRenderedMailMessage(viewId);</tt>, passing the 
+            viewId of the message to render.  The method returns the rendered
+            message on which you can do your tests. You can of course also use
+            any of the standard JSF lifecycle methods.
+          </p><p>
+            There is no support for rendering standard JSF components so you 
+            can't test the content body of the mail message easily.
+          </p></div></div></div><div class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="elenhancements.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="u" href="index.html">Up</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="tools.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">Chapter&nbsp;30.&nbsp;Expression language enhancements&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right" valign="top">&nbsp;Chapter&nbsp;32.&nbsp;Seam tools</td></tr></table></div></body></html>

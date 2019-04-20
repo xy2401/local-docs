@@ -1,0 +1,182 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>Chapter&nbsp;23.&nbsp;Spring Framework integration</title><link rel="stylesheet" href="../shared/css/html.css" type="text/css"><meta name="generator" content="DocBook XSL Stylesheets V1.65.1"><link rel="home" href="index.html" title="Seam - Contextual Components"><link rel="up" href="index.html" title="Seam - Contextual Components"><link rel="previous" href="gwt.html" title="Chapter&nbsp;22.&nbsp;Seam and the Google Web Toolkit"><link rel="next" href="search.html" title="Chapter&nbsp;24.&nbsp;Hibernate Search"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="navheader"><table width="100%" summary="Navigation header"><tr><th colspan="3" align="center">Chapter&nbsp;23.&nbsp;Spring Framework integration</th></tr><tr><td width="20%" align="left"><a accesskey="p" href="gwt.html">Prev</a>&nbsp;</td><th width="60%" align="center">&nbsp;</th><td width="20%" align="right">&nbsp;<a accesskey="n" href="search.html">Next</a></td></tr></table><hr></div><div class="chapter" lang="en"><div class="titlepage"><div><div><h2 class="title"><a name="spring"></a>Chapter&nbsp;23.&nbsp;Spring Framework integration</h2></div></div><div></div></div><p>The Spring integration module allows easy migration of Spring-based projects to Seam and allows Spring
+        applications to take advantage of key Seam features like conversations and Seam's more sophisticated persistence
+        context management.</p><p>Note! The Spring integration code is included in the jboss-seam-ioc library.  This dependency is required for
+    all seam-spring integration techniques covered in this chapter.</p><p>Seam's support for Spring provides the ability to: </p><div class="itemizedlist"><ul type="disc"><li><p>inject Seam component instances into Spring beans</p></li><li><p>inject Spring beans into Seam components</p></li><li><p>turn Spring beans into Seam components</p></li><li><p>allow Spring beans to live in any Seam context</p></li><li><p>start a spring WebApplicationContext with a Seam component</p></li><li><p>Support for Spring PlatformTransactionManagement</p></li><li><p>provides a Seam managed replacement for Spring's <tt class="literal">OpenEntityManagerInViewFilter</tt> and <tt class="literal">OpenSessionInViewFilter</tt></p></li><li><p>Support for Spring <tt class="literal">TaskExecutors</tt> to back <tt class="literal">@Asynchronous</tt> calls</p></li></ul></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e12868"></a>23.1.&nbsp;Injecting Seam components into Spring beans</h2></div></div><div></div></div><p> Injecting Seam component instances into Spring beans is accomplished using the
+                <tt class="literal">&lt;seam:instance/&gt;</tt> namespace handler. To enable the Seam namespace
+            handler, the Seam namespace must be added to the Spring beans definition file:</p><pre class="programlisting">&lt;beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:seam="http://jboss.com/products/seam/spring-seam"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.springframework.org/schema/beans 
+                        http://www.springframework.org/schema/beans/spring-beans-2.0.xsd
+                        http://jboss.com/products/seam/spring-seam 
+                        http://jboss.com/products/seam/spring-seam-2.0.xsd"&gt;</pre><p> Now any Seam component may be injected into any Spring bean: </p><pre class="programlisting">&lt;bean id="someSpringBean" class="SomeSpringBeanClass" scope="prototype"&gt;
+    &lt;property name="someProperty"&gt;
+        &lt;seam:instance name="someComponent"/&gt;
+    &lt;/property&gt;
+&lt;/bean&gt;</pre><p> An EL expression may be used instead of a component name: </p><pre class="programlisting">&lt;bean id="someSpringBean" class="SomeSpringBeanClass" scope="prototype"&gt;
+    &lt;property name="someProperty"&gt;
+        &lt;seam:instance name="#{someExpression}"/&gt;
+    &lt;/property&gt;
+&lt;/bean&gt;</pre><p> Seam component instances may even be made available for injection into Spring beans by a Spring bean id. </p><pre class="programlisting">&lt;seam:instance name="someComponent" id="someSeamComponentInstance"/&gt;
+
+&lt;bean id="someSpringBean" class="SomeSpringBeanClass" scope="prototype"&gt;
+    &lt;property name="someProperty" ref="someSeamComponentInstance"&gt;
+&lt;/bean&gt;
+</pre><p>Now for the caveat!</p><p> Seam was designed from the ground up to support a stateful component model with multiple contexts. Spring
+            was not. Unlike Seam bijection, Spring injection does not occur at method invocation time. Instead,
+            injection happens only when the Spring bean is instantiated. So the instance available when the bean is
+            instantiated will be the same instance that the bean uses for the entire life of the bean. For example, if a
+            Seam <tt class="literal">CONVERSATION</tt>-scoped component instance is directly injected into a singleton Spring
+            bean, that singleton will hold a reference to the same instance long after the conversation is over! We call
+            this problem <span class="emphasis"><em>scope impedance</em></span>. Seam bijection ensures that scope impedance is maintained
+            naturally as an invocation flows through the system. In Spring, we need to inject a proxy of the Seam
+            component, and resolve the reference when the proxy is invoked.</p><p>The <tt class="literal">&lt;seam:instance/&gt;</tt> tag lets us automatically proxy the Seam component.</p><pre class="programlisting">&lt;seam:instance id="seamManagedEM" name="someManagedEMComponent" proxy="true"/&gt;
+        
+&lt;bean id="someSpringBean" class="SomeSpringBeanClass"&gt;
+    &lt;property name="entityManager" ref="seamManagedEM"&gt;
+&lt;/bean&gt;</pre><p> This example shows one way to use a Seam-managed persistence context from a Spring bean. (For a more robust
+            way to use Seam-managed persistence contexts as a replacement for the Spring
+                <tt class="literal">OpenEntityManagerInView</tt> filter see section on 
+                <a href="spring.html#spring-persistence" title="23.6.&nbsp;Using a Seam Managed Persistence Context in Spring">Using a Seam Managed Persistence Context in Spring</a>)</p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e12915"></a>23.2.&nbsp;Injecting Spring beans into Seam components</h2></div></div><div></div></div><p> It is even easier to inject Spring beans into Seam component instances. Actually, there are two possible
+            approaches: </p><div class="itemizedlist"><ul type="disc"><li><p> inject a Spring bean using an EL expression </p></li><li><p> make the Spring bean a Seam component </p></li></ul></div><p> We'll discuss the second option in the next section. The easiest approach is to access the Spring beans
+            via EL. </p><p> The Spring <tt class="literal">DelegatingVariableResolver</tt> is an integration point Spring provides for
+            integrating Spring with JSF. This <tt class="literal">VariableResolver</tt> makes all Spring beans available in EL
+            by their bean id. You'll need to add the <tt class="literal">DelegatingVariableResolver</tt> to
+                <tt class="literal">faces-config.xml</tt>: </p><pre class="programlisting">&lt;application&gt;
+    &lt;variable-resolver&gt;
+        org.springframework.web.jsf.DelegatingVariableResolver
+    &lt;/variable-resolver&gt;
+&lt;/application&gt;</pre><p> Then you can inject Spring beans using <tt class="literal">@In</tt>: </p><pre class="programlisting">@In("#{bookingService}")
+private BookingService bookingService;</pre><p>The use of Spring beans in EL is not limited to injection. Spring beans may be used anywhere that EL
+            expressions are used in Seam: process and pageflow definitions, working memory assertions, etc... </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e12954"></a>23.3.&nbsp;Making a Spring bean into a Seam component</h2></div></div><div></div></div><p> The <tt class="literal">&lt;seam:component/&gt;</tt> namespace handler can be used to make any Spring
+            bean a Seam component. Just place the <tt class="literal">&lt;seam:component/&gt;</tt> tag within the
+            declaration of the bean that you wish to be a Seam component: </p><pre class="programlisting">&lt;bean id="someSpringBean" class="SomeSpringBeanClass" scope="prototype"&gt;
+    &lt;seam:component/&gt;
+&lt;/bean&gt;</pre><p> By default, <tt class="literal">&lt;seam:component/&gt;</tt> will create a <tt class="literal">STATELESS</tt>
+            Seam component with class and name provided in the bean definition. Occasionally, such as when a
+                <tt class="literal">FactoryBean</tt> is used, the class of the Spring bean may not be the class appearing in
+            the bean definition. In such cases the <tt class="literal">class</tt> should be explicitly specified. A Seam
+            component name may be explicitly specified in cases where there is potential for a naming conflict. </p><p> The <tt class="literal">scope</tt> attribute of <tt class="literal">&lt;seam:component/&gt;</tt> may be used
+            if you wish the Spring bean to be managed in a particular Seam scope. The Spring bean must be scoped to
+                <tt class="literal">prototype</tt> if the Seam scope specified is anything other than
+            <tt class="literal">STATELESS</tt>. Pre-existing Spring beans usually have a fundamentally stateless character, so
+            this attribute is not usually needed. </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e12995"></a>23.4.&nbsp;Seam-scoped Spring beans</h2></div></div><div></div></div><p> The Seam integration package also lets you use Seam's contexts as Spring 2.0 style custom scopes. This
+            lets you declare any Spring bean in any of Seam's contexts. However, note once again that Spring's component
+            model was never architected to support statefulness, so please use this feature with great care. In
+            particular, clustering of session or conversation scoped Spring beans is deeply problematic, and care must
+            be taken when injecting a bean or component from a wider scope into a bean of a narrower scope.</p><p> By specifying <tt class="literal">&lt;seam:configure-scopes/&gt;</tt> once in a Spring bean factory
+            configuration, all of the Seam scopes will be available to Spring beans as custom scopes. To associate a
+            Spring bean with a particular Seam scope, specify the Seam scope in the <tt class="literal">scope</tt> attribute
+            of the bean definition. </p><pre class="programlisting">&lt;!-- Only needs to be specified once per bean factory--&gt;
+&lt;seam:configure-scopes/&gt;
+
+...
+
+&lt;bean id="someSpringBean" class="SomeSpringBeanClass" scope="seam.CONVERSATION"/&gt;</pre><p> The prefix of the scope name may be changed by specifying the <tt class="literal">prefix</tt> attribute in the
+                <tt class="literal">configure-scopes</tt> definition. (The default prefix is <tt class="literal">seam.</tt>) </p><p> Seam-scoped Spring beans defined this way can be injected into other Spring beans without the use of
+                <tt class="literal">&lt;seam:instance/&gt;</tt>. However, care must be taken to ensure scope impedance
+            is maintained. The normal approach used in Spring is to specify
+            <tt class="literal">&lt;aop:scoped-proxy/&gt;</tt> in the bean definition. However, Seam-scoped Spring
+            beans are <span class="emphasis"><em>not</em></span> compatible with <tt class="literal">&lt;aop:scoped-proxy/&gt;</tt>. So
+            if you need to inject a Seam-scoped Spring bean into a singleton,
+            <tt class="literal">&lt;seam:instance/&gt;</tt> must be used: </p><pre class="programlisting">&lt;bean id="someSpringBean" class="SomeSpringBeanClass" scope="seam.CONVERSATION"/&gt;
+
+...
+
+&lt;bean id="someSingleton"&gt;
+    &lt;property name="someSeamScopedSpringBean"&gt;
+        &lt;seam:instance name="someSpringBean" proxy="true"/&gt;
+    &lt;/property&gt;
+&lt;/bean&gt;</pre></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="spring-transactions"></a>23.5.&nbsp;Using Spring PlatformTransactionManagement</h2></div></div><div></div></div><p>Spring provides an extensible transaction management abstraction with support for many
+        transaction APIs (JPA, Hibernate, JDO, and JTA)  Spring also provides tight integrations with many application
+        server TransactionManagers such as Websphere and Weblogic.  Spring
+        transaction management exposes support for many advanced features such as nested
+        transactions and supports full Java EE transaction propagation rules like REQUIRES_NEW and NOT_SUPPORTED.  For more
+        information see the spring documentation
+        <a href="http://static.springframework.org/spring/docs/2.0.x/reference/transaction.html" target="_top">here</a>.</p><p>To configure Seam to use Spring transactions enable the SpringTransaction component like so:</p><pre class="programlisting">
+			&lt;spring:spring-transaction platform-transaction-manager="#{transactionManager}"/&gt;
+		</pre><p>
+			The <tt class="literal">spring:spring-transaction</tt> component will utilize Springs transaction synchronization
+			capabilities for synchronization callbacks.
+		</p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="spring-persistence"></a>23.6.&nbsp;Using a Seam Managed Persistence Context in Spring</h2></div></div><div></div></div><p>One of the most powerful features of Seam is its conversation scope and the ability to
+        have an EntityManager open for the life of a conversation.  This eliminates many
+        of the problems associated with the detachment and re-attachment of entities as well as mitigates occurrences
+        of the dreaded <tt class="literal">LazyInitializationException</tt>.  Spring does not provide a way to manage
+        an persistence context beyond the scope of a single web request
+        (<tt class="literal">OpenEntityManagerInViewFilter</tt>).  So, it would be nice if Spring developers
+        could have access to a Seam managed persistence context using all of the same tools Spring provides
+        for integration with JPA(e.g. <tt class="literal">PersistenceAnnotationBeanPostProcessor</tt>,
+        <tt class="literal">JpaTemplate</tt>, etc.)</p><p>Seam provides a way for Spring to access a Seam managed persistence context with
+        Spring's provided JPA tools bringing conversation scoped persistence context capabilities to
+        Spring applications.</p><p>This integration work provides the following functionality:</p><div class="itemizedlist"><ul type="disc"><li><p>transparent access to a Seam managed persistence context using Spring provided tools</p></li><li><p>access to Seam conversation scoped persistence contexts in a non web request
+                (e.g. asynchronous quartz job)</p></li><li><p>allows for using Seam managed persistence contexts with Spring managed transactions (will need to
+                flush the persistence context manually)</p></li></ul></div><p>Spring's persistence context propagation model allows only one open EntityManager per EntityManagerFactory
+        so the Seam integration works by wrapping an EntityManagerFactory around a Seam managed persistence
+        context.</p><pre class="programlisting">&lt;bean id="seamEntityManagerFactory" class="org.jboss.seam.ioc.spring.SeamManagedEntityManagerFactoryBean"&gt;
+   	&lt;property name="persistenceContextName" value="entityManager"/&gt;
+&lt;/bean&gt;</pre><p>Where 'persistenceContextName' is the name of the Seam managed persistence context component.  By default
+		this EntityManagerFactory has a unitName equal to  the Seam component name or in this case 'entityManager'.  
+		If you wish to provide a different unitName you can do so by providing a persistenceUnitName like so:
+		</p><pre class="programlisting">&lt;bean id="seamEntityManagerFactory" class="org.jboss.seam.ioc.spring.SeamManagedEntityManagerFactoryBean"&gt;
+   	&lt;property name="persistenceContextName" value="entityManager"/&gt;
+	&lt;property name="persistenceUnitName" value="bookingDatabase:extended"/&gt;
+&lt;/bean&gt;</pre><p>This EntityManagerFactory can then be used in any Spring provided tools.  For example, 
+		 using Spring's <tt class="literal">PersistenceAnnotationBeanPostProcessor</tt> is the exact same as before.</p><pre class="programlisting">&lt;bean class="org.springframework.orm.jpa.support.PersistenceAnnotationBeanPostProcessor"/&gt;</pre><p>If you define your real EntityManagerFactory in Spring but wish to use a Seam managed persistence context
+		you can tell the <tt class="literal">PersistenceAnnotationBeanPostProcessor</tt> which persistenctUnitName you wish
+		to use by default by specifying the <tt class="literal">defaultPersistenceUnitName</tt> property.
+		</p><p>The <tt class="literal">applicationContext.xml</tt> might look like:</p><pre class="programlisting">&lt;bean id="entityManagerFactory" class="org.springframework.orm.jpa.LocalEntityManagerFactoryBean"&gt;
+	&lt;property name="persistenceUnitName" value="bookingDatabase"/&gt;
+&lt;/bean&gt;
+&lt;bean id="seamEntityManagerFactory" class="org.jboss.seam.ioc.spring.SeamManagedEntityManagerFactoryBean"&gt;
+   	&lt;property name="persistenceContextName" value="entityManager"/&gt;
+	&lt;property name="persistenceUnitName" value="bookingDatabase:extended"/&gt;
+&lt;/bean&gt;
+&lt;bean class="org.springframework.orm.jpa.support.PersistenceAnnotationBeanPostProcessor"&gt;
+	&lt;property name="defaultPersistenceUnitName" value="bookingDatabase:extended"/&gt;
+&lt;/bean&gt;</pre><p>The <tt class="literal">component.xml</tt> might look like:</p><pre class="programlisting">&lt;persistence:managed-persistence-context name="entityManager"
+	auto-create="true" entity-manager-factory="#{entityManagerFactory}"/&gt;</pre><p><tt class="literal">JpaTemplate</tt> and <tt class="literal">JpaDaoSupport</tt> are configured the same way for a
+		Seam managed persistence context as they would be fore a Seam managed persistence context.</p><pre class="programlisting">&lt;bean id="bookingService" class="org.jboss.seam.example.spring.BookingService"&gt;
+	&lt;property name="entityManagerFactory" ref="seamEntityManagerFactory"/&gt;
+&lt;/bean&gt;</pre></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="spring-hibernate"></a>23.7.&nbsp;Using a Seam Managed Hibernate Session in Spring</h2></div></div><div></div></div><p>The Seam Spring integration also provides support for complete access to a Seam managed Hibernate session 
+        using spring's tools.  This integration is very similar to the <a href="spring.html#spring-persistence" title="23.6.&nbsp;Using a Seam Managed Persistence Context in Spring">JPA integration</a>.</p><p>Like Spring's JPA integration spring's propagation model allows only one open EntityManager per
+        EntityManagerFactory per transaction??? to be available to spring tools.  So, the Seam Session integration works
+        by wrapping a proxy SessionFactory around a Seam managed Hibernate session
+        context.</p><pre class="programlisting">&lt;bean id="seamSessionFactory" class="org.jboss.seam.ioc.spring.SeamManagedSessionFactoryBean"&gt;
+	&lt;property name="sessionName" value="hibernateSession"/&gt;
+&lt;/bean&gt;</pre><p>Where 'sessionName' is the name of the <tt class="literal">persistence:managed-hibernate-session</tt> component.
+		 This SessionFactory can then be used in any Spring provided tools.  The integration
+		 also provides support for calls to <tt class="literal">SessionFactory.getCurrentInstance()</tt> as long as you call
+		 getCurrentInstance() on the <tt class="literal">SeamManagedSessionFactory</tt>.</p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e13157"></a>23.8.&nbsp;Spring Application Context as a Seam Component</h2></div></div><div></div></div><p> Although it is possible to use the Spring <tt class="literal">ContextLoaderListener</tt> to start your 
+        	application's Spring ApplicationContext there are a couple of limitations.</p><div class="itemizedlist"><ul type="disc"><li><p> the Spring ApplicationContext must be started <span class="emphasis"><em>after</em></span> the 
+                	<tt class="literal">SeamListener</tt> </p></li><li><p> it can be tricky starting a Spring ApplicationContext for use in Seam unit and integration
+                	tests </p></li></ul></div><p> To overcome these two limitations the Spring integration includes a Seam component that will start a
+        	Spring ApplicationContext.  To use this Seam component place the
+        	<tt class="literal">&lt;spring:context-loader/&gt;</tt> definition in the <tt class="literal">components.xml</tt>.
+        	Specify your Spring context file location in the <tt class="literal">config-locations</tt> attribute.  If more
+        	than one config file is needed you can place them in the nested
+        	<tt class="literal">&lt;spring:config-locations/&gt;</tt> element following standard
+        	<tt class="literal">components.xml</tt> multi value practices. </p><pre class="programlisting">&lt;components xmlns="http://jboss.com/products/seam/components" 
+            xmlns:spring="http://jboss.com/products/seam/spring"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://jboss.com/products/seam/components 
+                                http://jboss.com/products/seam/components-2.0.xsd
+                                http://jboss.com/products/seam/spring 
+                                http://jboss.com/products/seam/spring-2.0.xsd"&gt;
+
+	&lt;spring:context-loader context-locations="/WEB-INF/applicationContext.xml"/&gt;
+
+&lt;/components&gt;</pre></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e13197"></a>23.9.&nbsp;Using a Spring TaskExecutor for @Asynchronous</h2></div></div><div></div></div><p>Spring provides an abstraction for executing code asynchronously called a <tt class="literal">TaskExecutor</tt>.
+        The Spring Seam integration allows for the use of a Spring <tt class="literal">TaskExecutor</tt> for executing
+        immediate <tt class="literal">@Asynchronous</tt> method calls.  To enable this functionality install the
+        <tt class="literal">SpringTaskExecutorDispatchor</tt> and provide a spring bean defined taskExecutor like so:</p><pre class="programlisting">
+			&lt;spring:task-executor-dispatcher task-executor="#{springThreadPoolTaskExecutor}"/&gt;
+		</pre><p>Because a Spring <tt class="literal">TaskExecutor</tt> does not support scheduling of an asynchronous event
+        a fallback Seam <tt class="literal">Dispatcher</tt> can be provided to handle scheduled asynchronous event like so:</p><pre class="programlisting">
+			&lt;!-- Install a ThreadPoolDispatcher to handle scheduled asynchronous event --&gt;
+&lt;core:thread-pool-dispatcher name="threadPoolDispatcher"/&gt;
+    
+&lt;!-- Install the SpringDispatcher as default --&gt;
+&lt;spring:task-executor-dispatcher task-executor="#{springThreadPoolTaskExecutor}" schedule-dispatcher="#{threadPoolDispatcher}"/&gt;
+		</pre></div></div><div class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="gwt.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="u" href="index.html">Up</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="search.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">Chapter&nbsp;22.&nbsp;Seam and the Google Web Toolkit&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right" valign="top">&nbsp;Chapter&nbsp;24.&nbsp;Hibernate Search</td></tr></table></div></body></html>

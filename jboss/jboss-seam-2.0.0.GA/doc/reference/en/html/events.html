@@ -1,0 +1,634 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>Chapter&nbsp;5.&nbsp;Events, interceptors and exception handling</title><link rel="stylesheet" href="../shared/css/html.css" type="text/css"><meta name="generator" content="DocBook XSL Stylesheets V1.65.1"><link rel="home" href="index.html" title="Seam - Contextual Components"><link rel="up" href="index.html" title="Seam - Contextual Components"><link rel="previous" href="xml.html" title="Chapter&nbsp;4.&nbsp;Configuring Seam components"><link rel="next" href="conversations.html" title="Chapter&nbsp;6.&nbsp;Conversations and workspace management"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="navheader"><table width="100%" summary="Navigation header"><tr><th colspan="3" align="center">Chapter&nbsp;5.&nbsp;Events, interceptors and exception handling</th></tr><tr><td width="20%" align="left"><a accesskey="p" href="xml.html">Prev</a>&nbsp;</td><th width="60%" align="center">&nbsp;</th><td width="20%" align="right">&nbsp;<a accesskey="n" href="conversations.html">Next</a></td></tr></table><hr></div><div class="chapter" lang="en"><div class="titlepage"><div><div><h2 class="title"><a name="events"></a>Chapter&nbsp;5.&nbsp;Events, interceptors and exception handling</h2></div></div><div></div></div><p>
+        Complementing the contextual component model, there are two further basic concepts
+        that facilitate the extreme loose-coupling that is the distinctive feature of Seam 
+        applications. The first is a strong event model where events may be mapped to event 
+        listeners via JSF-like method binding expressions. The second is the pervasive use 
+        of annotations and interceptors to apply cross-cutting concerns to components which 
+        implement business logic.
+    </p><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e3798"></a>5.1.&nbsp;Seam events</h2></div></div><div></div></div><p>
+            The Seam component model was developed for use with <span class="emphasis"><em>event-driven 
+            applications</em></span>, specifically to enable the development of fine-grained, 
+            loosely-coupled components in a fine-grained eventing model. Events in Seam come
+            in several types, most of which we have already seen:
+        </p><div class="itemizedlist"><ul type="disc"><li><p>JSF events</p></li><li><p>jBPM transition events</p></li><li><p>Seam page actions</p></li><li><p>Seam component-driven events</p></li><li><p>Seam contextual events</p></li></ul></div><p>
+            All of these various kinds of events are mapped to Seam components via JSF EL
+            method binding expressions. For a JSF event, this is defined in the JSF template:
+        </p><pre class="programlisting">&lt;h:commandButton value="Click me!" action="#{helloWorld.sayHello}"/&gt;</pre><p>
+            For a jBPM transition event, it is specified in the jBPM process definition or
+            pageflow definition:
+        </p><pre class="programlisting">&lt;start-page name="hello" view-id="/hello.jsp"&gt;
+    &lt;transition to="hello"&gt;
+        &lt;action expression="#{helloWorld.sayHello}"/&gt;
+    &lt;/transition&gt;
+&lt;/start-page&gt;</pre><p>
+            You can find out more information about JSF events and jBPM events elsewhere. 
+            Lets concentrate for now upon the two additional kinds of events defined by Seam.
+        </p><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e3832"></a>5.1.1.&nbsp;Page actions</h3></div></div><div></div></div><p>
+            A Seam page action is an event that occurs just before we render a page. 
+            We declare page actions in <tt class="literal">WEB-INF/pages.xml</tt>. We
+            can define a page action for either a particular JSF view id:
+        </p><pre class="programlisting">&lt;pages&gt;
+    &lt;page view-id="/hello.jsp" action="#{helloWorld.sayHello}"/&gt;
+&lt;/pages&gt;</pre><p>
+            Or we can use a <tt class="literal">*</tt> wildcard as a suffix to the
+            <tt class="literal">view-id</tt> to specify an action that applies to all 
+            view ids that match the pattern:
+        </p><pre class="programlisting">&lt;pages&gt;
+    &lt;page view-id="/hello/*" action="#{helloWorld.sayHello}"/&gt;
+&lt;/pages&gt;</pre><p>
+            If multiple wildcarded page actions match the current view-id, Seam
+            will call all the actions, in order of least-specific to most-specific.
+        </p><p>
+            The page action method can return a JSF outcome. If the outcome is
+            non-null, Seam will use the defined navigation rules to navigate to a view.
+        </p><p>
+            Furthermore, the view id mentioned in the <tt class="literal">&lt;page&gt;</tt>
+            element need not correspond to a real JSP or Facelets page! So, we can
+            reproduce the functionality of a traditional action-oriented framework
+            like Struts or WebWork using page actions. For example:
+        </p><pre class="programlisting">TODO: translate struts action into page action</pre><p>
+            This is quite useful if you want to do complex things in response to non-faces
+            requests (for example, HTTP GET requests).
+        </p><p>
+            Multiple or conditional page actions my be specified using the <tt class="literal">&lt;action&gt;</tt>
+            tag:
+        </p><pre class="programlisting">&lt;pages&gt;
+    &lt;page view-id="/hello.jsp"&gt;
+        &lt;action execute="#{helloWorld.sayHello}" if="#{not validation.failed}"/&gt;
+        &lt;action execute="#{hitCount.increment}"/&gt;
+    &lt;/page&gt;
+&lt;/pages&gt;</pre><div class="sect3" lang="en"><div class="titlepage"><div><div><h4 class="title"><a name="d0e3872"></a>5.1.1.1.&nbsp;Page parameters</h4></div></div><div></div></div><p>
+                A JSF faces request (a form submission) encapsulates both an "action"
+                (a method binding) and "parameters" (input value bindings). A page 
+                action might also needs parameters!
+            </p><p>
+                Since GET requests are bookmarkable, page parameters are passed as 
+                human-readable request parameters. (Unlike JSF form inputs, which are
+                anything but!) 
+            </p><p>
+                You can use page parameters with or without an action method.
+            </p><div class="sect4" lang="en"><div class="titlepage"><div><div><h5 class="title"><a name="d0e3881"></a>5.1.1.1.1.&nbsp;Mapping request parameters to the model</h5></div></div><div></div></div><p>
+                  Seam lets us provide a value binding that maps a named request parameter 
+                  to an attribute of a model object.
+              </p><pre class="programlisting">&lt;pages&gt;
+      &lt;page view-id="/hello.jsp" action="#{helloWorld.sayHello}"&gt;
+          &lt;param name="firstName" value="#{person.firstName}"/&gt;
+          &lt;param name="lastName" value="#{person.lastName}"/&gt;
+      &lt;/page&gt;
+  &lt;/pages&gt;</pre><p>
+                  The <tt class="literal">&lt;param&gt;</tt> declaration is bidirectional, just
+                  like a value binding for a JSF input:
+              </p><div class="itemizedlist"><ul type="disc"><li><p>
+                          When a non-faces (GET) request for the view id occurs, Seam sets 
+                          the value of the named request parameter onto the model object, 
+                          after performing appropriate type conversions.
+                      </p></li><li><p>
+                          Any <tt class="literal">&lt;s:link&gt;</tt> or <tt class="literal">&lt;s:button&gt;</tt> 
+                          transparently includes the request parameter. The value of the parameter is 
+                          determined by evaluating the value binding during the render phase (when the 
+                          <tt class="literal">&lt;s:link&gt;</tt> is rendered).
+                      </p></li><li><p>
+                          Any navigation rule with a <tt class="literal">&lt;redirect/&gt;</tt> to
+                          the view id transparently includes the request parameter. The value 
+                          of the parameter is determined by evaluating the value binding at
+                          the end of the invoke application phase.
+                      </p></li><li><p>
+                          The value is transparently propagated with any JSF form submission
+                          for the page with the given view id. This means that view parameters
+                          behave like <tt class="literal">PAGE</tt>-scoped context variables for
+                          faces requests.
+                      </p></li></ul></div><p>
+                  The essential idea behind all this is that <span class="emphasis"><em>however</em></span>
+                  we get from any other page to <tt class="literal">/hello.jsp</tt> (or from 
+                  <tt class="literal">/hello.jsp</tt> back to <tt class="literal">/hello.jsp</tt>), 
+                  the value of the model attribute referred to in the value binding is
+                  "remembered", without the need for a conversation (or other server-side
+                  state).
+              </p></div><div class="sect4" lang="en"><div class="titlepage"><div><div><h5 class="title"><a name="d0e3935"></a>5.1.1.1.2.&nbsp;Propagating request parameters</h5></div></div><div></div></div><p>
+                    If just the <tt class="literal">name</tt> attribute is specified then the
+                    request parameter is propagated using the <tt class="literal">PAGE</tt> context
+                    (it isn't mapped to model property).
+                </p><pre class="programlisting">&lt;pages&gt;
+      &lt;page view-id="/hello.jsp" action="#{helloWorld.sayHello}"&gt;
+          &lt;param name="firstName" /&gt;
+          &lt;param name="lastName" /&gt;
+      &lt;/page&gt;
+  &lt;/pages&gt;</pre><p>
+                  Propagation of page parameters is especially useful if you want to build multi-layer 
+                  master-detail CRUD pages.  You can use it to "remember" which view you were previously
+                  on (e.g. when pressing the Save button), and which entity you were editing.
+               </p><div class="itemizedlist"><ul type="disc"><li><p>
+                          Any <tt class="literal">&lt;s:link&gt;</tt> or <tt class="literal">&lt;s:button&gt;</tt> 
+                          transparently propagates the request parameter if that parameter is listed
+                          as a page parameter for the view.
+                      </p></li><li><p>
+                          The value is transparently propagated with any JSF form submission
+                          for the page with the given view id. (This means that view parameters
+                          behave like <tt class="literal">PAGE</tt>-scoped context variables for
+                          faces requests.
+                      </p></li></ul></div></div><p>
+                  This all sounds pretty complex, and you're probably wondering if such an
+                  exotic construct is really worth the effort. Actually, the idea is very
+                  natural once you "get it". It is definitely worth taking the time to 
+                  understand this stuff. Page parameters are the most elegant way to 
+                  propagate state across a non-faces request. They are especially cool for 
+                  problems like search screens with bookmarkable results pages, where we 
+                  would like to be able to write our application code to handle both POST 
+                  and GET requests with the same code. Page parameters eliminate repetitive 
+                  listing of request parameters in the view definition and make redirects
+                  much easier to code.
+              </p><div class="sect4" lang="en"><div class="titlepage"><div><div><h5 class="title"><a name="d0e3968"></a>5.1.1.1.3.&nbsp;Conversion and Validation</h5></div></div><div></div></div><p>
+                You can specify a JSF converter for complex model propreties:
+            </p><pre class="programlisting">&lt;pages&gt;
+    &lt;page view-id="/calculator.jsp" action="#{calculator.calculate}"&gt;
+        &lt;param name="x" value="#{calculator.lhs}"/&gt;
+        &lt;param name="y" value="#{calculator.rhs}"/&gt;
+        &lt;param name="op" converterId="com.my.calculator.OperatorConverter" value="#{calculator.op}"/&gt;
+    &lt;/page&gt;
+&lt;/pages&gt;</pre><p>
+                Alternatively:
+            </p><pre class="programlisting">&lt;pages&gt;
+    &lt;page view-id="/calculator.jsp" action="#{calculator.calculate}"&gt;
+        &lt;param name="x" value="#{calculator.lhs}"/&gt;
+        &lt;param name="y" value="#{calculator.rhs}"/&gt;
+        &lt;param name="op" converter="#{operatorConverter}" value="#{calculator.op}"/&gt;
+    &lt;/page&gt;
+&lt;/pages&gt;</pre><p>
+                JSF validators, and <tt class="literal">required="true"</tt> may
+                also be used:
+            </p><pre class="programlisting">&lt;pages&gt;
+    &lt;page view-id="/blog.xhtml"&gt;
+        &lt;param name="date" 
+               value="#{blog.date}" 
+               validatorId="com.my.blog.PastDate" 
+               required="true"/&gt;
+    &lt;/page&gt;
+&lt;/pages&gt;</pre><p>
+                Alternatively:
+            </p><pre class="programlisting">&lt;pages&gt;
+    &lt;page view-id="/blog.xhtml"&gt;
+        &lt;param name="date" 
+               value="#{blog.date}" 
+               validator="#{pastDateValidator}" 
+               required="true"/&gt;
+    &lt;/page&gt;
+&lt;/pages&gt;</pre><p>
+                Even better, model-based Hibernate validator annotations are automatically
+                recognized and validated.
+            </p><p>
+                When type conversion or validation fails, a global <tt class="literal">FacesMessage</tt>
+                is added to the <tt class="literal">FacesContext</tt>.
+            </p></div></div><div class="sect3" lang="en"><div class="titlepage"><div><div><h4 class="title"><a name="d0e4000"></a>5.1.1.2.&nbsp;Navigation</h4></div></div><div></div></div><p>
+                You can use standard JSF navigation rules defined in <tt class="literal">faces-config.xml</tt>
+                in a Seam application. However, JSF navigation rules have a number of annoying
+                limitations:
+            </p><div class="itemizedlist"><ul type="disc"><li><p>
+                        It is not possible to specify request parameters to be used when redirecting.
+                    </p></li><li><p>
+                        It is not possible to begin or end conversations from a rule.
+                    </p></li><li><p>
+                        Rules work by evaluating the return value of the action method; it is not
+                        possible to evaluate an arbitrary EL expression.
+                    </p></li></ul></div><p>
+                A further problem is that "orchestration" logic gets scattered between <tt class="literal">pages.xml</tt>
+                and <tt class="literal">faces-config.xml</tt>. It's better to unify this logic into <tt class="literal">pages.xml</tt>.
+            </p><p>
+                This JSF navigation rule:
+            </p><pre class="programlisting">&lt;navigation-rule&gt;
+    &lt;from-view-id&gt;/editDocument.xhtml&lt;/from-view-id&gt;
+    
+    &lt;navigation-case&gt;
+        &lt;from-action&gt;#{documentEditor.update}&lt;/from-action&gt;
+        &lt;from-outcome&gt;success&lt;/from-outcome&gt;
+        &lt;to-view-id&gt;/viewDocument.xhtml&lt;/to-view-id&gt;
+        &lt;redirect/&gt;
+    &lt;/navigation-case&gt;
+    
+&lt;/navigation-rule&gt;</pre><p>
+                Can be rewritten as follows:
+            </p><pre class="programlisting">&lt;page view-id="/editDocument.xhtml"&gt;
+    
+    &lt;navigation from-action="#{documentEditor.update}"&gt;
+        &lt;rule if-outcome="success"&gt;
+            &lt;redirect view-id="/viewDocument.xhtml"/&gt;
+        &lt;/rule&gt;
+    &lt;/navigation&gt;
+    
+&lt;/page&gt;</pre><p>
+                But it would be even nicer if we didn't have to pollute our <tt class="literal">DocumentEditor</tt> 
+                component with string-valued return values (the JSF outcomes). So Seam lets us write:
+            </p><pre class="programlisting">&lt;page view-id="/editDocument.xhtml"&gt;
+    
+    &lt;navigation from-action="#{documentEditor.update}" 
+                   evaluate="#{documentEditor.errors.size}"&gt;
+        &lt;rule if-outcome="0"&gt;
+            &lt;redirect view-id="/viewDocument.xhtml"/&gt;
+        &lt;/rule&gt;
+    &lt;/navigation&gt;
+    
+&lt;/page&gt;</pre><p>
+                Or even:
+            </p><pre class="programlisting">&lt;page view-id="/editDocument.xhtml"&gt;
+    
+    &lt;navigation from-action="#{documentEditor.update}"&gt;
+        &lt;rule if="#{documentEditor.errors.empty}"&gt;
+            &lt;redirect view-id="/viewDocument.xhtml"/&gt;
+        &lt;/rule&gt;
+    &lt;/navigation&gt;
+    
+&lt;/page&gt;</pre><p>
+                The first form evaluates a value binding to determine the outcome value
+                to be used by the subsequent rules.
+                The second approach ignores the outcome and evaluates a value binding
+                for each possible rule.
+            </p><p>
+                Of course, when an update succeeds, we probably want to end the current
+                conversation. We can do that like this:
+            </p><pre class="programlisting">&lt;page view-id="/editDocument.xhtml"&gt;
+    
+    &lt;navigation from-action="#{documentEditor.update}"&gt;
+        &lt;rule if="#{documentEditor.errors.empty}"&gt;
+            &lt;end-conversation/&gt;
+            &lt;redirect view-id="/viewDocument.xhtml"/&gt;
+        &lt;/rule&gt;
+    &lt;/navigation&gt;
+    
+&lt;/page&gt;</pre><p>
+                As we've ended conversation any subsequent requests won't know
+                which document we are interested in.  We can pass the document 
+                id as a request parameter which also makes the view bookmarkable:
+            </p><pre class="programlisting">&lt;page view-id="/editDocument.xhtml"&gt;
+    
+    &lt;navigation from-action="#{documentEditor.update}"&gt;
+        &lt;rule if="#{documentEditor.errors.empty}"&gt;
+            &lt;end-conversation/&gt;
+            &lt;redirect view-id="/viewDocument.xhtml"&gt;
+                &lt;param name="documentId" value="#{documentEditor.documentId}"/&gt;
+            &lt;/redirect&gt;
+        &lt;/rule&gt;
+    &lt;/navigation&gt;
+    
+&lt;/page&gt;</pre><p>
+                Null outcomes are a special case in JSF. The null outcome is interpreted to
+                mean "redisplay the page". The following navigation rule matches any non-null
+                outcome, but <span class="emphasis"><em>not</em></span> the null outcome:
+            </p><pre class="programlisting">&lt;page view-id="/editDocument.xhtml"&gt;
+    
+    &lt;navigation from-action="#{documentEditor.update}"&gt;
+        &lt;rule&gt;
+            &lt;render view-id="/viewDocument.xhtml"/&gt;
+        &lt;/rule&gt;
+    &lt;/navigation&gt;
+    
+&lt;/page&gt;</pre><p>
+                If you want to perform navigation when a null outcome occurs, use the
+                following form instead:
+            </p><pre class="programlisting">&lt;page view-id="/editDocument.xhtml"&gt;
+    
+    &lt;navigation from-action="#{documentEditor.update}"&gt;
+        &lt;render view-id="/viewDocument.xhtml"/&gt;
+    &lt;/navigation&gt;
+    
+&lt;/page&gt;</pre><p>
+                The view-id may be given as a JSF EL expression:
+            </p><pre class="programlisting">&lt;page view-id="/editDocument.xhtml"&gt;
+
+    &lt;navigation if-outcome="success"&gt;
+        &lt;redirect view-id="/#{userAgent}/displayDocument.xhtml"/&gt;
+    &lt;/navigation&gt;
+    
+&lt;/page&gt;</pre></div><div class="sect3" lang="en"><div class="titlepage"><div><div><h4 class="title"><a name="d0e4073"></a>5.1.1.3.&nbsp;Fine-grained files for definition of navigation, page actions and parameters</h4></div></div><div></div></div><p>
+                If you have a lot of different page actions and page parameters,
+                or even just a lot of navigation rules,
+                you will almost certainly want to split the declarations up over
+                multiple files. You can define actions and parameters for a page
+                with the view id <tt class="literal">/calc/calculator.jsp</tt> in a 
+                resource named <tt class="literal">calc/calculator.page.xml</tt>. The
+                root element in this case is the <tt class="literal">&lt;page&gt;</tt>
+                element, and the view id is implied:
+            </p><pre class="programlisting">&lt;page action="#{calculator.calculate}"&gt;
+    &lt;param name="x" value="#{calculator.lhs}"/&gt;
+    &lt;param name="y" value="#{calculator.rhs}"/&gt;
+    &lt;param name="op" converter="#{operatorConverter}" value="#{calculator.op}"/&gt;
+&lt;/page&gt;</pre></div></div><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e4089"></a>5.1.2.&nbsp;Component-driven events</h3></div></div><div></div></div><p>
+                Seam components can interact by simply calling each others methods.
+                Stateful components may even implement the observer/observable pattern.
+                But to enable components to interact in a more loosely-coupled fashion
+                than is possible when the components call each others methods directly,
+                Seam provides <span class="emphasis"><em>component-driven events</em></span>.
+            </p><p>
+                We specify event listeners (observers) in <tt class="literal">components.xml</tt>.
+            </p><pre class="programlisting">&lt;components&gt;
+    &lt;event type="hello"&gt;
+        &lt;action execute="#{helloListener.sayHelloBack}"/&gt;
+        &lt;action execute="#{logger.logHello}"/&gt;
+    &lt;/event&gt;
+&lt;/components&gt;</pre><p>
+                Where the <span class="emphasis"><em>event type</em></span> is just an arbitrary string.
+            </p><p>
+                When an event occurs, the actions registered for that event will be called
+                in the order they appear in <tt class="literal">components.xml</tt>. How does a
+                component raise an event? Seam provides a built-in component for this.
+            </p><pre class="programlisting">@Name("helloWorld")
+public class HelloWorld {
+    public void sayHello() {
+        FacesMessages.instance().add("Hello World!");
+        Events.instance().raiseEvent("hello");
+    }
+}</pre><p>
+                Or you can use an annotation.
+            </p><pre class="programlisting">@Name("helloWorld")
+public class HelloWorld {
+    @RaiseEvent("hello")
+    public void sayHello() {
+        FacesMessages.instance().add("Hello World!");
+    }
+}</pre><p>
+                Notice that this event producer has no dependency upon event consumers.
+                The event listener may now be implemented with absolutely no dependency
+                upon the producer:
+            </p><pre class="programlisting">@Name("helloListener")
+public class HelloListener {
+    public void sayHelloBack() {
+        FacesMessages.instance().add("Hello to you too!");
+    }
+}</pre><p>
+                The method binding defined in <tt class="literal">components.xml</tt> above 
+                takes care of mapping the event to the consumer.
+                If you don't like futzing about in the <tt class="literal">components.xml</tt> 
+                file, you can use an annotation instead:
+            </p><pre class="programlisting">@Name("helloListener")
+public class HelloListener {
+    @Observer("hello")
+    public void sayHelloBack() {
+        FacesMessages.instance().add("Hello to you too!");
+    }
+}</pre><p>
+                You might wonder why I've not mentioned anything about event objects in
+                this discussion. In Seam, there is no need for an event object to propagate
+                state between event producer and listener. State is held in the Seam
+                contexts, and is shared between components. However, if you really want
+                to pass an event object, you can:
+            </p><pre class="programlisting">@Name("helloWorld")
+public class HelloWorld {
+    private String name;
+    public void sayHello() {
+        FacesMessages.instance().add("Hello World, my name is #0.", name);
+        Events.instance().raiseEvent("hello", name);
+    }
+}</pre><pre class="programlisting">@Name("helloListener")
+public class HelloListener {
+    @Observer("hello")
+    public void sayHelloBack(String name) {
+        FacesMessages.instance().add("Hello #0!", name);
+    }
+}</pre></div><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e4140"></a>5.1.3.&nbsp;Contextual events</h3></div></div><div></div></div><p>
+                Seam defines a number of built-in events that the application can use to
+                perform special kinds of framework integration. The events are:
+            </p><div class="itemizedlist"><ul type="disc"><li><p><tt class="literal">org.jboss.seam.validationFailed</tt> &#8212; called when JSF validation fails</p></li><li><p><tt class="literal">org.jboss.seam.noConversation</tt> &#8212; called when there is no long running conversation and a long running conversation is required</p></li><li><p><tt class="literal">org.jboss.seam.preSetVariable.&lt;name&gt;</tt> &#8212; called when the context variable &lt;name&gt; is set</p></li><li><p><tt class="literal">org.jboss.seam.postSetVariable.&lt;name&gt;</tt> &#8212; called when the context variable &lt;name&gt; is set</p></li><li><p><tt class="literal">org.jboss.seam.preRemoveVariable.&lt;name&gt;</tt> &#8212; called when the context variable &lt;name&gt; is unset</p></li><li><p><tt class="literal">org.jboss.seam.postRemoveVariable.&lt;name&gt;</tt> &#8212; called when the context variable &lt;name&gt; is unset</p></li><li><p><tt class="literal">org.jboss.seam.preDestroyContext.&lt;SCOPE&gt;</tt> &#8212; called before the &lt;SCOPE&gt; context is destroyed</p></li><li><p><tt class="literal">org.jboss.seam.postDestroyContext.&lt;SCOPE&gt;</tt> &#8212; called after the &lt;SCOPE&gt; context is destroyed</p></li><li><p><tt class="literal">org.jboss.seam.beginConversation </tt>&#8212; called whenever a long-running conversation begins</p></li><li><p><tt class="literal">org.jboss.seam.endConversation </tt>&#8212; called whenever a long-running conversation ends</p></li><li><p><tt class="literal">org.jboss.seam.beginPageflow.&lt;name&gt; </tt>&#8212; called when the pageflow &lt;name&gt; begins</p></li><li><p><tt class="literal">org.jboss.seam.endPageflow.&lt;name&gt; </tt>&#8212; called when the pageflow &lt;name&gt; ends</p></li><li><p><tt class="literal">org.jboss.seam.createProcess.&lt;name&gt; </tt>&#8212; called when the process &lt;name&gt; is created</p></li><li><p><tt class="literal">org.jboss.seam.endProcess.&lt;name&gt; </tt>&#8212; called when the process &lt;name&gt; ends</p></li><li><p><tt class="literal">org.jboss.seam.initProcess.&lt;name&gt; </tt>&#8212; called when the process &lt;name&gt; is associated with the conversation</p></li><li><p><tt class="literal">org.jboss.seam.initTask.&lt;name&gt; </tt>&#8212; called when the task &lt;name&gt; is associated with the conversation</p></li><li><p><tt class="literal">org.jboss.seam.startTask.&lt;name&gt; </tt>&#8212; called when the task &lt;name&gt; is started</p></li><li><p><tt class="literal">org.jboss.seam.endTask.&lt;name&gt; </tt>&#8212; called when the task &lt;name&gt; is ended</p></li><li><p><tt class="literal">org.jboss.seam.postCreate.&lt;name&gt; </tt>&#8212; called when the component &lt;name&gt; is created</p></li><li><p><tt class="literal">org.jboss.seam.preDestroy.&lt;name&gt; </tt>&#8212; called when the component &lt;name&gt; is destroyed</p></li><li><p><tt class="literal">org.jboss.seam.beforePhase </tt>&#8212; called before the start of a JSF phase</p></li><li><p><tt class="literal">org.jboss.seam.afterPhase </tt>&#8212; called after the end of a JSF phase</p></li><li><p><tt class="literal">org.jboss.seam.postInitialization </tt>&#8212; called when Seam has initialized and started up all components</p></li><li><p><tt class="literal">org.jboss.seam.postAuthenticate.&lt;name&gt; </tt>&#8212; called after a user is authenticated</p></li><li><p><tt class="literal">org.jboss.seam.preAuthenticate.&lt;name&gt; </tt>&#8212; called before attempting to authenticate a user</p></li><li><p><tt class="literal">org.jboss.seam.notLoggedIn</tt> &#8212; called there is no authenticated user and authentication is required</p></li><li><p><tt class="literal">org.jboss.seam.rememberMe</tt> &#8212; occurs when Seam security detects the username in a cookie</p></li><li><p><tt class="literal">org.jboss.seam.exceptionHandled.&lt;type&gt;</tt> &#8212; called when an uncaught exception is handled by Seam</p></li><li><p><tt class="literal">org.jboss.seam.exceptionHandled</tt> &#8212; called when an uncaught exception is handled by Seam</p></li><li><p><tt class="literal">org.jboss.seam.exceptionNotHandled</tt> &#8212; called when there was no handler for an uncaught exception</p></li><li><p><tt class="literal">org.jboss.seam.afterTransactionSuccess</tt> &#8212; called when a transaction succeeds in the Seam Application Framework</p></li><li><p><tt class="literal">org.jboss.seam.afterTransactionSuccess.&lt;name&gt;</tt> &#8212; called when a transaction succeeds in the Seam Application Framework which manages an entity called <tt class="literal">&lt;name&gt;</tt></p></li></ul></div><p>
+                 Seam components may observe any of these events in just the same way they
+                 observe any other component-driven events.
+             </p></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e4310"></a>5.2.&nbsp;Seam interceptors</h2></div></div><div></div></div><p>
+        EJB 3.0 introduced a standard interceptor model for session bean components. To add an
+        interceptor to a bean, you need to write a class with a method annotated 
+        <tt class="literal">@AroundInvoke</tt> and annotate the bean with an
+        <tt class="literal">@Interceptors</tt> annotation that specifies the name of the interceptor
+        class. For example, the following interceptor checks that the user is logged in before
+        allowing invoking an action listener method:
+      </p><pre class="programlisting">public class LoggedInInterceptor {
+
+   @AroundInvoke
+   public Object checkLoggedIn(InvocationContext invocation) throws Exception {
+   
+      boolean isLoggedIn = Contexts.getSessionContext().get("loggedIn")!=null;
+      if (isLoggedIn) {
+         //the user is already logged in
+         return invocation.proceed();
+      }
+      else {
+         //the user is not logged in, fwd to login page
+         return "login";
+      }
+   }
+
+}</pre><p>
+        To apply this interceptor to a session bean which acts as an action listener, we must
+        annotate the session bean <tt class="literal">@Interceptors(LoggedInInterceptor.class)</tt>.
+        This is a somewhat ugly annotation. Seam builds upon the interceptor framework in
+        EJB3 by allowing you to use <tt class="literal">@Interceptors</tt> as a meta-annotation. In
+        our example, we would create an <tt class="literal">@LoggedIn</tt> annotation, as follows:
+    </p><pre class="programlisting">@Target(TYPE)
+@Retention(RUNTIME)
+@Interceptors(LoggedInInterceptor.class)
+public @interface LoggedIn {}</pre><p>
+            We can now simply annotate our action listener bean with <tt class="literal">@LoggedIn</tt>
+            to apply the interceptor.
+        </p><pre class="programlisting">@Stateless
+@Name("changePasswordAction")
+@LoggedIn
+@Interceptors(SeamInterceptor.class)
+public class ChangePasswordAction implements ChangePassword { 
+    
+    ...
+    
+    public String changePassword() { ... }
+    
+}</pre><p>
+            If interceptor ordering is important (it usually is), you can add
+            <tt class="literal">@Interceptor</tt> annotations to your interceptor 
+            classes to specify a partial order of interceptors.
+        </p><pre class="programlisting">@Interceptor(around={BijectionInterceptor.class,
+                     ValidationInterceptor.class,
+                     ConversationInterceptor.class},
+             within=RemoveInterceptor.class)
+public class LoggedInInterceptor
+{
+    ...
+}</pre><p>
+            You can even have a "client-side" interceptor, that runs around any of the built-in
+            functionality of EJB3:
+        </p><pre class="programlisting">@Interceptor(type=CLIENT)
+public class LoggedInInterceptor
+{
+    ...
+}</pre><p>
+            EJB interceptors are stateful, with a lifecycle that is the same as the component
+            they intercept. For interceptors which do not need to maintain state, Seam lets
+            you get a performance optimization by specifying 
+            <tt class="literal">@Interceptor(stateless=true)</tt>.
+        </p><p>
+            Much of the functionality of Seam is implemented as a set of built-in Seam interceptors,
+            including the interceptors named in the previous example. You don't have to explicitly 
+            specify these interceptors by annotating your components; they exist for all interceptable 
+            Seam components.
+        </p><p>
+            You can even use Seam interceptors with JavaBean components, not just EJB3 beans!
+        </p><p>
+            EJB defines interception not only for business methods (using <tt class="literal">@AroundInvoke</tt>),
+            but also for the lifecycle methods <tt class="literal">@PostConstruct</tt>, <tt class="literal">@PreDestroy</tt>,
+            <tt class="literal">@PrePassivate</tt> and <tt class="literal">@PostActive</tt>. Seam supports all these
+            lifecycle methods on both component and interceptor not only for EJB3 beans, but also for
+            JavaBean components (except <tt class="literal">@PreDestroy</tt> which is not meaningful for JavaBean
+            components).
+        </p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e4383"></a>5.3.&nbsp;Managing exceptions</h2></div></div><div></div></div><p>
+            JSF is surprisingly limited when it comes to exception handling. As a partial 
+            workaround for this problem, Seam lets you define how a particular class of 
+            exception is to be treated by annotating the exception class, or declaring
+            the exception class in an XML file. This facility is meant to be combined with 
+            the EJB 3.0-standard <tt class="literal">@ApplicationException</tt> annotation which 
+            specifies whether the exception should cause a transaction rollback.
+        </p><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e4391"></a>5.3.1.&nbsp;Exceptions and transactions</h3></div></div><div></div></div><p>
+                EJB specifies well-defined rules that let us control whether an exception 
+                immediately marks the current transaction for rollback when it is thrown by 
+                a business method of the bean: <span class="emphasis"><em>system exceptions</em></span> always 
+                cause a transaction rollback, <span class="emphasis"><em>application exceptions</em></span> do 
+                not cause a rollback by default, but they do if 
+                <tt class="literal">@ApplicationException(rollback=true)</tt>
+                is specified. (An application exception is any checked exception, or any
+                unchecked exception annotated <tt class="literal">@ApplicationException</tt>.
+                A system exception is any unchecked exception without an 
+                <tt class="literal">@ApplicationException</tt> annotation.)
+            </p><p>
+                Note that there is a difference between marking a transaction for rollback,
+                and actually rolling it back. The exception rules say that the transaction
+                should be marked rollback only, but it may still be active after the 
+                exception is thrown.
+            </p><p>
+                Seam applies the EJB 3.0 exception rollback rules also to Seam JavaBean 
+                components.
+            </p><p>
+                But these rules only apply in the Seam component layer. What about an exception 
+                that is uncaught and propagates out of the Seam component layer, and out of the JSF 
+                layer? Well, it is always wrong to leave a dangling transaction open, so Seam
+                rolls back any active transaction when an exception occurs and is uncaught
+                in the Seam component layer.
+            </p></div><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e4417"></a>5.3.2.&nbsp;Enabling Seam exception handling</h3></div></div><div></div></div><p>
+            To enable Seam's exception handling, we need to make sure we have the master servlet 
+            filter declared in <tt class="literal">web.xml</tt>:
+        </p><pre class="programlisting">&lt;filter&gt;
+    &lt;filter-name&gt;Seam Filter&lt;/filter-name&gt;
+    &lt;filter-class&gt;org.jboss.seam.servlet.SeamFilter&lt;/filter-class&gt;
+&lt;/filter&gt;
+
+&lt;filter-mapping&gt;
+    &lt;filter-name&gt;Seam Filter&lt;/filter-name&gt;
+    &lt;url-pattern&gt;*.seam&lt;/url-pattern&gt;
+&lt;/filter-mapping&gt;</pre><p>
+            You may also need to disable Facelets development mode in <tt class="literal">web.xml</tt> and
+            Seam debug mode in <tt class="literal">components.xml</tt> if you want your exception handlers
+            to fire.
+        </p></div><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e4435"></a>5.3.3.&nbsp;Using annotations for exception handling</h3></div></div><div></div></div><p>
+            The following exception results in a HTTP 404 error whenever it propagates out of the
+            Seam component layer. It does not roll back the current transaction immediately when 
+            thrown, but the transaction will be rolled back if it the exception is not caught by
+            another Seam component.
+        </p><pre class="programlisting">@HttpError(errorCode=404)
+public class ApplicationException extends Exception { ... }</pre><p>
+            This exception results in a browser redirect whenever it propagates out of the
+            Seam component layer. It also ends the current conversation. It causes an immediate 
+            rollback of the current transaction.
+        </p><pre class="programlisting">@Redirect(viewId="/failure.xhtml", end=true)
+@ApplicationException(rollback=true)
+public class UnrecoverableApplicationException extends RuntimeException { ... }</pre><p>
+            Note that <tt class="literal">@Redirect</tt> does not work for exceptions
+            which occur during the render phase of the JSF lifecycle.
+        </p><p>
+            You can also use EL to specify the <tt class="literal">viewId</tt> to redirect to.
+        </p><p>
+            This exception results in a redirect, along with a message to the user, when it 
+            propagates out of the Seam component layer. It also immediately rolls back the 
+            current transaction.
+        </p><pre class="programlisting">@Redirect(viewId="/error.xhtml", message="Unexpected error")
+public class SystemException extends RuntimeException { ... }</pre></div><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e4460"></a>5.3.4.&nbsp;Using XML for exception handling</h3></div></div><div></div></div><p>
+            Since we can't add annotations to all the exception classes we are interested in,
+            Seam also lets us specify this functionality in <tt class="literal">pages.xml</tt>.
+        </p><pre class="programlisting">&lt;pages&gt;
+   
+   &lt;exception class="javax.persistence.EntityNotFoundException"&gt;
+      &lt;http-error error-code="404"/&gt;
+   &lt;/exception&gt;
+   
+   &lt;exception class="javax.persistence.PersistenceException"&gt;
+      &lt;end-conversation/&gt;
+      &lt;redirect view-id="/error.xhtml"&gt;
+          &lt;message&gt;Database access failed&lt;/message&gt;
+      &lt;/redirect&gt;
+   &lt;/exception&gt;
+   
+   &lt;exception&gt;
+      &lt;end-conversation/&gt;
+      &lt;redirect view-id="/error.xhtml"&gt;
+          &lt;message&gt;Unexpected failure&lt;/message&gt;
+      &lt;/redirect&gt;
+   &lt;/exception&gt;
+   
+&lt;/pages&gt;</pre><p>
+            The last <tt class="literal">&lt;exception&gt;</tt> declaration does not specify a class,
+            and is a catch-all for any exception for which handling is not otherwise specified
+            via annotations or in <tt class="literal">pages.xml</tt>.
+        </p><p>
+            You can also use EL to specify the <tt class="literal">view-id</tt> to redirect to.
+        </p><p>
+           You can also access the handled exception instance through EL, Seam places it in the
+           conversation context, e.g. to access the message of the exception:
+        </p><pre class="programlisting">...
+throw new AuthorizationException("You are not allowed to do this!");
+
+&lt;pages&gt;
+
+    &lt;exception class="org.jboss.seam.security.AuthorizationException"&gt;
+        &lt;end-conversation/&gt;
+        &lt;redirect view-id="/error.xhtml"&gt;
+            &lt;message severity="WARN"&gt;#{org.jboss.seam.handledException.message}&lt;/message&gt;
+        &lt;/redirect&gt;
+    &lt;/exception&gt;
+
+&lt;/pages&gt;</pre><p>
+           <tt class="literal">org.jboss.seam.handledException</tt> holds the nested exception that
+           was actually handled by an exception handler. The outermost (wrapper) exception is 
+           also available, as <tt class="literal">org.jboss.seam.exception</tt>.
+         </p></div><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e4495"></a>5.3.5.&nbsp;Some common exceptions</h3></div></div><div></div></div><p>
+                If you are using JPA:
+            </p><pre class="programlisting">&lt;exception class="javax.persistence.EntityNotFoundException"&gt;
+   &lt;redirect view-id="/error.xhtml"&gt;
+      &lt;message&gt;Not found&lt;/message&gt;
+   &lt;/redirect&gt;
+&lt;/exception&gt;
+
+&lt;exception class="javax.persistence.OptimisticLockException"&gt;
+   &lt;end-conversation/&gt;
+   &lt;redirect view-id="/error.xhtml"&gt;
+      &lt;message&gt;Another user changed the same data, please try again&lt;/message&gt;
+   &lt;/redirect&gt;
+&lt;/exception&gt;</pre><p>
+                If you are using the Seam Application Framework:
+            </p><pre class="programlisting">&lt;exception class="org.jboss.seam.framework.EntityNotFoundException"&gt;
+   &lt;redirect view-id="/error.xhtml"&gt;
+      &lt;message&gt;Not found&lt;/message&gt;
+   &lt;/redirect&gt;
+&lt;/exception&gt;</pre><p>
+                If you are using Seam Security:
+            </p><pre class="programlisting">&lt;exception class="org.jboss.seam.security.AuthorizationException"&gt;
+   &lt;redirect&gt;
+      &lt;message&gt;You don't have permission to do this&lt;/message&gt;
+   &lt;/redirect&gt;
+&lt;/exception&gt;
+    
+&lt;exception class="org.jboss.seam.security.NotLoggedInException"&gt;
+   &lt;redirect view-id="/login.xhtml"&gt;
+      &lt;message&gt;Please log in first&lt;/message&gt;
+   &lt;/redirect&gt;
+&lt;/exception&gt;</pre><p>
+               And, for JSF:
+            </p><pre class="programlisting">&lt;exception class="javax.faces.application.ViewExpiredException"&gt;
+   &lt;redirect view-id="/error.xhtml"&gt;
+      &lt;message&gt;Your session has timed out, please try again&lt;/message&gt;
+   &lt;/redirect&gt;
+&lt;/exception&gt;</pre><p>
+                A <tt class="literal">ViewExpiredException</tt> occurs if the user posts back
+                to a page once their session has expired.  <tt class="literal">no-conversation-view-id</tt>
+                and <tt class="literal">conversation-required</tt> give you finer grained control over
+                session expiration if you are inside a conversation.
+            </p></div></div></div><div class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="xml.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="u" href="index.html">Up</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="conversations.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">Chapter&nbsp;4.&nbsp;Configuring Seam components&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right" valign="top">&nbsp;Chapter&nbsp;6.&nbsp;Conversations and workspace management</td></tr></table></div></body></html>

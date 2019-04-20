@@ -1,0 +1,511 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>Chapter&nbsp;7.&nbsp;Pageflows and business processes</title><link rel="stylesheet" href="../shared/css/html.css" type="text/css"><meta name="generator" content="DocBook XSL Stylesheets V1.65.1"><link rel="home" href="index.html" title="Seam - Contextual Components"><link rel="up" href="index.html" title="Seam - Contextual Components"><link rel="previous" href="conversations.html" title="Chapter&nbsp;6.&nbsp;Conversations and workspace management"><link rel="next" href="persistence.html" title="Chapter&nbsp;8.&nbsp;Seam and Object/Relational Mapping"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="navheader"><table width="100%" summary="Navigation header"><tr><th colspan="3" align="center">Chapter&nbsp;7.&nbsp;Pageflows and business processes</th></tr><tr><td width="20%" align="left"><a accesskey="p" href="conversations.html">Prev</a>&nbsp;</td><th width="60%" align="center">&nbsp;</th><td width="20%" align="right">&nbsp;<a accesskey="n" href="persistence.html">Next</a></td></tr></table><hr></div><div class="chapter" lang="en"><div class="titlepage"><div><div><h2 class="title"><a name="jbpm"></a>Chapter&nbsp;7.&nbsp;Pageflows and business processes</h2></div></div><div></div></div><p>
+        JBoss jBPM is a business process management engine for any Java SE or EE
+        environment. jBPM lets you represent a business process or user 
+        interaction as a graph of nodes representing wait states, decisions,
+        tasks, web pages, etc. The graph is defined using a simple, very readable, 
+        XML dialect called jPDL, and may be edited and visualised graphically using
+        an eclipse plugin. jPDL is an extensible language, and is suitable for 
+        a range of problems, from defining web application page flow, to traditional
+        workflow management, all the way up to orchestration of services in a SOA
+        environment.
+    </p><p>
+        Seam applications use jBPM for two different problems:
+    </p><div class="itemizedlist"><ul type="disc"><li><p>
+            Defining the pageflow involved in complex user interactions. A jPDL
+            process definition defines the page flow for a single conversation.
+            A Seam conversation is considered to be a relatively short-running
+            interaction with a single user.
+        </p></li><li><p>
+            Defining the overarching business process. The business process may span
+            multiple conversations with multiple users. Its state is persistent in
+            the jBPM database, so it is considered long-running. Coordination of
+            the activities of multiple users is a much more complex problem than
+            scripting an interaction with a single user, so jBPM offers sophisticated
+            facilities for task management and dealing with multiple concurrent paths 
+            of execution.
+        </p></li></ul></div><p>
+        Don't get these two things confused ! They operate at very different levels
+        or granularity. <span class="emphasis"><em>Pageflow</em></span>, <span class="emphasis"><em>conversation</em></span>
+        and <span class="emphasis"><em>task</em></span> all refer to a single
+        interaction with a single user. A business process spans many tasks.
+        Futhermore, the two applications of jBPM are totally orthogonal. You can
+        use them together or independently or not at all.
+    </p><p>
+        You don't have to know jDPL to use Seam. If you're perfectly happy defining
+        pageflow using JSF or Seam navigation rules, and if your application is more 
+        data-driven that process-driven, you probably don't need jBPM. But we're
+        finding that thinking of user interaction in terms of a well-defined graphical 
+        representation is helping us build more robust applications.
+    </p><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e5165"></a>7.1.&nbsp;Pageflow in Seam</h2></div></div><div></div></div><p>
+            There are two ways to define pageflow in Seam:
+        </p><div class="itemizedlist"><ul type="disc"><li><p>
+	            Using JSF or Seam navigation rules - the <span class="emphasis"><em>stateless navigation 
+	            model</em></span>
+	        </p></li><li><p>
+	            Using jPDL - the <span class="emphasis"><em>stateful navigation model</em></span>
+	        </p></li></ul></div><p>
+            Very simple applications will only need the stateless navigation 
+            model. Very complex applications will use both models in different 
+            places. Each model has its strengths and weaknesses!
+        </p><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e5185"></a>7.1.1.&nbsp;The two navigation models</h3></div></div><div></div></div><p>
+            The stateless model defines a mapping from a set of named, logical
+            outcomes of an event directly to the resulting page of the view.
+            The navigation rules are entirely oblivious to any state held by
+            the application other than what page was the source of the event.
+            This means that your action listener methods must sometimes make 
+            decisions about the page flow, since only they have access to the 
+            current state of the application. 
+        </p><p>
+            Here is an example page flow definition using JSF navigation 
+            rules:
+        </p><pre class="programlisting">&lt;navigation-rule&gt;
+    &lt;from-view-id&gt;/numberGuess.jsp&lt;/from-view-id&gt;
+        
+    &lt;navigation-case&gt;
+        &lt;from-outcome&gt;guess&lt;/from-outcome&gt;
+        &lt;to-view-id&gt;/numberGuess.jsp&lt;/to-view-id&gt;
+        &lt;redirect/&gt;
+    &lt;/navigation-case&gt;
+
+    &lt;navigation-case&gt;
+        &lt;from-outcome&gt;win&lt;/from-outcome&gt;
+        &lt;to-view-id&gt;/win.jsp&lt;/to-view-id&gt;
+        &lt;redirect/&gt;
+    &lt;/navigation-case&gt;
+        
+    &lt;navigation-case&gt;
+        &lt;from-outcome&gt;lose&lt;/from-outcome&gt;
+        &lt;to-view-id&gt;/lose.jsp&lt;/to-view-id&gt;
+        &lt;redirect/&gt;
+    &lt;/navigation-case&gt;
+
+&lt;/navigation-rule&gt;</pre><p>
+            Here is the same example page flow definition using Seam navigation 
+            rules:
+        </p><pre class="programlisting">&lt;page view-id="/numberGuess.jsp"&gt;
+        
+    &lt;navigation&gt;
+        &lt;rule if-outcome="guess"&gt;
+            &lt;redirect view-id="/numberGuess.jsp"/&gt;
+        &lt;/rule&gt;
+        &lt;rule if-outcome="win"&gt;
+            &lt;redirect view-id="/win.jsp"/&gt;
+        &lt;/rule&gt;
+        &lt;rule if-outcome="lose"&gt;
+            &lt;redirect view-id="/lose.jsp"/&gt;
+        &lt;/rule&gt;
+    &lt;/navigation&gt;
+
+&lt;/page&gt;</pre><p>
+            If you find navigation rules overly verbose, you can return view ids
+            directly from your action listener methods:
+        </p><pre class="programlisting">public String guess() {
+    if (guess==randomNumber) return "/win.jsp";
+    if (++guessCount==maxGuesses) return "/lose.jsp";
+    return null;
+}</pre><p>
+            Note that this results in a redirect. You can even specify parameters 
+            to be used in the redirect:
+        </p><pre class="programlisting">public String search() {
+    return "/searchResults.jsp?searchPattern=#{searchAction.searchPattern}";
+}</pre><p>
+            The stateful model defines a set of transitions between a set of
+            named, logical application states. In this model, it is possible
+            to express the flow of any user interaction entirely in the jPDL
+            pageflow definition, and write action listener methods that are
+            completely unaware of the flow of the interaction.
+        </p><p>
+            Here is an example page flow definition using jPDL:
+        </p><pre class="programlisting">&lt;pageflow-definition name="numberGuess"&gt;
+    
+   &lt;start-page name="displayGuess" view-id="/numberGuess.jsp"&gt;
+      &lt;redirect/&gt;
+      &lt;transition name="guess" to="evaluateGuess"&gt;
+      	&lt;action expression="#{numberGuess.guess}" /&gt;
+      &lt;/transition&gt;
+   &lt;/start-page&gt;
+   
+   &lt;decision name="evaluateGuess" expression="#{numberGuess.correctGuess}"&gt;
+      &lt;transition name="true" to="win"/&gt;
+      &lt;transition name="false" to="evaluateRemainingGuesses"/&gt;
+   &lt;/decision&gt;
+   
+   &lt;decision name="evaluateRemainingGuesses" expression="#{numberGuess.lastGuess}"&gt;
+      &lt;transition name="true" to="lose"/&gt;
+      &lt;transition name="false" to="displayGuess"/&gt;
+   &lt;/decision&gt;
+   
+   &lt;page name="win" view-id="/win.jsp"&gt;
+      &lt;redirect/&gt;
+      &lt;end-conversation /&gt;
+   &lt;/page&gt;
+   
+   &lt;page name="lose" view-id="/lose.jsp"&gt;
+      &lt;redirect/&gt;
+      &lt;end-conversation /&gt;
+   &lt;/page&gt;
+   
+&lt;/pageflow-definition&gt;</pre><div class="mediaobject" align="center"><img src="../shared/images/plugin-jbpm-numguess.png" align="middle"></div><p>
+            There are two things we notice immediately here:
+        </p><div class="itemizedlist"><ul type="disc"><li><p>
+	            The JSF/Seam navigation rules are <span class="emphasis"><em>much</em></span> simpler.
+	            (However, this obscures the fact that the underlying Java code
+	            is more complex.)
+	        </p></li><li><p>
+	            The jPDL makes the user interaction immediately understandable,
+	            without us needing to even look at the JSP or Java code.
+	        </p></li></ul></div><p>
+	        In addition, the stateful model is more <span class="emphasis"><em>constrained</em></span>.
+	        For each logical state (each step in the page flow), there are a 
+	        constrained set of possible transitions to other states. The stateless
+	        model is an <span class="emphasis"><em>ad hoc</em></span> model which is suitable to 
+	        relatively unconstrained, freeform navigation where the user decides
+	        where he/she wants to go next, not the application.
+	    </p><p>
+	        The stateful/stateless navigation distinction is quite similar to
+	        the traditional view of modal/modeless interaction. Now, Seam 
+	        applications are not usually modal in the simple sense of the 
+	        word - indeed, avoiding application modal behavior is one of the
+	        main reasons for having conversations! However, Seam applications
+	        can be, and often are, modal at the level of a particular 
+	        conversation. It is well-known that modal behavior is something
+	        to avoid as much as possible; it is very difficult to predict the
+	        order in which your users are going to want to do things! However,
+	        there is no doubt that the stateful model has its place.
+	    </p><p>
+	        The biggest contrast between the two models is the back-button
+	        behavior.
+	    </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e5241"></a>7.1.2.&nbsp;Seam and the back button</h3></div></div><div></div></div><p>
+	        When JSF or Seam navigation rules are used, Seam lets the user freely 
+	        navigate via the back, forward and refresh buttons. It is the
+	        responsibility of the application to ensure that conversational
+	        state remains internally consistent when this occurs. Experience
+	        with the combination of web application frameworks like Struts 
+	        or WebWork - that do not support a conversational model - and 
+	        stateless component models like EJB stateless session beans 
+	        or the Spring framework has taught many developers that this is
+	        close to impossible to do! However, our experience is that in 
+	        the context of Seam, where there is a well-defined conversational
+	        model, backed by stateful session beans, it is actually quite 
+	        straightforward. Usually it is as simple as combining the use 
+	        of <tt class="literal">no-conversation-view-id</tt> with null 
+	        checks at the beginning of action listener methods. We consider
+	        support for freeform navigation to be almost always desirable.
+	    </p><p>
+	        In this case, the <tt class="literal">no-conversation-view-id</tt> 
+	        declaration goes in <tt class="literal">pages.xml</tt>. It tells
+	        Seam to redirect to a different page if a request originates
+	        from a page rendered during a conversation, and that conversation
+	        no longer exists:
+	    </p><pre class="programlisting">&lt;page view-id="/checkout.xhtml" 
+        no-conversation-view-id="/main.xhtml"/&gt;</pre><p>
+	        On the other hand, in the stateful model, backbuttoning is 
+	        interpreted as an undefined transition back to a previous state.
+	        Since the stateful model enforces a defined set of transitions
+	        from the current state, back buttoning is by default disallowed 
+	        in the stateful model! Seam transparently detects the use of the
+	        back button, and blocks any attempt to perform an action from
+	        a previous, "stale" page, and simply redirects the user to 
+	        the "current" page (and displays a faces message). Whether you 
+	        consider this a feature or a limitation of the stateful model 
+	        depends upon your point of view: as an application developer, 
+	        it is a feature; as a user, it might be frustrating! You can
+	        enable backbutton navigation from a particular page node by
+	        setting <tt class="literal">back="enabled"</tt>.
+	    </p><pre class="programlisting">&lt;page name="checkout" 
+        view-id="/checkout.xhtml" 
+        back="enabled"&gt;
+    &lt;redirect/&gt;
+    &lt;transition to="checkout"/&gt;
+    &lt;transition name="complete" to="complete"/&gt;
+&lt;/page&gt;</pre><p>
+            This allows backbuttoning <span class="emphasis"><em>from</em></span> the
+            <tt class="literal">checkout</tt> state to <span class="emphasis"><em>any previous
+            state!</em></span>
+        </p><p>
+            Of course, we still need to define what happens if a request 
+            originates from a page rendered during a pageflow, and the
+            conversation with the pageflow no longer exists. In this case,
+            the <tt class="literal">no-conversation-view-id</tt> declaration
+            goes into the pageflow definition:
+        </p><pre class="programlisting">&lt;page name="checkout" 
+        view-id="/checkout.xhtml" 
+        back="enabled" 
+        no-conversation-view-id="/main.xhtml"&gt;
+    &lt;redirect/&gt;
+    &lt;transition to="checkout"/&gt;
+    &lt;transition name="complete" to="complete"/&gt;
+&lt;/page&gt;</pre><p>
+	        In practice, both navigation models have their place, and you'll 
+	        quickly learn to recognize when to prefer one model over the other.
+	        </p></div></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e5286"></a>7.2.&nbsp;Using jPDL pageflows</h2></div></div><div></div></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e5289"></a>7.2.1.&nbsp;Installing pageflows</h3></div></div><div></div></div><p>
+            We need to install the Seam jBPM-related components, and tell them
+            where to find our pageflow definition. We can specify this
+            Seam configuration in <tt class="literal">components.xml</tt>.
+        </p><pre class="programlisting">&lt;bpm:jbpm&gt;
+    &lt;bpm:pageflow-definitions&gt;
+        &lt;value&gt;pageflow.jpdl.xml&lt;/value&gt;
+    &lt;/bpm:pageflow-definitions&gt;
+&lt;/bpm:jbpm&gt;</pre><p>
+            The first line installs jBPM, the second points to a jPDL-based
+            pageflow definition.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e5301"></a>7.2.2.&nbsp;Starting pageflows</h3></div></div><div></div></div><p>
+            We "start" a jPDL-based pageflow by specifying the name of the
+            process definition using a <tt class="literal">@Begin</tt>,
+            <tt class="literal">@BeginTask</tt> or <tt class="literal">@StartTask</tt> 
+            annotation:
+        </p><pre class="programlisting">@Begin(pageflow="numberguess")
+public void begin() { ... }</pre><p>Alternatively we can start a pageflow using pages.xml:</p><pre class="programlisting">&lt;page&gt;
+        &lt;begin-conversation pageflow="numberguess"/&gt;
+    &lt;/page&gt;</pre><p>
+            If we are beginning the pageflow during the <tt class="literal">RENDER_RESPONSE</tt>
+            phase&#8212;during a <tt class="literal">@Factory</tt> or <tt class="literal">@Create</tt>
+            method, for example&#8212;we consider ourselves to be already at the page being 
+            rendered, and use  a <tt class="literal">&lt;start-page&gt;</tt> node as the first node 
+            in the pageflow, as in the example above.
+        </p><p>
+            But if the pageflow is begun as the result of an action listener invocation,
+            the outcome of the action listener determines which is the first page to be
+            rendered. In this case, we use a <tt class="literal">&lt;start-state&gt;</tt> as
+            the first node in the pageflow, and declare a transition for each possible
+            outcome:
+        </p><pre class="programlisting">&lt;pageflow-definition name="viewEditDocument"&gt;
+
+    &lt;start-state name="start"&gt;
+        &lt;transition name="documentFound" to="displayDocument"/&gt;
+        &lt;transition name="documentNotFound" to="notFound"/&gt;
+    &lt;/start-state&gt;
+    
+    &lt;page name="displayDocument" view-id="/document.jsp"&gt;
+        &lt;transition name="edit" to="editDocument"/&gt;
+        &lt;transition name="done" to="main"/&gt;
+    &lt;/page&gt;
+    
+    ...
+    
+    &lt;page name="notFound" view-id="/404.jsp"&gt;
+        &lt;end-conversation/&gt;
+    &lt;/page&gt;
+    
+&lt;/pageflow-definition&gt;</pre></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e5342"></a>7.2.3.&nbsp;Page nodes and transitions</h3></div></div><div></div></div><p>
+            Each <tt class="literal">&lt;page&gt;</tt> node represents a state where
+            the system is waiting for user input:
+        </p><pre class="programlisting">&lt;page name="displayGuess" view-id="/numberGuess.jsp"&gt;
+    &lt;redirect/&gt;
+    &lt;transition name="guess" to="evaluateGuess"&gt;
+        &lt;action expression="#{numberGuess.guess}" /&gt;
+    &lt;/transition&gt;
+&lt;/page&gt;</pre><p>
+            The <tt class="literal">view-id</tt> is the JSF view id. The <tt class="literal">&lt;redirect/&gt;</tt>
+            element has the same effect as <tt class="literal">&lt;redirect/&gt;</tt> in a 
+            JSF navigation rule: namely, a post-then-redirect behavior, to overcome problems
+            with the browser's refresh button. (Note that Seam propagates conversation contexts
+            over these browser redirects. So there is no need for a Ruby on Rails style "flash"
+            construct in Seam!)
+        </p><p>
+            The transition name is the name of a JSF outcome triggered by clicking
+            a command button or command link in <tt class="literal">numberGuess.jsp</tt>. 
+        </p><pre class="programlisting">&lt;h:commandButton type="submit" value="Guess" action="guess"/&gt;</pre><p>
+            When the transition is triggered by clicking this button, jBPM will activate the
+            transition action by calling the <tt class="literal">guess()</tt> method of the
+            <tt class="literal">numberGuess</tt> component. Notice that the syntax used for
+            specifying actions in the jPDL is just a familiar JSF EL expression, and that 
+            the transition action handler is just a method of a Seam component in the
+            current Seam contexts. So we have exactly the same event model for jBPM events 
+            that we already have for JSF events! (The <span class="emphasis"><em>One Kind of Stuff</em></span> 
+            principle.)
+        </p><p>
+            In the case of a null outcome (for example, a command button with no 
+            <tt class="literal">action</tt> defined), Seam will signal the transition with no
+            name if one exists, or else simply redisplay the page if all transitions
+            have names. So we could slightly simplify our example pageflow and this button:
+        </p><pre class="programlisting">&lt;h:commandButton type="submit" value="Guess"/&gt;</pre><p>
+            Would fire the following un-named transition:
+        </p><pre class="programlisting">&lt;page name="displayGuess" view-id="/numberGuess.jsp"&gt;
+    &lt;redirect/&gt;
+    &lt;transition to="evaluateGuess"&gt;
+        &lt;action expression="#{numberGuess.guess}" /&gt;
+    &lt;/transition&gt;
+&lt;/page&gt;</pre><p>
+            It is even possible to have the button call an action method, in which case the
+            action outcome will determine the transition to be taken:
+        </p><pre class="programlisting">&lt;h:commandButton type="submit" value="Guess" action="#{numberGuess.guess}"/&gt;</pre><pre class="programlisting">&lt;page name="displayGuess" view-id="/numberGuess.jsp"&gt;
+    &lt;transition name="correctGuess" to="win"/&gt;
+    &lt;transition name="incorrectGuess" to="evaluateGuess"/&gt;
+&lt;/page&gt;</pre><p>
+            However, this is considered an inferior style, since it moves responsibility for
+            controlling the flow out of the pageflow definition and back into the other
+            components. It is much better to centralize this concern in the pageflow itself.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e5400"></a>7.2.4.&nbsp;Controlling the flow</h3></div></div><div></div></div><p>
+            Usually, we don't need the more powerful features of jPDL when defining pageflows. 
+            We do need the <tt class="literal">&lt;decision&gt;</tt> node, however:
+        </p><pre class="programlisting">&lt;decision name="evaluateGuess" expression="#{numberGuess.correctGuess}"&gt;
+    &lt;transition name="true" to="win"/&gt;
+    &lt;transition name="false" to="evaluateRemainingGuesses"/&gt;
+&lt;/decision&gt;</pre><p>
+            A decision is made by evaluating a JSF EL expression in the Seam contexts.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e5412"></a>7.2.5.&nbsp;Ending the flow</h3></div></div><div></div></div><p>
+            We end the conversation using <tt class="literal">&lt;end-conversation&gt;</tt>
+            or <tt class="literal">@End</tt>. (In fact, for readability, use of 
+            <span class="emphasis"><em>both</em></span> is encouraged.)
+        </p><pre class="programlisting">&lt;page name="win" view-id="/win.jsp"&gt;
+    &lt;redirect/&gt;
+    &lt;end-conversation/&gt;
+&lt;/page&gt;</pre><p>
+            Optionally, we can end a task, specify a jBPM <tt class="literal">transition</tt> 
+            name. In this case, Seam will signal the end of the current task in the 
+            overarching business process.
+        </p><pre class="programlisting">&lt;page name="win" view-id="/win.jsp"&gt;
+    &lt;redirect/&gt;
+    &lt;end-task transition="success"/&gt;
+&lt;/page&gt;</pre></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e5435"></a>7.2.6.&nbsp;Pageflow composition</h3></div></div><div></div></div><p>
+                It is possible to compose pageflows and have one pageflow pause 
+                pause while another pageflow executes. The <tt class="literal">&lt;process-state&gt;</tt>
+                node pauses the outer pageflow, and begins execution of a named 
+                pageflow:
+            </p><pre class="programlisting">&lt;process-state name="cheat"&gt;
+    &lt;sub-process name="cheat"/&gt;
+    &lt;transition to="displayGuess"/&gt;
+&lt;/process-state&gt;</pre><p>
+                The inner flow begins executing at a <tt class="literal">&lt;start-state&gt;</tt>
+                node. When it reaches an <tt class="literal">&lt;end-state&gt;</tt> node, 
+                execution of the inner flow ends, and execution of the outer flow
+                resumes with the transition defined by the <tt class="literal">&lt;process-state&gt;</tt>
+                element.
+            </p></div></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e5456"></a>7.3.&nbsp;Business process management in Seam</h2></div></div><div></div></div><p>
+            A business process is a well-defined set of tasks that must
+            be performed by users or software systems according to 
+            well-defined rules about <span class="emphasis"><em>who</em></span> can perform 
+            a task, and <span class="emphasis"><em>when</em></span> it should be performed.
+            Seam's jBPM integration makes it easy to display lists of
+            tasks to users and let them manage their tasks. Seam also
+            lets the application store state associated with the business
+            process in the <tt class="literal">BUSINESS_PROCESS</tt> context,
+            and have that state made persistent via jBPM variables.
+        </p><p>
+            A simple business process definition looks much the same as a 
+            page flow definition (<span class="emphasis"><em>One Kind of Stuff</em></span>), 
+            except that instead of <tt class="literal">&lt;page&gt;</tt> nodes,
+            we have <tt class="literal">&lt;task-node&gt;</tt> nodes. In a 
+            long-running business process, the wait states are where the
+            system is waiting for some user to log in and perform a task.
+        </p><pre class="programlisting">&lt;process-definition name="todo"&gt;
+   
+   &lt;start-state name="start"&gt;
+      &lt;transition to="todo"/&gt;
+   &lt;/start-state&gt;
+   
+   &lt;task-node name="todo"&gt;
+      &lt;task name="todo" description="#{todoList.description}"&gt;
+         &lt;assignment actor-id="#{actor.id}"/&gt;
+      &lt;/task&gt;
+      &lt;transition to="done"/&gt;
+   &lt;/task-node&gt;
+   
+   &lt;end-state name="done"/&gt;
+   
+&lt;/process-definition&gt;</pre><div class="mediaobject" align="center"><img src="../shared/images/plugin-jbpm-todo.png" align="middle"></div><p>
+            It is perfectly possible that we might have both jPDL business 
+            process definitions and jPDL pageflow definitions in the
+            same project. If so, the relationship between the two is that
+            a single <tt class="literal">&lt;task&gt;</tt> in a business process
+            corresponds to a whole pageflow 
+            <tt class="literal">&lt;pageflow-definition&gt;</tt>
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e5496"></a>7.4.&nbsp;Using jPDL business process definitions</h2></div></div><div></div></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e5499"></a>7.4.1.&nbsp;Installing process definitions</h3></div></div><div></div></div><p>
+            We need to install jBPM, and tell it where to find the
+            business process definitions:
+        </p><pre class="programlisting">&lt;bpm:jbpm&gt;
+    &lt;bpm:process-definitions&gt;
+        &lt;value&gt;todo.jpdl.xml&lt;/value&gt;
+    &lt;/bpm:process-definitions&gt;
+&lt;/bpm:jbpm&gt;</pre></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e5506"></a>7.4.2.&nbsp;Initializing actor ids</h3></div></div><div></div></div><p>
+            We always need to know what user is currently logged in.
+            jBPM "knows" users by their <span class="emphasis"><em>actor id</em></span>
+            and <span class="emphasis"><em>group actor ids</em></span>. We specify the
+            current actor ids using the built in Seam component named
+            <tt class="literal">actor</tt>:
+        </p><pre class="programlisting">@In Actor actor;
+
+public String login() {
+    ...
+    actor.setId( user.getUserName() );
+    actor.getGroupActorIds().addAll( user.getGroupNames() );
+    ...
+}</pre></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e5522"></a>7.4.3.&nbsp;Initiating a business process</h3></div></div><div></div></div><p>
+            To initiate a business process instance, we use the 
+            <tt class="literal">@CreateProcess</tt> annotation:
+        </p><pre class="programlisting">@CreateProcess(definition="todo")
+public void createTodo() { ... }</pre><p>Alternatively we can initiate a business process using pages.xml:</p><pre class="programlisting">&lt;page&gt;
+    &lt;create-process definition="todo" /&gt;
+&lt;/page&gt;</pre></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e5536"></a>7.4.4.&nbsp;Task assignment</h3></div></div><div></div></div><p>
+            When a process reaches a task node, task instances are created. These must be 
+            assigned to users or user groups. We can either hardcode our actor ids, or 
+            delegate to a Seam component:
+        </p><pre class="programlisting">&lt;task name="todo" description="#{todoList.description}"&gt;
+    &lt;assignment actor-id="#{actor.id}"/&gt;
+&lt;/task&gt;</pre><p>
+            In this case, we have simply assigned the task to the current user. 
+            We can also assign tasks to a pool:
+        </p><pre class="programlisting">&lt;task name="todo" description="#{todoList.description}"&gt;
+    &lt;assignment pooled-actors="employees"/&gt;
+&lt;/task&gt;</pre></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e5547"></a>7.4.5.&nbsp;Task lists</h3></div></div><div></div></div><p>
+            Several built-in Seam components make it easy to display task lists. 
+            The <tt class="literal">pooledTaskInstanceList</tt> is a list of pooled tasks 
+            that users may assign to themselves:
+        </p><pre class="programlisting">&lt;h:dataTable value="#{pooledTaskInstanceList}" var="task"&gt;
+    &lt;h:column&gt;
+        &lt;f:facet name="header"&gt;Description&lt;/f:facet&gt;
+        &lt;h:outputText value="#{task.description}"/&gt;
+    &lt;/h:column&gt;
+    &lt;h:column&gt;
+        &lt;s:link action="#{pooledTask.assignToCurrentActor}" value="Assign" taskInstance="#{task}"/&gt;
+    &lt;/h:column&gt;            	
+&lt;/h:dataTable&gt;</pre><p>
+            Note that instead of <tt class="literal">&lt;s:link&gt;</tt> we could have used
+            a plain JSF <tt class="literal">&lt;h:commandLink&gt;</tt>:
+        </p><pre class="programlisting">&lt;h:commandLink action="#{pooledTask.assignToCurrentActor}"&gt; 
+    &lt;f:param name="taskId" value="#{task.id}"/&gt;
+&lt;/h:commandLink&gt;</pre><p>
+            The <tt class="literal">pooledTask</tt> component is a built-in component that
+            simply assigns the task to the current user.
+        </p><p>
+            The <tt class="literal">taskInstanceListForType</tt> component includes tasks of 
+            a particular type that are assigned to the current user:
+        </p><pre class="programlisting">&lt;h:dataTable value="#{taskInstanceListForType['todo']}" var="task"&gt;
+    &lt;h:column&gt;
+        &lt;f:facet name="header"&gt;Description&lt;/f:facet&gt;
+        &lt;h:outputText value="#{task.description}"/&gt;
+    &lt;/h:column&gt;
+    &lt;h:column&gt;
+        &lt;s:link action="#{todoList.start}" value="Start Work" taskInstance="#{task}"/&gt;
+    &lt;/h:column&gt;            	
+&lt;/h:dataTable&gt;</pre></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e5579"></a>7.4.6.&nbsp;Performing a task</h3></div></div><div></div></div><p>
+            To begin work on a task, we use either <tt class="literal">@StartTask</tt>
+            or <tt class="literal">@BeginTask</tt> on the listener method:
+        </p><pre class="programlisting">@StartTask
+public String start() { ... }</pre><p>Alternatively we can begin work on a task using pages.xml:</p><pre class="programlisting">&lt;page&gt;
+    &lt;start-task /&gt;
+&lt;/page&gt;</pre><p>    
+            These annotations begin a special kind of conversation that has 
+            significance in terms of the overarching business process. Work done 
+            by this conversation has access to state held in the business
+            process context.
+        </p><p>
+            If we end the conversation using <tt class="literal">@EndTask</tt>, Seam
+            will signal the completion of the task:
+        </p><pre class="programlisting">@EndTask(transition="completed")
+public String completed() { ... }</pre><p>Alternatively we can use pages.xml:</p><pre class="programlisting">&lt;page&gt;
+    &lt;end-task transition="completed" /&gt;
+&lt;/page&gt;</pre><p>
+            You can also use EL to specify the transition in pages.xml.
+        </p><p>
+            At this point, jBPM takes over and continues executing the business process
+            definition. (In more complex processes, several tasks might need to be
+            completed before process execution can resume.)
+        </p><p>
+            Please refer to the jBPM documentation for a more thorough overview of 
+            the sophisticated features that jBPM provides for managing complex
+            business processes.
+            </p></div></div></div><div class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="conversations.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="u" href="index.html">Up</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="persistence.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">Chapter&nbsp;6.&nbsp;Conversations and workspace management&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right" valign="top">&nbsp;Chapter&nbsp;8.&nbsp;Seam and Object/Relational Mapping</td></tr></table></div></body></html>

@@ -1,0 +1,164 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>Chapter&nbsp;22.&nbsp;Seam and the Google Web Toolkit</title><link rel="stylesheet" href="../shared/css/html.css" type="text/css"><meta name="generator" content="DocBook XSL Stylesheets V1.65.1"><link rel="home" href="index.html" title="Seam - Contextual Components"><link rel="up" href="index.html" title="Seam - Contextual Components"><link rel="previous" href="remoting.html" title="Chapter&nbsp;21.&nbsp;Remoting"><link rel="next" href="spring.html" title="Chapter&nbsp;23.&nbsp;Spring Framework integration"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="navheader"><table width="100%" summary="Navigation header"><tr><th colspan="3" align="center">Chapter&nbsp;22.&nbsp;Seam and the Google Web Toolkit</th></tr><tr><td width="20%" align="left"><a accesskey="p" href="remoting.html">Prev</a>&nbsp;</td><th width="60%" align="center">&nbsp;</th><td width="20%" align="right">&nbsp;<a accesskey="n" href="spring.html">Next</a></td></tr></table><hr></div><div class="chapter" lang="en"><div class="titlepage"><div><div><h2 class="title"><a name="gwt"></a>Chapter&nbsp;22.&nbsp;Seam and the Google Web Toolkit</h2></div></div><div></div></div><p>
+    For those that prefer to use the Google Web Toolkit (GWT) to develop dynamic AJAX applications, Seam provides
+    an integration layer that allows GWT widgets to interact directly with Seam components.
+  </p><p>
+    To use GWT, we assume that you are already familiar with the GWT tools - more information can be found at
+    <a href="http://code.google.com/webtoolkit/" target="_top">http://code.google.com/webtoolkit/</a>.  This chapter 
+    does not attempt to explain how GWT works or how to use it.
+  </p><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e12720"></a>22.1.&nbsp;Configuration</h2></div></div><div></div></div><p>
+      There is no special configuration required to use GWT in a Seam application, however the Seam resource servlet 
+      must be installed.  See <a href="configuration.html" title="Chapter&nbsp;25.&nbsp;Configuring Seam and packaging Seam applications">Chapter&nbsp;25, <i>Configuring Seam and packaging Seam applications</i></a> for details.
+    </p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e12727"></a>22.2.&nbsp;Preparing your component</h2></div></div><div></div></div><p>
+      The first step in preparing a Seam component to be called via GWT, is to create both synchronous and
+      asynchronous service interfaces for the methods you wish to call.  Both of these interfaces should extend the
+      GWT interface <tt class="literal">com.google.gwt.user.client.rpc.RemoteService</tt>:
+    </p><pre class="programlisting">  public interface MyService extends RemoteService
+  {
+    public String askIt(String question);      
+  }</pre><p>
+      The asynchronous interface should be identical, except that it also contains an additional 
+      <tt class="literal">AsyncCallback</tt> parameter for each of the methods it declares:    
+    </p><pre class="programlisting">  public interface MyServiceAsync extends RemoteService 
+  {
+    public void askIt(String question, AsyncCallback callback);
+  }</pre><p>
+      The asynchronous interface, in this example <tt class="literal">MyServiceAsync</tt>, will be implemented by GWT and
+      should never be implemented directly.
+    </p><p>
+      The next step, is to create a Seam component that implements the synchronous interface:
+    </p><pre class="programlisting">  @Name("org.jboss.seam.example.remoting.gwt.client.MyService")
+  public class ServiceImpl implements MyService
+  {
+    @WebRemote
+    public String askIt(String question)
+    {
+      if (!validate(question)) 
+      {
+        throw new IllegalStateException("Hey, this shouldn't happen, I checked on the client, " +
+               "but its always good to double check.");
+      }
+      return "42. Its the real question that you seek now.";
+    }
+   
+    public boolean validate(String q) 
+    {
+      ValidationUtility util = new ValidationUtility();
+      return util.isValid(q);
+    }
+  }</pre><p>
+      The methods that should be made accessible via GWT need to be annotated with the 
+      <tt class="literal">@WebRemote</tt> annotation, which is required for all web-remoteable methods.
+    </p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e12758"></a>22.3.&nbsp;Hooking up a GWT widget to the Seam component</h2></div></div><div></div></div><p>
+      The next step, is to write a method that returns the asynchronous interface to the component.  This method
+      can be located inside the widget class, and will be used by the widget to obtain a reference to the
+      asynchronous client stub:
+    </p><pre class="programlisting">   private MyServiceAsync getService() 
+   {       
+      String endpointURL = GWT.getModuleBaseURL() + "seam/resource/gwt";      
+      
+      MyServiceAsync svc = (MyServiceAsync) GWT.create(MyService.class);
+      ((ServiceDefTarget) svc).setServiceEntryPoint(endpointURL);
+      return svc;     
+   }</pre><p>
+       The final step is to write the widget code that invokes the method on the client stub.  The following example
+       creates a simple user interface with a label, text input and a button:
+    </p><pre class="programlisting">
+public class AskQuestionWidget extends Composite
+{
+   private AbsolutePanel panel = new AbsolutePanel();
+   
+   public AskQuestionWidget() 
+   {      
+      Label lbl = new Label("OK, what do you want to know?");
+      panel.add(lbl);
+      final TextBox box = new TextBox();
+      box.setText("What is the meaning of life?");
+      panel.add(box);
+      Button ok = new Button("Ask");
+      ok.addClickListener(new ClickListener() 
+      {
+         public void onClick(Widget w)
+         {
+            ValidationUtility valid = new ValidationUtility();
+            if (!valid.isValid(box.getText())) 
+            {
+               Window.alert("A question has to end with a '?'");
+            } 
+            else 
+            {
+               askServer(box.getText());
+            } 
+         }
+      });
+      panel.add(ok);
+      
+      initWidget(panel);
+   }
+
+   private void askServer(String text)
+   {
+      getService().askIt(text, new AsyncCallback() 
+      {
+         public void onFailure(Throwable t)
+         {
+            Window.alert(t.getMessage());
+         }
+
+         public void onSuccess(Object data)
+         {
+            Window.alert((String) data);
+         }         
+      });      
+   }
+   
+   ...    
+    </pre><p>
+      When clicked, the button invokes the <tt class="literal">askServer()</tt> method passing the contents of the input text (in this
+      example, validation is also performed to ensure that the input is a valid question).  The <tt class="literal">askServer()</tt>
+      method acquires a reference to the asynchronous client stub (returned by the <tt class="literal">getService()</tt> method)
+      and invokes the <tt class="literal">askIt()</tt> method.  The result (or error message if the call fails) is shown in an alert window.      
+    </p><div class="mediaobject" align="center"><img src="../shared/images/gwt-helloworld.png" align="middle"></div><p>
+      The complete code for this example can be found in the Seam distribution in the <tt class="literal">examples/remoting/gwt</tt>
+      directory.
+    </p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e12793"></a>22.4.&nbsp;GWT Ant Targets</h2></div></div><div></div></div><p>
+      For deployment of GWT apps, there is a compile-to-Javascript step (which compacts and obfuscates the code).  There is an
+      ant utility which can be used instead of the command line or GUI utility that GWT provides.  To use this, you will need
+      to have the ant task jar in your ant classpath, as well as GWT downloaded (which you will need for hosted mode anyway).
+    </p><p>
+      Then, in your ant file, place (near the top of your ant file):
+    </p><pre class="programlisting">  &lt;taskdef uri="antlib:de.samaflost.gwttasks"
+                resource="de/samaflost/gwttasks/antlib.xml"
+                classpath="./lib/gwttasks.jar"/&gt;
+   
+  &lt;property file="build.properties"/&gt;</pre><p>
+      Create a <tt class="literal">build.properties</tt> file, which has the contents:
+    </p><pre class="programlisting">gwt.home=/gwt_home_dir</pre><p>
+      This of course should point to the directory where GWT is installed.  Then to use it, create a target:
+    </p><pre class="programlisting">  &lt;!-- the following are are handy utilities for doing GWT development.
+      To use GWT, you will of course need to download GWT seperately --&gt;
+  &lt;target name="gwt-compile"&gt;
+      &lt;!-- in this case, we are "re homing" the gwt generated stuff, so in this case
+      we can only have one GWT module - we are doing this deliberately to keep the URL short --&gt;
+      &lt;delete&gt;
+          &lt;fileset dir="view"/&gt;
+      &lt;/delete&gt;
+      &lt;gwt:compile outDir="build/gwt"
+          gwtHome="${gwt.home}"
+          classBase="${gwt.module.name}"
+          sourceclasspath="src"/&gt;
+      &lt;copy todir="view"&gt;
+          &lt;fileset dir="build/gwt/${gwt.module.name}"/&gt;
+      &lt;/copy&gt;
+  &lt;/target&gt;</pre><p>
+      This target when called will compile the GWT application, and copy it to the specified directory (which would be
+      in the <tt class="literal">webapp</tt> part of your war - remember GWT generates HTML and Javascript artifacts).  You
+      never edit the resulting code that <tt class="literal">gwt-compile</tt> generates - you always edit in the GWT source
+      directory.
+    </p><p>
+      Remember that GWT comes with a hosted mode browser - you should be using that if you are developing with GWT.  If you
+      aren't using that, and are just compiling it each time, you aren't getting the most out of the toolkit (in fact, if
+      you can't or won't use the hosted mode browser, I would go far as to say you should NOT be using GWT at all - it's
+      that valuable!).
+    </p></div></div><div class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="remoting.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="u" href="index.html">Up</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="spring.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">Chapter&nbsp;21.&nbsp;Remoting&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right" valign="top">&nbsp;Chapter&nbsp;23.&nbsp;Spring Framework integration</td></tr></table></div></body></html>
