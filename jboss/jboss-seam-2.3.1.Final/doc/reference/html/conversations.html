@@ -1,0 +1,842 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory">Chapter 8. Conversations and workspace management</title><link rel="stylesheet" href="css/seamframework.css" type="text/css"/><meta xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" name="generator" content="DocBook XSL Stylesheets V1.74.0"/><link rel="home" href="index.html" title="Seam - Contextual Components"/><link rel="up" href="index.html" title="Seam - Contextual Components"/><link rel="prev" href="events.html" title="Chapter 7. Events, interceptors and exception handling"/><link rel="next" href="jbpm.html" title="Chapter 9. Pageflows and business processes"/></head><body><p id="title"><a href="http://www.seamframework.org" class="site_href"><strong>SeamFramework.org</strong></a><a href="http://www.seamframework.org/Documentation" class="doc_href"><strong>Community Documentation</strong></a></p><ul class="docnav"><li class="previous"><a accesskey="p" href="events.html"><strong>Prev</strong></a></li><li class="next"><a accesskey="n" href="jbpm.html"><strong>Next</strong></a></li></ul><div class="chapter" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="conversations"/>Chapter 8. Conversations and workspace management</h2></div></div></div><div class="toc"><dl><dt><span class="section"><a href="conversations.html#d0e5807">8.1. Seam's conversation model</a></span></dt><dt><span class="section"><a href="conversations.html#d0e5906">8.2. Nested conversations</a></span></dt><dt><span class="section"><a href="conversations.html#d0e5946">8.3. Starting conversations with GET requests</a></span></dt><dt><span class="section"><a href="conversations.html#conversations.required">8.4. Requiring a long-running conversation</a></span></dt><dt><span class="section"><a href="conversations.html#d0e6094">8.5. Using &lt;s:link&gt; and &lt;s:button&gt;</a></span></dt><dt><span class="section"><a href="conversations.html#d0e6198">8.6. Success messages</a></span></dt><dt><span class="section"><a href="conversations.html#d0e6226">8.7. Natural conversation ids</a></span></dt><dt><span class="section"><a href="conversations.html#d0e6260">8.8. Creating a natural conversation</a></span></dt><dt><span class="section"><a href="conversations.html#d0e6313">8.9. Redirecting to a natural conversation</a></span></dt><dt><span class="section"><a href="conversations.html#d0e6356">8.10. Workspace management</a></span></dt><dd><dl><dt><span class="section"><a href="conversations.html#d0e6371">8.10.1. Workspace management and JSF navigation</a></span></dt><dt><span class="section"><a href="conversations.html#d0e6392">8.10.2. Workspace management and jPDL pageflow</a></span></dt><dt><span class="section"><a href="conversations.html#d0e6408">8.10.3. The conversation switcher</a></span></dt><dt><span class="section"><a href="conversations.html#d0e6427">8.10.4. The conversation list</a></span></dt><dt><span class="section"><a href="conversations.html#d0e6445">8.10.5. Breadcrumbs</a></span></dt></dl></dd><dt><span class="section"><a href="conversations.html#d0e6457">8.11. Conversational components and JSF component bindings</a></span></dt><dt><span class="section"><a href="conversations.html#d0e6488">8.12. Concurrent calls to conversational components</a></span></dt><dd><dl><dt><span class="section"><a href="conversations.html#d0e6511">8.12.1. How should we design our conversational AJAX application?</a></span></dt><dt><span class="section"><a href="conversations.html#d0e6527">8.12.2. Dealing with errors</a></span></dt></dl></dd></dl></div><p>
+        It's time to understand Seam's conversation model in more detail.
+    </p><p>
+        Historically, the notion of a Seam "conversation" came about as
+        a merger of three different ideas:
+    </p><div class="itemizedlist"><ul><li><p>
+            The idea of a <span class="emphasis"><em>workspace</em></span>, which I 
+            encountered in a project for the Victorian government in 
+            2002. In this project I was forced to implement workspace 
+            management on top of Struts, an experience I pray never
+            to repeat.
+        </p></li><li><p>
+            The idea of an <span class="emphasis"><em>application transaction</em></span>
+            with optimistic semantics, and the realization that existing
+            frameworks based around a stateless architecture could not
+            provide effective management of extended persistence contexts.
+            (The Hibernate team is truly fed up with copping the blame for
+            <code class="literal">LazyInitializationException</code>s, which are
+            not really Hibernate's fault, but rather the fault of the 
+            extremely limiting persistence context model supported by 
+            stateless architectures such as the Spring framework or the 
+            traditional <span class="emphasis"><em>stateless session facade</em></span> 
+            (anti)pattern in J2EE.)
+        </p></li><li><p>
+            The idea of a workflow <span class="emphasis"><em>task</em></span>.
+        </p></li></ul></div><p>
+        By unifying these ideas and providing deep support in the framework, 
+        we have a powerful construct that lets us build richer and more efficient 
+        applications with less code than before.
+    </p><div class="section" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="d0e5807"/>8.1. Seam's conversation model</h2></div></div></div><p>
+        The examples we have seen so far make use of a very simple
+        conversation model that follows these rules:
+    </p><div class="itemizedlist"><ul><li><p>
+            There is always a conversation context active during the
+            apply request values, process validations, update model values, 
+            invoke application and render response phases of the JSF request 
+            lifecycle.
+        </p></li><li><p>
+            At the end of the restore view phase of the JSF request 
+            lifecycle, Seam attempts to restore any previous long-running
+            conversation context. If none exists, Seam creates a new
+            temporary conversation context.
+        </p></li><li><p>
+            When an <code class="literal">@Begin</code> method is encountered, 
+            the temporary conversation context is promoted to a long
+            running conversation.
+        </p></li><li><p>
+            When an <code class="literal">@End</code> method is encountered, 
+            any long-running conversation context is demoted to a 
+            temporary conversation.
+        </p></li><li><p>
+            At the end of the render response phase of the JSF request
+            lifecycle, Seam stores the contents of a long running
+            conversation context or destroys the contents of a temporary
+            conversation context.
+        </p></li><li><p>
+            Any faces request (a JSF postback) will propagate the 
+            conversation context. By default, non-faces requests (GET 
+            requests, for example) do not propagate the conversation 
+            context, but see below for more information on this.
+        </p></li><li><p>
+            If the JSF request lifecycle is foreshortened by a redirect,
+            Seam transparently stores and restores the current conversation 
+            context — unless the conversation was already ended via
+            <code class="literal">@End(beforeRedirect=true)</code>.
+        </p></li></ul></div><p>
+            Seam transparently propagates the conversation context (including
+            the temporary conversation context) across JSF postbacks and 
+            redirects. If you don't do anything special, a <span class="emphasis"><em>non-faces request</em></span>
+            (a GET request for example) will not propagate the conversation context and
+            will be processed in a new temporary conversation. This is usually - but not
+            always - the desired behavior.
+        </p><p>
+            If you want to propagate a Seam conversation across a non-faces request, you
+            need to explicitly code the Seam <span class="emphasis"><em>conversation id</em></span> as a 
+            request parameter:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">a</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">href</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;main.jsf?#{manager.conversationIdParameter}=#{conversation.id}&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain">Continue</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">a</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            Or, the more JSF-ish:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:outputLink</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;main.jsf&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">f:param</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{manager.conversationIdParameter}&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{conversation.id}&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:outputText</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;Continue&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:outputLink</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            If you use the Seam tag library, this is equivalent:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:outputLink</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;main.jsf&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:conversationId</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:outputText</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;Continue&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:outputLink</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            If you wish to disable propagation of the conversation context for a
+            postback, a similar trick is used:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:commandLink</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;main&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;Exit&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">f:param</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;conversationPropagation&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;none&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:commandLink</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            If you use the Seam tag library, this is equivalent:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:commandLink</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;main&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;Exit&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:conversationPropagation</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">type</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;none&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:commandLink</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            Note that disabling conversation context propagation is absolutely not the
+            same thing as ending the conversation.
+        </p><p>
+            The <code class="literal">conversationPropagation</code> request parameter, or 
+            the <code class="literal">&lt;s:conversationPropagation&gt;</code> tag may even
+            be used to begin a conversation, end the current conversation, 
+            destroy the entire conversation stack, or begin a nested conversation.
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:commandLink</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;main&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;Exit&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:conversationPropagation</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">type</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;end&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:commandLink</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:commandLink</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;main&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;Exit&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:conversationPropagation</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">type</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;endRoot&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:commandLink</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:commandLink</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;main&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;Select&nbsp;Child&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:conversationPropagation</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">type</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;nested&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:commandLink</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:commandLink</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;main&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;Select&nbsp;Hotel&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:conversationPropagation</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">type</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;begin&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:commandLink</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:commandLink</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;main&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;Select&nbsp;Hotel&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:conversationPropagation</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">type</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;join&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:commandLink</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+        This conversation model makes it easy to build applications which
+        behave correctly with respect to multi-window operation. For many
+        applications, this is all that is needed. Some complex applications
+        have either or both of the following additional requirements:
+    </p><div class="itemizedlist"><ul><li><p>
+            A conversation spans many smaller units of user interaction,
+            which execute serially or even concurrently. The smaller
+            <span class="emphasis"><em>nested conversations</em></span> have their own
+            isolated set of conversation state, and also have access to
+            the state of the outer conversation.
+        </p></li><li><p>
+            The user is able to switch between many conversations
+            within the same browser window. This feature is called
+            <span class="emphasis"><em>workspace management</em></span>.
+        </p></li></ul></div></div><div class="section" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="d0e5906"/>8.2. Nested conversations</h2></div></div></div><p>
+            A nested conversation is created by invoking a method marked
+            <code class="literal">@Begin(nested=true)</code> inside the scope of an
+            existing conversation. A nested conversation has its own
+            conversation context, but can read values from the outer
+            conversation's context.  The outer conversation's context is 
+            read-only within a nested conversation, but because objects 
+            are obtained by reference, changes to the objects themselves 
+            will be reflected in the outer context.
+        </p><div class="itemizedlist"><ul><li><p>
+                 Nesting a conversation through initializes a context that is
+                 stacked on the context of the original, or outer, conversation.
+                 The outer conversation is considered the parent.
+              </p></li><li><p>
+                 Any values outjected or directly set into the nested
+                 conversation’s context do not affect the objects accessible in
+                 the parent conversation’s context.
+              </p></li><li><p>
+                 Injection or a context lookup from the conversation context
+                 will first lookup the value in the current conversation context
+                 and, if no value is found, will proceed down the conversation
+                 stack if the conversation is nested. As you will see in moment,
+                 this behavior can be overriden.
+              </p></li></ul></div><p>
+            When an <code class="literal">@End</code> is subsequently encountered,
+            the nested conversation will be destroyed, and the outer
+            conversation will resume, by "popping" the conversation stack.
+            Conversations may be nested to any arbitrary depth.
+        </p><p>
+            Certain user activity (workspace management, or the back button)
+            can cause the outer conversation to be resumed before the inner
+            conversation is ended. In this case it is possible to have 
+            multiple concurrent nested conversations belonging to the
+            same outer conversation. If the outer conversation ends before
+            a nested conversation ends, Seam destroys all nested conversation
+            contexts along with the outer context.
+        </p><p>
+        	The conversation at the bottom of the conversation stack is the root 
+        	conversation.  Destroying this conversation always destroy all of its 
+        	descendents.  You can achieve this declaratively by specifying
+        	<code class="literal">@End(root=true)</code>.
+        </p><p>
+            A conversation may be thought of as a <span class="emphasis"><em>continuable state</em></span>.
+            Nested conversations allow the application to capture a consistent
+            continuable state at various points in a user interaction, thus
+            ensuring truly correct behavior in the face of backbuttoning and
+            workspace management.
+        </p><p>
+            As mentioned previously, if a component exists in a parent conversation of 
+            the current nested conversation, the nested conversation will use
+            the same instance. Occasionally, it is useful to have a different
+            instance in each nested conversation, so that the component 
+            instance that exists in the parent conversation is invisible to
+            its child conversations. You can achieve this behavior by 
+            annotating the component <code class="literal">@PerNestedConversation</code>.
+        </p></div><div class="section" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="d0e5946"/>8.3. Starting conversations with GET requests</h2></div></div></div><p>
+            JSF does not define any kind of action listener that is triggered
+            when a page is accessed via a non-faces request (for example, a
+            HTTP GET request). This can occur if the user bookmarks the page,
+            or if we navigate to the page via an <code class="literal">&lt;h:outputLink&gt;</code>.
+        </p><p>
+            Sometimes we want to begin a conversation immediately the page is
+            accessed. Since there is no JSF action method, we can't solve the problem
+            in the usual way, by annotating the action with <code class="literal">@Begin</code>.
+        </p><p>
+            A further problem arises if the page needs some state to be fetched
+            into a context variable. We've already seen two ways to solve this 
+            problem. If that state is held in a Seam component, we can fetch the 
+            state in a <code class="literal">@Create</code> method. If not, we can define a
+            <code class="literal">@Factory</code> method for the context variable.
+        </p><p>
+            If none of these options works for you, Seam lets you define a
+            <span class="emphasis"><em>page action</em></span> in the <code class="literal">pages.xml</code>
+            file.
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">pages</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">page</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view-id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/messageList.xhtml&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{messageManager.list}&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;...</span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">pages</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            This action method is called at the beginning of the render response
+            phase, any time the page is about to be rendered. If a page action
+            returns a non-null outcome, Seam will process any appropriate JSF and
+            Seam navigation rules, possibly resulting in a completely different page 
+            being rendered.
+        </p><p>
+            If <span class="emphasis"><em>all</em></span> you want to do before rendering the page
+            is begin a conversation, you could use a built-in action method that
+            does just that:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">pages</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">page</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view-id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/messageList.xhtml&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{conversation.begin}&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;...</span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">pages</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            Note that you can also call this built-in action from a JSF
+            control, and, similarly, you can use 
+            <code class="literal">#{conversation.end}</code> to end conversations.
+        </p><p>
+            If you want more control, to join existing conversations or
+            begin a nested conversion, to begin a pageflow or an atomic
+            conversation, you should use the 
+            <code class="literal">&lt;begin-conversation&gt;</code> element.
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">pages</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">page</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view-id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/messageList.xhtml&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">begin-conversation</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">nested</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;true&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">pageflow</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;AddItem&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">page</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;...</span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">pages</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            There is also an <code class="literal">&lt;end-conversation&gt;</code> 
+            element.
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">pages</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">page</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view-id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/home.xhtml&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">end-conversation</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">page</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;...</span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">pages</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            To solve the first problem, we now have five options:
+        </p><div class="itemizedlist"><ul><li><p>
+                Annotate the <code class="literal">@Create</code> method with
+                <code class="literal">@Begin</code>
+            </p></li><li><p>
+                Annotate the <code class="literal">@Factory</code> method with
+                <code class="literal">@Begin</code>
+            </p></li><li><p>
+                Annotate the Seam page action method with
+                <code class="literal">@Begin</code>
+            </p></li><li><p>
+                Use <code class="literal">&lt;begin-conversation&gt;</code> in
+                <code class="literal">pages.xml</code>.
+            </p></li><li><p>
+                Use <code class="literal">#{conversation.begin}</code> as
+                the Seam page action method
+            </p></li></ul></div></div><div class="section" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="conversations.required"/>8.4. Requiring a long-running conversation</h2></div></div></div><p>
+            Certain pages are only relevant in the context of a long-running conversation. One way to "protect" such a
+            page is to require a long-running conversation as a prerequisite to rendering the page. Fortunately, Seam
+            has a built-in mechanism for enforcing this requirement.
+        </p><p>
+            In the Seam page descriptor, you can indicate that the current conversation must be long-running (or nested)
+            in order for a page to be rendered using the <code class="literal">conversation-required</code> attribute as follows:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">page</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view-id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/book.xhtml&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">conversation-required</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;true&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre><div xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="note"><h2>Note</h2><p>
+               The only downside is there's no built-in way to indicate <span class="emphasis"><em>which</em></span> long-running
+               conversation is required. You can build on this basic authorization by dually checking if a specific
+               value is present in the conversation within a page action.
+           </p></div><p>
+            When Seam determines that this page is requested outside of a long-running conversation, the following
+            actions are taken:
+        </p><div class="itemizedlist"><ul><li><p>A contextual event named <code class="literal">org.jboss.seam.noConversation</code> is raised</p></li><li><p>A warning status message is registered using the bundle key <code class="literal">org.jboss.seam.NoConversation</code></p></li><li><p>The user is redirected to an alternate page, if defined</p></li></ul></div><p>
+            The alternate page is defined in the <code class="literal">no-conversation-view-id</code> attribute on a
+            <code class="literal">&lt;pages&gt;</code> element in the Seam page descriptor as follows:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">pages</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">no-conversation-view-id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/main.xhtml&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            At the moment, you can only define one such page for the entire application.
+        </p></div><div class="section" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="d0e6094"/>8.5. Using <code class="literal">&lt;s:link&gt;</code> and <code class="literal">&lt;s:button&gt;</code></h2></div></div></div><p>
+            JSF command links always perform a form submission via JavaScript, 
+            which breaks the web browser's "open in new window" or "open in new tab"
+            feature. In plain JSF, you need to use an <code class="literal">&lt;h:outputLink&gt;</code>
+            if you need this functionality. But there are two major limitations to 
+            <code class="literal">&lt;h:outputLink&gt;</code>.
+        </p><div class="itemizedlist"><ul><li><p>
+            JSF provides no way to attach an action listener to an 
+            <code class="literal">&lt;h:outputLink&gt;</code>.
+        </p></li><li><p>
+            JSF does not propagate the selected row of a <code class="literal">DataModel</code> 
+            since there is no actual form submission.
+        </p></li></ul></div><p>
+            Seam provides the notion of a <span class="emphasis"><em>page action</em></span> to help 
+            solve the first problem, but this does nothing to help us with the second 
+            problem. We <span class="emphasis"><em>could</em></span> work around this by using the
+            RESTful approach of passing a request parameter and requerying
+            for the selected object on the server side. In some cases — such as the 
+            Seam blog example application — this is indeed the best approach. The 
+            RESTful style supports bookmarking, since it does not require server-side state. 
+            In other cases, where we don't care about bookmarks, the use of 
+            <code class="literal">@DataModel</code> and <code class="literal">@DataModelSelection</code> is 
+            just so convenient and transparent!
+        </p><p>
+            To fill in this missing functionality, and to make conversation propagation
+            even simpler to manage, Seam provides the <code class="literal">&lt;s:link&gt;</code>
+            JSF tag.
+        </p><p>
+            The link may specify just the JSF view id:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:link</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/login.xhtml&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;Login&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            Or, it may specify an action method (in which case the action outcome determines
+            the page that results):
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:link</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{login.logout}&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;Logout&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            If you specify <span class="emphasis"><em>both</em></span> a JSF view id and an action method, the
+            'view' will be used <span class="emphasis"><em>unless</em></span> the action method returns a
+            non-null outcome:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:link</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/loggedOut.xhtml&quot;</span><span class="xml_plain">&nbsp;&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{login.logout}&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;Logout&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            The link automatically propagates the selected row of a <code class="literal">DataModel</code>
+            using inside <code class="literal">&lt;h:dataTable&gt;</code>:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:link</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/hotel.xhtml&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{hotelSearch.selectHotel}&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{hotel.name}&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            You can leave the scope of an existing conversation:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:link</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/main.xhtml&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">propagation</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;none&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            You can begin, end, or nest conversations:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:link</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{issueEditor.viewComment}&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">propagation</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;nested&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            If the link begins a conversation, you can even specify a pageflow to be used:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:link</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{documentEditor.getDocument}&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">propagation</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;begin&quot;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_attribute_name">pageflow</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;EditDocument&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            The <code class="literal">taskInstance</code> attribute is for use in jBPM task lists:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:link</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{documentApproval.approveOrReject}&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">taskInstance</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{task}&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            (See the DVD Store demo application for examples of this.)
+        </p><p>
+            Finally, if you need the "link" to be rendered as a button, use <code class="literal">&lt;s:button&gt;</code>:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:button</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{login.logout}&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;Logout&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre></div><div class="section" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="d0e6198"/>8.6. Success messages</h2></div></div></div><p>
+            It is quite common to display a message to the user indicating 
+            success or failure of an action. It is convenient to use a JSF
+            <code class="literal">FacesMessage</code> for this. Unfortunately, a
+            successful action often requires a browser redirect, and JSF 
+            does not propagate faces messages across redirects. This makes
+            it quite difficult to display success messages in plain JSF.
+        </p><p>
+            The built in conversation-scoped Seam component named 
+            <code class="literal">facesMessages</code> solves this problem.
+            (You must have the Seam redirect filter installed.)
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">@</span><!-- <br/> --><span class="java_type">Name</span><!-- <br/> --><span class="java_separator">(</span><!-- <br/> --><span class="java_literal">&quot;editDocumentAction&quot;</span><!-- <br/> --><span class="java_separator">)</span>
+<!--  --><br/><span class="java_plain">@</span><span class="java_type">Stateless</span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_keyword">class</span><span class="java_plain">&nbsp;</span><span class="java_type">EditDocumentBean</span><span class="java_plain">&nbsp;</span><span class="java_keyword">implements</span><span class="java_plain">&nbsp;</span><span class="java_type">EditDocument</span><span class="java_plain">&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_plain">&nbsp;</span><span class="java_type">EntityManager</span><span class="java_plain">&nbsp;em</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_plain">&nbsp;</span><span class="java_type">Document</span><span class="java_plain">&nbsp;document</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_plain">&nbsp;</span><span class="java_type">FacesMessages</span><span class="java_plain">&nbsp;facesMessages</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">String</span><span class="java_plain">&nbsp;update</span><span class="java_separator">()</span><span class="java_plain">&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;em</span><span class="java_separator">.</span><span class="java_plain">merge</span><span class="java_separator">(</span><span class="java_plain">document</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;facesMessages</span><span class="java_separator">.</span><span class="java_plain">add</span><span class="java_separator">(</span><span class="java_literal">&quot;Document&nbsp;updated&quot;</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span>
+<!--  --><br/><span class="java_separator">}</span></pre><p>
+            Any message added to <code class="literal">facesMessages</code> is
+            used in the very next render response phase for the current
+            conversation. This even works when there is no long-running
+            conversation since Seam preserves even temporary conversation
+            contexts across redirects.
+        </p><p>
+            You can even include JSF EL expressions in a faces message summary:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">facesMessages</span><!-- <br/> --><span class="java_separator">.</span><!-- <br/> --><span class="java_plain">add</span><!-- <br/> --><span class="java_separator">(</span><!-- <br/> --><span class="java_literal">&quot;Document&nbsp;#{document.title}&nbsp;was&nbsp;updated&quot;</span><!-- <br/> --><span class="java_separator">);</span></pre><p>
+            You may display the messages in the usual way, for example:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:messages</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">globalOnly</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;true&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre></div><div class="section" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="d0e6226"/>8.7. Natural conversation ids</h2></div></div></div><p>
+            When working with conversations that deal with persistent objects, it may be 
+            desirable to use the natural business key of the object instead of the standard,
+            "surrogate" conversation id:
+        </p><p>
+                  <span class="emphasis"><em>Easy redirect to existing conversation</em></span>
+               </p><p>
+                  It can be useful to redirect to an existing conversation if 
+                  the user requests the same operation twice. Take this example:
+               
+               “<span class="quote">
+                  You are on ebay, half way through paying for an item you just 
+                  won as a Christmas present for your parents. Lets say you're
+                  sending it straight to them - you enter your payment details 
+                  but you can't remember their address. You accidentally reuse 
+                  the same browser window finding out their address. Now you 
+                  need to return to the payment for the item.
+               </span>”
+       		</p><p>
+                  With a natural conversation it's really easy to have the user
+                  rejoin the existing conversation, and pick up where they left 
+                  off - just have them to rejoin the payForItem conversation 
+                  with the itemId as the conversation id.
+               </p><p>
+                  <span class="emphasis"><em>User friendly URLs</em></span>
+               </p><p>
+                  For me this consists of a navigable 
+                  hierarchy (I can navigate by editing the url) and a meaningful
+                  URL (like this Wiki uses - so don't identify things by random 
+                  ids). For some applications user friendly URLs are less 
+                  important, of course.
+               </p><p>
+                  With a natural conversation, when you are building your hotel 
+                  booking system (or, of course, whatever your app is) you can 
+                  generate a URL like 
+                  <code class="literal">http://seam-hotels/book.seam?hotel=BestWesternAntwerpen</code> 
+                  (of course, whatever parameter <code class="literal">hotel</code> maps 
+                  to on your domain model must be unique) and with URLRewrite 
+                  easily transform this to 
+                  http://seam-hotels/book/BestWesternAntwerpen.
+               </p><p>
+                  Much better!
+               </p></div><div class="section" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="d0e6260"/>8.8. Creating a natural conversation</h2></div></div></div><p>
+                Natural conversations are defined in <code class="literal">pages.xml</code>: 
+            </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_plain">&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">conversation</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;PlaceBid&quot;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_attribute_name">parameter-name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;auctionId&quot;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_attribute_name">parameter-value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{auction.auctionId}&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+                The first thing to note from the above definition is that the conversation
+                has a name, in this case <code class="literal">PlaceBid</code>.  This name uniquely
+                identifies this particular named conversation, and is used by the 
+                <code class="literal">page</code> definition to identify a named conversation to participate
+                in.
+            </p><p>
+                The next attribute, <code class="literal">parameter-name</code> defines the request parameter 
+                that will contain the natural conversation id, in place of the default conversation 
+                id parameter. In this example, the <code class="literal">parameter-name</code> is <code class="literal">auctionId</code>.  
+                This means that instead of a conversation parameter like <code class="literal">cid=123</code> 
+                appearing in the URL for your page, it will contain <code class="literal">auctionId=765432</code> 
+                instead.
+            </p><p>
+                The last attribute in the above configuration, <code class="literal">parameter-value</code>,
+                defines an EL expression used to evaluate the value of the natural business key to
+                use as the conversation id.  In this example, the conversation id will be the primary
+                key value of the <code class="literal">auction</code> instance currently in scope.
+            </p><p>
+                Next, we define which pages will participate in the named conversation.
+                This is done by specifying the <code class="literal">conversation</code> attribute for a
+                <code class="literal">page</code> definition:
+            </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_plain">&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">page</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view-id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/bid.xhtml&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">conversation</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;PlaceBid&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">login-required</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;true&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">navigation</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">from-action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{bidAction.confirmBid}&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">rule</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">if-outcome</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;success&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">redirect</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view-id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/auction.xhtml&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">param</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;id&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{bidAction.bid.auction.auctionId}&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">redirect</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">rule</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">navigation</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">page</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre></div><div class="section" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="d0e6313"/>8.9. Redirecting to a natural conversation</h2></div></div></div><p>
+                When starting, or redirecting to, a natural conversation there are a number
+                of options for specifying the natural conversation name.  Let's start by looking at
+                the following page definition:
+            </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_plain">&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">page</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view-id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/auction.xhtml&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">param</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;id&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{auctionDetail.selectedAuctionId}&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">navigation</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">from-action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{bidAction.placeBid}&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">redirect</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view-id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/bid.xhtml&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">navigation</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">page</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+                From here, we can see that invoking the action <code class="literal">#{bidAction.placeBid}</code>
+                from our auction view (by the way, all these examples are taken from the seamBay example in Seam),
+                that we will be redirected to <code class="literal">/bid.xhtml</code>, which, as we saw previously,
+                is configured with the natural conversation <code class="literal">PlaceBid</code>.  The declaration for
+                our action method looks like this:                
+            </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">&nbsp;&nbsp;&nbsp;@</span><!-- <br/> --><span class="java_type">Begin</span><!-- <br/> --><span class="java_separator">(</span><!-- <br/> --><span class="java_plain">join&nbsp;</span><!-- <br/> --><span class="java_operator">=</span><!-- <br/> --><span class="java_plain">&nbsp;</span><!-- <br/> --><span class="java_literal">true</span><!-- <br/> --><span class="java_separator">)</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">void</span><span class="java_plain">&nbsp;placeBid</span><span class="java_separator">()</span></pre><p>
+                When named conversations are specified in the <code class="literal">&lt;page/&gt;</code> element,
+                redirection to the named conversation occurs as part of navigation rules, after the 
+                action method has already been invoked.  This is a problem when redirecting to an
+                existing conversation, as redirection needs to be occur before the action method is 
+                invoked.  Therefore it is necessary to specify the conversation name when
+                the action is invoked.  One way of doing this is by using the <code class="literal">s:conversationName</code>
+                tag:
+            </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_plain">&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:commandButton</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;placeBidWithAmount&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">styleClass</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;placeBid&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{bidAction.placeBid}&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:conversationName</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;PlaceBid&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:commandButton</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+              Another alternative is to specify the <code class="literal">conversationName</code> attribute when
+              using either <code class="literal">s:link</code> or <code class="literal">s:button</code>:
+            </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_plain">&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:link</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;Place&nbsp;Bid&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{bidAction.placeBid}&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">conversationName</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;PlaceBid&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre></div><div class="section" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="d0e6356"/>8.10. Workspace management</h2></div></div></div><p>
+            Workspace management is the ability to "switch" conversations in
+            a single window. Seam makes workspace management completely 
+            transparent at the level of the Java code. To enable workspace
+            management, all you need to do is:
+        </p><div class="itemizedlist"><ul><li><p>
+                Provide <span class="emphasis"><em>description</em></span> text for each view id 
+                (when using JSF or Seam navigation rules) or page node (when using 
+                jPDL pageflows). This description text is displayed to the user 
+                by the workspace switchers.
+            </p></li><li><p>
+                Include one or more of the standard workspace switcher JSF
+                or Facelets fragments in your pages. The standard fragments
+                support workspace management via a drop down menu, a list
+                of conversations, or breadcrumbs.
+                </p></li></ul></div><div class="section" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e6371"/>8.10.1. Workspace management and JSF navigation</h3></div></div></div><p>
+                When you use JSF or Seam navigation rules, Seam switches to a
+                conversation by restoring the current <code class="literal">view-id</code>
+                for that conversation. The descriptive text for the
+                workspace is defined in a file called <code class="literal">pages.xml</code>
+                that Seam expects to find in the <code class="literal">WEB-INF</code>
+                directory, right next to <code class="literal">faces-config.xml</code>:
+            </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">pages</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">page</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view-id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/main.xhtml&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">description</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain">Search&nbsp;hotels:&nbsp;#{hotelBooking.searchString}</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">description</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">page</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">page</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view-id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/hotel.xhtml&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">description</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain">View&nbsp;hotel:&nbsp;#{hotel.name}</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">description</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">page</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">page</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view-id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/book.xhtml&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">description</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain">Book&nbsp;hotel:&nbsp;#{hotel.name}</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">description</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">page</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">page</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view-id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/confirm.xhtml&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">description</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain">Confirm:&nbsp;#{booking.description}</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">description</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">page</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">pages</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+               Note that if this file is missing, the Seam application will
+               continue to work perfectly! The only missing functionality
+               will be the ability to switch workspaces.
+           </p></div><div class="section" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e6392"/>8.10.2. Workspace management and jPDL pageflow</h3></div></div></div><p>
+                When you use a jPDL pageflow definition, Seam switches
+                to a conversation by restoring the current jBPM process
+                state. This is a more flexible model since it allows the
+                same <code class="literal">view-id</code> to have different
+                descriptions depending upon the current 
+                <code class="literal">&lt;page&gt;</code> node. The description
+                text is defined by the <code class="literal">&lt;page&gt;</code> 
+                node:
+            </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">pageflow-definition</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;shopping&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">start-state</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;start&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">transition</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">to</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;browse&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">start-state</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">page</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;browse&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view-id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/browse.xhtml&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">description</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain">DVD&nbsp;Search:&nbsp;#{search.searchPattern}</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">description</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">transition</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">to</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;browse&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">transition</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;checkout&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">to</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;checkout&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">page</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">page</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;checkout&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view-id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/checkout.xhtml&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">description</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain">Purchase:&nbsp;$#{cart.total}</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">description</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">transition</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">to</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;checkout&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">transition</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;complete&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">to</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;complete&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">page</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">page</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;complete&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view-id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/complete.xhtml&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">end-conversation</span><span class="xml_plain">&nbsp;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">page</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">pageflow-definition</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre></div><div class="section" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e6408"/>8.10.3. The conversation switcher</h3></div></div></div><p>
+                Include the following fragment in your JSF page
+                to get a drop-down menu that lets you switch to any
+                current conversation, or to any other page of the application:
+            </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:selectOneMenu</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{switcher.conversationIdOrOutcome}&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">f:selectItem</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">itemLabel</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;Find&nbsp;Issues&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">itemValue</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;findIssue&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">f:selectItem</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">itemLabel</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;Create&nbsp;Issue&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">itemValue</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;editIssue&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">f:selectItems</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{switcher.selectItems}&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:selectOneMenu</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:commandButton</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{switcher.select}&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;Switch&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+                In this example, we have a menu that includes an item for each
+                conversation, together with two additional items that let the
+                user begin a new conversation.
+            </p><p>
+                Only conversations with a description (specified in 
+                <code class="literal">pages.xml</code>) will be included in the drop-down 
+                menu.
+            </p><div class="mediaobject" align="center"><img src="images/switcher.png" align="middle"/></div></div><div class="section" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e6427"/>8.10.4. The conversation list</h3></div></div></div><p>
+                The conversation list is very similar to the conversation switcher,
+                except that it is displayed as a table:
+            </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:dataTable</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{conversationList}&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">var</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;entry&quot;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_attribute_name">rendered</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{not&nbsp;empty&nbsp;conversationList}&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:column</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">f:facet</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;header&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain">Workspace</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">f:facet</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:commandLink</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{entry.select}&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{entry.description}&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:outputText</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;[current]&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">rendered</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{entry.current}&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:column</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:column</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">f:facet</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;header&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain">Activity</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">f:facet</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:outputText</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{entry.startDatetime}&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">f:convertDateTime</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">type</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;time&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">pattern</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;hh:mm&nbsp;a&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:outputText</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:outputText</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;&nbsp;-&nbsp;&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:outputText</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{entry.lastDatetime}&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">f:convertDateTime</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">type</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;time&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">pattern</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;hh:mm&nbsp;a&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:outputText</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:column</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:column</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">f:facet</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;header&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain">Action</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">f:facet</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:commandButton</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{entry.select}&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{msg.Switch}&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:commandButton</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{entry.destroy}&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{msg.Destroy}&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:column</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:dataTable</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+                We imagine that you will want to customize this for your own application.
+            </p><div class="mediaobject" align="center"><img src="images/list.png" align="middle"/></div><p>
+                Only conversations with a description will be included in the
+                list.
+            </p><p>
+                Notice that the conversation list lets the user destroy workspaces.
+            </p></div><div class="section" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e6445"/>8.10.5. Breadcrumbs</h3></div></div></div><p>
+                Breadcrumbs are useful in applications which use a nested conversation
+                model. The breadcrumbs are a list of links to conversations in the
+                current conversation stack:
+            </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">ui:repeat</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{conversationStack}&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">var</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;entry&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:outputText</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;&nbsp;|&nbsp;&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain">&nbsp;</span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:commandLink</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{entry.description}&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">action</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{entry.select}&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">ui:repeat</span><span class="xml_plain"></span><br />
+</pre><div class="mediaobject" align="center"><img src="images/breadcrumbs.png" align="middle"/></div></div></div><div class="section" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="d0e6457"/>8.11. Conversational components and JSF component bindings</h2></div></div></div><p>
+            Conversational components have one minor limitation: they cannot be used to hold bindings 
+            to JSF components. (We generally prefer not to use this feature of JSF unless absolutely
+            necessary, since it creates a hard dependency from application logic to the view.) On a 
+            postback request, component bindings are updated during the Restore View phase, 
+            before the Seam conversation context has been restored.
+        </p><p>
+            To work around this use an event scoped component to store the component bindings and inject 
+            it into the conversation scoped component that requires it.
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">@</span><!-- <br/> --><span class="java_type">Name</span><!-- <br/> --><span class="java_separator">(</span><!-- <br/> --><span class="java_literal">&quot;grid&quot;</span><!-- <br/> --><span class="java_separator">)</span>
+<!--  --><br/><span class="java_plain">@</span><span class="java_type">Scope</span><span class="java_separator">(</span><span class="java_type">ScopeType</span><span class="java_separator">.</span><span class="java_plain">EVENT</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_keyword">class</span><span class="java_plain">&nbsp;</span><span class="java_type">Grid</span>
+<!--  --><br/><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">private</span><span class="java_plain">&nbsp;</span><span class="java_type">HtmlPanelGrid</span><span class="java_plain">&nbsp;htmlPanelGrid</span><span class="java_separator">;</span>
+</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_operator">//</span><span class="java_plain">&nbsp;getters&nbsp;and&nbsp;setters</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">...</span>
+<!--  --><br/><span class="java_separator">}</span></pre><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">@</span><!-- <br/> --><span class="java_type">Name</span><!-- <br/> --><span class="java_separator">(</span><!-- <br/> --><span class="java_literal">&quot;gridEditor&quot;</span><!-- <br/> --><span class="java_separator">)</span>
+<!--  --><br/><span class="java_plain">@</span><span class="java_type">Scope</span><span class="java_separator">(</span><span class="java_type">ScopeType</span><span class="java_separator">.</span><span class="java_plain">CONVERSATION</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_keyword">class</span><span class="java_plain">&nbsp;</span><span class="java_type">GridEditor</span>
+<!--  --><br/><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_separator">(</span><span class="java_plain">required</span><span class="java_operator">=</span><span class="java_literal">false</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">private</span><span class="java_plain">&nbsp;</span><span class="java_type">Grid</span><span class="java_plain">&nbsp;grid</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">...</span>
+<!--  --><br/><span class="java_separator">}</span></pre><p>
+         Also, you can't inject a conversation scoped component into an event
+         scoped component which you bind a JSF control to. This includes Seam
+         built in components like <code class="literal">facesMessages</code>. 
+       </p><p>
+          Alternatively, you can access the JSF component tree through the implicit <code class="literal">uiComponent</code>
+          handle. The following example accesses <code class="literal">getRowIndex()</code> of the
+          <code class="literal">UIData</code> component which backs the data table during iteration, it prints
+          the current row number:
+       </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_plain"></span><br />
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:dataTable</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;lineItemTable&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">var</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;lineItem&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{orderHome.lineItems}&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:column</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Row:&nbsp;#{uiComponent['lineItemTable'].rowIndex}</span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:column</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;...</span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:dataTable</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+          JSF UI components are available with their client identifier in this map.
+       </p></div><div class="section" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="d0e6488"/>8.12. Concurrent calls to conversational components</h2></div></div></div><p>
+        A general discussion of concurrent calls to Seam components can be 
+        found in <a class="xref" href="concepts.html#concurrency" title="5.1.10. Concurrency model">Section 5.1.10, “Concurrency model”</a>. Here we will discuss 
+        the most common situation in which you will encounter concurrency 
+        — accessing conversational components from AJAX requests.
+        We're going to discuss the options that a Ajax client library should
+        provide to control events originating at the client — and we'll
+        look at the options RichFaces gives you.
+      </p><p>
+        Conversational components don't allow real concurrent access therefore
+        Seam queues each request to process them serially.  This allows each
+        request to be executed in a deterministic fashion. However, a simple
+        queue isn't that great — firstly, if a method is, for some
+        reason, taking a very long time to complete, running it over and over
+        again whenever the client generates a request is bad idea (potential
+        for Denial of Service attacks), and, secondly, AJAX is often to used
+        to provide a quick status update to the user, so continuing to run the
+        action after a long time isn't useful. 
+      </p><p>
+        Therefore, when you are working inside a long running conversation,
+        Seam queues the action event for a period of time (the concurrent 
+        request timeout); if it can't process the event in time, it creates a 
+        temporary conversation and prints out a message to the user to let them
+        know what's going on.  It's therefore very important not to flood the 
+        server with AJAX events!
+      </p><p>
+        We can set a sensible default for the concurrent request timeout (in 
+        ms) in components.xml:
+      </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">core:manager</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">concurrent-request-timeout</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;500&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+        We can also fine tune the concurrent request timeout on a page-by-page
+        basis:
+       </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">page</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view-id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/book.xhtml&quot;</span><span class="xml_plain">&nbsp;</span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_attribute_name">conversation-required</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;true&quot;</span><span class="xml_plain">&nbsp;</span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_attribute_name">login-required</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;true&quot;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_attribute_name">concurrent-request-timeout</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;2000&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+        So far we've discussed AJAX requests which appear serial to the user - 
+        the client tells the server that an event has occur, and then rerenders 
+        part of the page based on the result.  This approach is great when the 
+        AJAX request is lightweight (the methods called are simple e.g. 
+        calculating the sum of a column of numbers).  But what if we need to do 
+        a complex computation that is going to take a minute? 
+      </p><p>
+        For heavy computation we should use a poll based approach — the 
+        client sends an AJAX request to the server, which causes action to be 
+        executed asynchronously on the server (the response to the client is 
+        immediate) and the client then polls the server for updates.  This is 
+        good approach when you have a long-running action for which it is 
+        important that every action executes (you don't want some to timeout).
+      </p><div class="section" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e6511"/>8.12.1. How should we design our conversational AJAX application?</h3></div></div></div><p>
+          Well first, you need to decide whether you want to use the simpler 
+          "serial" request or whether you want to use a polling approach.
+        </p><p>
+          If you go for a "serial" requests, then you need to estimate how long 
+          your request will take to complete - is it much shorter than the 
+          concurrent request timeout? If not, you probably want to alter the 
+          concurrent request timeout for this page (as discussed above). You 
+          probably want a queue on the client side to prevent flooding the 
+          server with requests.  If the event occurs often (e.g. a keypress, 
+          onblur of input fields) and immediate update of the client is not a 
+          priority you should set a request delay on the client side. When 
+          working out your request delay, factor in that the event may also be 
+          queued on the server side.
+        </p><p>
+          Finally, the client library may provide an option to abort unfinished
+          duplicate requests in favor of the most recent.
+        </p><p>
+          Using a poll-style design requires less fine-tuning.  You just mark your
+          action method <code class="literal">@Asynchronous</code> and decide on a polling
+          interval:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_type">int</span><!-- <br/> --><span class="java_plain">&nbsp;total</span><!-- <br/> --><span class="java_separator">;</span>
+</span>
+<!--  --><br/><span class="java_operator">//</span><span class="java_plain">&nbsp;</span><span class="java_type">This</span><span class="java_plain">&nbsp;method&nbsp;is&nbsp;called&nbsp;when&nbsp;an&nbsp;event&nbsp;occurs&nbsp;on&nbsp;the&nbsp;client</span>
+<!--  --><br/><span class="java_operator">//</span><span class="java_plain">&nbsp;</span><span class="java_type">It</span><span class="java_plain">&nbsp;takes&nbsp;a&nbsp;really&nbsp;</span><span class="java_type">long</span><span class="java_plain">&nbsp;time&nbsp;to&nbsp;execute</span>
+<!--  --><br/><span class="java_plain">@</span><span class="java_type">Asynchronous</span><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">void</span><span class="java_plain">&nbsp;calculateTotal</span><span class="java_separator">()</span><span class="java_plain">&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;total&nbsp;</span><span class="java_operator">=</span><span class="java_plain">&nbsp;someReallyComplicatedCalculation</span><span class="java_separator">();</span>
+<!--  --><br/><span class="java_separator">}</span>
+</span>
+<!--  --><br/><span class="java_operator">//</span><span class="java_plain">&nbsp;</span><span class="java_type">This</span><span class="java_plain">&nbsp;method&nbsp;is&nbsp;called&nbsp;as&nbsp;the&nbsp;result&nbsp;of&nbsp;the&nbsp;poll</span>
+<!--  --><br/><span class="java_operator">//</span><span class="java_plain">&nbsp;</span><span class="java_type">It</span><span class="java_plain">'s&nbsp;very&nbsp;quick&nbsp;to&nbsp;execute</span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">int</span><span class="java_plain">&nbsp;getTotal</span><span class="java_separator">()</span><span class="java_plain">&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">return</span><span class="java_plain">&nbsp;total</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_separator">}</span></pre></div><div class="section" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e6527"/>8.12.2. Dealing with errors</h3></div></div></div><p>
+          However carefully you design your application to queue concurrent
+          requests to your conversational component, there is a risk that the
+          server will become overloaded and be unable to process all the
+          requests before the request will have to wait longer than the 
+          <code class="literal">concurrent-request-timeout</code>. In this case Seam will
+          throw a <code class="literal">ConcurrentRequestTimeoutException</code> which can
+          be handled in <code class="literal">pages.xml</code>. We recommend sending an
+          HTTP 503 error: 
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">exception</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">class</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;org.jboss.seam.ConcurrentRequestTimeoutException&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">log-level</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;trace&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">http-error</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">error-code</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;503&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">exception</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><div xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="note"><h2>503 Service Unavailable (HTTP/1.1 RFC)</h2><p>
+            The server is currently unable to handle the request due to a 
+            temporary overloading or maintenance of the server. The implication 
+            is that this is a temporary condition which will be alleviated after 
+            some delay.
+          </p></div><p>
+          Alternatively you could redirect to an error page:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">exception</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">class</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;org.jboss.seam.ConcurrentRequestTimeoutException&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">log-level</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;trace&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">end-conversation</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">redirect</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">view-id</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;/error.xhtml&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">message</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain">The&nbsp;server&nbsp;is&nbsp;too&nbsp;busy&nbsp;to&nbsp;process&nbsp;your&nbsp;request,&nbsp;please&nbsp;try&nbsp;again&nbsp;later</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">message</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">redirect</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">exception</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+           Seam Remoting and JSF 2 can both handle HTTP error
+           codes. Seam Remoting will pop up a dialog box showing the HTTP
+           error. JSF 2 provides support for handling
+           HTTP errors by providing a user definable callback. For example, to
+           show the error message to the user: 
+        </p><pre class="programlisting">&lt;script type="text/javascript"&gt;
+   jsf.ajax.addOnError(function(data) { 
+      alert("An error occurred");
+   });
+&lt;/script&gt;</pre><div xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="note"><h2>JSF 2 javascript documentation</h2>
+            More details about JSF 2 javascript API can be seen at 
+            <a class="ulink" href="http://javaserverfaces.java.net/nonav/docs/2.0/jsdocs/symbols/jsf.ajax.html">http://javaserverfaces.java.net/nonav/docs/2.0/jsdocs/symbols/jsf.ajax.html</a></div><p>
+           If instead of an error code, the server reports that the view has expired,
+           perhaps because the session timed out, you can use a standard 
+           <a class="ulink" href="http://docs.oracle.com/javaee/6/api/javax/faces/context/ExceptionHandler.html">javax.faces.context.ExceptionHandler</a>
+            to handle this scenario.
+        </p></div></div></div><ul class="docnav"><li class="previous"><a accesskey="p" href="events.html"><strong>Prev</strong>Chapter 7. Events, interceptors and exception han...</a></li><li class="up"><a accesskey="u" href="#"><strong>Top of page</strong></a></li><li class="home"><a accesskey="h" href="index.html"><strong>Front page</strong></a></li><li class="next"><a accesskey="n" href="jbpm.html"><strong>Next</strong>Chapter 9. Pageflows and business processes</a></li></ul></body></html>

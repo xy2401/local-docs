@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory">Chapter 24. Caching</title><link rel="stylesheet" href="css/seamframework.css" type="text/css"/><meta xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" name="generator" content="DocBook XSL Stylesheets V1.74.0"/><link rel="home" href="index.html" title="Seam - Contextual Components"/><link rel="up" href="index.html" title="Seam - Contextual Components"/><link rel="prev" href="jms.html" title="Chapter 23. Asynchronicity and messaging"/><link rel="next" href="webservices.html" title="Chapter 25. Web Services"/></head><body><p id="title"><a href="http://www.seamframework.org" class="site_href"><strong>SeamFramework.org</strong></a><a href="http://www.seamframework.org/Documentation" class="doc_href"><strong>Community Documentation</strong></a></p><ul class="docnav"><li class="previous"><a accesskey="p" href="jms.html"><strong>Prev</strong></a></li><li class="next"><a accesskey="n" href="webservices.html"><strong>Next</strong></a></li></ul><div class="chapter" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="cache"/>Chapter 24. Caching</h2></div></div></div><div class="toc"><dl><dt><span class="section"><a href="cache.html#d0e21736">24.1. Using Caching in Seam</a></span></dt><dt><span class="section"><a href="cache.html#d0e21938">24.2. Page fragment caching</a></span></dt></dl></div><p>
+      In almost all enterprise applications, the database is the primary
+      bottleneck, and the least scalable tier of the runtime environment. People
+      from a PHP/Ruby environment will try to tell you that so-called "shared
+      nothing" architectures scale well. While that may be literally true, I
+      don't know of many interesting multi-user applications which can be
+      implemented with no sharing of resources between different nodes of the
+      cluster. What these silly people are really thinking of is a "share
+      nothing except for the database" architecture. Of course, sharing the
+      database is the primary problem with scaling a multi-user
+      application — so the claim that this architecture is highly scalable
+      is absurd, and tells you a lot about the kind of applications that these
+      folks spend most of their time working on.
+   </p><p>
+      Almost anything we can possibly do to share the database
+      <span class="emphasis"><em>less often</em></span> is worth doing.
+   </p><p>
+      This calls for a cache. Well, not just one cache. A well designed Seam
+      application will feature a rich, multi-layered caching strategy that
+      impacts every layer of the application:
+   </p><div class="itemizedlist"><ul><li><p>
+            The database, of course, has its own cache. This is super-important,
+            but can't scale like a cache in the application tier.
+         </p></li><li><p>
+            Your ORM solution (Hibernate, or some other JPA implementation) has
+            a second-level cache of data from the database. This is a very
+            powerful capability, but is often misused. In a clustered
+            environment, keeping the data in the cache transactionally
+            consistent across the whole cluster, and with the database, is quite
+            expensive. It makes most sense for data which is shared between many
+            users, and is updated rarely. In traditional stateless
+            architectures, people often try to use the second-level cache for
+            conversational state. This is always bad, and is especially wrong in
+            Seam.
+         </p></li><li><p>
+            The Seam conversation context is a cache of conversational state.
+            Components you put into the conversation context can hold and cache
+            state relating to the current user interaction.
+         </p></li><li><p>
+            In particular, the Seam-managed persistence context (or an extended
+            EJB container-managed persistence context associated with a
+            conversation-scoped stateful session bean) acts as a cache of data
+            that has been read in the current conversation. This cache tends to
+            have a pretty high hitrate! Seam optimizes the replication of
+            Seam-managed persistence contexts in a clustered environment, and
+            there is no requirement for transactional consistency with the
+            database (optimistic locking is sufficient) so you don't need to
+            worry too much about the performance implications of this cache,
+            unless you read thousands of objects into a single persistence
+            context.
+         </p></li><li><p>
+            The application can cache non-transactional state in the Seam
+            application context. State kept in the application context is of
+            course not visible to other nodes in the cluster.
+         </p></li><li><p>
+            The application can cache transactional state using the Seam
+            <code class="literal">cacheProvider</code> component, which integrates 
+            JBossCache, JBoss POJO Cache, Infinispan or EHCache into the Seam environment. 
+            This state will be visible to other nodes if your cache supports
+            running in a clustered mode.
+         </p></li><li><p>
+            Finally, Seam lets you cache rendered fragments of a JSF page.
+            Unlike the ORM second-level cache, this cache is not automatically
+            invalidated when data changes, so you need to write application code
+            to perform explicit invalidation, or set appropriate expiration
+            policies.
+         </p></li></ul></div><p>
+      For more information about the second-level cache, you'll need to refer to
+      the documentation of your ORM solution, since this is an extremely complex
+      topic. In this section we'll discuss the use of caching directly, via
+      the <code class="literal">cacheProvider</code> component, or as the page fragment cache,
+      via the <code class="literal">&lt;s:cache&gt;</code> control.
+   </p><div class="section" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="d0e21736"/>24.1. Using Caching in Seam</h2></div></div></div><p>
+         The built-in <code class="literal">cacheProvider</code> component manages an instance
+         of:
+      </p><div class="variablelist"><dl><dt><span class="term">
+               Infinispan 5.x (suitable for use in JBoss AS 7.1.x or later and other
+               containers)
+            </span></dt><dd><p>
+                  <code class="literal">org.infninispan.tree.TreeCache</code>
+               </p></dd><dt><span class="term">
+               JBoss Cache 1.x (suitable for use in JBoss 4.2.x or later and other
+               containers)
+            </span></dt><dd><p>
+                  <code class="literal">org.jboss.cache.TreeCache</code>
+               </p></dd><dt><span class="term">
+               JBoss Cache 2.x (suitable for use in JBoss 5.x and other
+               containers)
+            </span></dt><dd><p>
+                  <code class="literal">org.jboss.cache.Cache</code>
+               </p></dd><dt><span class="term">
+               JBoss POJO Cache 1.x (suitable for use in JBoss 4.2.x or later and other
+               containers)
+            </span></dt><dd><p>
+                  <code class="literal">org.jboss.cache.aop.PojoCache</code>
+               </p></dd><dt><span class="term">
+               EHCache (suitable for use in any container)
+            </span></dt><dd><p>
+                  <code class="literal">net.sf.ehcache.CacheManager</code>
+               </p></dd></dl></div><p>  
+         You can safely put any immutable Java object in the cache, and it will 
+         be stored in the cache and replicated across the cluster (assuming that
+         replication is supported and enabled). If you want to keep mutable 
+         objects in the cache read the documentation of the underling caching 
+         project documentation to discover how to notify the cache of changes to 
+         the cache.
+      </p><p>
+         To use <code class="literal">cacheProvider</code>, you need to include the jars 
+         of the cache implementation in your project:
+      </p><div class="variablelist"><dl><dt><span class="term">
+               Infinispan 5.x
+            </span></dt><dd><div class="itemizedlist"><ul><li><p>
+                        <code class="literal">infinispan-core.jar</code> - Infinispan Core 5.1.x.Final
+                     </p><p>
+                        <code class="literal">infinispan-tree.jar</code> - Infinispan TreeCache 5.1.x.Final
+                     </p></li><li><p>
+                        <code class="literal">jgroups.jar</code> - JGroups 3.0
+                     </p></li></ul></div></dd><dt><span class="term">
+               JBoss Cache 1.x
+            </span></dt><dd><div class="itemizedlist"><ul><li><p>
+                        <code class="literal">jboss-cache.jar</code> - JBoss Cache 1.4.1
+                     </p></li><li><p>
+                        <code class="literal">jgroups.jar</code> - JGroups 2.4.1
+                     </p></li></ul></div></dd><dt><span class="term">
+               JBoss Cache 2.x
+            </span></dt><dd><div class="itemizedlist"><ul><li><p>
+                        <code class="literal">jboss-cache.jar</code> - JBoss Cache 2.2.0
+                     </p></li><li><p>
+                        <code class="literal">jgroups.jar</code> - JGroups 2.6.2
+                     </p></li></ul></div></dd><dt><span class="term">
+               JBoss POJO Cache 1.x
+            </span></dt><dd><div class="itemizedlist"><ul><li><p>
+                        <code class="literal">jboss-cache.jar</code> - JBoss Cache 1.4.1
+                     </p></li><li><p>
+                        <code class="literal">jgroups.jar</code> - JGroups 2.4.1
+                     </p></li><li><p>
+                        <code class="literal">jboss-aop.jar</code> - JBoss AOP 1.5.0
+                     </p></li></ul></div></dd><dt><span class="term">
+               EHCache
+            </span></dt><dd><div class="itemizedlist"><ul><li><p>
+                        <code class="literal">ehcache.jar</code> - EHCache 1.2.3
+                     </p></li></ul></div></dd></dl></div><div xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="tip"><h2>Tip</h2><p>
+            If you would like to know more details about Infinispan, look at the Infinispan 
+            <a class="ulink" href="https://docs.jboss.org/author/display/ISPN/Home">Documentation</a> page.
+         </p></div><p>
+         For an EAR deployment of Seam, we recommend that the infinispan jars and
+         configuration go directly into the EAR.
+      </p><div xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="note"><h2>Note</h2><p>JBoss AS7 already provides Infinispan and JGroups jars, so you need to turn on that 
+        dependencies in your JBoss AS 7 deployment file or modify <code class="literal">META-INF/Manifest.mf</code>
+        to have this dependencies. Check the Blog example or JBoss AS7 documentation how to do that.</p></div><p>
+         You'll also need to provide a configuration file for Infinispan. Place
+         <code class="literal">infinispan.xml</code> with an appropriate cache 
+         configuration into the Web applicaiton classpath (e.g. the ejb jar or
+         <code class="literal">WEB-INF/classes</code>). Infinispan  has many configuration settings,
+          so we won't discuss them here. Please refer to the Infinispan documentation for more information.
+      </p><p>
+         You can find a sample configuration file <code class="literal">infinispan.xml</code> in
+         <code class="literal">examples/blog/blog-web/src/main/resources/infinispan.xml</code>.
+      </p><p>
+         EHCache will run in it's default configuration without a configuration
+         file
+      </p><p>
+         To alter the configuration file in use, configure your cache in
+         <code class="literal">components.xml</code>:
+      </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">components</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">xmlns</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;http://jboss.org/schema/seam/components&quot;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_attribute_name">xmlns:cache</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;http://jboss.org/schema/seam/cache&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">cache:infinispan-cache-provider</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">configuration</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;infinispan.xml&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">components</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><p>Now you can inject the cache into any Seam component:</p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">@</span><!-- <br/> --><span class="java_type">Name</span><!-- <br/> --><span class="java_separator">(</span><!-- <br/> --><span class="java_literal">&quot;chatroomUsers&quot;</span><!-- <br/> --><span class="java_separator">)</span>
+<!--  --><br/><span class="java_plain">@</span><span class="java_type">Scope</span><span class="java_separator">(</span><span class="java_type">ScopeType</span><span class="java_separator">.</span><span class="java_plain">STATELESS</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_keyword">class</span><span class="java_plain">&nbsp;</span><span class="java_type">ChatroomUsers</span>
+<!--  --><br/><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_plain">&nbsp;</span><span class="java_type">CacheProvider</span><span class="java_plain">&nbsp;cacheProvider</span><span class="java_separator">;</span>
+</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">Unwrap</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">Set</span><span class="java_operator">&lt;</span><span class="java_type">String</span><span class="java_operator">&gt;</span><span class="java_plain">&nbsp;getUsers</span><span class="java_separator">()</span><span class="java_plain">&nbsp;</span><span class="java_keyword">throws</span><span class="java_plain">&nbsp;</span><span class="java_type">CacheException</span><span class="java_plain">&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_type">Set</span><span class="java_operator">&lt;</span><span class="java_type">String</span><span class="java_operator">&gt;</span><span class="java_plain">&nbsp;userList&nbsp;</span><span class="java_operator">=</span><span class="java_plain">&nbsp;</span><span class="java_separator">(</span><span class="java_type">Set</span><span class="java_operator">&lt;</span><span class="java_type">String</span><span class="java_operator">&gt;</span><span class="java_separator">)</span><span class="java_plain">&nbsp;cacheProvider</span><span class="java_separator">.</span><span class="java_plain">get</span><span class="java_separator">(</span><span class="java_literal">&quot;chatroom&quot;</span><span class="java_separator">,</span><span class="java_plain">&nbsp;</span><span class="java_literal">&quot;userList&quot;</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">if</span><span class="java_plain">&nbsp;</span><span class="java_separator">(</span><span class="java_plain">userList</span><span class="java_operator">==</span><span class="java_literal">null</span><span class="java_separator">)</span><span class="java_plain">&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;userList&nbsp;</span><span class="java_operator">=</span><span class="java_plain">&nbsp;</span><span class="java_keyword">new</span><span class="java_plain">&nbsp;</span><span class="java_type">HashSet</span><span class="java_operator">&lt;</span><span class="java_type">String</span><span class="java_operator">&gt;</span><span class="java_separator">();</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;cacheProvider</span><span class="java_separator">.</span><span class="java_plain">put</span><span class="java_separator">(</span><span class="java_literal">&quot;chatroom&quot;</span><span class="java_separator">,</span><span class="java_plain">&nbsp;</span><span class="java_literal">&quot;userList&quot;</span><span class="java_separator">,</span><span class="java_plain">&nbsp;userList</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">return</span><span class="java_plain">&nbsp;userList</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span>
+<!--  --><br/><span class="java_separator">}</span></pre><p>
+         If you want to have multiple cache configurations in your
+         application, use <code class="literal">components.xml</code> to configure
+         multiple cache providers:
+      </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">components</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">xmlns</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;http://jboss.org/schema/seam/components&quot;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_attribute_name">xmlns:cache</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;http://jboss.org/schema/seam/cache&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">cache:infinispan-cache-provider</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;myCache&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">configuration</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;myown/cache.xml&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">cache:infinispan-cache-provider</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;myOtherCache&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">configuration</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;myother/cache.xml&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">components</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre></div><div class="section" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="d0e21938"/>24.2. Page fragment caching</h2></div></div></div><p>
+         The most interesting use of caching in Seam is the 
+         <code class="literal">&lt;s:cache&gt;</code> tag, Seam's solution to the problem 
+         of page fragment caching in JSF. <code class="literal">&lt;s:cache&gt;</code>
+         uses <code class="literal">pojoCache</code> internally, so you need to follow the
+         steps listed above before you can use it. (Put the jars in the EAR, 
+         wade through the scary configuration options, etc.)
+      </p><p>
+         <code class="literal">&lt;s:cache&gt;</code> is used for caching some rendered 
+         content which changes rarely. For example, the welcome page of our blog
+         displays the recent blog entries:
+      </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XHTML"><!-- XHTML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:cache</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">key</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;recentEntries-#{blog.id}&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">region</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;welcomePageFragments&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:dataTable</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{blog.recentEntries}&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">var</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;blogEntry&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h:column</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">h3</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain">#{blogEntry.title}</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h3</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">div</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">s:formattedText</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;#{blogEntry.body}&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">div</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:column</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">h:dataTable</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">s:cache</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+         The <code class="literal">key</code> let's you have multiple cached versions of 
+         each page fragment. In this case, there is one cached version per blog.
+         The <code class="literal">region</code> determines the cache or region node that 
+         all version will be stored in. Different nodes may have different 
+         expiry policies. (That's the stuff you set up using the aforementioned 
+         scary configuration options.)
+      </p><p>
+         Of course, the big problem with <code class="literal">&lt;s:cache&gt;</code> is 
+         that it is too stupid to know when the underlying data changes (for
+         example, when the blogger posts a new entry). So you need to evict the
+         cached fragment manually:
+      </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_keyword">public</span><!-- <br/> --><span class="java_plain">&nbsp;</span><!-- <br/> --><span class="java_type">void</span><!-- <br/> --><span class="java_plain">&nbsp;post</span><!-- <br/> --><span class="java_separator">()</span><!-- <br/> --><span class="java_plain">&nbsp;</span><!-- <br/> --><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">...</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;entityManager</span><span class="java_separator">.</span><span class="java_plain">persist</span><span class="java_separator">(</span><span class="java_plain">blogEntry</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;cacheProvider</span><span class="java_separator">.</span><span class="java_plain">remove</span><span class="java_separator">(</span><span class="java_literal">&quot;welcomePageFragments&quot;</span><span class="java_separator">,</span><span class="java_plain">&nbsp;</span><span class="java_literal">&quot;recentEntries-&quot;</span><span class="java_plain">&nbsp;</span><span class="java_operator">+</span><span class="java_plain">&nbsp;blog</span><span class="java_separator">.</span><span class="java_plain">getId</span><span class="java_separator">()</span><span class="java_plain">&nbsp;</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_separator">}</span></pre><p>
+         Alternatively, if it is not critical that changes are immediately
+         visible to the user, you could set a short expiry time on the
+         cache node.
+      </p></div></div><ul class="docnav"><li class="previous"><a accesskey="p" href="jms.html"><strong>Prev</strong>Chapter 23. Asynchronicity and messaging</a></li><li class="up"><a accesskey="u" href="#"><strong>Top of page</strong></a></li><li class="home"><a accesskey="h" href="index.html"><strong>Front page</strong></a></li><li class="next"><a accesskey="n" href="webservices.html"><strong>Next</strong>Chapter 25. Web Services</a></li></ul></body></html>

@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory">Chapter 36. Clustering and EJB Passivation</title><link rel="stylesheet" href="css/seamframework.css" type="text/css"/><meta xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" name="generator" content="DocBook XSL Stylesheets V1.74.0"/><link rel="home" href="index.html" title="Seam - Contextual Components"/><link rel="up" href="index.html" title="Seam - Contextual Components"/><link rel="prev" href="elenhancements.html" title="Chapter 35. JBoss EL"/><link rel="next" href="performance.html" title="Chapter 37. Performance Tuning"/></head><body><p id="title"><a href="http://www.seamframework.org" class="site_href"><strong>SeamFramework.org</strong></a><a href="http://www.seamframework.org/Documentation" class="doc_href"><strong>Community Documentation</strong></a></p><ul class="docnav"><li class="previous"><a accesskey="p" href="elenhancements.html"><strong>Prev</strong></a></li><li class="next"><a accesskey="n" href="performance.html"><strong>Next</strong></a></li></ul><div class="chapter" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="ClusteringAndEJBPassivation"/>Chapter 36. Clustering and EJB Passivation</h2></div></div></div><div class="toc"><dl><dt><span class="sect1"><a href="ClusteringAndEJBPassivation.html#d0e30022">36.1. Clustering</a></span></dt><dd><dl><dt><span class="sect2"><a href="ClusteringAndEJBPassivation.html#d0e30036">36.1.1. Programming for clustering</a></span></dt><dt><span class="sect2"><a href="ClusteringAndEJBPassivation.html#d0e30066">36.1.2. Deploying a Seam application to a JBoss AS cluster with session replication</a></span></dt></dl></dd><dt><span class="sect1"><a href="ClusteringAndEJBPassivation.html#d0e30210">36.2. EJB Passivation and the ManagedEntityInterceptor</a></span></dt><dd><dl><dt><span class="sect2"><a href="ClusteringAndEJBPassivation.html#d0e30225">36.2.1. The friction between passivation and persistence</a></span></dt><dt><span class="sect2"><a href="ClusteringAndEJBPassivation.html#d0e30241">36.2.2. Case #1: Surviving EJB passivation</a></span></dt><dt><span class="sect2"><a href="ClusteringAndEJBPassivation.html#d0e30258">36.2.3. Case #2: Surviving HTTP session replication</a></span></dt><dt><span class="sect2"><a href="ClusteringAndEJBPassivation.html#d0e30266">36.2.4. ManagedEntityInterceptor wrap-up</a></span></dt></dl></dd></dl></div><p>
+        <span class="emphasis"><em>Please note that this chapter is still being reviewed. Tread carefully.</em></span>
+    </p><p>
+        This chapter covers two distinct topics that happen share a common solution in Seam, (web) clustering and EJB
+        passivation. Therefore, they are addressed together in this reference manual. Although performance tends to be
+        grouped in this category as well, it's kept separate because the focus of this chapter is on the programming
+        model and how it's affected by the use of the aforementioned features.
+    </p><p>
+        In this chapter you will learn how Seam manages the passivation of Seam components and entity instances, how to
+        activate this feature, and how this feature is related to clustering. You will also learn how to deploy a Seam
+        application into a cluster and verify that HTTP session replication is working properly. Let's start with a
+        little background on clustering and see an example of how you deploy a Seam application to a JBoss AS cluster.
+    </p><div class="sect1" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="d0e30022"/>36.1. Clustering</h2></div></div></div><p>
+            Clustering (more formally web clustering) allows an application to run on two or more parallel servers
+            (i.e., nodes) while providing a uniform view of the application to clients. Load is distributed across the
+            servers in such a way that if one or more of the servers fails, the application is still accessible via any
+            of the surviving nodes. This topology is crucial for building scalable enterprise applications as
+            performance and availability can be improved simply by adding nodes. But it brings up an important question.
+            <span class="emphasis"><em>What happens to the state that was on the server that failed?</em></span>
+        </p><p>
+           Since day one, Seam has always provided support for stateful applications running in a cluster. Up to this
+           point, you have learned that Seam provides state management in the form of additional scopes and by governing
+           the life cycle of stateful (scoped) components. But state management in Seam goes beyond creating, storing
+           and destroying instances. Seam tracks changes to JavaBean components and stores the changes at strategic
+           points during the request so that the changes can be restored when the request shifts to a secondary node in
+           the cluster. Fortunately, monitoring and replication of stateful EJB components is already handled by the EJB
+           server, so this feature of Seam is intended to put stateful JavaBeans on par with their EJB cohorts.
+        </p><p>
+            But wait, there's more! Seam also offers an incredibly unique feature for clustered applications. In
+            addition to monitoring JavaBean components, Seam ensures that managed entity instances (i.e. JPA and
+            Hibernate entities) don't become detached during replication. Seam keeps a record of the entities that are
+            loaded and automatically loads them on the secondary node. You must, however, be using a Seam-managed
+            persistence context to get this feature. More in depth information about this feature is provided in the
+            second half of this chapter.
+        </p><p>
+            Now that you understand what features Seam offers to support a clustered environment, let's look at how you
+            program for clustering.
+        </p><div class="sect2" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e30036"/>36.1.1. Programming for clustering</h3></div></div></div><p>
+                Any session- or conversation-scoped mutable JavaBean component that will be used in a clustered
+                environment must implement the <code class="literal">org.jboss.seam.core.Mutable</code> interface from the Seam API. As part of the
+                contract, the component must maintain a dirty flag that is reported and reset by the
+                <code class="literal">clearDirty()</code> method. Seam calls this method to determine if it is necessary to
+                replicate the component. This avoids having to use the more cumbersome Servlet API to add and remove the
+                session attribute on every change of the object.
+            </p><p>
+               You also must ensure that all session- and conversation-scoped JavaBean components are Serializable.
+               Additional, all fields of a stateful component (EJB or JavaBean) must Serializable unless the field is
+               marked transient or set to null in a <code class="literal">@PrePassivate</code> method. You can restore the value
+               of a transient or nullified field in a <code class="literal">@PostActivate</code> method.
+            </p><p>
+               One area where people often get bitten is by using <code class="literal">List.subList</code> to create a list. The
+               resulting list is not Serializable. So watch out for situations like that. If hit a
+               <code class="literal">java.io.NotSerializableException</code> and cannot locate the culprit at first glance, you
+               can put a breakpoint on this exception, run the application server in debug mode and attach a debugger
+               (such as Eclipse) to see what deserialization is choking on.
+            </p><div xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="note"><h2>Note</h2><p>
+                    Please note that clustering does not work with hot deployable components. But then again, you shouldn't
+                    be using hot deployable components in a non-development environment anyway.
+                </p></div></div><div class="sect2" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e30066"/>36.1.2. Deploying a Seam application to a JBoss AS cluster with session replication</h3></div></div></div><div xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="note"><h2>Note</h2><p>The detailed clustering How-To on AS7 is described at <a class="ulink" href="https://docs.jboss.org/author/display/AS71/AS7+Cluster+Howto">AS7 Cluster Howto</a> </p></div><p>
+                The procedure outlined in this tutorial has been validated with an seam-gen application and the Seam
+                booking example.
+            </p><p>
+                In the tutorial, I assume that the IP addresses of the master and slave servers are 192.168.1.2 and
+                192.168.1.3, respectively. I am intentionally not using the mod_jk load balancer so that it's easier to
+                validate that both nodes are responding to requests and can share sessions.
+            </p><div xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="note"><h2>Note</h2><p>
+                    JBoss AS clustering relies on UDP multicasting provided by jGroups. The SELinux configuration that
+                    ships with RHEL/Fedora blocks these packets by default. You can allow them to pass by modifying the
+                    iptables rules (as root). The following commands apply to an IP address that matches 192.168.1.x.
+                </p><pre class="programlisting">/sbin/iptables -I RH-Firewall-1-INPUT 5 -p udp -d 224.0.0.0/4 -j ACCEPT
+/sbin/iptables -I RH-Firewall-1-INPUT 9 -p udp -s 192.168.1.0/24 -j ACCEPT
+/sbin/iptables -I RH-Firewall-1-INPUT 10 -p tcp -s 192.168.1.0/24 -j ACCEPT
+/etc/init.d/iptables save</pre><p>Detailed information can be found on <a class="ulink" href="http://www.jboss.org/community/docs/DOC-11935">this page</a> on the JBoss Wiki.</p></div><div class="itemizedlist"><ul><li><p>Create two instances of JBoss AS (just extract the zip twice)</p></li><li><p>Deploy the JDBC driver to <code class="filename">$JBOSS_HOME/standalone/deployments/</code> on both instances if not using H2</p></li><li><p>Add <code class="literal">&lt;distributable/&gt;</code> as the first child element in <code class="filename">WEB-INF/web.xml</code></p></li><li><p>Set the <code class="literal">distributable</code> property on
+                    <code class="literal">org.jboss.seam.core.init</code> to true to enable the ManagedEntityInterceptor (i.e.,
+                    <code class="literal">&lt;core:init distributable="true"/&gt;</code>)</p></li><li><p>Ensure you have two IP addresses available (two computers, two network cards, or two IP
+                    addresses bound to the same interface). I'll assume the two IP address are 192.168.1.2 and
+                    192.168.1.3</p></li><li><p>Change only on Node2 <code class="filename">node2/domain/configuration/host.xml</code>the host name from master to slave.</p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">host</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;slave&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">xmlns</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;urn:jboss:domain:1.1&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre></li><li><p>Edit on both nodes <code class="filename">domain/configuration/host.xml</code> and search <code class="literal">interfaces</code> element, e.g for node1:</p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">interfaces</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">interface</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;management&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">loopback-address</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;192.168.1.2&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">interface</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">interface</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;public&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">loopback-address</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;192.168.1.2&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">interface</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">interface</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;unsecure&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">loopback-address</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;192.168.1.2&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">interface</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">interfaces</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre><p>respectively for node2:</p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">interfaces</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">interface</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;management&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">loopback-address</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;192.168.1.3&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">interface</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">interface</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;public&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">loopback-address</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;192.168.1.3&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">interface</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">interface</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;unsecure&quot;</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">loopback-address</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">value</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;192.168.1.3&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">interface</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">interfaces</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre></li><li><p>Change the <code class="literal">domain-controller</code> element content on slave <span class="emphasis"><em>node2</em></span> in 
+					<code class="filename">domain/configuration/host.xml</code> to 
+					be able to manage Node2 by Web Console UI, like:</p><div class="itemizedlist"><ul><li>remove <pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">local</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre></li><li>uncomment and change <code class="literal">host</code> and <code class="literal">port</code> attributes in <code class="literal">remote</code> element</li></ul></div><p>The result should be as the following:</p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">domain-controller</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">remote</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">host</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;192.168.1.2&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">port</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;9999&quot;</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">security-realm</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;ManagementRealm&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain">&nbsp;--&gt;</span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_tag_symbols">&lt;/</span><span class="xml_tag_name">domain-controller</span><span class="xml_tag_symbols">&gt;</span><span class="xml_plain"></span><br />
+</pre></li><li><p>Start the master JBoss AS 7 instance on the first IP</p><pre class="programlisting">cd node1/jboss-as-7.1.1.Final; ./bin/domain.sh</pre><p>The log should report that there are 1 cluster members and 0 other members.</p></li><li><p>Start the slave JBoss AS instance on the second IP</p><pre class="programlisting">cd node2/jboss-as-7.1.1.Final; ./bin/domain.sh</pre><p>The log should report that there are 2 cluster members and 1 other members. It should also
+                    show the state being retrieved from the master.</p></li><li><p>Deploy the <code class="filename">*-ds.xml</code> by using admin console at <a class="ulink" href="http://localhost:9990">http://localhost:9990</a></p><p>In the log of the master you should see acknowledgement of the deployment. In the log of the
+                    slave you should see a corresponding message acknowledging the deployment to the slave.</p></li><li><p>Deploy the application by using admin console at <a class="ulink" href="http://localhost:9990">http://localhost:9990</a></p><p>In the log of the master you should see acknowledgement of the deployment. In the log of the
+                    slave you should see a corresponding message acknowledging the deployment to the slave. Note that
+                    you may have to wait up to 3 minutes for the deployed archive to be transfered.</p></li></ul></div><p>
+                You're application is now running in a cluster with HTTP session replication!
+            </p></div></div><div class="sect1" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="d0e30210"/>36.2. EJB Passivation and the ManagedEntityInterceptor</h2></div></div></div><p>
+            The ManagedEntityInterceptor (MEI) is an optional interceptor in Seam that gets applied to
+            conversation-scoped components when enabled. Enabling it is simple. You just set the distributable property
+            on the org.jboss.seam.init.core component to true. More simply put, you add (or update) the following
+            component declaration in the component descriptor (i.e., components.xml).
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">core:init</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">distributable</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;true&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            Note that this doesn't enable replication of HTTP sessions, but it does prepare Seam to be able to deal with
+            passivation of either EJB components or components in the HTTP session.
+        </p><p>
+            The MEI serves two distinct scenarios (EJB passivation and HTTP session passivation), although to accomplish
+            the same overall goal. It ensures that throughout the life of a conversation using at least one extended
+            persistence context, the entity instances loaded by the persistence context(s) remain managed (they do not
+            become detached prematurely by a passivation event). In short, it ensures the integrity of the extended
+            persistence context (and therefore its guarantees).
+        </p><p>
+            The previous statement implies that there is a challenge that threatens this contract. In fact, there are
+            two. One case is when a stateful session bean (SFSB) that hosts an extended persistence context is
+            passivated (to save memory or to migrate it to another node in the cluster) and the second is when the HTTP
+            session is passivated (to prepare it to be migrated to another node in the cluster).
+        </p><p>
+            I first want to discuss the general problem of passivation and then look at the two challenges cited
+            individually.
+        </p><div class="sect2" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e30225"/>36.2.1. The friction between passivation and persistence</h3></div></div></div><p>
+                The persistence context is where the persistence manager (i.e., JPA EntityManager or Hibernate Session)
+                stores entity instances (i.e., objects) it has loaded from the database (via the object-relational
+                mappings). Within a persistence context, there is no more than one object per unique database record.
+                The persistence context is often referred to as the first-level cache because if the application asks
+                for a record by its unique identifier that has already been loaded into the persistence context, a call
+                to the database is avoided. But it's about more than just caching.
+            </p><p>
+                Objects held in the persistence context can be modified, which the persistence manager tracks. When an
+                object is modified, it's considered "dirty". The persistence manager will migrate these changes to the
+                database using a technique known as write-behind (which basically means only when necessary). Thus, the
+                persistence context maintains a set of pending changes to the database.
+            </p><p>
+                Database-oriented applications do much more than just read from and write to the database. They capture
+                transactional bits of information that need to be transferred into the database atomically (at once). It's
+                not always possible to capture this information all on one screen. Additionally, the user might need to
+                make a judgement call about whether to approve or reject the pending changes.
+            </p><p>
+                What we are getting at here is that the idea of a transaction from the user's perspective needs to be
+                extended. And that is why the extended persistence context fits so perfectly with this requirement. It
+                can hold such changes for as long as the application can keep it open and then use the built-in
+                capabilities of the persistence manager to push these pending changes to the database without requiring
+                the application developer to worry about the low-level details (a simple call to
+                <code class="literal">EntityManager#flush()</code> does the trick).
+            </p><p>
+                The link between the persistence manager and the entity instances is maintained using object references.
+                The entity instances are serializable, but the persistence manager (and in turn its persistence context)
+                is not. Therefore, the process of serialization works against this design. Serialization can occur
+                either when a SFSB or the HTTP session is passivated. In order to sustain the activity in the
+                application, the persistence manager and the entity instances it manages must weather serialization
+                without losing their relationship. That's the aid that the MEI provides.
+            </p></div><div class="sect2" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e30241"/>36.2.2. Case #1: Surviving EJB passivation</h3></div></div></div><p>
+                Conversations were initially designed with stateful session beans (SFSBs) in mind, primarily because the
+                EJB 3 specification designates SFSBs as hosts of the extended persistence context. Seam introduces a
+                complement to the extended persistence context, known as a Seam-managed persistence context, which works
+                around a number of limitations in the specification (complex propagation rules and lack of manual
+                flushing). Both can be used with a SFSB.
+            </p><p>
+                A SFSB relies on a client to hold a reference to it in order to keep it active. Seam has provided an
+                ideal place for this reference in the conversation context. Thus, for as long as the conversation
+                context is active, the SFSB is active. If an EntityManager is injected into that SFSB using the
+                annotation @PersistenceContext(EXTENDED), then that EntityManager will be bound to the SFSB and remain
+                open throughout its lifetime, the lifetime of the conversation. If an EntityManager is injected using
+                @In, then that EntityManager is maintained by Seam and stored directly in the conversation context, thus
+                living for the lifetime of the conversation independent of the lifetime of the SFSB.
+            </p><p>
+                With all of that said, the Java EE container can passivate a SFSB, which means it will serialize the
+                object to an area of storage external to the JVM. When this happens depends on the settings of the
+                individual SFSB. This process can even be disabled. However, the persistence context is not serialized
+                (is this only true of SMPC?). In fact, what happens depends highly on the Java EE container. The spec is
+                not very clear about this situation. Many vendors just tell you not to let it happen if you need the
+                guarantees of the extended persistence context. Seam's approach is more conservative. Seam basically
+                doesn't trust the SFSB with the persistence context or the entity instances. After each invocation of
+                the SFSB, Seam moves the reference to entity instance held by the SFSB into the current conversation
+                (and therefore into the HTTP session), nullifying those fields on the SFSB. It then restores this
+                references at the beginning of the next invocation. Of course, Seam is already storing the persistence
+                manager in the conversation. Thus, when the SFSB passivates and later activates, it has absolutely no
+                averse affect on the application.
+            </p><div xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="note"><h2>Note</h2><p>
+                    If you are using SFSBs in your application that hold references to extended persistence contexts,
+                    and those SFSBs can passivate, then you must use the MEI. This requirement holds even if you are
+                    using a single instance (not a cluster). However, if you are using clustered SFSB, then this
+                    requirement also applies.
+                </p></div><p>
+                It is possible to disable passivation on a SFSB. See the <a class="ulink" href="http://www.jboss.org/community/docs/DOC-9656">Ejb3DisableSfsbPassivation</a> page on the JBoss
+                Wiki for details.
+            </p></div><div class="sect2" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e30258"/>36.2.3. Case #2: Surviving HTTP session replication</h3></div></div></div><p>
+                Dealing with passivation of a SFSB works by leveraging the HTTP session. But what happens when the HTTP
+                session passivates? This happens in a clustered environment with session replication enabled. This case
+                is much tricker to deal with and is where a bulk of the MEI infrastructure comes into play. In this
+                case, the persistence manager is going to be destroyed because it cannot be serialized. Seam handles
+                this deconstruction (hence ensuring that the HTTP session serializes properly). But what happens on the
+                other end. Well, when the MEI sticks an entity instance into the conversation, it embeds the instance in
+                a wrapper that provides information on how to re-associate the instance with a persistence manager
+                post-serialization. So when the application jumps to another node in the cluster (presumably because the
+                target node went down) the MEI infrastructure essentially reconstructs the persistence context. The huge
+                drawback here is that since the persistence context is being reconstructed (from the database), pending
+                changes are dropped. However, what Seam does do is ensure that if the entity instance is versioned, that
+                the guarantees of optimistic locking are upheld. (why isn't the dirty state transferred?)
+            </p><div xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="note"><h2>Note</h2><p>
+                    If you are deploying your application in a cluster and using HTTP session replication, you must use the MEI.
+                </p></div></div><div class="sect2" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e30266"/>36.2.4. ManagedEntityInterceptor wrap-up</h3></div></div></div><p>
+                The important point of this section is that the MEI is there for a reason. It's there to ensure that the
+                extended persistence context can retain intact in the face of passivation (of either a SFSB or the HTTP
+                session). This matters because the natural design of Seam applications (and conversational state in
+                general) revolve around the state of this resource.
+            </p></div></div></div><ul class="docnav"><li class="previous"><a accesskey="p" href="elenhancements.html"><strong>Prev</strong>Chapter 35. JBoss EL</a></li><li class="up"><a accesskey="u" href="#"><strong>Top of page</strong></a></li><li class="home"><a accesskey="h" href="index.html"><strong>Front page</strong></a></li><li class="next"><a accesskey="n" href="performance.html"><strong>Next</strong>Chapter 37. Performance Tuning</a></li></ul></body></html>

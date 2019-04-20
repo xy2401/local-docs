@@ -1,0 +1,441 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory">Chapter 23. Asynchronicity and messaging</title><link rel="stylesheet" href="css/seamframework.css" type="text/css"/><meta xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" name="generator" content="DocBook XSL Stylesheets V1.74.0"/><link rel="home" href="index.html" title="Seam - Contextual Components"/><link rel="up" href="index.html" title="Seam - Contextual Components"/><link rel="prev" href="mail.html" title="Chapter 22. Email"/><link rel="next" href="cache.html" title="Chapter 24. Caching"/></head><body><p id="title"><a href="http://www.seamframework.org" class="site_href"><strong>SeamFramework.org</strong></a><a href="http://www.seamframework.org/Documentation" class="doc_href"><strong>Community Documentation</strong></a></p><ul class="docnav"><li class="previous"><a accesskey="p" href="mail.html"><strong>Prev</strong></a></li><li class="next"><a accesskey="n" href="cache.html"><strong>Next</strong></a></li></ul><div class="chapter" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="jms"/>Chapter 23. Asynchronicity and messaging</h2></div></div></div><div class="toc"><dl><dt><span class="sect1"><a href="jms.html#d0e21350">23.1. Messaging in Seam</a></span></dt><dd><dl><dt><span class="sect2"><a href="jms.html#d0e21357">23.1.1. Configuration</a></span></dt><dt><span class="sect2"><a href="jms.html#d0e21401">23.1.2. Sending messages</a></span></dt><dt><span class="sect2"><a href="jms.html#d0e21418">23.1.3. Receiving messages using a message-driven bean</a></span></dt><dt><span class="sect2"><a href="jms.html#d0e21442">23.1.4. Receiving messages in the client</a></span></dt></dl></dd><dt><span class="sect1"><a href="jms.html#d0e21449">23.2. Asynchronicity</a></span></dt><dd><dl><dt><span class="sect2"><a href="jms.html#d0e21494">23.2.1. Asynchronous methods</a></span></dt><dt><span class="sect2"><a href="jms.html#d0e21569">23.2.2. Asynchronous methods with the Quartz Dispatcher</a></span></dt><dt><span class="sect2"><a href="jms.html#d0e21644">23.2.3. Asynchronous events</a></span></dt><dt><span class="sect2"><a href="jms.html#d0e21664">23.2.4. Handling exceptions from asynchronous calls</a></span></dt></dl></dd></dl></div><p>
+        Seam makes it very easy to perform work asynchronously from a web request. When most people
+        think of asynchronicity in Java EE, they think of using JMS. This is certainly one way to
+        approach the problem in Seam, and is the right way when you have strict and well-defined
+        quality of service requirements. Seam makes it easy to send and receive JMS messages using
+        Seam components.
+    </p><p>
+        But for cases when you are simply want to use a worker thread, JMS is overkill. Seam layers a simple
+        asynchronous method and event facility over your choice of <span class="emphasis"><em>dispatchers</em></span>:
+    </p><div class="itemizedlist"><ul><li><p>
+                <code class="literal">java.util.concurrent.ScheduledThreadPoolExecutor</code> (by default)
+            </p></li><li><p>
+                the EJB timer service (for EJB 3.0 environments)
+            </p></li><li><p>
+                Quartz
+            </p></li></ul></div><p>
+        This chapter first covers how to leverage Seam to simplify JMS and then explains how to use the
+        simpler asynchronous method and event facility.
+    </p><div class="sect1" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="d0e21350"/>23.1. Messaging in Seam</h2></div></div></div><p>
+        Seam makes it easy to send and receive JMS messages to and from
+        Seam components. Both the message publisher and the message receiver
+        can be Seam components.
+    </p><p>
+        You'll first learn to setup a queue and topic message publisher and then 
+        look at an example that illustrates how to perform the message exchange.
+    </p><div class="sect2" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e21357"/>23.1.1. Configuration</h3></div></div></div><p>
+            To configure Seam's infrastructure for sending JMS messages,
+            you need to tell Seam about any topics and queues you want to
+            send messages to, and also tell Seam where to find the
+            <code class="literal">QueueConnectionFactory</code> and/or
+            <code class="literal">TopicConnectionFactory</code>.
+        </p><p>
+            Seam defaults to using <code class="literal">UIL2ConnectionFactory</code>
+            which is the usual connection factory for use with JBossMQ. If
+            you are using some other JMS provider, you need to set one or
+            both of <code class="literal">queueConnection.queueConnectionFactoryJndiName</code>
+            and <code class="literal">topicConnection.topicConnectionFactoryJndiName</code>
+            in <code class="literal">seam.properties</code>, <code class="literal">web.xml</code>
+            or <code class="literal">components.xml</code>.
+        </p><p>
+            You also need to list topics and queues in <code class="literal">components.xml</code>
+            to install Seam managed <code class="literal">TopicPublisher</code>s and
+            <code class="literal">QueueSender</code>s:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">jms:managed-topic-publisher</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;stockTickerPublisher&quot;</span><span class="xml_plain">&nbsp;</span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_attribute_name">auto-create</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;true&quot;</span><span class="xml_plain">&nbsp;</span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_attribute_name">topic-jndi-name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;topic/stockTickerTopic&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+<span class="xml_plain"></span><br />
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">jms:managed-queue-sender</span><span class="xml_plain">&nbsp;</span><span class="xml_attribute_name">name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;paymentQueueSender&quot;</span><span class="xml_plain">&nbsp;</span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_attribute_name">auto-create</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;true&quot;</span><span class="xml_plain">&nbsp;</span><br />
+<span class="xml_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="xml_attribute_name">queue-jndi-name</span><span class="xml_tag_symbols">=</span><span class="xml_attribute_value">&quot;queue/paymentQueue&quot;</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre></div><div class="sect2" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e21401"/>23.1.2. Sending messages</h3></div></div></div><p>
+            Now, you can inject a JMS <code class="literal">TopicPublisher</code> and
+            <code class="literal">TopicSession</code> into any Seam component to publish
+            an object to a topic:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">@</span><!-- <br/> --><span class="java_type">Name</span><!-- <br/> --><span class="java_separator">(</span><!-- <br/> --><span class="java_literal">&quot;stockPriceChangeNotifier&quot;</span><!-- <br/> --><span class="java_separator">)</span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_keyword">class</span><span class="java_plain">&nbsp;</span><span class="java_type">StockPriceChangeNotifier</span>
+<!--  --><br/><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_plain">&nbsp;</span><span class="java_keyword">private</span><span class="java_plain">&nbsp;</span><span class="java_type">TopicPublisher</span><span class="java_plain">&nbsp;stockTickerPublisher</span><span class="java_separator">;</span><span class="java_plain">&nbsp;&nbsp;&nbsp;</span>
+</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_plain">&nbsp;</span><span class="java_keyword">private</span><span class="java_plain">&nbsp;</span><span class="java_type">TopicSession</span><span class="java_plain">&nbsp;topicSession</span><span class="java_separator">;</span>
+</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">void</span><span class="java_plain">&nbsp;publish</span><span class="java_separator">(</span><span class="java_type">StockPrice</span><span class="java_plain">&nbsp;price</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">try</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;stockTickerPublisher</span><span class="java_separator">.</span><span class="java_plain">publish</span><span class="java_separator">(</span><span class="java_plain">topicSession</span><span class="java_separator">.</span><span class="java_plain">createObjectMessage</span><span class="java_separator">(</span><span class="java_plain">price</span><span class="java_separator">));</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">catch</span><span class="java_plain">&nbsp;</span><span class="java_separator">(</span><span class="java_type">Exception</span><span class="java_plain">&nbsp;ex</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">throw</span><span class="java_plain">&nbsp;</span><span class="java_keyword">new</span><span class="java_plain">&nbsp;</span><span class="java_type">RuntimeException</span><span class="java_separator">(</span><span class="java_plain">ex</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span>
+<!--  --><br/><span class="java_separator">}</span></pre><p>or to a queue:</p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">@</span><!-- <br/> --><span class="java_type">Name</span><!-- <br/> --><span class="java_separator">(</span><!-- <br/> --><span class="java_literal">&quot;paymentDispatcher&quot;</span><!-- <br/> --><span class="java_separator">)</span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_keyword">class</span><span class="java_plain">&nbsp;</span><span class="java_type">PaymentDispatcher</span>
+<!--  --><br/><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_plain">&nbsp;</span><span class="java_keyword">private</span><span class="java_plain">&nbsp;</span><span class="java_type">QueueSender</span><span class="java_plain">&nbsp;paymentQueueSender</span><span class="java_separator">;</span><span class="java_plain">&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_plain">&nbsp;</span><span class="java_keyword">private</span><span class="java_plain">&nbsp;</span><span class="java_type">QueueSession</span><span class="java_plain">&nbsp;queueSession</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">void</span><span class="java_plain">&nbsp;publish</span><span class="java_separator">(</span><span class="java_type">Payment</span><span class="java_plain">&nbsp;payment</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">try</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;paymentQueueSender</span><span class="java_separator">.</span><span class="java_plain">send</span><span class="java_separator">(</span><span class="java_plain">queueSession</span><span class="java_separator">.</span><span class="java_plain">createObjectMessage</span><span class="java_separator">(</span><span class="java_plain">payment</span><span class="java_separator">));</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">catch</span><span class="java_plain">&nbsp;</span><span class="java_separator">(</span><span class="java_type">Exception</span><span class="java_plain">&nbsp;ex</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">throw</span><span class="java_plain">&nbsp;</span><span class="java_keyword">new</span><span class="java_plain">&nbsp;</span><span class="java_type">RuntimeException</span><span class="java_separator">(</span><span class="java_plain">ex</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span>
+<!--  --><br/><span class="java_separator">}</span></pre></div><div class="sect2" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e21418"/>23.1.3. Receiving messages using a message-driven bean</h3></div></div></div><p>
+            You can process messages using any EJB 3 message-driven bean. The MDB
+            can even be a Seam component, in which case it's possible to inject
+            other event- and application- scoped Seam components. Here's an example
+            of the payment receiver, which delegates to a payment processor.
+        </p><div xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="note"><h2>Note</h2><p>
+                You'll likely need to set the create attribute on the <code class="literal">@In</code> annotation to true (i.e.
+                create = true) to have Seam create an instance of the component being injected. This isn't necessary if
+                the component supports auto-creation (e.g., it's annotated with <code class="literal">@Autocreate</code>).
+            </p></div><p>
+            First, create an MDB to receive the message.
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">@</span><!-- <br/> --><span class="java_type">MessageDriven</span><!-- <br/> --><span class="java_separator">(</span><!-- <br/> --><span class="java_plain">activationConfig&nbsp;</span><!-- <br/> --><span class="java_operator">=</span><!-- <br/> --><span class="java_plain">&nbsp;</span><!-- <br/> --><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">ActivationConfigProperty</span><span class="java_separator">(</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;propertyName&nbsp;</span><span class="java_operator">=</span><span class="java_plain">&nbsp;</span><span class="java_literal">&quot;destinationType&quot;</span><span class="java_separator">,</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;propertyValue&nbsp;</span><span class="java_operator">=</span><span class="java_plain">&nbsp;</span><span class="java_literal">&quot;javax.jms.Queue&quot;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">),</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">ActivationConfigProperty</span><span class="java_separator">(</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;propertyName&nbsp;</span><span class="java_operator">=</span><span class="java_plain">&nbsp;</span><span class="java_literal">&quot;destination&quot;</span><span class="java_separator">,</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;propertyValue&nbsp;</span><span class="java_operator">=</span><span class="java_plain">&nbsp;</span><span class="java_literal">&quot;queue/paymentQueue&quot;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_separator">})</span>
+<!--  --><br/><span class="java_plain">@</span><span class="java_type">Name</span><span class="java_separator">(</span><span class="java_literal">&quot;paymentReceiver&quot;</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_keyword">class</span><span class="java_plain">&nbsp;</span><span class="java_type">PaymentReceiver</span><span class="java_plain">&nbsp;</span><span class="java_keyword">implements</span><span class="java_plain">&nbsp;</span><span class="java_type">MessageListener</span>
+<!--  --><br/><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;@</span><span class="java_type">Logger</span><span class="java_plain">&nbsp;</span><span class="java_keyword">private</span><span class="java_plain">&nbsp;</span><span class="java_type">Log</span><span class="java_plain">&nbsp;log</span><span class="java_separator">;</span>
+</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_separator">(</span><span class="java_plain">create&nbsp;</span><span class="java_operator">=</span><span class="java_plain">&nbsp;</span><span class="java_literal">true</span><span class="java_separator">)</span><span class="java_plain">&nbsp;</span><span class="java_keyword">private</span><span class="java_plain">&nbsp;</span><span class="java_type">PaymentProcessor</span><span class="java_plain">&nbsp;paymentProcessor</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;@</span><span class="java_type">Override</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">void</span><span class="java_plain">&nbsp;onMessage</span><span class="java_separator">(</span><span class="java_type">Message</span><span class="java_plain">&nbsp;message</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">try</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;paymentProcessor</span><span class="java_separator">.</span><span class="java_plain">processPayment</span><span class="java_separator">((</span><span class="java_type">Payment</span><span class="java_separator">)</span><span class="java_plain">&nbsp;</span><span class="java_separator">((</span><span class="java_type">ObjectMessage</span><span class="java_separator">)</span><span class="java_plain">&nbsp;message</span><span class="java_separator">).</span><span class="java_plain">getObject</span><span class="java_separator">());</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">catch</span><span class="java_plain">&nbsp;</span><span class="java_separator">(</span><span class="java_type">JMSException</span><span class="java_plain">&nbsp;ex</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;log</span><span class="java_separator">.</span><span class="java_plain">error</span><span class="java_separator">(</span><span class="java_literal">&quot;Message&nbsp;payload&nbsp;did&nbsp;not&nbsp;contain&nbsp;a&nbsp;Payment&nbsp;object&quot;</span><span class="java_separator">,</span><span class="java_plain">&nbsp;ex</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span>
+<!--  --><br/><span class="java_separator">}</span></pre><p>
+            Then, implement the Seam component to which the receiver delegates processing of the payment.
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">@</span><!-- <br/> --><span class="java_type">Name</span><!-- <br/> --><span class="java_separator">(</span><!-- <br/> --><span class="java_literal">&quot;paymentProcessor&quot;</span><!-- <br/> --><span class="java_separator">)</span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_keyword">class</span><span class="java_plain">&nbsp;</span><span class="java_type">PaymentProcessor</span>
+<!--  --><br/><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_plain">&nbsp;</span><span class="java_keyword">private</span><span class="java_plain">&nbsp;</span><span class="java_type">EntityManager</span><span class="java_plain">&nbsp;entityManager</span><span class="java_separator">;</span>
+</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">void</span><span class="java_plain">&nbsp;processPayment</span><span class="java_separator">(</span><span class="java_type">Payment</span><span class="java_plain">&nbsp;payment</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_operator">//</span><span class="java_plain">&nbsp;perhaps&nbsp;</span><span class="java_keyword">do</span><span class="java_plain">&nbsp;something&nbsp;more&nbsp;fancy</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;entityManager</span><span class="java_separator">.</span><span class="java_plain">persist</span><span class="java_separator">(</span><span class="java_plain">payment</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span>
+<!--  --><br/><span class="java_separator">}</span></pre><p>
+            If you are going to be performing transaction operations in your MDB, you should ensure that you
+            are working with an XA datasource. Otherwise, it won't be possible to rollback database changes
+            if the database transaction commits and a subsequent operation being performed by the message
+            fails.
+        </p></div><div class="sect2" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e21442"/>23.1.4. Receiving messages in the client</h3></div></div></div><p>
+            Seam Remoting lets you subscribe to a JMS topic from client-side JavaScript. This is
+            described in <a class="xref" href="remoting.html" title="Chapter 26. Remoting">Chapter 26, <i>Remoting</i></a>.
+        </p></div></div><div class="sect1" lang="en-US"><div class="titlepage"><div><div><h2 class="title"><a id="d0e21449"/>23.2. Asynchronicity</h2></div></div></div><p>
+            Asynchronous events and method calls have the same quality of service expectations as  
+            the underlying dispatcher mechanism. The default dispatcher, based upon a 
+            <code class="literal">ScheduledThreadPoolExecutor</code> performs efficiently but provides no
+            support for persistent asynchronous tasks, and hence no guarantee that a task
+            will ever actually be executed. If you're working in an environment that supports
+            EJB 3.0, and add the following line to <code class="literal">components.xml</code>:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">async:timer-service-dispatcher</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            then your asynchronous tasks will be processed by the container's EJB timer service. If 
+            you're not familiar with the Timer service, don't worry, you don't need to interact with 
+            it directly if you want to use asynchronous methods in Seam. The important thing to know
+            is that any good EJB 3.0 implementation will have the option of using persistent timers, 
+            which gives some guarantee that the tasks will eventually be processed.
+        </p><p>
+            Another alternative is to use the open source Quartz library to manage asynchronous method. 
+            You need to bundle the Quartz library JAR (found in the <code class="literal">lib</code> directory) 
+            in your EAR and declare it as a Java module in <code class="literal">application.xml</code>.
+            The Quartz dispatcher may be configured by adding a Quartz property file to the classpath. 
+           	It must be named <code class="literal">seam.quartz.properties</code>.  In addition, 
+            you need to add the following line to <code class="literal">components.xml</code> to install the 
+            Quartz dispatcher. 
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="XML"><!-- XML : generated by JHighlight v1.0 (http://jhighlight.dev.java.net) -->
+<span class="xml_tag_symbols">&lt;</span><span class="xml_tag_name">async:quartz-dispatcher</span><span class="xml_tag_symbols">/&gt;</span><span class="xml_plain"></span><br />
+</pre><p>
+            The Seam API for the default <code class="literal">ScheduledThreadPoolExecutor</code>, the EJB3 
+            <code class="literal">Timer</code>, and the Quartz <code class="literal">Scheduler</code> are largely the 
+            same. They can just "plug and play" by adding a line to <code class="literal">components.xml</code>.
+        </p><div class="sect2" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e21494"/>23.2.1. Asynchronous methods</h3></div></div></div><p>
+            In simplest form, an asynchronous call just lets a method call be processed asynchronously 
+            (in a different thread) from the caller. We usually use an asynchronous call when we want 
+            to return an immediate response to the client, and let some expensive work be processed in
+            the background. This pattern works very well in applications which use AJAX, where the
+            client can automatically poll the server for the result of the work.
+        </p><p>
+            For EJB components, we annotate the local interface to specify that a method is processed
+            asynchronously.
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">@</span><!-- <br/> --><span class="java_type">Local</span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_keyword">interface</span><span class="java_plain">&nbsp;</span><span class="java_type">PaymentHandler</span>
+<!--  --><br/><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">Asynchronous</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">void</span><span class="java_plain">&nbsp;processPayment</span><span class="java_separator">(</span><span class="java_type">Payment</span><span class="java_plain">&nbsp;payment</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_separator">}</span></pre><p>
+            (For JavaBean components we have to annotate the component implementation class.)
+        </p><p>
+            The use of asynchronicity is transparent to the bean class:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">@</span><!-- <br/> --><span class="java_type">Stateless</span>
+<!--  --><br/><span class="java_plain">@</span><span class="java_type">Name</span><span class="java_separator">(</span><span class="java_literal">&quot;paymentHandler&quot;</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_keyword">class</span><span class="java_plain">&nbsp;</span><span class="java_type">PaymentHandlerBean</span><span class="java_plain">&nbsp;</span><span class="java_keyword">implements</span><span class="java_plain">&nbsp;</span><span class="java_type">PaymentHandler</span>
+<!--  --><br/><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">void</span><span class="java_plain">&nbsp;processPayment</span><span class="java_separator">(</span><span class="java_type">Payment</span><span class="java_plain">&nbsp;payment</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_operator">//</span><span class="java_keyword">do</span><span class="java_plain">&nbsp;some&nbsp;work</span><span class="java_operator">!</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span>
+<!--  --><br/><span class="java_separator">}</span></pre><p>
+            And also transparent to the client:
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">@</span><!-- <br/> --><span class="java_type">Stateful</span>
+<!--  --><br/><span class="java_plain">@</span><span class="java_type">Name</span><span class="java_separator">(</span><span class="java_literal">&quot;paymentAction&quot;</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_keyword">class</span><span class="java_plain">&nbsp;</span><span class="java_type">CreatePaymentAction</span>
+<!--  --><br/><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_separator">(</span><span class="java_plain">create</span><span class="java_operator">=</span><span class="java_literal">true</span><span class="java_separator">)</span><span class="java_plain">&nbsp;</span><span class="java_type">PaymentHandler</span><span class="java_plain">&nbsp;paymentHandler</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_plain">&nbsp;</span><span class="java_type">Bill</span><span class="java_plain">&nbsp;bill</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">String</span><span class="java_plain">&nbsp;pay</span><span class="java_separator">()</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;paymentHandler</span><span class="java_separator">.</span><span class="java_plain">processPayment</span><span class="java_separator">(</span><span class="java_plain">&nbsp;</span><span class="java_keyword">new</span><span class="java_plain">&nbsp;</span><span class="java_type">Payment</span><span class="java_separator">(</span><span class="java_plain">bill</span><span class="java_separator">)</span><span class="java_plain">&nbsp;</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">return</span><span class="java_plain">&nbsp;</span><span class="java_literal">&quot;success&quot;</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span>
+<!--  --><br/><span class="java_separator">}</span></pre><div xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="note"><h2>Note</h2><p>Please distinguish between 
+            <a class="ulink" href="http://docs.oracle.com/javaee/6/api/javax/ejb/Asynchronous.html">
+            EJB 3.1 annotation
+            <code class="literal">javax.ejb.Asynchronous</code></a> and Seam annotation
+            <code class="literal">org.jboss.seam.annotations.async.Asynchronous</code>.
+            While first is designated for session beans only, the latter works 
+            in non-EJB environment too.
+            </p></div><p>
+            The asynchronous method is processed in a completely new event context and does
+            not have access to the session or conversation context state of the caller. However,
+            the business process context <span class="emphasis"><em>is</em></span> propagated.
+        </p><p>
+            Asynchronous method calls may be scheduled for later execution using the
+            <code class="literal">@Duration</code>, <code class="literal">@Expiration</code> and
+            <code class="literal">@IntervalDuration</code> annotations.
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">@</span><!-- <br/> --><span class="java_type">Local</span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_keyword">interface</span><span class="java_plain">&nbsp;</span><span class="java_type">PaymentHandler</span>
+<!--  --><br/><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">Asynchronous</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">void</span><span class="java_plain">&nbsp;processScheduledPayment</span><span class="java_separator">(</span><span class="java_type">Payment</span><span class="java_plain">&nbsp;payment</span><span class="java_separator">,</span><span class="java_plain">&nbsp;@</span><span class="java_type">Expiration</span><span class="java_plain">&nbsp;</span><span class="java_type">Date</span><span class="java_plain">&nbsp;date</span><span class="java_separator">);</span>
+</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">Asynchronous</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">void</span><span class="java_plain">&nbsp;processRecurringPayment</span><span class="java_separator">(</span><span class="java_type">Payment</span><span class="java_plain">&nbsp;payment</span><span class="java_separator">,</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">Expiration</span><span class="java_plain">&nbsp;</span><span class="java_type">Date</span><span class="java_plain">&nbsp;date</span><span class="java_separator">,</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">IntervalDuration</span><span class="java_plain">&nbsp;</span><span class="java_type">Long</span><span class="java_plain">&nbsp;interval</span><span class="java_separator">)</span><span class="java_plain">'</span>
+<!--  --><br/><span class="java_separator">}</span></pre><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">@</span><!-- <br/> --><span class="java_type">Stateful</span>
+<!--  --><br/><span class="java_plain">@</span><span class="java_type">Name</span><span class="java_separator">(</span><span class="java_literal">&quot;paymentAction&quot;</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_keyword">class</span><span class="java_plain">&nbsp;</span><span class="java_type">CreatePaymentAction</span>
+<!--  --><br/><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_separator">(</span><span class="java_plain">create</span><span class="java_operator">=</span><span class="java_literal">true</span><span class="java_separator">)</span><span class="java_plain">&nbsp;</span><span class="java_type">PaymentHandler</span><span class="java_plain">&nbsp;paymentHandler</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_plain">&nbsp;</span><span class="java_type">Bill</span><span class="java_plain">&nbsp;bill</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">String</span><span class="java_plain">&nbsp;schedulePayment</span><span class="java_separator">()</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;paymentHandler</span><span class="java_separator">.</span><span class="java_plain">processScheduledPayment</span><span class="java_separator">(</span><span class="java_plain">&nbsp;</span><span class="java_keyword">new</span><span class="java_plain">&nbsp;</span><span class="java_type">Payment</span><span class="java_separator">(</span><span class="java_plain">bill</span><span class="java_separator">),</span><span class="java_plain">&nbsp;bill</span><span class="java_separator">.</span><span class="java_plain">getDueDate</span><span class="java_separator">()</span><span class="java_plain">&nbsp;</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">return</span><span class="java_plain">&nbsp;</span><span class="java_literal">&quot;success&quot;</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span>
+</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">String</span><span class="java_plain">&nbsp;scheduleRecurringPayment</span><span class="java_separator">()</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;paymentHandler</span><span class="java_separator">.</span><span class="java_plain">processRecurringPayment</span><span class="java_separator">(</span><span class="java_plain">&nbsp;</span><span class="java_keyword">new</span><span class="java_plain">&nbsp;</span><span class="java_type">Payment</span><span class="java_separator">(</span><span class="java_plain">bill</span><span class="java_separator">),</span><span class="java_plain">&nbsp;bill</span><span class="java_separator">.</span><span class="java_plain">getDueDate</span><span class="java_separator">(),</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ONE_MONTH&nbsp;</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">return</span><span class="java_plain">&nbsp;</span><span class="java_literal">&quot;success&quot;</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span>
+<!--  --><br/><span class="java_separator">}</span></pre><p>
+            Both client and server may access the <code class="literal">Timer</code> object associated with
+            the invocation. The <code class="literal">Timer</code> object shown below is the EJB3 timer when you use the EJB3 dispatcher. For the default <code class="literal">ScheduledThreadPoolExecutor</code>, the returned object is <code class="literal">Future</code> from the JDK. For the Quartz dispatcher, it returns <code class="literal">QuartzTriggerHandle</code>, which we will discuss in the next section.
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">@</span><!-- <br/> --><span class="java_type">Local</span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_keyword">interface</span><span class="java_plain">&nbsp;</span><span class="java_type">PaymentHandler</span>
+<!--  --><br/><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">Asynchronous</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">Timer</span><span class="java_plain">&nbsp;processScheduledPayment</span><span class="java_separator">(</span><span class="java_type">Payment</span><span class="java_plain">&nbsp;payment</span><span class="java_separator">,</span><span class="java_plain">&nbsp;@</span><span class="java_type">Expiration</span><span class="java_plain">&nbsp;</span><span class="java_type">Date</span><span class="java_plain">&nbsp;date</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_separator">}</span></pre><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">@</span><!-- <br/> --><span class="java_type">Stateless</span>
+<!--  --><br/><span class="java_plain">@</span><span class="java_type">Name</span><span class="java_separator">(</span><span class="java_literal">&quot;paymentHandler&quot;</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_keyword">class</span><span class="java_plain">&nbsp;</span><span class="java_type">PaymentHandlerBean</span><span class="java_plain">&nbsp;</span><span class="java_keyword">implements</span><span class="java_plain">&nbsp;</span><span class="java_type">PaymentHandler</span>
+<!--  --><br/><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_plain">&nbsp;</span><span class="java_type">Timer</span><span class="java_plain">&nbsp;timer</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">Timer</span><span class="java_plain">&nbsp;processScheduledPayment</span><span class="java_separator">(</span><span class="java_type">Payment</span><span class="java_plain">&nbsp;payment</span><span class="java_separator">,</span><span class="java_plain">&nbsp;@</span><span class="java_type">Expiration</span><span class="java_plain">&nbsp;</span><span class="java_type">Date</span><span class="java_plain">&nbsp;date</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_operator">//</span><span class="java_keyword">do</span><span class="java_plain">&nbsp;some&nbsp;work</span><span class="java_operator">!</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">return</span><span class="java_plain">&nbsp;timer</span><span class="java_separator">;</span><span class="java_plain">&nbsp;</span><span class="java_operator">//</span><span class="java_plain">note&nbsp;that&nbsp;</span><span class="java_keyword">return</span><span class="java_plain">&nbsp;value&nbsp;is&nbsp;completely&nbsp;ignored</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span>
+</span>
+<!--  --><br/><span class="java_separator">}</span></pre><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">@</span><!-- <br/> --><span class="java_type">Stateful</span>
+<!--  --><br/><span class="java_plain">@</span><span class="java_type">Name</span><span class="java_separator">(</span><span class="java_literal">&quot;paymentAction&quot;</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_keyword">class</span><span class="java_plain">&nbsp;</span><span class="java_type">CreatePaymentAction</span>
+<!--  --><br/><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_separator">(</span><span class="java_plain">create</span><span class="java_operator">=</span><span class="java_literal">true</span><span class="java_separator">)</span><span class="java_plain">&nbsp;</span><span class="java_type">PaymentHandler</span><span class="java_plain">&nbsp;paymentHandler</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_plain">&nbsp;</span><span class="java_type">Bill</span><span class="java_plain">&nbsp;bill</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">String</span><span class="java_plain">&nbsp;schedulePayment</span><span class="java_separator">()</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_type">Timer</span><span class="java_plain">&nbsp;timer&nbsp;</span><span class="java_operator">=</span><span class="java_plain">&nbsp;paymentHandler</span><span class="java_separator">.</span><span class="java_plain">processScheduledPayment</span><span class="java_separator">(</span><span class="java_plain">&nbsp;</span><span class="java_keyword">new</span><span class="java_plain">&nbsp;</span><span class="java_type">Payment</span><span class="java_separator">(</span><span class="java_plain">bill</span><span class="java_separator">),</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;bill</span><span class="java_separator">.</span><span class="java_plain">getDueDate</span><span class="java_separator">()</span><span class="java_plain">&nbsp;</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">return</span><span class="java_plain">&nbsp;</span><span class="java_literal">&quot;success&quot;</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span>
+<!--  --><br/><span class="java_separator">}</span></pre><p>
+            Asynchronous methods cannot return any other value to the caller.
+        </p></div><div class="sect2" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e21569"/>23.2.2. Asynchronous methods with the Quartz Dispatcher</h3></div></div></div><p>
+            The Quartz dispatcher (see earlier on how to install it) allows you to use the <code class="literal">@Asynchronous</code>, <code class="literal">@Duration</code>, <code class="literal">@Expiration</code>, and <code class="literal">@IntervalDuration</code> annotations as above. But it has some powerful additional features. The Quartz dispatcher supports three new annotations.
+        </p><p>The <code class="literal">@FinalExpiration</code> annotation specifies an end date for the recurring task. Note that you can inject the <code class="code">QuartzTriggerHandle</code>.</p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"></span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_plain">&nbsp;</span><span class="java_type">QuartzTriggerHandle</span><span class="java_plain">&nbsp;timer</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_operator">//</span><span class="java_plain">&nbsp;</span><span class="java_type">Defines</span><span class="java_plain">&nbsp;the&nbsp;method&nbsp;in&nbsp;the&nbsp;</span><span class="java_literal">&quot;processor&quot;</span><span class="java_plain">&nbsp;component</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">Asynchronous</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">QuartzTriggerHandle</span><span class="java_plain">&nbsp;schedulePayment</span><span class="java_separator">(</span><span class="java_plain">@</span><span class="java_type">Expiration</span><span class="java_plain">&nbsp;</span><span class="java_type">Date</span><span class="java_plain">&nbsp;when</span><span class="java_separator">,</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">IntervalDuration</span><span class="java_plain">&nbsp;</span><span class="java_type">Long</span><span class="java_plain">&nbsp;interval</span><span class="java_separator">,</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">FinalExpiration</span><span class="java_plain">&nbsp;</span><span class="java_type">Date</span><span class="java_plain">&nbsp;endDate</span><span class="java_separator">,</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_type">Payment</span><span class="java_plain">&nbsp;payment</span><span class="java_separator">)</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_operator">//</span><span class="java_plain">&nbsp;</span><span class="java_keyword">do</span><span class="java_plain">&nbsp;the&nbsp;repeating&nbsp;or&nbsp;</span><span class="java_type">long</span><span class="java_plain">&nbsp;running&nbsp;task&nbsp;until&nbsp;endDate</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">...</span><span class="java_plain">&nbsp;</span><span class="java_separator">...</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_operator">//</span><span class="java_plain">&nbsp;</span><span class="java_type">Schedule</span><span class="java_plain">&nbsp;the&nbsp;task&nbsp;in&nbsp;the&nbsp;business&nbsp;logic&nbsp;processing&nbsp;code</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_operator">//</span><span class="java_plain">&nbsp;</span><span class="java_type">Starts</span><span class="java_plain">&nbsp;now</span><span class="java_separator">,</span><span class="java_plain">&nbsp;repeats&nbsp;every&nbsp;hour</span><span class="java_separator">,</span><span class="java_plain">&nbsp;and&nbsp;ends&nbsp;on&nbsp;</span><span class="java_type">May</span><span class="java_plain">&nbsp;</span><span class="java_literal">10</span><span class="java_plain">th</span><span class="java_separator">,</span><span class="java_plain">&nbsp;</span><span class="java_literal">2010</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_type">Calendar</span><span class="java_plain">&nbsp;cal&nbsp;</span><span class="java_operator">=</span><span class="java_plain">&nbsp;</span><span class="java_type">Calendar</span><span class="java_separator">.</span><span class="java_plain">getInstance&nbsp;</span><span class="java_separator">();</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;cal</span><span class="java_separator">.</span><span class="java_plain">set&nbsp;</span><span class="java_separator">(</span><span class="java_literal">2010</span><span class="java_separator">,</span><span class="java_plain">&nbsp;</span><span class="java_type">Calendar</span><span class="java_separator">.</span><span class="java_plain">MAY</span><span class="java_separator">,</span><span class="java_plain">&nbsp;</span><span class="java_literal">10</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;processor</span><span class="java_separator">.</span><span class="java_plain">schedulePayment</span><span class="java_separator">(</span><span class="java_keyword">new</span><span class="java_plain">&nbsp;</span><span class="java_type">Date</span><span class="java_separator">(),</span><span class="java_plain">&nbsp;</span><span class="java_literal">60</span><span class="java_operator">*</span><span class="java_literal">60</span><span class="java_operator">*</span><span class="java_literal">1000</span><span class="java_separator">,</span><span class="java_plain">&nbsp;cal</span><span class="java_separator">.</span><span class="java_plain">getTime</span><span class="java_separator">(),</span><span class="java_plain">&nbsp;payment</span><span class="java_separator">);</span>
+</pre><p>Note that the method returns the <code class="literal">QuartzTriggerHandle</code> object, which you can use later to stop, pause, and resume the scheduler. The <code class="literal">QuartzTriggerHandle</code> object is serializable, so you can save it into the database if you need to keep it around for extended period of time.</p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_type">QuartzTriggerHandle</span><!-- <br/> --><span class="java_plain">&nbsp;handle&nbsp;</span><!-- <br/> --><span class="java_operator">=</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;processor</span><span class="java_separator">.</span><span class="java_plain">schedulePayment</span><span class="java_separator">(</span><span class="java_plain">payment</span><span class="java_separator">.</span><span class="java_plain">getPaymentDate</span><span class="java_separator">(),</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;payment</span><span class="java_separator">.</span><span class="java_plain">getPaymentCron</span><span class="java_separator">(),</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;payment</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;payment</span><span class="java_separator">.</span><span class="java_plain">setQuartzTriggerHandle</span><span class="java_separator">(</span><span class="java_plain">&nbsp;handle&nbsp;</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_operator">//</span><span class="java_plain">&nbsp;</span><span class="java_type">Save</span><span class="java_plain">&nbsp;payment&nbsp;to&nbsp;DB</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_operator">//</span><span class="java_plain">&nbsp;later&nbsp;</span><span class="java_separator">...</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_operator">//</span><span class="java_plain">&nbsp;</span><span class="java_type">Retrieve</span><span class="java_plain">&nbsp;payment&nbsp;from&nbsp;DB</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_operator">//</span><span class="java_plain">&nbsp;</span><span class="java_type">Cancel</span><span class="java_plain">&nbsp;the&nbsp;remaining&nbsp;scheduled&nbsp;tasks</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;payment</span><span class="java_separator">.</span><span class="java_plain">getQuartzTriggerHandle</span><span class="java_separator">().</span><span class="java_plain">cancel</span><span class="java_separator">();</span>
+</pre><p>The <code class="literal">@IntervalCron</code> annotation supports Unix cron job syntax for task scheduling. For instance, the following asynchronous method runs at 2:10pm and at 2:44pm every Wednesday in the month of March.
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"></span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_operator">//</span><span class="java_plain">&nbsp;</span><span class="java_type">Define</span><span class="java_plain">&nbsp;the&nbsp;method</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">Asynchronous</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">QuartzTriggerHandle</span><span class="java_plain">&nbsp;schedulePayment</span><span class="java_separator">(</span><span class="java_plain">@</span><span class="java_type">Expiration</span><span class="java_plain">&nbsp;</span><span class="java_type">Date</span><span class="java_plain">&nbsp;when</span><span class="java_separator">,</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">IntervalCron</span><span class="java_plain">&nbsp;</span><span class="java_type">String</span><span class="java_plain">&nbsp;cron</span><span class="java_separator">,</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_type">Payment</span><span class="java_plain">&nbsp;payment</span><span class="java_separator">)</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_operator">//</span><span class="java_plain">&nbsp;</span><span class="java_keyword">do</span><span class="java_plain">&nbsp;the&nbsp;repeating&nbsp;or&nbsp;</span><span class="java_type">long</span><span class="java_plain">&nbsp;running&nbsp;task</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">...</span><span class="java_plain">&nbsp;</span><span class="java_separator">...</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_operator">//</span><span class="java_plain">&nbsp;</span><span class="java_type">Schedule</span><span class="java_plain">&nbsp;the&nbsp;task&nbsp;in&nbsp;the&nbsp;business&nbsp;logic&nbsp;processing&nbsp;code</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_type">QuartzTriggerHandle</span><span class="java_plain">&nbsp;handle&nbsp;</span><span class="java_operator">=</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;processor</span><span class="java_separator">.</span><span class="java_plain">schedulePayment</span><span class="java_separator">(</span><span class="java_keyword">new</span><span class="java_plain">&nbsp;</span><span class="java_type">Date</span><span class="java_separator">(),</span><span class="java_plain">&nbsp;</span><span class="java_literal">&quot;0&nbsp;10,44&nbsp;14&nbsp;?&nbsp;3&nbsp;WED&quot;</span><span class="java_separator">,</span><span class="java_plain">&nbsp;payment</span><span class="java_separator">);</span>
+</pre><p>The <code class="literal">@IntervalBusinessDay</code> annotation supports invocation on the "nth Business Day" scenario. For instance, the following asynchronous method runs at 14:00 on the 2nd business day of each month. By default, it excludes all weekends and US federal holidays until 2010 from the business days.
+        </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"></span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_operator">//</span><span class="java_plain">&nbsp;</span><span class="java_type">Define</span><span class="java_plain">&nbsp;the&nbsp;method</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">Asynchronous</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">QuartzTriggerHandle</span><span class="java_plain">&nbsp;schedulePayment</span><span class="java_separator">(</span><span class="java_plain">@</span><span class="java_type">Expiration</span><span class="java_plain">&nbsp;</span><span class="java_type">Date</span><span class="java_plain">&nbsp;when</span><span class="java_separator">,</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;@</span><span class="java_type">IntervalBusinessDay</span><span class="java_plain">&nbsp;</span><span class="java_type">NthBusinessDay</span><span class="java_plain">&nbsp;nth</span><span class="java_separator">,</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_type">Payment</span><span class="java_plain">&nbsp;payment</span><span class="java_separator">)</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_operator">//</span><span class="java_plain">&nbsp;</span><span class="java_keyword">do</span><span class="java_plain">&nbsp;the&nbsp;repeating&nbsp;or&nbsp;</span><span class="java_type">long</span><span class="java_plain">&nbsp;running&nbsp;task</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">...</span><span class="java_plain">&nbsp;</span><span class="java_separator">...</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_operator">//</span><span class="java_plain">&nbsp;</span><span class="java_type">Schedule</span><span class="java_plain">&nbsp;the&nbsp;task&nbsp;in&nbsp;the&nbsp;business&nbsp;logic&nbsp;processing&nbsp;code</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_type">QuartzTriggerHandle</span><span class="java_plain">&nbsp;handle&nbsp;</span><span class="java_operator">=</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;processor</span><span class="java_separator">.</span><span class="java_plain">schedulePayment</span><span class="java_separator">(</span><span class="java_keyword">new</span><span class="java_plain">&nbsp;</span><span class="java_type">Date</span><span class="java_separator">(),</span><span class="java_plain">&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">new</span><span class="java_plain">&nbsp;</span><span class="java_type">NthBusinessDay</span><span class="java_separator">(</span><span class="java_literal">2</span><span class="java_separator">,</span><span class="java_plain">&nbsp;</span><span class="java_literal">&quot;14:00&quot;</span><span class="java_separator">,</span><span class="java_plain">&nbsp;WEEKLY</span><span class="java_separator">),</span><span class="java_plain">&nbsp;payment</span><span class="java_separator">);</span>
+</pre><p>The <code class="literal">NthBusinessDay</code> object contains the configuration of the invocation trigger. You can specify more holidays (e.g., company holidays, non-US holidays etc.) via the <code class="literal">additionalHolidays</code> property.</p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"></span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_keyword">class</span><span class="java_plain">&nbsp;</span><span class="java_type">NthBusinessDay</span><span class="java_plain">&nbsp;</span><span class="java_keyword">implements</span><span class="java_plain">&nbsp;</span><span class="java_type">Serializable</span>
+<!--  --><br/><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_type">int</span><span class="java_plain">&nbsp;n</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_type">String</span><span class="java_plain">&nbsp;fireAtTime</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_type">List</span><span class="java_plain">&nbsp;</span><span class="java_operator">&lt;</span><span class="java_type">Date</span><span class="java_operator">&gt;</span><span class="java_plain">&nbsp;additionalHolidays</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_type">BusinessDayIntervalType</span><span class="java_plain">&nbsp;interval</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_type">boolean</span><span class="java_plain">&nbsp;excludeWeekends</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_type">boolean</span><span class="java_plain">&nbsp;excludeUsFederalHolidays</span><span class="java_separator">;</span>
+</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;enum&nbsp;</span><span class="java_type">BusinessDayIntervalType</span><span class="java_plain">&nbsp;</span><span class="java_separator">{</span><span class="java_plain">&nbsp;WEEKLY</span><span class="java_separator">,</span><span class="java_plain">&nbsp;MONTHLY</span><span class="java_separator">,</span><span class="java_plain">&nbsp;YEARLY&nbsp;</span><span class="java_separator">}</span>
+</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">NthBusinessDay</span><span class="java_plain">&nbsp;</span><span class="java_separator">()</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;n&nbsp;</span><span class="java_operator">=</span><span class="java_plain">&nbsp;</span><span class="java_literal">1</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;fireAtTime&nbsp;</span><span class="java_operator">=</span><span class="java_plain">&nbsp;</span><span class="java_literal">&quot;12:00&quot;</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;additionalHolidays&nbsp;</span><span class="java_operator">=</span><span class="java_plain">&nbsp;</span><span class="java_keyword">new</span><span class="java_plain">&nbsp;</span><span class="java_type">ArrayList</span><span class="java_plain">&nbsp;</span><span class="java_operator">&lt;</span><span class="java_type">Date</span><span class="java_operator">&gt;</span><span class="java_plain">&nbsp;</span><span class="java_separator">();</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;interval&nbsp;</span><span class="java_operator">=</span><span class="java_plain">&nbsp;</span><span class="java_type">BusinessDayIntervalType</span><span class="java_separator">.</span><span class="java_plain">WEEKLY</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;excludeWeekends&nbsp;</span><span class="java_operator">=</span><span class="java_plain">&nbsp;</span><span class="java_literal">true</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;excludeUsFederalHolidays&nbsp;</span><span class="java_operator">=</span><span class="java_plain">&nbsp;</span><span class="java_literal">true</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="java_separator">...</span><span class="java_plain">&nbsp;</span><span class="java_separator">...</span>
+<!--  --><br/><span class="java_separator">}</span>
+</pre><p>The <code class="literal">@IntervalDuration</code>, <code class="literal">@IntervalCron</code>, and <code class="literal">@IntervalNthBusinessDay</code> annotations are mutually exclusive. If they are used in the same method, a <code class="literal">RuntimeException</code> will be thrown.</p></div><div class="sect2" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e21644"/>23.2.3. Asynchronous events</h3></div></div></div><p>
+                Component-driven events may also be asynchronous. To raise an event for asynchronous
+                processing, simply call the <code class="literal">raiseAsynchronousEvent()</code> method of 
+                the <code class="literal">Events</code> class. To schedule a timed event, call the
+                <code class="literal">raiseTimedEvent()</code> method, passing a <span class="emphasis"><em>schedule</em></span>
+                object (for the default dispatcher or timer service dispatcher, use <code class="literal">TimerSchedule</code>). 
+                Components may observe asynchronous events in the usual way, but remember that only the 
+                business process context is propagated to the asynchronous thread.
+            </p></div><div class="sect2" lang="en-US"><div class="titlepage"><div><div><h3 class="title"><a id="d0e21664"/>23.2.4. Handling exceptions from asynchronous calls</h3></div></div></div><p>
+                Each asynchronous dispatcher behaves differently when an
+                exception propagates through it. For example, the 
+                <code class="literal">java.util.concurrent</code> dispatcher will suspend
+                further executions of a call which repeats, and the EJB3 timer
+                service will swallow the exception. Seam therefore catches any
+                exception which propagates out of the asynchronous call before
+                it reaches the dispatcher.
+            </p><p>
+                By default, any exception which propagates out from an 
+                asynchronous execution will be caught and logged at error level.
+                You can customize this behavior globally by overriding the
+                <code class="literal">org.jboss.seam.async.asynchronousExceptionHandler</code>
+                component: 
+            </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">@</span><!-- <br/> --><span class="java_type">Scope</span><!-- <br/> --><span class="java_separator">(</span><!-- <br/> --><span class="java_type">ScopeType</span><!-- <br/> --><span class="java_separator">.</span><!-- <br/> --><span class="java_plain">STATELESS</span><!-- <br/> --><span class="java_separator">)</span>
+<!--  --><br/><span class="java_plain">@</span><span class="java_type">Name</span><span class="java_separator">(</span><span class="java_literal">&quot;org.jboss.seam.async.asynchronousExceptionHandler&quot;</span><span class="java_separator">)</span>
+<!--  --><br/><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_keyword">class</span><span class="java_plain">&nbsp;</span><span class="java_type">MyAsynchronousExceptionHandler</span><span class="java_plain">&nbsp;</span><span class="java_keyword">extends</span><span class="java_plain">&nbsp;</span><span class="java_type">AsynchronousExceptionHandler</span><span class="java_plain">&nbsp;</span><span class="java_separator">{</span><span class="java_plain">&nbsp;</span>
+</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;@</span><span class="java_type">Logger</span><span class="java_plain">&nbsp;</span><span class="java_type">Log</span><span class="java_plain">&nbsp;log</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;@</span><span class="java_type">In</span><span class="java_plain">&nbsp;</span><span class="java_type">Future</span><span class="java_plain">&nbsp;timer</span><span class="java_separator">;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;@</span><span class="java_type">Override</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span><span class="java_keyword">public</span><span class="java_plain">&nbsp;</span><span class="java_type">void</span><span class="java_plain">&nbsp;handleException</span><span class="java_separator">(</span><span class="java_type">Exception</span><span class="java_plain">&nbsp;exception</span><span class="java_separator">)</span><span class="java_plain">&nbsp;</span><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;log</span><span class="java_separator">.</span><span class="java_plain">debug</span><span class="java_separator">(</span><span class="java_plain">exception</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;timer</span><span class="java_separator">.</span><span class="java_plain">cancel</span><span class="java_separator">(</span><span class="java_literal">false</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span>
+<!--  --><br/><span class="java_separator">}</span></pre><p>
+                Here, for example, using <code class="literal">java.util.concurrent</code>
+                dispatcher, we inject its control object and cancel all future
+                invocations when an exception is encountered
+            </p><p>
+                You can also alter this behavior for an individual component by
+                implementing the method 
+                <code class="literal">public void handleAsynchronousException(Exception exception);</code>
+                on the component. For example: 
+            </p><pre xmlns="" xmlns:rf="java:org.jboss.highlight.XhtmlRendererFactory" class="JAVA"><!-- <br/> --><span class="java_plain">&nbsp;&nbsp;&nbsp;</span><!-- <br/> --><span class="java_keyword">public</span><!-- <br/> --><span class="java_plain">&nbsp;</span><!-- <br/> --><span class="java_type">void</span><!-- <br/> --><span class="java_plain">&nbsp;handleAsynchronousException</span><!-- <br/> --><span class="java_separator">(</span><!-- <br/> --><span class="java_type">Exception</span><!-- <br/> --><span class="java_plain">&nbsp;exception</span><!-- <br/> --><span class="java_separator">)</span><!-- <br/> --><span class="java_plain">&nbsp;</span><!-- <br/> --><span class="java_separator">{</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;log</span><span class="java_separator">.</span><span class="java_plain">fatal</span><span class="java_separator">(</span><span class="java_plain">exception</span><span class="java_separator">);</span>
+<!--  --><br/><span class="java_plain">&nbsp;&nbsp;&nbsp;</span><span class="java_separator">}</span></pre></div></div></div><ul class="docnav"><li class="previous"><a accesskey="p" href="mail.html"><strong>Prev</strong>Chapter 22. Email</a></li><li class="up"><a accesskey="u" href="#"><strong>Top of page</strong></a></li><li class="home"><a accesskey="h" href="index.html"><strong>Front page</strong></a></li><li class="next"><a accesskey="n" href="cache.html"><strong>Next</strong>Chapter 24. Caching</a></li></ul></body></html>
