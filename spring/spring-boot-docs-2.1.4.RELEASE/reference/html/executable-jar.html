@@ -1,0 +1,132 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>Appendix&nbsp;E.&nbsp;The Executable Jar Format</title><link rel="stylesheet" type="text/css" href="css/manual-multipage.css"><meta name="generator" content="DocBook XSL Stylesheets V1.79.1"><link rel="home" href="index.html" title="Spring Boot Reference Guide"><link rel="up" href="appendix.html" title="Part&nbsp;X.&nbsp;Appendices"><link rel="prev" href="test-auto-configuration.html" title="Appendix&nbsp;D.&nbsp;Test auto-configuration annotations"><link rel="next" href="appendix-dependency-versions.html" title="Appendix&nbsp;F.&nbsp;Dependency versions"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="navheader"><table width="100%" summary="Navigation header"><tr><th colspan="3" align="center">Appendix&nbsp;E.&nbsp;The Executable Jar Format</th></tr><tr><td width="20%" align="left"><a accesskey="p" href="test-auto-configuration.html">Prev</a>&nbsp;</td><th width="60%" align="center">Part&nbsp;X.&nbsp;Appendices</th><td width="20%" align="right">&nbsp;<a accesskey="n" href="appendix-dependency-versions.html">Next</a></td></tr></table><hr></div><div class="appendix"><div class="titlepage"><div><div><h2 class="title"><a name="executable-jar" href="#executable-jar"></a>Appendix&nbsp;E.&nbsp;The Executable Jar Format</h2></div></div></div><p>The <code class="literal">spring-boot-loader</code> modules lets Spring Boot support executable jar and
+war files. If you use the Maven plugin or the Gradle plugin, executable jars are
+automatically generated, and you generally do not need to know the details of how
+they work.</p><p>If you need to create executable jars from a different build system or if you are just
+curious about the underlying technology, this section provides some background.</p><div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="executable-jar-nested-jars" href="#executable-jar-nested-jars"></a>E.1&nbsp;Nested JARs</h2></div></div></div><p>Java does not provide any standard way to load nested jar files (that is, jar files that
+are themselves contained within a jar). This can be problematic if you need
+to distribute a self-contained application that can be run from the command line
+without unpacking.</p><p>To solve this problem, many developers use &#8220;shaded&#8221; jars. A shaded jar packages
+all classes, from all jars, into a single &#8220;uber jar&#8221;. The problem with shaded jars is
+that it becomes hard to see which libraries are actually in your application.
+It can also be problematic if the same filename is used (but with different content)
+in multiple jars. Spring Boot takes a different approach and lets you actually nest
+jars directly.</p><div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="executable-jar-jar-file-structure" href="#executable-jar-jar-file-structure"></a>E.1.1&nbsp;The Executable Jar File Structure</h3></div></div></div><p>Spring Boot Loader-compatible jar files should be structured in the following way:</p><pre class="screen">example.jar
+ |
+ +-META-INF
+ |  +-MANIFEST.MF
+ +-org
+ |  +-springframework
+ |     +-boot
+ |        +-loader
+ |           +-&lt;spring boot loader classes&gt;
+ +-BOOT-INF
+    +-classes
+    |  +-mycompany
+    |     +-project
+    |        +-YourClasses.class
+    +-lib
+       +-dependency1.jar
+       +-dependency2.jar</pre><p>Application classes should be placed in a nested <code class="literal">BOOT-INF/classes</code> directory.
+Dependencies should be placed in a nested <code class="literal">BOOT-INF/lib</code> directory.</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="executable-jar-war-file-structure" href="#executable-jar-war-file-structure"></a>E.1.2&nbsp;The Executable War File Structure</h3></div></div></div><p>Spring Boot Loader-compatible war files should be structured in the following way:</p><pre class="screen">example.war
+ |
+ +-META-INF
+ |  +-MANIFEST.MF
+ +-org
+ |  +-springframework
+ |     +-boot
+ |        +-loader
+ |           +-&lt;spring boot loader classes&gt;
+ +-WEB-INF
+    +-classes
+    |  +-com
+    |     +-mycompany
+    |        +-project
+    |           +-YourClasses.class
+    +-lib
+    |  +-dependency1.jar
+    |  +-dependency2.jar
+    +-lib-provided
+       +-servlet-api.jar
+       +-dependency3.jar</pre><p>Dependencies should be placed in a nested <code class="literal">WEB-INF/lib</code> directory. Any dependencies
+that are required when running embedded but are not required when deploying to
+a traditional web container should be placed in <code class="literal">WEB-INF/lib-provided</code>.</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="executable-jar-jarfile" href="#executable-jar-jarfile"></a>E.2&nbsp;Spring Boot&#8217;s &#8220;JarFile&#8221; Class</h2></div></div></div><p>The core class used to support loading nested jars is
+<code class="literal">org.springframework.boot.loader.jar.JarFile</code>. It lets you load jar
+content from a standard jar file or from nested child jar data. When first loaded, the
+location of each <code class="literal">JarEntry</code> is mapped to a physical file offset of the outer jar, as
+shown in the following example:</p><pre class="screen">myapp.jar
++-------------------+-------------------------+
+| /BOOT-INF/classes | /BOOT-INF/lib/mylib.jar |
+|+-----------------+||+-----------+----------+|
+||     A.class      |||  B.class  |  C.class ||
+|+-----------------+||+-----------+----------+|
++-------------------+-------------------------+
+ ^                    ^           ^
+ 0063                 3452        3980</pre><p>The preceding example shows how <code class="literal">A.class</code> can be found in <code class="literal">/BOOT-INF/classes</code> in
+<code class="literal">myapp.jar</code> at position <code class="literal">0063</code>. <code class="literal">B.class</code> from the nested jar can actually be found in
+<code class="literal">myapp.jar</code> at position <code class="literal">3452</code>, and <code class="literal">C.class</code> is at position <code class="literal">3980</code>.</p><p>Armed with this information, we can load specific nested entries by seeking to
+the appropriate part of the outer jar. We do not need to unpack the archive, and we
+do not need to read all entry data into memory.</p><div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="executable-jar-jarfile-compatibility" href="#executable-jar-jarfile-compatibility"></a>E.2.1&nbsp;Compatibility with the Standard Java &#8220;JarFile&#8221;</h3></div></div></div><p>Spring Boot Loader strives to remain compatible with existing code and libraries.
+<code class="literal">org.springframework.boot.loader.jar.JarFile</code> extends from <code class="literal">java.util.jar.JarFile</code> and
+should work as a drop-in replacement. The <code class="literal">getURL()</code> method returns a <code class="literal">URL</code> that
+opens a connection compatible with <code class="literal">java.net.JarURLConnection</code> and can be used with Java&#8217;s
+<code class="literal">URLClassLoader</code>.</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="executable-jar-launching" href="#executable-jar-launching"></a>E.3&nbsp;Launching Executable Jars</h2></div></div></div><p>The <code class="literal">org.springframework.boot.loader.Launcher</code> class is a special bootstrap class that
+is used as an executable jar&#8217;s main entry point. It is the actual <code class="literal">Main-Class</code> in your jar
+file, and it is used to setup an appropriate <code class="literal">URLClassLoader</code> and ultimately call your
+<code class="literal">main()</code> method.</p><p>There are three launcher subclasses (<code class="literal">JarLauncher</code>, <code class="literal">WarLauncher</code>, and
+<code class="literal">PropertiesLauncher</code>). Their purpose is to load resources (<code class="literal">.class</code> files and so on.) from
+nested jar files or war files in directories (as opposed to those explicitly on the
+classpath). In the case of <code class="literal">JarLauncher</code> and <code class="literal">WarLauncher</code>, the nested paths are fixed.
+<code class="literal">JarLauncher</code> looks in <code class="literal">BOOT-INF/lib/</code>, and <code class="literal">WarLauncher</code> looks in <code class="literal">WEB-INF/lib/</code> and
+<code class="literal">WEB-INF/lib-provided/</code>. You can add extra jars in those locations if you want more. The
+<code class="literal">PropertiesLauncher</code> looks in <code class="literal">BOOT-INF/lib/</code> in your application archive by default, but
+you can add additional locations by setting an environment variable called <code class="literal">LOADER_PATH</code>
+or <code class="literal">loader.path</code> in <code class="literal">loader.properties</code> (which is a comma-separated list of directories,
+archives, or directories within archives).</p><div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="executable-jar-launcher-manifest" href="#executable-jar-launcher-manifest"></a>E.3.1&nbsp;Launcher Manifest</h3></div></div></div><p>You need to specify an appropriate <code class="literal">Launcher</code> as the <code class="literal">Main-Class</code> attribute of
+<code class="literal">META-INF/MANIFEST.MF</code>. The actual class that you want to launch (that is, the class that
+contains a <code class="literal">main</code> method) should be specified  in the <code class="literal">Start-Class</code>
+attribute.</p><p>The following example shows a typical <code class="literal">MANIFEST.MF</code> for an executable jar file:</p><pre class="screen">Main-Class: org.springframework.boot.loader.JarLauncher
+Start-Class: com.mycompany.project.MyApplication</pre><p>For a war file, it would be as follows:</p><pre class="screen">Main-Class: org.springframework.boot.loader.WarLauncher
+Start-Class: com.mycompany.project.MyApplication</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><table border="0" summary="Note"><tr><td rowspan="2" align="center" valign="top" width="25"><img alt="[Note]" src="images/note.png"></td><th align="left">Note</th></tr><tr><td align="left" valign="top"><p>You need not specify <code class="literal">Class-Path</code> entries in your manifest file. The classpath
+is deduced from the nested jars.</p></td></tr></table></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="executable-jar-exploded-archives" href="#executable-jar-exploded-archives"></a>E.3.2&nbsp;Exploded Archives</h3></div></div></div><p>Certain PaaS implementations may choose to unpack archives before they run. For example,
+Cloud Foundry operates this way. You can run an unpacked archive by starting
+the appropriate launcher, as follows:</p><pre class="screen">$ unzip -q myapp.jar
+$ java org.springframework.boot.loader.JarLauncher</pre></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="executable-jar-property-launcher-features" href="#executable-jar-property-launcher-features"></a>E.4&nbsp;<code class="literal">PropertiesLauncher</code> Features</h2></div></div></div><p><code class="literal">PropertiesLauncher</code> has a few special features that can be enabled with external
+properties (System properties, environment variables, manifest entries, or
+<code class="literal">loader.properties</code>). The following table describes these properties:</p><div class="informaltable"><table class="informaltable" style="border-collapse: collapse;border-top: 1px solid ; border-bottom: 1px solid ; border-left: 1px solid ; border-right: 1px solid ; "><colgroup><col class="col_1"><col class="col_2"></colgroup><thead><tr><th style="border-right: 1px solid ; border-bottom: 1px solid ; " align="left" valign="top">Key</th><th style="border-bottom: 1px solid ; " align="left" valign="top">Purpose</th></tr></thead><tbody><tr><td style="border-right: 1px solid ; border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">loader.path</code></p></td><td style="border-bottom: 1px solid ; " align="left" valign="top"><p>Comma-separated Classpath, such as <code class="literal">lib,${HOME}/app/lib</code>. Earlier entries take
+ precedence, like a regular <code class="literal">-classpath</code> on the <code class="literal">javac</code> command line.</p></td></tr><tr><td style="border-right: 1px solid ; border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">loader.home</code></p></td><td style="border-bottom: 1px solid ; " align="left" valign="top"><p>Used to resolve relative paths in <code class="literal">loader.path</code>. For example, given <code class="literal">loader.path=lib</code>,
+ then <code class="literal">${loader.home}/lib</code> is a classpath location (along with all jar files in that
+ directory). This property is also used to locate a <code class="literal">loader.properties</code> file, as in the
+ following example <code class="literal"><a class="link" href="file:///opt/app" target="_top">/opt/app</a></code>
+ It defaults to <code class="literal">${user.dir}</code>.</p></td></tr><tr><td style="border-right: 1px solid ; border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">loader.args</code></p></td><td style="border-bottom: 1px solid ; " align="left" valign="top"><p>Default arguments for the main method (space separated).</p></td></tr><tr><td style="border-right: 1px solid ; border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">loader.main</code></p></td><td style="border-bottom: 1px solid ; " align="left" valign="top"><p>Name of main class to launch (for example, <code class="literal">com.app.Application</code>).</p></td></tr><tr><td style="border-right: 1px solid ; border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">loader.config.name</code></p></td><td style="border-bottom: 1px solid ; " align="left" valign="top"><p>Name of properties file (for example, <code class="literal">launcher</code>) It defaults to <code class="literal">loader</code>.</p></td></tr><tr><td style="border-right: 1px solid ; border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">loader.config.location</code></p></td><td style="border-bottom: 1px solid ; " align="left" valign="top"><p>Path to properties file (for example, <code class="literal">classpath:loader.properties</code>). It defaults to
+ <code class="literal">loader.properties</code>.</p></td></tr><tr><td style="border-right: 1px solid ; " align="left" valign="top"><p><code class="literal">loader.system</code></p></td><td style="" align="left" valign="top"><p>Boolean flag to indicate that all properties should be added to System properties
+ It defaults to <code class="literal">false</code>.</p></td></tr></tbody></table></div><p>When specified as environment variables or manifest entries, the following names should
+be used:</p><div class="informaltable"><table class="informaltable" style="border-collapse: collapse;border-top: 1px solid ; border-bottom: 1px solid ; border-left: 1px solid ; border-right: 1px solid ; "><colgroup><col class="col_1"><col class="col_2"><col class="col_3"></colgroup><thead><tr><th style="border-right: 1px solid ; border-bottom: 1px solid ; " align="left" valign="top">Key</th><th style="border-right: 1px solid ; border-bottom: 1px solid ; " align="left" valign="top">Manifest entry</th><th style="border-bottom: 1px solid ; " align="left" valign="top">Environment variable</th></tr></thead><tbody><tr><td style="border-right: 1px solid ; border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">loader.path</code></p></td><td style="border-right: 1px solid ; border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">Loader-Path</code></p></td><td style="border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">LOADER_PATH</code></p></td></tr><tr><td style="border-right: 1px solid ; border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">loader.home</code></p></td><td style="border-right: 1px solid ; border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">Loader-Home</code></p></td><td style="border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">LOADER_HOME</code></p></td></tr><tr><td style="border-right: 1px solid ; border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">loader.args</code></p></td><td style="border-right: 1px solid ; border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">Loader-Args</code></p></td><td style="border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">LOADER_ARGS</code></p></td></tr><tr><td style="border-right: 1px solid ; border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">loader.main</code></p></td><td style="border-right: 1px solid ; border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">Start-Class</code></p></td><td style="border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">LOADER_MAIN</code></p></td></tr><tr><td style="border-right: 1px solid ; border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">loader.config.location</code></p></td><td style="border-right: 1px solid ; border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">Loader-Config-Location</code></p></td><td style="border-bottom: 1px solid ; " align="left" valign="top"><p><code class="literal">LOADER_CONFIG_LOCATION</code></p></td></tr><tr><td style="border-right: 1px solid ; " align="left" valign="top"><p><code class="literal">loader.system</code></p></td><td style="border-right: 1px solid ; " align="left" valign="top"><p><code class="literal">Loader-System</code></p></td><td style="" align="left" valign="top"><p><code class="literal">LOADER_SYSTEM</code></p></td></tr></tbody></table></div><div class="tip" style="margin-left: 0.5in; margin-right: 0.5in;"><table border="0" summary="Tip"><tr><td rowspan="2" align="center" valign="top" width="25"><img alt="[Tip]" src="images/tip.png"></td><th align="left">Tip</th></tr><tr><td align="left" valign="top"><p>Build plugins automatically move the <code class="literal">Main-Class</code> attribute to <code class="literal">Start-Class</code> when
+the fat jar is built. If you use that, specify the name of the class to launch by using
+the <code class="literal">Main-Class</code> attribute and leaving out <code class="literal">Start-Class</code>.</p></td></tr></table></div><p>The following rules apply to working with <code class="literal">PropertiesLauncher</code>:</p><div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem"><code class="literal">loader.properties</code> is searched for in <code class="literal">loader.home</code>, then in the root of the
+ classpath, and then in <code class="literal">classpath:/BOOT-INF/classes</code>. The first location where a file
+with that name exists is used.</li><li class="listitem"><code class="literal">loader.home</code> is the directory location of an additional properties file
+(overriding the default) only when <code class="literal">loader.config.location</code> is not specified.</li><li class="listitem"><code class="literal">loader.path</code> can contain directories (which are scanned recursively for jar and zip
+files), archive paths, a directory within an archive that is scanned for jar files (for
+example, <code class="literal">dependencies.jar!/lib</code>), or wildcard patterns (for the default JVM behavior).
+Archive paths can be relative to <code class="literal">loader.home</code> or anywhere in the file system with a
+<code class="literal">jar:file:</code> prefix.</li><li class="listitem"><code class="literal">loader.path</code> (if empty) defaults to <code class="literal">BOOT-INF/lib</code> (meaning a local directory or a
+nested one if running from an archive). Because of this, <code class="literal">PropertiesLauncher</code> behaves
+the same as <code class="literal">JarLauncher</code> when no additional configuration is provided.</li><li class="listitem"><code class="literal">loader.path</code> can not be used to configure the location of <code class="literal">loader.properties</code> (the
+classpath used to search for the latter is the JVM classpath when <code class="literal">PropertiesLauncher</code>
+is launched).</li><li class="listitem">Placeholder replacement is done from System and environment variables plus the
+properties file itself on all values before use.</li><li class="listitem">The search order for properties (where it makes sense to look in more than one place)
+ is environment variables, system properties, <code class="literal">loader.properties</code>, the exploded archive
+manifest, and the archive manifest.</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="executable-jar-restrictions" href="#executable-jar-restrictions"></a>E.5&nbsp;Executable Jar Restrictions</h2></div></div></div><p>You need to consider the following restrictions when working with a Spring
+Boot Loader packaged application:</p><div class="itemizedlist"><a name="executable-jar-zip-entry-compression" href="#executable-jar-zip-entry-compression"></a><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">Zip entry compression:
+The <code class="literal">ZipEntry</code> for a nested jar must be saved by using the <code class="literal">ZipEntry.STORED</code> method. This
+is required so that we can seek directly to individual content within the nested jar.
+The content of the nested jar file itself can still be compressed, as can any other
+entries in the outer jar.</li></ul></div><div class="itemizedlist"><a name="executable-jar-system-classloader" href="#executable-jar-system-classloader"></a><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">System classLoader:
+Launched applications should use <code class="literal">Thread.getContextClassLoader()</code> when loading classes
+(most libraries and frameworks do so by default). Trying to load nested jar
+classes with <code class="literal">ClassLoader.getSystemClassLoader()</code> fails.
+<code class="literal">java.util.Logging</code> always uses the system classloader. For this reason, you should
+consider a different logging implementation.</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="executable-jar-alternatives" href="#executable-jar-alternatives"></a>E.6&nbsp;Alternative Single Jar Solutions</h2></div></div></div><p>If the preceding restrictions mean that you cannot use Spring Boot Loader, consider the
+following alternatives:</p><div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem"><a class="link" href="https://maven.apache.org/plugins/maven-shade-plugin/" target="_top">Maven Shade Plugin</a></li><li class="listitem"><a class="link" href="http://www.jdotsoft.com/JarClassLoader.php" target="_top">JarClassLoader</a></li><li class="listitem"><a class="link" href="https://sourceforge.net/projects/one-jar/" target="_top">OneJar</a></li><li class="listitem"><a class="link" href="https://imperceptiblethoughts.com/shadow/" target="_top">Gradle Shadow Plugin</a></li></ul></div></div></div><div class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="test-auto-configuration.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="u" href="appendix.html">Up</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="appendix-dependency-versions.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">Appendix&nbsp;D.&nbsp;Test auto-configuration annotations&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right" valign="top">&nbsp;Appendix&nbsp;F.&nbsp;Dependency versions</td></tr></table></div></body></html>
