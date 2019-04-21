@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 10. Experimental Features</title><link rel="stylesheet" type="text/css" href="css/jbossorg.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.76.1"/><link rel="home" href="index.html" title="Drools Documentation"/><link rel="up" href="pt03.html" title="Part III. Drools Runtime and Language"/><link rel="prev" href="ch09.html" title="Chapter 9. Complex Event Processing"/><link rel="next" href="pt04.html" title="Part IV. Drools Integration"/><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/></head><body><p id="title"><a href="http://www.jboss.org" class="site_href"><strong>JBoss.org</strong></a><a href="http://docs.jboss.org/" class="doc_href"><strong>Community Documentation</strong></a></p><ul class="docnav"><li class="previous"><a accesskey="p" href="ch09.html"><strong>Prev</strong></a></li><li class="next"><a accesskey="n" href="pt04.html"><strong>Next</strong></a></li></ul><div class="chapter" title="Chapter 10. Experimental Features"><div class="titlepage"><div><div><h2 class="title"><a id="ExperimentalFeaturesChapter"/>Chapter 10. Experimental Features</h2></div></div></div><div class="toc"><dl><dt><span class="section"><a href="ch10.html#d0e13520">10.1. Declarative Agenda</a></span></dt><dt><span class="section"><a href="ch10.html#d0e13581">10.2. Browsing graphs of objects with OOPath</a></span></dt><dd><dl><dt><span class="section"><a href="ch10.html#d0e13688">10.2.1. Reactive and Non-Reactive OOPath</a></span></dt></dl></dd></dl></div><div class="section" title="10.1. Declarative Agenda"><div class="titlepage"><div><div><h2 class="title"><a id="d0e13520"/>10.1. Declarative Agenda</h2></div></div></div><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h2>Warning</h2><p>Declarative Agenda is experimental, and all aspects are highly likely to change in the future.
+      @Eager and @Direct are temporary annotations to control the behaviour of rules, which will also
+      change as Declarative Agenda evolves. Annotations instead of attributes where chosen, to reflect
+      their experimental nature.</p></div><p>The declarative agenda allows to use rules to control which other rules can fire and when.
+    While this will add a lot more overhead than the simple use of salience, the advantage is it is declarative and
+    thus more readable and maintainable and should allow more use cases to be achieved in a simpler fashion.</p><p>This feature is off by default and must be explicitly enabled, that is because it is considered highly
+    experimental for the moment and will be subject to change, but can be activated on a given KieBase by adding the
+    declarativeAgenda='enabled' attribute in the corresponding kbase tag of the kmodule.xml file as in the following example.
+  </p><div class="example"><a id="d0e13530"/><p class="title"><strong>Example 10.1. Enabling the Declarative Agenda</strong></p><div class="example-contents"><pre><code class="language-xml">&lt;kmodule xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns="http://www.drools.org/xsd/kmodule"&gt;
+      &lt;kbase name="DeclarativeKBase" declarativeAgenda="enabled"&gt;
+      &lt;ksession name="KSession"&gt;
+      &lt;/kbase&gt;
+      &lt;/kmodule&gt;</code></pre></div></div><br class="example-break"/><p>The basic idea is:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p>All rule's Matches are inserted into WorkingMemory as facts. So you can now do pattern matching against a
+        Match. The rule's metadata and declarations are available as fields on the Match object.</p></li><li class="listitem"><p>You can use the kcontext.blockMatch( Match match ) for the current rule to block the selected
+        match. Only when that rule becomes false will the match be eligible for firing. If it is already
+        eligible for firing and is later blocked, it will be removed from the agenda until it is unblocked.</p></li><li class="listitem"><p>A match may have multiple blockers and a count is kept. All blockers must became false for the
+        counter to reach zero to enable the Match to be eligible for firing.</p></li><li class="listitem"><p>kcontext.unblockAllMatches( Match match ) is an over-ride rule that will remove all blockers
+        regardless</p></li><li class="listitem"><p>An activation may also be cancelled, so it never fires with cancelMatch</p></li><li class="listitem"><p>An unblocked Match is added to the Agenda and obeys normal salience, agenda groups, ruleflow groups
+        etc.</p></li><li class="listitem"><p>The @Direct annotations allows a rule to fire as soon as it's matched, this is to be used for
+        rules that block/unblock matches, it is not desirable for these rules to have side effects that impact
+        else where.</p></li></ul></div><div class="example"><a id="d0e13559"/><p class="title"><strong>Example 10.2. New RuleContext methods</strong></p><div class="example-contents"><pre><code class="no-highlight">void blockMatch(Match match);
+      void unblockAllMatches(Match match);
+      void cancelMatch(Match match);</code></pre></div></div><br class="example-break"/><p>Here is a basic example that will block all matches from rules that have metadata @department('sales').
+    They will stay blocked until the blockerAllSalesRules rule becomes false, i.e. "go2" is retracted.</p><div class="example"><a id="d0e13566"/><p class="title"><strong>Example 10.3. Block rules based on rule metadata</strong></p><div class="example-contents"><pre><code class="no-highlight">rule rule1 @Eager @department('sales') when
+      $s : String( this == 'go1' )
+      then
+      list.add( kcontext.rule.name + ':' + $s );
+      end
+      rule rule2 @Eager @department('sales') when
+      $s : String( this == 'go1' )
+      then
+      list.add( kcontext.rule.name + ':' + $s );
+      end
+      rule blockerAllSalesRules @Direct @Eager when
+      $s : String( this == 'go2' )
+      $i : Match( department == 'sales' )
+      then
+      list.add( $i.rule.name + ':' + $s  );
+      kcontext.blockMatch( $i );
+      end</code></pre></div></div><br class="example-break"/><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h2>Warning</h2><p>Further than annotate the blocking rule with @Direct, it is also necessary to annotate all the rules that
+      could be potentially blocked by it with @Eager. This is because, since the Match has to be evaluated by
+      the pattern matching of the blocking rule, the potentially blocked ones cannot be evaluated lazily, otherwise
+      won't be any Match to be evaluated.</p></div><p>This example shows how you can use active property to count the number of active or inactive (already fired)
+    matches.</p><div class="example"><a id="d0e13576"/><p class="title"><strong>Example 10.4. Count the number of active/inactive Matches</strong></p><div class="example-contents"><pre><code class="no-highlight">rule rule1 @Eager @department('sales') when
+      $s : String( this == 'go1' )
+      then
+      list.add( kcontext.rule.name + ':' + $s );
+      end
+      rule rule2 @Eager @department('sales') when
+      $s : String( this == 'go1' )
+      then
+      list.add( kcontext.rule.name + ':' + $s );
+      end
+      rule rule3 @Eager @department('sales') when
+      $s : String( this == 'go1' )
+      then
+      list.add( kcontext.rule.name + ':' + $s );
+      end
+      rule countActivateInActive @Direct @Eager when
+      $s : String( this == 'go2' )
+      $active : Number( this == 1 ) from accumulate( $a : Match( department == 'sales', active == true ), count( $a ) )
+      $inActive : Number( this == 2 ) from  accumulate( $a : Match( department == 'sales', active == false ), count( $a ) )
+      then
+      kcontext.halt( );
+      end </code></pre></div></div><br class="example-break"/></div><div class="section" title="10.2. Browsing graphs of objects with OOPath"><div class="titlepage"><div><div><h2 class="title"><a id="d0e13581"/>10.2. Browsing graphs of objects with OOPath</h2></div></div></div><p>When the field of a fact is a collection it is possible to bind and reason over
+    all the items in that collection on by one using the <code class="literal">from</code> keyword.
+    Nevertheless, when it is required to browse a graph of object the extensive use of the
+    <code class="literal">from</code> conditional element may result in a verbose and cubersome syntax
+    like in the following example:
+  </p><div class="example"><a id="d0e13592"/><p class="title"><strong>Example 10.5. Browsing a graph of objects with from</strong></p><div class="example-contents"><pre><code class="no-highlight">rule "Find all grades for Big Data exam" when
+      $student: Student( $plan: plan )
+      $exam: Exam( course == "Big Data" ) from $plan.exams
+      $grade: Grade() from $exam.grades
+      then /* RHS */ end</code></pre></div></div><br class="example-break"/><p>In this example it has been assumed to use a domain model consisting of a
+    <code class="literal">Student</code> who has a <code class="literal">Plan</code> of study: a <code class="literal">Plan</code>
+    can have zero or more <code class="literal">Exam</code>s and an <code class="literal">Exam</code> zero or more
+    <code class="literal">Grade</code>s. Note that only the root object of the graph (the <code class="literal">Student</code>
+    in this case) needs to be in the working memory in order to make this works.</p><p>By borrowing ideas from XPath, this syntax can be made more succinct, as XPath has a
+    compact notation for navigating through related elements while handling collections and
+    filtering constraints. This XPath-inspired notation has been called <code class="literal">OOPath</code>
+    since it is explictly intended to browse graph of objects. Using this notation the former
+    example can be rewritten as it follows:
+  </p><div class="example"><a id="d0e13625"/><p class="title"><strong>Example 10.6. Browsing a graph of objects with OOPath</strong></p><div class="example-contents"><pre><code class="no-highlight">rule "Find all grades for Big Data exam" when
+      Student( $grade: /plan/exams{course == "Big Data"}/grades )
+      then /* RHS */ end</code></pre></div></div><br class="example-break"/><p>Formally, the core grammar of an <code class="literal">OOPath</code> expression can be defined in EBNF notation in this way.</p><pre><code class="no-highlight">OOPExpr = ( "/" | "?/" ) OOPSegment { ( "/" | "?/" | "." ) OOPSegment } ;
+    OOPSegment = [ID ( ":" | ":=" )] ID ["[" Number "]"] ["{" Constraints "}"];</code></pre><p>In practice an <code class="literal">OOPath</code> expression has the following features.</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p>It has to start with <code class="literal">/</code> or with a <code class="literal">?/</code> in case of a completely
+        non-reactive OOPath (see below).</p></li><li class="listitem"><p>It can dereference a single property of an object with the <code class="literal">.</code> operator</p></li><li class="listitem"><p>It can dereference a multiple property of an object using the <code class="literal">/</code> operator.
+        If a collection is returned, it will iterate over the values in the collection</p></li><li class="listitem"><p>While traversing referenced objects it can filter away those not satisfying
+        one or more constraints, written as predicate expressions between curly
+        brackets like in:</p><pre><code class="no-highlight">Student( $grade: /plan/exams{ course == "Big Data" }/grades )</code></pre></li><li class="listitem"><p>A constraint can also have a beckreference to an object of the graph traversed before the
+        currently iterated one. For example the following OOPath:</p><pre><code class="no-highlight">Student( $grade: /plan/exams/grades{ result &gt; ../averageResult } )</code></pre><p>will match only the grades having a result above the average for the passed exam.</p></li><li class="listitem"><p>A constraint can also recursively be another OOPath as it follows:</p><pre><code class="no-highlight">Student( $exam: /plan/exams{ /grades{ result &gt; 20 } } )</code></pre></li><li class="listitem"><p>Items can also be accessed by their index by putting it between square brackets
+        like in:</p><pre><code class="no-highlight">Student( $grade: /plan/exams[0]/grades )</code></pre><p>To adhere to Java convention OOPath indexes are 0-based, compared to XPath 1-based</p></li></ul></div><div class="section" title="10.2.1. Reactive and Non-Reactive OOPath"><div class="titlepage"><div><div><h3 class="title"><a id="d0e13688"/>10.2.1. Reactive and Non-Reactive OOPath</h3></div></div></div><p>At the moment Drools is not able to react to updates involving a deeply nested object traversed
+      during the evaluation of an <code class="literal">OOPath</code> expression. To make these objects reactive
+      to changes it is then necessary to make them extend the class
+      <code class="literal">org.drools.core.phreak.ReactiveObject</code>. It is planned to overcome this
+      limitation by implementing a mechanism that automatically instruments the classes belonging
+      to a specific domain model.</p><p>Having extendend that class, the domain objects can notify the engine when one of
+      its field has been updated by invoking the inherited method <code class="literal">notifyModification</code>
+      as in the following example:</p><div class="example"><a id="d0e13704"/><p class="title"><strong>Example 10.7. Notifying the engine that an exam has been moved to a different course</strong></p><div class="example-contents"><pre><code class="no-highlight">public void setCourse(String course) {
+        this.course = course;
+        notifyModification(this);
+        }</code></pre></div></div><br class="example-break"/><p>In this way when using an OOPath like the following:</p><pre><code class="no-highlight">Student( $grade: /plan/exams{ course == "Big Data" }/grades )</code></pre><p>if an exam is moved to a different course, the rule is re-triggered and the list of grades
+      matching the rule recomputed.</p><p>It is also possible to have reactivity only in one subpart of the OOPath as in:</p><pre><code class="no-highlight">Student( $grade: /plan/exams{ course == "Big Data" }?/grades )</code></pre><p>Here, using the <code class="literal">?/</code> separator instead of the <code class="literal">/</code> one, the engine will
+      react to a change made to an exam, or if an exam is added to the plan, but not if a new grade is added to an
+      existing exam. Of course if a OOPath chunk is not reactive, all remaining part of the OOPath from there till
+      the end of the expression will be non-reactive as well. For instance the following OOPath</p><pre><code class="no-highlight">Student( $grade: ?/plan/exams{ course == "Big Data" }/grades )</code></pre><p>will be completely non-reactive. For this reason it is not allowed to use the
+      <code class="literal">?/</code> separator more than once in the same OOPath so an expression like:</p><pre><code class="no-highlight">Student( $grade: /plan?/exams{ course == "Big Data" }?/grades )</code></pre><p>will cause a compile time error.</p></div></div></div><script type="text/javascript" src="highlight.js/highlight.pack.js"> </script><script type="text/javascript">hljs.initHighlightingOnLoad();</script><ul class="docnav"><li class="previous"><a accesskey="p" href="ch09.html"><strong>Prev</strong>Chapter 9. Complex Event Processing</a></li><li class="up"><a accesskey="u" href="#"><strong>Up</strong></a></li><li class="home"><a accesskey="h" href="index.html"><strong>Home</strong></a></li><li class="next"><a accesskey="n" href="pt04.html"><strong>Next</strong>Part IV. Drools Integration</a></li></ul></body></html>
