@@ -6,8 +6,19 @@
 `其他在线文档` [#online](#online)
 
 
+
+# 
+
+
  
 
+[Spring Framework 开发参考手册 2.5 by 满江红](spring/spring-framework-2.5-reference-redsaga-zh/)
+
+[HIBERNATE - Relational Persistence for Idiomatic Java](jboss/hibernate-distribution-3.6.10.Final/documentation/manual/zh-CN/html_single/)
+[官方地址](https://docs.jboss.org/hibernate/orm/3.5/reference/zh-CN/html_single/)
+
+[Seam - 语境相关的组件 by满江红20080327](jboss/jboss-seam-2.0.0.GA/doc/reference/zh/html_single/)
+[官方地址](https://docs.jboss.org/seam/2.0.0.GA/reference/zh/html_single/)
 
 
 # online
