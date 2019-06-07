@@ -1,0 +1,277 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>32.&nbsp;CAS Authentication</title><link rel="stylesheet" type="text/css" href="css/manual-multipage.css"><meta name="generator" content="DocBook XSL Stylesheets V1.78.1"><link rel="home" href="index.html" title="Spring Security Reference"><link rel="up" href="advanced-topics.html" title="Part&nbsp;VI.&nbsp;Additional Topics"><link rel="prev" href="jaas.html" title="31.&nbsp;Java Authentication and Authorization Service (JAAS) Provider"><link rel="next" href="x509.html" title="33.&nbsp;X.509 Authentication"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="navheader"><table width="100%" summary="Navigation header"><tr><th colspan="3" align="center">32.&nbsp;CAS Authentication</th></tr><tr><td width="20%" align="left"><a accesskey="p" href="jaas.html">Prev</a>&nbsp;</td><th width="60%" align="center">Part&nbsp;VI.&nbsp;Additional Topics</th><td width="20%" align="right">&nbsp;<a accesskey="n" href="x509.html">Next</a></td></tr></table><hr></div><div class="chapter"><div class="titlepage"><div><div><h2 class="title"><a name="cas" href="#cas"></a>32.&nbsp;CAS Authentication</h2></div></div></div>
+
+<div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="cas-overview" href="#cas-overview"></a>32.1&nbsp;Overview</h2></div></div></div>
+
+<p>JA-SIG produces an enterprise-wide single sign on system known as CAS. Unlike other initiatives, JA-SIG&#8217;s Central Authentication Service is open source, widely used, simple to understand, platform independent, and supports proxy capabilities. Spring Security fully supports CAS, and provides an easy migration path from single-application deployments of Spring Security through to multiple-application deployments secured by an enterprise-wide CAS server.</p>
+<p>You can learn more about CAS at <a class="ulink" href="http://www.ja-sig.org/cas" target="_top">http://www.ja-sig.org/cas</a>. You will also need to visit this site to download the CAS Server files.</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="cas-how-it-works" href="#cas-how-it-works"></a>32.2&nbsp;How CAS Works</h2></div></div></div>
+
+<p>Whilst the CAS web site contains documents that detail the architecture of CAS, we present the general overview again here within the context of Spring Security. Spring Security 3.x supports CAS 3. At the time of writing, the CAS server was at version 3.4.</p>
+<p>Somewhere in your enterprise you will need to setup a CAS server. The CAS server is simply a standard WAR file, so there isn&#8217;t anything difficult about setting up your server. Inside the WAR file you will customise the login and other single sign on pages displayed to users.</p>
+<p>When deploying a CAS 3.4 server, you will also need to specify an <code class="literal">AuthenticationHandler</code> in the <code class="literal">deployerConfigContext.xml</code> included with CAS. The <code class="literal">AuthenticationHandler</code> has a simple method that returns a boolean as to whether a given set of Credentials is valid. Your <code class="literal">AuthenticationHandler</code> implementation will need to link into some type of backend authentication repository, such as an LDAP server or database. CAS itself includes numerous <code class="literal">AuthenticationHandler</code> s out of the box to assist with this. When you download and deploy the server war file, it is set up to successfully authenticate users who enter a password matching their username, which is useful for testing.</p>
+<p>Apart from the CAS server itself, the other key players are of course the secure web applications deployed throughout your enterprise. These web applications are known as "services". There are three types of services. Those that authenticate service tickets, those that can obtain proxy tickets, and those that authenticate proxy tickets. Authenticating a proxy ticket differs because the list of proxies must be validated and often times a proxy ticket can be reused.</p>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="cas-sequence" href="#cas-sequence"></a>32.2.1&nbsp;Spring Security and CAS Interaction Sequence</h3></div></div></div>
+
+<p>The basic interaction between a web browser, CAS server and a Spring Security-secured service is as follows:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">
+The web user is browsing the service&#8217;s public pages. CAS or Spring Security is not involved.
+</li><li class="listitem">
+The user eventually requests a page that is either secure or one of the beans it uses is secure. Spring Security&#8217;s <code class="literal">ExceptionTranslationFilter</code> will detect the <code class="literal">AccessDeniedException</code> or <code class="literal">AuthenticationException</code>.
+</li><li class="listitem">
+Because the user&#8217;s <code class="literal">Authentication</code> object (or lack thereof) caused an <code class="literal">AuthenticationException</code>, the <code class="literal">ExceptionTranslationFilter</code> will call the configured <code class="literal">AuthenticationEntryPoint</code>. If using CAS, this will be the <code class="literal">CasAuthenticationEntryPoint</code> class.
+</li><li class="listitem">
+The <code class="literal">CasAuthenticationEntryPoint</code> will redirect the user&#8217;s browser to the CAS server. It will also indicate a <code class="literal">service</code> parameter, which is the callback URL for the Spring Security service (your application). For example, the URL to which the browser is redirected might be <a class="ulink" href="https://my.company.com/cas/login?service=https%3A%2F%2Fserver3.company.com%2Fwebapp%2Flogin/cas" target="_top">https://my.company.com/cas/login?service=https%3A%2F%2Fserver3.company.com%2Fwebapp%2Flogin/cas</a>.
+</li><li class="listitem">
+After the user&#8217;s browser redirects to CAS, they will be prompted for their username and password. If the user presents a session cookie which indicates they&#8217;ve previously logged on, they will not be prompted to login again (there is an exception to this procedure, which we&#8217;ll cover later). CAS will use the <code class="literal">PasswordHandler</code> (or <code class="literal">AuthenticationHandler</code> if using CAS 3.0) discussed above to decide whether the username and password is valid.
+</li><li class="listitem">
+Upon successful login, CAS will redirect the user&#8217;s browser back to the original service. It will also include a <code class="literal">ticket</code> parameter, which is an opaque string representing the "service ticket". Continuing our earlier example, the URL the browser is redirected to might be <a class="ulink" href="https://server3.company.com/webapp/login/cas?ticket=ST-0-ER94xMJmn6pha35CQRoZ" target="_top">https://server3.company.com/webapp/login/cas?ticket=ST-0-ER94xMJmn6pha35CQRoZ</a>.
+</li><li class="listitem">
+Back in the service web application, the <code class="literal">CasAuthenticationFilter</code> is always listening for requests to <code class="literal">/login/cas</code> (this is configurable, but we&#8217;ll use the defaults in this introduction). The processing filter will construct a <code class="literal">UsernamePasswordAuthenticationToken</code> representing the service ticket. The principal will be equal to <code class="literal">CasAuthenticationFilter.CAS_STATEFUL_IDENTIFIER</code>, whilst the credentials will be the service ticket opaque value. This authentication request will then be handed to the configured <code class="literal">AuthenticationManager</code>.
+</li><li class="listitem">
+The <code class="literal">AuthenticationManager</code> implementation will be the <code class="literal">ProviderManager</code>, which is in turn configured with the <code class="literal">CasAuthenticationProvider</code>. The <code class="literal">CasAuthenticationProvider</code> only responds to <code class="literal">UsernamePasswordAuthenticationToken</code> s containing the CAS-specific principal (such as <code class="literal">CasAuthenticationFilter.CAS_STATEFUL_IDENTIFIER</code>) and <code class="literal">CasAuthenticationToken</code> s (discussed later).
+</li><li class="listitem">
+<code class="literal">CasAuthenticationProvider</code> will validate the service ticket using a <code class="literal">TicketValidator</code> implementation. This will typically be a <code class="literal">Cas20ServiceTicketValidator</code> which is one of the classes included in the CAS client library. In the event the application needs to validate proxy tickets, the <code class="literal">Cas20ProxyTicketValidator</code> is used. The <code class="literal">TicketValidator</code> makes an HTTPS request to the CAS server in order to validate the service ticket. It may also include a proxy callback URL, which is included in this example: <a class="ulink" href="https://my.company.com/cas/proxyValidate?service=https%3A%2F%2Fserver3.company.com%2Fwebapp%2Flogin/cas&amp;ticket=ST-0-ER94xMJmn6pha35CQRoZ&amp;pgtUrl=https://server3.company.com/webapp/login/cas/proxyreceptor" target="_top">https://my.company.com/cas/proxyValidate?service=https%3A%2F%2Fserver3.company.com%2Fwebapp%2Flogin/cas&amp;ticket=ST-0-ER94xMJmn6pha35CQRoZ&amp;pgtUrl=https://server3.company.com/webapp/login/cas/proxyreceptor</a>.
+</li><li class="listitem">
+Back on the CAS server, the validation request will be received. If the presented service ticket matches the service URL the ticket was issued to, CAS will provide an affirmative response in XML indicating the username. If any proxy was involved in the authentication (discussed below), the list of proxies is also included in the XML response.
+</li><li class="listitem">
+[OPTIONAL] If the request to the CAS validation service included the proxy callback URL (in the <code class="literal">pgtUrl</code> parameter), CAS will include a <code class="literal">pgtIou</code> string in the XML response. This <code class="literal">pgtIou</code> represents a proxy-granting ticket IOU. The CAS server will then create its own HTTPS connection back to the <code class="literal">pgtUrl</code>. This is to mutually authenticate the CAS server and the claimed service URL. The HTTPS connection will be used to send a proxy granting ticket to the original web application. For example, <a class="ulink" href="https://server3.company.com/webapp/login/cas/proxyreceptor?pgtIou=PGTIOU-0-R0zlgrl4pdAQwBvJWO3vnNpevwqStbSGcq3vKB2SqSFFRnjPHt&amp;pgtId=PGT-1-si9YkkHLrtACBo64rmsi3v2nf7cpCResXg5MpESZFArbaZiOKH" target="_top">https://server3.company.com/webapp/login/cas/proxyreceptor?pgtIou=PGTIOU-0-R0zlgrl4pdAQwBvJWO3vnNpevwqStbSGcq3vKB2SqSFFRnjPHt&amp;pgtId=PGT-1-si9YkkHLrtACBo64rmsi3v2nf7cpCResXg5MpESZFArbaZiOKH</a>.
+</li><li class="listitem">
+The <code class="literal">Cas20TicketValidator</code> will parse the XML received from the CAS server. It will return to the <code class="literal">CasAuthenticationProvider</code> a <code class="literal">TicketResponse</code>, which includes the username (mandatory), proxy list (if any were involved), and proxy-granting ticket IOU (if the proxy callback was requested).
+</li><li class="listitem">
+Next <code class="literal">CasAuthenticationProvider</code> will call a configured <code class="literal">CasProxyDecider</code>. The <code class="literal">CasProxyDecider</code> indicates whether the proxy list in the <code class="literal">TicketResponse</code> is acceptable to the service. Several implementations are provided with Spring Security: <code class="literal">RejectProxyTickets</code>, <code class="literal">AcceptAnyCasProxy</code> and <code class="literal">NamedCasProxyDecider</code>. These names are largely self-explanatory, except <code class="literal">NamedCasProxyDecider</code> which allows a <code class="literal">List</code> of trusted proxies to be provided.
+</li><li class="listitem">
+<code class="literal">CasAuthenticationProvider</code> will next request a <code class="literal">AuthenticationUserDetailsService</code> to load the <code class="literal">GrantedAuthority</code> objects that apply to the user contained in the <code class="literal">Assertion</code>.
+</li><li class="listitem">
+If there were no problems, <code class="literal">CasAuthenticationProvider</code> constructs a <code class="literal">CasAuthenticationToken</code> including the details contained in the <code class="literal">TicketResponse</code> and the <code class="literal">GrantedAuthority</code>s.
+</li><li class="listitem">
+Control then returns to <code class="literal">CasAuthenticationFilter</code>, which places the created <code class="literal">CasAuthenticationToken</code> in the security context.
+</li><li class="listitem">
+The user&#8217;s browser is redirected to the original page that caused the <code class="literal">AuthenticationException</code> (or a <a class="link" href="core-web-filters.html#form-login-flow-handling" title="14.4.1&nbsp;Application Flow on Authentication Success and Failure">custom destination</a> depending on the configuration).
+</li></ul></div>
+<p>It&#8217;s good that you&#8217;re still here! Let&#8217;s now look at how this is configured</p>
+</div>
+</div>
+<div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="cas-client" href="#cas-client"></a>32.3&nbsp;Configuration of CAS Client</h2></div></div></div>
+
+<p>The web application side of CAS is made easy due to Spring Security. It is assumed you already know the basics of using Spring Security, so these are not covered again below. We&#8217;ll assume a namespace based configuration is being used and add in the CAS beans as required. Each section builds upon the previous section. A full<a class="link" href="sample-apps.html#cas-sample" title="7.5&nbsp;CAS Sample">CAS sample application</a> can be found in the Spring Security Samples.</p>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="cas-st" href="#cas-st"></a>32.3.1&nbsp;Service Ticket Authentication</h3></div></div></div>
+
+<p>This section describes how to setup Spring Security to authenticate Service Tickets. Often times this is all a web application requires. You will need to add a <code class="literal">ServiceProperties</code> bean to your application context. This represents your CAS service:</p>
+<pre class="programlisting"><span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"serviceProperties"</span>
+	<span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.security.cas.ServiceProperties"</span><span class="hl-tag">&gt;</span>
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"service"</span>
+	<span class="hl-attribute">value</span>=<span class="hl-value">"https://localhost:8443/cas-sample/login/cas"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"sendRenew"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"false"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span></pre>
+<p>The <code class="literal">service</code> must equal a URL that will be monitored by the <code class="literal">CasAuthenticationFilter</code>. The <code class="literal">sendRenew</code> defaults to false, but should be set to true if your application is particularly sensitive. What this parameter does is tell the CAS login service that a single sign on login is unacceptable. Instead, the user will need to re-enter their username and password in order to gain access to the service.</p>
+<p>The following beans should be configured to commence the CAS authentication process (assuming you&#8217;re using a namespace configuration):</p>
+<pre class="programlisting"><span class="hl-tag">&lt;security:http</span> <span class="hl-attribute">entry-point-ref</span>=<span class="hl-value">"casEntryPoint"</span><span class="hl-tag">&gt;</span>
+...
+<span class="hl-tag">&lt;security:custom-filter</span> <span class="hl-attribute">position</span>=<span class="hl-value">"CAS_FILTER"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"casFilter"</span><span class="hl-tag"> /&gt;</span>
+<span class="hl-tag">&lt;/security:http&gt;</span>
+
+<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"casFilter"</span>
+	<span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.security.cas.web.CasAuthenticationFilter"</span><span class="hl-tag">&gt;</span>
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"authenticationManager"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"authenticationManager"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span>
+
+<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"casEntryPoint"</span>
+	<span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.security.cas.web.CasAuthenticationEntryPoint"</span><span class="hl-tag">&gt;</span>
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"loginUrl"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"https://localhost:9443/cas/login"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"serviceProperties"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"serviceProperties"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span></pre>
+<p>For CAS to operate, the <code class="literal">ExceptionTranslationFilter</code> must have its <code class="literal">authenticationEntryPoint</code> property set to the <code class="literal">CasAuthenticationEntryPoint</code> bean. This can easily be done using <a class="link" href="ns-config.html#ns-entry-point-ref" title="Setting a Custom AuthenticationEntryPoint">entry-point-ref</a> as is done in the example above. The <code class="literal">CasAuthenticationEntryPoint</code> must refer to the <code class="literal">ServiceProperties</code> bean (discussed above), which provides the URL to the enterprise&#8217;s CAS login server. This is where the user&#8217;s browser will be redirected.</p>
+<p>The <code class="literal">CasAuthenticationFilter</code> has very similar properties to the <code class="literal">UsernamePasswordAuthenticationFilter</code> (used for form-based logins). You can use these properties to customize things like behavior for authentication success and failure.</p>
+<p>Next you need to add a <code class="literal">CasAuthenticationProvider</code> and its collaborators:</p>
+<pre class="programlisting"><span class="hl-tag">&lt;security:authentication-manager</span> <span class="hl-attribute">alias</span>=<span class="hl-value">"authenticationManager"</span><span class="hl-tag">&gt;</span>
+<span class="hl-tag">&lt;security:authentication-provider</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"casAuthenticationProvider"</span><span class="hl-tag"> /&gt;</span>
+<span class="hl-tag">&lt;/security:authentication-manager&gt;</span>
+
+<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"casAuthenticationProvider"</span>
+	<span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.security.cas.authentication.CasAuthenticationProvider"</span><span class="hl-tag">&gt;</span>
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"authenticationUserDetailsService"</span><span class="hl-tag">&gt;</span>
+	<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.security.core.userdetails.UserDetailsByNameServiceWrapper"</span><span class="hl-tag">&gt;</span>
+	<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"userService"</span><span class="hl-tag"> /&gt;</span>
+	<span class="hl-tag">&lt;/bean&gt;</span>
+<span class="hl-tag">&lt;/property&gt;</span>
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"serviceProperties"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"serviceProperties"</span><span class="hl-tag"> /&gt;</span>
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"ticketValidator"</span><span class="hl-tag">&gt;</span>
+	<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.jasig.cas.client.validation.Cas20ServiceTicketValidator"</span><span class="hl-tag">&gt;</span>
+	<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">index</span>=<span class="hl-value">"0"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"https://localhost:9443/cas"</span><span class="hl-tag"> /&gt;</span>
+	<span class="hl-tag">&lt;/bean&gt;</span>
+<span class="hl-tag">&lt;/property&gt;</span>
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"key"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"an_id_for_this_auth_provider_only"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span>
+
+<span class="hl-tag">&lt;security:user-service</span> <span class="hl-attribute">id</span>=<span class="hl-value">"userService"</span><span class="hl-tag">&gt;</span>
+<span class="hl-tag">&lt;security:user</span> <span class="hl-attribute">name</span>=<span class="hl-value">"joe"</span> <span class="hl-attribute">password</span>=<span class="hl-value">"joe"</span> <span class="hl-attribute">authorities</span>=<span class="hl-value">"ROLE_USER"</span><span class="hl-tag"> /&gt;</span>
+...
+<span class="hl-tag">&lt;/security:user-service&gt;</span></pre>
+<p>The <code class="literal">CasAuthenticationProvider</code> uses a <code class="literal">UserDetailsService</code> instance to load the authorities for a user, once they have been authenticated by CAS. We&#8217;ve shown a simple in-memory setup here. Note that the <code class="literal">CasAuthenticationProvider</code> does not actually use the password for authentication, but it does use the authorities.</p>
+<p>The beans are all reasonably self-explanatory if you refer back to the <a class="link" href="cas.html#cas-how-it-works" title="32.2&nbsp;How CAS Works">How CAS Works</a> section.</p>
+<p>This completes the most basic configuration for CAS. If you haven&#8217;t made any mistakes, your web application should happily work within the framework of CAS single sign on. No other parts of Spring Security need to be concerned about the fact CAS handled authentication. In the following sections we will discuss some (optional) more advanced configurations.</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="cas-singlelogout" href="#cas-singlelogout"></a>32.3.2&nbsp;Single Logout</h3></div></div></div>
+
+<p>The CAS protocol supports Single Logout and can be easily added to your Spring Security configuration. Below are updates to the Spring Security configuration that handle Single Logout</p>
+<pre class="programlisting"><span class="hl-tag">&lt;security:http</span> <span class="hl-attribute">entry-point-ref</span>=<span class="hl-value">"casEntryPoint"</span><span class="hl-tag">&gt;</span>
+...
+<span class="hl-tag">&lt;security:logout</span> <span class="hl-attribute">logout-success-url</span>=<span class="hl-value">"/cas-logout.jsp"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;security:custom-filter</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"requestSingleLogoutFilter"</span> <span class="hl-attribute">before</span>=<span class="hl-value">"LOGOUT_FILTER"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;security:custom-filter</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"singleLogoutFilter"</span> <span class="hl-attribute">before</span>=<span class="hl-value">"CAS_FILTER"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/security:http&gt;</span>
+
+<span class="hl-comment">&lt;!-- This filter handles a Single Logout Request from the CAS Server --&gt;</span>
+<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"singleLogoutFilter"</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.jasig.cas.client.session.SingleSignOutFilter"</span><span class="hl-tag">/&gt;</span>
+
+<span class="hl-comment">&lt;!-- This filter redirects to the CAS Server to signal Single Logout should be performed --&gt;</span>
+<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"requestSingleLogoutFilter"</span>
+	<span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.security.web.authentication.logout.LogoutFilter"</span><span class="hl-tag">&gt;</span>
+<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">value</span>=<span class="hl-value">"https://localhost:9443/cas/logout"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;constructor-arg&gt;</span>
+	<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">class</span>=
+		<span class="hl-value">"org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/constructor-arg&gt;</span>
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"filterProcessesUrl"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"/logout/cas"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span></pre>
+<p>The <code class="literal">logout</code> element logs the user out of the local application, but does not terminate the session with the CAS server or any other applications that have been logged into. The <code class="literal">requestSingleLogoutFilter</code> filter will allow the URL of <code class="literal">/spring_security_cas_logout</code> to be requested to redirect the application to the configured CAS Server logout URL. Then the CAS Server will send a Single Logout request to all the services that were signed into. The <code class="literal">singleLogoutFilter</code> handles the Single Logout request by looking up the <code class="literal">HttpSession</code> in a static <code class="literal">Map</code> and then invalidating it.</p>
+<p>It might be confusing why both the <code class="literal">logout</code> element and the <code class="literal">singleLogoutFilter</code> are needed. It is considered best practice to logout locally first since the <code class="literal">SingleSignOutFilter</code> just stores the <code class="literal">HttpSession</code> in a static <code class="literal">Map</code> in order to call invalidate on it. With the configuration above, the flow of logout would be:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">
+The user requests <code class="literal">/logout</code> which would log the user out of the local application and send the user to the logout success page.
+</li><li class="listitem">
+The logout success page, <code class="literal">/cas-logout.jsp</code>, should instruct the user to click a link pointing to <code class="literal">/logout/cas</code> in order to logout out of all applications.
+</li><li class="listitem">
+When the user clicks the link, the user is redirected to the CAS single logout URL (<a class="ulink" href="https://localhost:9443/cas/logout" target="_top">https://localhost:9443/cas/logout</a>).
+</li><li class="listitem">
+On the CAS Server side, the CAS single logout URL then submits single logout requests to all the CAS Services. On the CAS Service side, JASIG&#8217;s <code class="literal">SingleSignOutFilter</code> processes the logout request by invaliditing the original session.
+</li></ul></div>
+<p>The next step is to add the following to your web.xml</p>
+<pre class="programlisting"><span class="hl-tag">&lt;filter&gt;</span>
+<span class="hl-tag">&lt;filter-name&gt;</span>characterEncodingFilter<span class="hl-tag">&lt;/filter-name&gt;</span>
+<span class="hl-tag">&lt;filter-class&gt;</span>
+	org.springframework.web.filter.CharacterEncodingFilter
+<span class="hl-tag">&lt;/filter-class&gt;</span>
+<span class="hl-tag">&lt;init-param&gt;</span>
+	<span class="hl-tag">&lt;param-name&gt;</span>encoding<span class="hl-tag">&lt;/param-name&gt;</span>
+	<span class="hl-tag">&lt;param-value&gt;</span>UTF-8<span class="hl-tag">&lt;/param-value&gt;</span>
+<span class="hl-tag">&lt;/init-param&gt;</span>
+<span class="hl-tag">&lt;/filter&gt;</span>
+<span class="hl-tag">&lt;filter-mapping&gt;</span>
+<span class="hl-tag">&lt;filter-name&gt;</span>characterEncodingFilter<span class="hl-tag">&lt;/filter-name&gt;</span>
+<span class="hl-tag">&lt;url-pattern&gt;</span>/*<span class="hl-tag">&lt;/url-pattern&gt;</span>
+<span class="hl-tag">&lt;/filter-mapping&gt;</span>
+<span class="hl-tag">&lt;listener&gt;</span>
+<span class="hl-tag">&lt;listener-class&gt;</span>
+	org.jasig.cas.client.session.SingleSignOutHttpSessionListener
+<span class="hl-tag">&lt;/listener-class&gt;</span>
+<span class="hl-tag">&lt;/listener&gt;</span></pre>
+<p>When using the SingleSignOutFilter you might encounter some encoding issues. Therefore it is recommended to add the <code class="literal">CharacterEncodingFilter</code> to ensure that the character encoding is correct when using the <code class="literal">SingleSignOutFilter</code>. Again, refer to JASIG&#8217;s documentation for details. The <code class="literal">SingleSignOutHttpSessionListener</code> ensures that when an <code class="literal">HttpSession</code> expires, the mapping used for single logout is removed.</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="cas-pt-client" href="#cas-pt-client"></a>32.3.3&nbsp;Authenticating to a Stateless Service with CAS</h3></div></div></div>
+
+<p>This section describes how to authenticate to a service using CAS. In other words, this section discusses how to setup a client that uses a service that authenticates with CAS. The next section describes how to setup a stateless service to Authenticate using CAS.</p>
+<div class="section"><div class="titlepage"><div><div><h4 class="title"><a name="cas-pt-client-config" href="#cas-pt-client-config"></a>Configuring CAS to Obtain Proxy Granting Tickets</h4></div></div></div>
+
+<p>In order to authenticate to a stateless service, the application needs to obtain a proxy granting ticket (PGT). This section describes how to configure Spring Security to obtain a PGT building upon thencas-st[Service Ticket Authentication] configuration.</p>
+<p>The first step is to include a <code class="literal">ProxyGrantingTicketStorage</code> in your Spring Security configuration. This is used to store PGT&#8217;s that are obtained by the <code class="literal">CasAuthenticationFilter</code> so that they can be used to obtain proxy tickets. An example configuration is shown below</p>
+<pre class="programlisting"><span class="hl-comment">&lt;!--
+NOTE: In a real application you should not use an in
+		memory implementation. You will also want to ensure
+		to clean up expired tickets by calling ProxyGrantingTicketStorage.cleanup()
+--&gt;</span>
+<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"pgtStorage"</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.jasig.cas.client.proxy.ProxyGrantingTicketStorageImpl"</span><span class="hl-tag">/&gt;</span></pre>
+<p>The next step is to update the <code class="literal">CasAuthenticationProvider</code> to be able to obtain proxy tickets. To do this replace the <code class="literal">Cas20ServiceTicketValidator</code> with a <code class="literal">Cas20ProxyTicketValidator</code>. The <code class="literal">proxyCallbackUrl</code> should be set to a URL that the application will receive PGT&#8217;s at. Last, the configuration should also reference the <code class="literal">ProxyGrantingTicketStorage</code> so it can use a PGT to obtain proxy tickets. You can find an example of the configuration changes that should be made below.</p>
+<pre class="programlisting"><span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"casAuthenticationProvider"</span>
+	<span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.security.cas.authentication.CasAuthenticationProvider"</span><span class="hl-tag">&gt;</span>
+...
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"ticketValidator"</span><span class="hl-tag">&gt;</span>
+	<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.jasig.cas.client.validation.Cas20ProxyTicketValidator"</span><span class="hl-tag">&gt;</span>
+	<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">value</span>=<span class="hl-value">"https://localhost:9443/cas"</span><span class="hl-tag">/&gt;</span>
+		<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"proxyCallbackUrl"</span>
+		<span class="hl-attribute">value</span>=<span class="hl-value">"https://localhost:8443/cas-sample/login/cas/proxyreceptor"</span><span class="hl-tag">/&gt;</span>
+	<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"proxyGrantingTicketStorage"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"pgtStorage"</span><span class="hl-tag">/&gt;</span>
+	<span class="hl-tag">&lt;/bean&gt;</span>
+<span class="hl-tag">&lt;/property&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span></pre>
+<p>The last step is to update the <code class="literal">CasAuthenticationFilter</code> to accept PGT and to store them in the <code class="literal">ProxyGrantingTicketStorage</code>. It is important the <code class="literal">proxyReceptorUrl</code> matches the <code class="literal">proxyCallbackUrl</code> of the <code class="literal">Cas20ProxyTicketValidator</code>. An example configuration is shown below.</p>
+<pre class="programlisting"><span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"casFilter"</span>
+		<span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.security.cas.web.CasAuthenticationFilter"</span><span class="hl-tag">&gt;</span>
+	...
+	<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"proxyGrantingTicketStorage"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"pgtStorage"</span><span class="hl-tag">/&gt;</span>
+	<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"proxyReceptorUrl"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"/login/cas/proxyreceptor"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span></pre>
+</div>
+<div class="section"><div class="titlepage"><div><div><h4 class="title"><a name="cas-pt-client-sample" href="#cas-pt-client-sample"></a>Calling a Stateless Service Using a Proxy Ticket</h4></div></div></div>
+
+<p>Now that Spring Security obtains PGTs, you can use them to create proxy tickets which can be used to authenticate to a stateless service. The <a class="link" href="sample-apps.html#cas-sample" title="7.5&nbsp;CAS Sample">CAS sample application</a> contains a working example in the <code class="literal">ProxyTicketSampleServlet</code>. Example code can be found below:</p>
+<pre class="programlisting"><span class="hl-keyword">protected</span> <span class="hl-keyword">void</span> doGet(HttpServletRequest request, HttpServletResponse response)
+	<span class="hl-keyword">throws</span> ServletException, IOException {
+<span class="hl-comment">// NOTE: The CasAuthenticationToken can also be obtained using</span>
+<span class="hl-comment">// SecurityContextHolder.getContext().getAuthentication()</span>
+<span class="hl-keyword">final</span> CasAuthenticationToken token = (CasAuthenticationToken) request.getUserPrincipal();
+<span class="hl-comment">// proxyTicket could be reused to make calls to the CAS service even if the</span>
+<span class="hl-comment">// target url differs</span>
+<span class="hl-keyword">final</span> String proxyTicket = token.getAssertion().getPrincipal().getProxyTicketFor(targetUrl);
+
+<span class="hl-comment">// Make a remote call using the proxy ticket</span>
+<span class="hl-keyword">final</span> String serviceUrl = targetUrl+<span class="hl-string">"?ticket="</span>+URLEncoder.encode(proxyTicket, <span class="hl-string">"UTF-8"</span>);
+String proxyResponse = CommonUtils.getResponseFromServer(serviceUrl, <span class="hl-string">"UTF-8"</span>);
+...
+}</pre>
+</div>
+</div>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="cas-pt" href="#cas-pt"></a>32.3.4&nbsp;Proxy Ticket Authentication</h3></div></div></div>
+
+<p>The <code class="literal">CasAuthenticationProvider</code> distinguishes between stateful and stateless clients. A stateful client is considered any that submits to the <code class="literal">filterProcessUrl</code> of the <code class="literal">CasAuthenticationFilter</code>. A stateless client is any that presents an authentication request to <code class="literal">CasAuthenticationFilter</code> on a URL other than the <code class="literal">filterProcessUrl</code>.</p>
+<p>Because remoting protocols have no way of presenting themselves within the context of an <code class="literal">HttpSession</code>, it isn&#8217;t possible to rely on the default practice of storing the security context in the session between requests. Furthermore, because the CAS server invalidates a ticket after it has been validated by the <code class="literal">TicketValidator</code>, presenting the same proxy ticket on subsequent requests will not work.</p>
+<p>One obvious option is to not use CAS at all for remoting protocol clients. However, this would eliminate many of the desirable features of CAS. As a middle-ground, the <code class="literal">CasAuthenticationProvider</code> uses a <code class="literal">StatelessTicketCache</code>. This is used solely for stateless clients which use a principal equal to <code class="literal">CasAuthenticationFilter.CAS_STATELESS_IDENTIFIER</code>. What happens is the <code class="literal">CasAuthenticationProvider</code> will store the resulting <code class="literal">CasAuthenticationToken</code> in the <code class="literal">StatelessTicketCache</code>, keyed on the proxy ticket. Accordingly, remoting protocol clients can present the same proxy ticket and the <code class="literal">CasAuthenticationProvider</code> will not need to contact the CAS server for validation (aside from the first request). Once authenticated, the proxy ticket could be used for URLs other than the original target service.</p>
+<p>This section builds upon the previous sections to accommodate proxy ticket authentication. The first step is to specify to authenticate all artifacts as shown below.</p>
+<pre class="programlisting"><span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"serviceProperties"</span>
+	<span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.security.cas.ServiceProperties"</span><span class="hl-tag">&gt;</span>
+...
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"authenticateAllArtifacts"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"true"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span></pre>
+<p>The next step is to specify <code class="literal">serviceProperties</code> and the <code class="literal">authenticationDetailsSource</code> for the <code class="literal">CasAuthenticationFilter</code>. The <code class="literal">serviceProperties</code> property instructs the <code class="literal">CasAuthenticationFilter</code> to attempt to authenticate all artifacts instead of only ones present on the <code class="literal">filterProcessUrl</code>. The <code class="literal">ServiceAuthenticationDetailsSource</code> creates a <code class="literal">ServiceAuthenticationDetails</code> that ensures the current URL, based upon the <code class="literal">HttpServletRequest</code>, is used as the service URL when validating the ticket. The method for generating the service URL can be customized by injecting a custom <code class="literal">AuthenticationDetailsSource</code> that returns a custom <code class="literal">ServiceAuthenticationDetails</code>.</p>
+<pre class="programlisting"><span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"casFilter"</span>
+	<span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.security.cas.web.CasAuthenticationFilter"</span><span class="hl-tag">&gt;</span>
+...
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"serviceProperties"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"serviceProperties"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"authenticationDetailsSource"</span><span class="hl-tag">&gt;</span>
+	<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">class</span>=
+	<span class="hl-value">"org.springframework.security.cas.web.authentication.ServiceAuthenticationDetailsSource"</span><span class="hl-tag">&gt;</span>
+	<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"serviceProperties"</span><span class="hl-tag">/&gt;</span>
+	<span class="hl-tag">&lt;/bean&gt;</span>
+<span class="hl-tag">&lt;/property&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span></pre>
+<p>You will also need to update the <code class="literal">CasAuthenticationProvider</code> to handle proxy tickets. To do this replace the <code class="literal">Cas20ServiceTicketValidator</code> with a <code class="literal">Cas20ProxyTicketValidator</code>. You will need to configure the <code class="literal">statelessTicketCache</code> and which proxies you want to accept. You can find an example of the updates required to accept all proxies below.</p>
+<pre class="programlisting"><span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"casAuthenticationProvider"</span>
+	<span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.security.cas.authentication.CasAuthenticationProvider"</span><span class="hl-tag">&gt;</span>
+...
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"ticketValidator"</span><span class="hl-tag">&gt;</span>
+	<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.jasig.cas.client.validation.Cas20ProxyTicketValidator"</span><span class="hl-tag">&gt;</span>
+	<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">value</span>=<span class="hl-value">"https://localhost:9443/cas"</span><span class="hl-tag">/&gt;</span>
+	<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"acceptAnyProxy"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"true"</span><span class="hl-tag">/&gt;</span>
+	<span class="hl-tag">&lt;/bean&gt;</span>
+<span class="hl-tag">&lt;/property&gt;</span>
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"statelessTicketCache"</span><span class="hl-tag">&gt;</span>
+	<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.security.cas.authentication.EhCacheBasedTicketCache"</span><span class="hl-tag">&gt;</span>
+	<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"cache"</span><span class="hl-tag">&gt;</span>
+		<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">class</span>=<span class="hl-value">"net.sf.ehcache.Cache"</span>
+			<span class="hl-attribute">init-method</span>=<span class="hl-value">"initialise"</span> <span class="hl-attribute">destroy-method</span>=<span class="hl-value">"dispose"</span><span class="hl-tag">&gt;</span>
+		<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">value</span>=<span class="hl-value">"casTickets"</span><span class="hl-tag">/&gt;</span>
+		<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">value</span>=<span class="hl-value">"50"</span><span class="hl-tag">/&gt;</span>
+		<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">value</span>=<span class="hl-value">"true"</span><span class="hl-tag">/&gt;</span>
+		<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">value</span>=<span class="hl-value">"false"</span><span class="hl-tag">/&gt;</span>
+		<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">value</span>=<span class="hl-value">"3600"</span><span class="hl-tag">/&gt;</span>
+		<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">value</span>=<span class="hl-value">"900"</span><span class="hl-tag">/&gt;</span>
+		<span class="hl-tag">&lt;/bean&gt;</span>
+	<span class="hl-tag">&lt;/property&gt;</span>
+	<span class="hl-tag">&lt;/bean&gt;</span>
+<span class="hl-tag">&lt;/property&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span></pre>
+</div>
+</div>
+</div><div class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="jaas.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="u" href="advanced-topics.html">Up</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="x509.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">31.&nbsp;Java Authentication and Authorization Service (JAAS) Provider&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right" valign="top">&nbsp;33.&nbsp;X.509 Authentication</td></tr></table></div></body></html>

@@ -1,0 +1,292 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>18.&nbsp;Cross Site Request Forgery (CSRF)</title><link rel="stylesheet" type="text/css" href="css/manual-multipage.css"><meta name="generator" content="DocBook XSL Stylesheets V1.78.1"><link rel="home" href="index.html" title="Spring Security Reference"><link rel="up" href="web-app-security.html" title="Part&nbsp;IV.&nbsp;Web Application Security"><link rel="prev" href="remember-me.html" title="17.&nbsp;Remember-Me Authentication"><link rel="next" href="cors.html" title="19.&nbsp;CORS"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="navheader"><table width="100%" summary="Navigation header"><tr><th colspan="3" align="center">18.&nbsp;Cross Site Request Forgery (CSRF)</th></tr><tr><td width="20%" align="left"><a accesskey="p" href="remember-me.html">Prev</a>&nbsp;</td><th width="60%" align="center">Part&nbsp;IV.&nbsp;Web Application Security</th><td width="20%" align="right">&nbsp;<a accesskey="n" href="cors.html">Next</a></td></tr></table><hr></div><div class="chapter"><div class="titlepage"><div><div><h2 class="title"><a name="csrf" href="#csrf"></a>18.&nbsp;Cross Site Request Forgery (CSRF)</h2></div></div></div>
+
+<p>This section discusses Spring Security&#8217;s <a class="ulink" href="http://en.wikipedia.org/wiki/Cross-site_request_forgery" target="_top"> Cross Site Request Forgery (CSRF)</a> support.</p>
+<div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="csrf-attacks" href="#csrf-attacks"></a>18.1&nbsp;CSRF Attacks</h2></div></div></div>
+
+<p>Before we discuss how Spring Security can protect applications from CSRF attacks, we will explain what a CSRF attack is. Let&#8217;s take a look at a concrete example to get a better understanding.</p>
+<p>Assume that your bank&#8217;s website provides a form that allows transferring money from the currently logged in user to another bank account. For example, the HTTP request might look like:</p>
+<pre class="screen">POST /transfer HTTP/1.1
+Host: bank.example.com
+Cookie: JSESSIONID=randomid; Domain=bank.example.com; Secure; HttpOnly
+Content-Type: application/x-www-form-urlencoded
+
+amount=100.00&amp;routingNumber=1234&amp;account=9876</pre>
+<p>Now pretend you authenticate to your bank&#8217;s website and then, without logging out, visit an evil website. The evil website contains an HTML page with the following form:</p>
+<pre class="programlisting"><span class="hl-tag">&lt;form</span> <span class="hl-attribute">action</span>=<span class="hl-value">"https://bank.example.com/transfer"</span> <span class="hl-attribute">method</span>=<span class="hl-value">"post"</span><span class="hl-tag">&gt;</span>
+<span class="hl-tag">&lt;input</span> <span class="hl-attribute">type</span>=<span class="hl-value">"hidden"</span>
+	<span class="hl-attribute">name</span>=<span class="hl-value">"amount"</span>
+	<span class="hl-attribute">value</span>=<span class="hl-value">"100.00"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;input</span> <span class="hl-attribute">type</span>=<span class="hl-value">"hidden"</span>
+	<span class="hl-attribute">name</span>=<span class="hl-value">"routingNumber"</span>
+	<span class="hl-attribute">value</span>=<span class="hl-value">"evilsRoutingNumber"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;input</span> <span class="hl-attribute">type</span>=<span class="hl-value">"hidden"</span>
+	<span class="hl-attribute">name</span>=<span class="hl-value">"account"</span>
+	<span class="hl-attribute">value</span>=<span class="hl-value">"evilsAccountNumber"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;input</span> <span class="hl-attribute">type</span>=<span class="hl-value">"submit"</span>
+	<span class="hl-attribute">value</span>=<span class="hl-value">"Win Money!"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/form&gt;</span></pre>
+<p>You like to win money, so you click on the submit button. In the process, you have unintentionally transferred $100 to a malicious user. This happens because, while the evil website cannot see your cookies, the cookies associated with your bank are still sent along with the request.</p>
+<p>Worst yet, this whole process could have been automated using JavaScript. This means you didn&#8217;t even need to click on the button. So how do we protect ourselves from such attacks?</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="synchronizer-token-pattern" href="#synchronizer-token-pattern"></a>18.2&nbsp;Synchronizer Token Pattern</h2></div></div></div>
+
+<p>The issue is that the HTTP request from the bank&#8217;s website and the request from the evil website are exactly the same. This means there is no way to reject requests coming from the evil website and allow requests coming from the bank&#8217;s website. To protect against CSRF attacks we need to ensure there is something in the request that the evil site is unable to provide.</p>
+<p>One solution is to use the <a class="ulink" href="https://www.owasp.org/index.php/Cross-Site_Request_Forgery_(CSRF)_Prevention_Cheat_Sheet#General_Recommendation:_Synchronizer_Token_Pattern" target="_top">Synchronizer Token Pattern</a>. This solution is to ensure that each request requires, in addition to our session cookie, a randomly generated token as an HTTP parameter. When a request is submitted, the server must look up the expected value for the parameter and compare it against the actual value in the request. If the values do not match, the request should fail.</p>
+<p>We can relax the expectations to only require the token for each HTTP request that updates state. This can be safely done since the same origin policy ensures the evil site cannot read the response. Additionally, we do not want to include the random token in HTTP GET as this can cause the tokens to be leaked.</p>
+<p>Let&#8217;s take a look at how our example would change. Assume the randomly generated token is present in an HTTP parameter named _csrf. For example, the request to transfer money would look like this:</p>
+<pre class="screen">POST /transfer HTTP/1.1
+Host: bank.example.com
+Cookie: JSESSIONID=randomid; Domain=bank.example.com; Secure; HttpOnly
+Content-Type: application/x-www-form-urlencoded
+
+amount=100.00&amp;routingNumber=1234&amp;account=9876&amp;_csrf=&lt;secure-random&gt;</pre>
+<p>You will notice that we added the _csrf parameter with a random value. Now the evil website will not be able to guess the correct value for the _csrf parameter (which must be explicitly provided on the evil website) and the transfer will fail when the server compares the actual token to the expected token.</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="when-to-use-csrf-protection" href="#when-to-use-csrf-protection"></a>18.3&nbsp;When to use CSRF protection</h2></div></div></div>
+
+<p>When should you use CSRF protection? Our recommendation is to use CSRF protection for any request that could be processed by a browser by normal users. If you are only creating a service that is used by non-browser clients, you will likely want to disable CSRF protection.</p>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="csrf-protection-and-json" href="#csrf-protection-and-json"></a>18.3.1&nbsp;CSRF protection and JSON</h3></div></div></div>
+
+<p>A common question is "do I need to protect JSON requests made by javascript?" The short answer is, it depends. However, you must be very careful as there are CSRF exploits that can impact JSON requests. For example, a malicious user can create a <a class="ulink" href="http://blog.opensecurityresearch.com/2012/02/json-csrf-with-parameter-padding.html" target="_top">CSRF with JSON using the following form</a>:</p>
+<pre class="programlisting"><span class="hl-tag">&lt;form</span> <span class="hl-attribute">action</span>=<span class="hl-value">"https://bank.example.com/transfer"</span> <span class="hl-attribute">method</span>=<span class="hl-value">"post"</span> <span class="hl-attribute">enctype</span>=<span class="hl-value">"text/plain"</span><span class="hl-tag">&gt;</span>
+<span class="hl-tag">&lt;input</span> <span class="hl-attribute">name</span>=<span class="hl-value">'{"amount":100,"routingNumber":"evilsRoutingNumber","account":"evilsAccountNumber", "ignore_me":"'</span> <span class="hl-attribute">value</span>=<span class="hl-value">'test"}'</span> <span class="hl-attribute">type</span>=<span class="hl-value">'hidden'</span><span class="hl-tag">&gt;</span>
+<span class="hl-tag">&lt;input</span> <span class="hl-attribute">type</span>=<span class="hl-value">"submit"</span>
+	<span class="hl-attribute">value</span>=<span class="hl-value">"Win Money!"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/form&gt;</span></pre>
+<p>This will produce the following JSON structure</p>
+<pre class="programlisting">{ <span class="hl-string">"amount"</span>: <span class="hl-number">100</span>,
+<span class="hl-string">"routingNumber"</span>: <span class="hl-string">"evilsRoutingNumber"</span>,
+<span class="hl-string">"account"</span>: <span class="hl-string">"evilsAccountNumber"</span>,
+<span class="hl-string">"ignore_me"</span>: <span class="hl-string">"=test"</span>
+}</pre>
+<p>If an application were not validating the Content-Type, then it would be exposed to this exploit. Depending on the setup, a Spring MVC application that validates the Content-Type could still be exploited by updating the URL suffix to end with ".json" as shown below:</p>
+<pre class="programlisting"><span class="hl-tag">&lt;form</span> <span class="hl-attribute">action</span>=<span class="hl-value">"https://bank.example.com/transfer.json"</span> <span class="hl-attribute">method</span>=<span class="hl-value">"post"</span> <span class="hl-attribute">enctype</span>=<span class="hl-value">"text/plain"</span><span class="hl-tag">&gt;</span>
+<span class="hl-tag">&lt;input</span> <span class="hl-attribute">name</span>=<span class="hl-value">'{"amount":100,"routingNumber":"evilsRoutingNumber","account":"evilsAccountNumber", "ignore_me":"'</span> <span class="hl-attribute">value</span>=<span class="hl-value">'test"}'</span> <span class="hl-attribute">type</span>=<span class="hl-value">'hidden'</span><span class="hl-tag">&gt;</span>
+<span class="hl-tag">&lt;input</span> <span class="hl-attribute">type</span>=<span class="hl-value">"submit"</span>
+	<span class="hl-attribute">value</span>=<span class="hl-value">"Win Money!"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/form&gt;</span></pre>
+</div>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="csrf-and-stateless-browser-applications" href="#csrf-and-stateless-browser-applications"></a>18.3.2&nbsp;CSRF and Stateless Browser Applications</h3></div></div></div>
+
+<p>What if my application is stateless? That doesn&#8217;t necessarily mean you are protected. In fact, if a user does not need to perform any actions in the web browser for a given request, they are likely still vulnerable to CSRF attacks.</p>
+<p>For example, consider an application uses a custom cookie that contains all the state within it for authentication instead of the JSESSIONID. When the CSRF attack is made the custom cookie will be sent with the request in the same manner that the JSESSIONID cookie was sent in our previous example.</p>
+<p>Users using basic authentication are also vulnerable to CSRF attacks since the browser will automatically include the username password in any requests in the same manner that the JSESSIONID cookie was sent in our previous example.</p>
+</div>
+</div>
+<div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="csrf-using" href="#csrf-using"></a>18.4&nbsp;Using Spring Security CSRF Protection</h2></div></div></div>
+
+<p>So what are the steps necessary to use Spring Security&#8217;s to protect our site against CSRF attacks? The steps to using Spring Security&#8217;s CSRF protection are outlined below:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">
+<a class="link" href="csrf.html#csrf-use-proper-verbs" title="18.4.1&nbsp;Use proper HTTP verbs">Use proper HTTP verbs</a>
+</li><li class="listitem">
+<a class="link" href="csrf.html#csrf-configure" title="18.4.2&nbsp;Configure CSRF Protection">Configure CSRF Protection</a>
+</li><li class="listitem">
+<a class="link" href="csrf.html#csrf-include-csrf-token" title="18.4.3&nbsp;Include the CSRF Token">Include the CSRF Token</a>
+</li></ul></div>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="csrf-use-proper-verbs" href="#csrf-use-proper-verbs"></a>18.4.1&nbsp;Use proper HTTP verbs</h3></div></div></div>
+
+<p>The first step to protecting against CSRF attacks is to ensure your website uses proper HTTP verbs. Specifically, before Spring Security&#8217;s CSRF support can be of use, you need to be certain that your application is using PATCH, POST, PUT, and/or DELETE for anything that modifies state.</p>
+<p>This is not a limitation of Spring Security&#8217;s support, but instead a general requirement for proper CSRF prevention. The reason is that including private information in an HTTP GET can cause the information to be leaked. See <a class="ulink" href="http://www.w3.org/Protocols/rfc2616/rfc2616-sec15.html#sec15.1.3" target="_top">RFC 2616 Section 15.1.3 Encoding Sensitive Information in URI&#8217;s</a> for general guidance on using POST instead of GET for sensitive information.</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="csrf-configure" href="#csrf-configure"></a>18.4.2&nbsp;Configure CSRF Protection</h3></div></div></div>
+
+<p>The next step is to include Spring Security&#8217;s CSRF protection within your application. Some frameworks handle invalid CSRF tokens by invaliding the user&#8217;s session, but this causes <a class="link" href="csrf.html#csrf-logout" title="18.5.3&nbsp;Logging Out">its own problems</a>. Instead by default Spring Security&#8217;s CSRF protection will produce an HTTP 403 access denied. This can be customized by configuring the <a class="link" href="core-web-filters.html#access-denied-handler" title="14.2.2&nbsp;AccessDeniedHandler">AccessDeniedHandler</a> to process <code class="literal">InvalidCsrfTokenException</code> differently.</p>
+<p>As of Spring Security 4.0, CSRF protection is enabled by default with XML configuration. If you would like to disable CSRF protection, the corresponding XML configuration can be seen below.</p>
+<pre class="programlisting"><span class="hl-tag">&lt;http&gt;</span>
+	<span class="hl-comment">&lt;!-- ... --&gt;</span>
+	<span class="hl-tag">&lt;csrf</span> <span class="hl-attribute">disabled</span>=<span class="hl-value">"true"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/http&gt;</span></pre>
+<p>CSRF protection is enabled by default with Java Configuration. If you would like to disable CSRF, the corresponding Java configuration can be seen below. Refer to the Javadoc of csrf() for additional customizations in how CSRF protection is configured.</p>
+<pre class="programlisting"><em><span class="hl-annotation" style="color: gray">@EnableWebSecurity</span></em>
+<span class="hl-keyword">public</span> <span class="hl-keyword">class</span> WebSecurityConfig <span class="hl-keyword">extends</span>
+WebSecurityConfigurerAdapter {
+
+<em><span class="hl-annotation" style="color: gray">@Override</span></em>
+<span class="hl-keyword">protected</span> <span class="hl-keyword">void</span> configure(HttpSecurity http) <span class="hl-keyword">throws</span> Exception {
+	http
+	.csrf().disable();
+}
+}</pre>
+</div>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="csrf-include-csrf-token" href="#csrf-include-csrf-token"></a>18.4.3&nbsp;Include the CSRF Token</h3></div></div></div>
+
+<div class="section"><div class="titlepage"><div><div><h4 class="title"><a name="csrf-include-csrf-token-form" href="#csrf-include-csrf-token-form"></a>Form Submissions</h4></div></div></div>
+
+<p>The last step is to ensure that you include the CSRF token in all PATCH, POST, PUT, and DELETE methods. One way to approach this is to use the <code class="literal">_csrf</code> request attribute to obtain the current <code class="literal">CsrfToken</code>. An example of doing this with a JSP is shown below:</p>
+<pre class="programlisting"><span class="hl-tag">&lt;c:url</span> <span class="hl-attribute">var</span>=<span class="hl-value">"logoutUrl"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"/logout"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;form</span> <span class="hl-attribute">action</span>=<span class="hl-value">"${logoutUrl}"</span>
+	<span class="hl-attribute">method</span>=<span class="hl-value">"post"</span><span class="hl-tag">&gt;</span>
+<span class="hl-tag">&lt;input</span> <span class="hl-attribute">type</span>=<span class="hl-value">"submit"</span>
+	<span class="hl-attribute">value</span>=<span class="hl-value">"Log out"</span><span class="hl-tag"> /&gt;</span>
+<span class="hl-tag">&lt;input</span> <span class="hl-attribute">type</span>=<span class="hl-value">"hidden"</span>
+	<span class="hl-attribute">name</span>=<span class="hl-value">"${_csrf.parameterName}"</span>
+	<span class="hl-attribute">value</span>=<span class="hl-value">"${_csrf.token}"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/form&gt;</span></pre>
+<p>An easier approach is to use <a class="link" href="taglibs.html#the-csrfinput-tag" title="30.5&nbsp;The csrfInput Tag">the csrfInput tag</a> from the Spring Security JSP tag library.</p>
+<div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><table border="0" summary="Note"><tr><td rowspan="2" align="center" valign="top" width="25"><img alt="[Note]" src="images/note.png"></td><th align="left">Note</th></tr><tr><td align="left" valign="top">
+<p>If you are using Spring MVC <code class="literal">&lt;form:form&gt;</code> tag or <a class="ulink" href="http://www.thymeleaf.org/whatsnew21.html#reqdata" target="_top">Thymeleaf 2.1+</a> and are using <code class="literal">@EnableWebSecurity</code>, the <code class="literal">CsrfToken</code> is automatically included for you (using the <code class="literal">CsrfRequestDataValueProcessor</code>).</p>
+</td></tr></table></div>
+</div>
+<div class="section"><div class="titlepage"><div><div><h4 class="title"><a name="csrf-include-csrf-token-ajax" href="#csrf-include-csrf-token-ajax"></a>Ajax and JSON Requests</h4></div></div></div>
+
+<p>If you are using JSON, then it is not possible to submit the CSRF token within an HTTP parameter. Instead you can submit the token within a HTTP header. A typical pattern would be to include the CSRF token within your meta tags. An example with a JSP is shown below:</p>
+<pre class="programlisting"><span class="hl-tag">&lt;html&gt;</span>
+<span class="hl-tag">&lt;head&gt;</span>
+	<span class="hl-tag">&lt;meta</span> <span class="hl-attribute">name</span>=<span class="hl-value">"_csrf"</span> <span class="hl-attribute">content</span>=<span class="hl-value">"${_csrf.token}"</span><span class="hl-tag">/&gt;</span>
+	<span class="hl-comment">&lt;!-- default header name is X-CSRF-TOKEN --&gt;</span>
+	<span class="hl-tag">&lt;meta</span> <span class="hl-attribute">name</span>=<span class="hl-value">"_csrf_header"</span> <span class="hl-attribute">content</span>=<span class="hl-value">"${_csrf.headerName}"</span><span class="hl-tag">/&gt;</span>
+	<span class="hl-comment">&lt;!-- ... --&gt;</span>
+<span class="hl-tag">&lt;/head&gt;</span>
+<span class="hl-comment">&lt;!-- ... --&gt;</span></pre>
+<p>Instead of manually creating the meta tags, you can use the simpler <a class="link" href="taglibs.html#the-csrfmetatags-tag" title="30.6&nbsp;The csrfMetaTags Tag">csrfMetaTags tag</a> from the Spring Security JSP tag library.</p>
+<p>You can then include the token within all your Ajax requests. If you were using jQuery, this could be done with the following:</p>
+<pre class="programlisting">$(<span class="hl-keyword">function</span> () {
+<span class="hl-keyword">var</span> token = $(<span class="hl-string">"meta[name='_csrf']"</span>).attr(<span class="hl-string">"content"</span>);
+<span class="hl-keyword">var</span> header = $(<span class="hl-string">"meta[name='_csrf_header']"</span>).attr(<span class="hl-string">"content"</span>);
+$(document).ajaxSend(<span class="hl-keyword">function</span>(e, xhr, options) {
+	xhr.setRequestHeader(header, token);
+});
+});</pre>
+<p>As an alternative to jQuery, we recommend using <a class="ulink" href="http://cujojs.com/" target="_top">cujoJS&#8217;s</a> rest.js. The <a class="ulink" href="https://github.com/cujojs/rest" target="_top">rest.js</a> module provides advanced support for working with HTTP requests and responses in RESTful ways. A core capability is the ability to contextualize the HTTP client adding behavior as needed by chaining interceptors on to the client.</p>
+<pre class="programlisting"><span class="hl-keyword">var</span> client = rest.chain(csrf, {
+token: $(<span class="hl-string">"meta[name='_csrf']"</span>).attr(<span class="hl-string">"content"</span>),
+name: $(<span class="hl-string">"meta[name='_csrf_header']"</span>).attr(<span class="hl-string">"content"</span>)
+});</pre>
+<p>The configured client can be shared with any component of the application that needs to make a request to the CSRF protected resource. One significant different between rest.js and jQuery is that only requests made with the configured client will contain the CSRF token, vs jQuery where <span class="emphasis"><em>all</em></span> requests will include the token. The ability to scope which requests receive the token helps guard against leaking the CSRF token to a third party. Please refer to the <a class="ulink" href="https://github.com/cujojs/rest/tree/master/docs" target="_top">rest.js reference documentation</a> for more information on rest.js.</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h4 class="title"><a name="csrf-cookie" href="#csrf-cookie"></a>CookieCsrfTokenRepository</h4></div></div></div>
+
+<p>There can be cases where users will want to persist the <code class="literal">CsrfToken</code> in a cookie.
+By default the <code class="literal">CookieCsrfTokenRepository</code> will write to a cookie named <code class="literal">XSRF-TOKEN</code> and read it from a header named <code class="literal">X-XSRF-TOKEN</code> or the HTTP parameter <code class="literal">_csrf</code>.
+These defaults come from <a class="ulink" href="https://docs.angularjs.org/api/ng/service/$http#cross-site-request-forgery-xsrf-protection" target="_top">AngularJS</a></p>
+<p>You can configure <code class="literal">CookieCsrfTokenRepository</code> in XML using the following:</p>
+<pre class="programlisting"><span class="hl-tag">&lt;http&gt;</span>
+	<span class="hl-comment">&lt;!-- ... --&gt;</span>
+	<span class="hl-tag">&lt;csrf</span> <span class="hl-attribute">token-repository-ref</span>=<span class="hl-value">"tokenRepository"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/http&gt;</span>
+<span class="hl-tag">&lt;b:bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"tokenRepository"</span>
+	<span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.security.web.csrf.CookieCsrfTokenRepository"</span>
+	<span class="hl-attribute">p:cookieHttpOnly</span>=<span class="hl-value">"false"</span><span class="hl-tag">/&gt;</span></pre>
+<div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><table border="0" summary="Note"><tr><td rowspan="2" align="center" valign="top" width="25"><img alt="[Note]" src="images/note.png"></td><th align="left">Note</th></tr><tr><td align="left" valign="top">
+<p>The sample explicitly sets <code class="literal">cookieHttpOnly=false</code>.
+This is necessary to allow JavaScript (i.e. AngularJS) to read it.
+If you do not need the ability to read the cookie with JavaScript directly, it is recommended to omit <code class="literal">cookieHttpOnly=false</code> to improve security.</p>
+</td></tr></table></div>
+<p>You can configure <code class="literal">CookieCsrfTokenRepository</code> in Java Configuration using:</p>
+<pre class="programlisting"><em><span class="hl-annotation" style="color: gray">@EnableWebSecurity</span></em>
+<span class="hl-keyword">public</span> <span class="hl-keyword">class</span> WebSecurityConfig <span class="hl-keyword">extends</span>
+		WebSecurityConfigurerAdapter {
+
+	<em><span class="hl-annotation" style="color: gray">@Override</span></em>
+	<span class="hl-keyword">protected</span> <span class="hl-keyword">void</span> configure(HttpSecurity http) <span class="hl-keyword">throws</span> Exception {
+		http
+			.csrf()
+				.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse());
+	}
+}</pre>
+<div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><table border="0" summary="Note"><tr><td rowspan="2" align="center" valign="top" width="25"><img alt="[Note]" src="images/note.png"></td><th align="left">Note</th></tr><tr><td align="left" valign="top">
+<p>The sample explicitly sets <code class="literal">cookieHttpOnly=false</code>.
+This is necessary to allow JavaScript (i.e. AngularJS) to read it.
+If you do not need the ability to read the cookie with JavaScript directly, it is recommended to omit <code class="literal">cookieHttpOnly=false</code> (by using <code class="literal">new CookieCsrfTokenRepository()</code> instead) to improve security.</p>
+</td></tr></table></div>
+</div>
+</div>
+</div>
+<div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="csrf-caveats" href="#csrf-caveats"></a>18.5&nbsp;CSRF Caveats</h2></div></div></div>
+
+<p>There are a few caveats when implementing CSRF.</p>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="csrf-timeouts" href="#csrf-timeouts"></a>18.5.1&nbsp;Timeouts</h3></div></div></div>
+
+<p>One issue is that the expected CSRF token is stored in the HttpSession, so as soon as the HttpSession expires your configured <code class="literal">AccessDeniedHandler</code> will receive a InvalidCsrfTokenException. If you are using the default <code class="literal">AccessDeniedHandler</code>, the browser will get an HTTP 403 and display a poor error message.</p>
+<div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><table border="0" summary="Note"><tr><td rowspan="2" align="center" valign="top" width="25"><img alt="[Note]" src="images/note.png"></td><th align="left">Note</th></tr><tr><td align="left" valign="top">
+<p>One might ask why the expected <code class="literal">CsrfToken</code> isn&#8217;t stored in a cookie by default. This is because there are known exploits in which headers (i.e. specify the cookies) can be set by another domain. This is the same reason Ruby on Rails <a class="ulink" href="http://weblog.rubyonrails.org/2011/2/8/csrf-protection-bypass-in-ruby-on-rails/" target="_top">no longer skips CSRF checks when the header X-Requested-With is present</a>. See <a class="ulink" href="http://lists.webappsec.org/pipermail/websecurity_lists.webappsec.org/2011-February/007533.html" target="_top">this webappsec.org thread</a> for details on how to perform the exploit. Another disadvantage is that by removing the state (i.e. the timeout) you lose the ability to forcibly terminate the token if it is compromised.</p>
+</td></tr></table></div>
+<p>A simple way to mitigate an active user experiencing a timeout is to have some JavaScript that lets the user know their session is about to expire. The user can click a button to continue and refresh the session.</p>
+<p>Alternatively, specifying a custom <code class="literal">AccessDeniedHandler</code> allows you to process the <code class="literal">InvalidCsrfTokenException</code> any way you like. For an example of how to customize the <code class="literal">AccessDeniedHandler</code> refer to the provided links for both <a class="link" href="appendix-namespace.html#nsa-access-denied-handler" title="41.1.3&nbsp;<access-denied-handler&gt;">xml</a> and <a class="ulink" href="https://github.com/spring-projects/spring-security/blob/3.2.0.RC1/config/src/test/groovy/org/springframework/security/config/annotation/web/configurers/NamespaceHttpAccessDeniedHandlerTests.groovy#L64" target="_top">Java configuration</a>.</p>
+<p>Finally, the application can be configured to use <a class="link" href="csrf.html#csrf-cookie" title="CookieCsrfTokenRepository">CookieCsrfTokenRepository</a> which will not expire.
+As previously mentioned, this is not as secure as using a session, but in many cases can be good enough.</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="csrf-login" href="#csrf-login"></a>18.5.2&nbsp;Logging In</h3></div></div></div>
+
+<p>In order to protect against <a class="ulink" href="http://en.wikipedia.org/wiki/Cross-site_request_forgery#Forging_login_requests" target="_top">forging log in requests</a> the log in form should be protected against CSRF attacks too. Since the <code class="literal">CsrfToken</code> is stored in HttpSession, this means an HttpSession will be created as soon as <code class="literal">CsrfToken</code> token attribute is accessed. While this sounds bad in a RESTful / stateless architecture the reality is that state is necessary to implement practical security. Without state, we have nothing we can do if a token is compromised. Practically speaking, the CSRF token is quite small in size and should have a negligible impact on our architecture.</p>
+<p>A common technique to protect the log in form is by using a JavaScript function to obtain a valid CSRF token before the form submission. By doing this, there is no need to think about session timeouts (discussed in the previous section) because the session is created right before the form submission (assuming that <a class="link" href="csrf.html#csrf-cookie" title="CookieCsrfTokenRepository">CookieCsrfTokenRepository</a> isn&#8217;t configured instead), so the user can stay on the login page and submit the username/password when he wants. In order to achieve this, you can take advantage of the <code class="literal">CsrfTokenArgumentResolver</code> provided by Spring Security and expose an endpoint like it&#8217;s described on <a class="link" href="mvc.html#mvc-csrf-resolver" title="37.5.2&nbsp;Resolving the CsrfToken">here</a>.</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="csrf-logout" href="#csrf-logout"></a>18.5.3&nbsp;Logging Out</h3></div></div></div>
+
+<p>Adding CSRF will update the LogoutFilter to only use HTTP POST. This ensures that log out requires a CSRF token and that a malicious user cannot forcibly log out your users.</p>
+<p>One approach is to use a form for log out. If you really want a link, you can use JavaScript to have the link perform a POST (i.e. maybe on a hidden form). For browsers with JavaScript that is disabled, you can optionally have the link take the user to a log out confirmation page that will perform the POST.</p>
+<p>If you really want to use HTTP GET with logout you can do so, but remember this is generally not recommended. For example, the following Java Configuration will perform logout with the URL /logout is requested with any HTTP method:</p>
+<pre class="programlisting"><em><span class="hl-annotation" style="color: gray">@EnableWebSecurity</span></em>
+<span class="hl-keyword">public</span> <span class="hl-keyword">class</span> WebSecurityConfig <span class="hl-keyword">extends</span>
+WebSecurityConfigurerAdapter {
+
+	<em><span class="hl-annotation" style="color: gray">@Override</span></em>
+	<span class="hl-keyword">protected</span> <span class="hl-keyword">void</span> configure(HttpSecurity http) <span class="hl-keyword">throws</span> Exception {
+		http
+			.logout()
+				.logoutRequestMatcher(<span class="hl-keyword">new</span> AntPathRequestMatcher(<span class="hl-string">"/logout"</span>));
+	}
+}</pre>
+</div>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="csrf-multipart" href="#csrf-multipart"></a>18.5.4&nbsp;Multipart (file upload)</h3></div></div></div>
+
+<p>There are two options to using CSRF protection with multipart/form-data. Each option has its tradeoffs.</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">
+<a class="link" href="csrf.html#csrf-multipartfilter" title="Placing MultipartFilter before Spring Security">Placing MultipartFilter before Spring Security</a>
+</li><li class="listitem">
+<a class="link" href="csrf.html#csrf-include-csrf-token-in-action" title="Include CSRF token in action">Include CSRF token in action</a>
+</li></ul></div>
+<div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><table border="0" summary="Note"><tr><td rowspan="2" align="center" valign="top" width="25"><img alt="[Note]" src="images/note.png"></td><th align="left">Note</th></tr><tr><td align="left" valign="top">
+<p>Before you integrate Spring Security&#8217;s CSRF protection with multipart file upload, ensure that you can upload without the CSRF protection first. More information about using multipart forms with Spring can be found within the <a class="ulink" href="http://docs.spring.io/spring/docs/3.2.x/spring-framework-reference/html/mvc.html#mvc-multipart" target="_top">17.10 Spring&#8217;s multipart (file upload) support</a> section of the Spring reference and the <a class="ulink" href="http://docs.spring.io/spring/docs/3.2.x/javadoc-api/org/springframework/web/multipart/support/MultipartFilter.html" target="_top">MultipartFilter javadoc</a>.</p>
+</td></tr></table></div>
+<div class="section"><div class="titlepage"><div><div><h4 class="title"><a name="csrf-multipartfilter" href="#csrf-multipartfilter"></a>Placing MultipartFilter before Spring Security</h4></div></div></div>
+
+<p>The first option is to ensure that the <code class="literal">MultipartFilter</code> is specified before the Spring Security filter. Specifying the <code class="literal">MultipartFilter</code> before the Spring Security filter means that there is no authorization for invoking the <code class="literal">MultipartFilter</code> which means anyone can place temporary files on your server. However, only authorized users will be able to submit a File that is processed by your application. In general, this is the recommended approach because the temporary file upload should have a negligble impact on most servers.</p>
+<p>To ensure <code class="literal">MultipartFilter</code> is specified before the Spring Security filter with java configuration, users can override beforeSpringSecurityFilterChain as shown below:</p>
+<pre class="programlisting"><span class="hl-keyword">public</span> <span class="hl-keyword">class</span> SecurityApplicationInitializer <span class="hl-keyword">extends</span> AbstractSecurityWebApplicationInitializer {
+
+	<em><span class="hl-annotation" style="color: gray">@Override</span></em>
+	<span class="hl-keyword">protected</span> <span class="hl-keyword">void</span> beforeSpringSecurityFilterChain(ServletContext servletContext) {
+		insertFilters(servletContext, <span class="hl-keyword">new</span> MultipartFilter());
+	}
+}</pre>
+<p>To ensure <code class="literal">MultipartFilter</code> is specified before the Spring Security filter with XML configuration, users can ensure the &lt;filter-mapping&gt; element of the <code class="literal">MultipartFilter</code> is placed before the springSecurityFilterChain within the web.xml as shown below:</p>
+<pre class="programlisting"><span class="hl-tag">&lt;filter&gt;</span>
+	<span class="hl-tag">&lt;filter-name&gt;</span>MultipartFilter<span class="hl-tag">&lt;/filter-name&gt;</span>
+	<span class="hl-tag">&lt;filter-class&gt;</span>org.springframework.web.multipart.support.MultipartFilter<span class="hl-tag">&lt;/filter-class&gt;</span>
+<span class="hl-tag">&lt;/filter&gt;</span>
+<span class="hl-tag">&lt;filter&gt;</span>
+	<span class="hl-tag">&lt;filter-name&gt;</span>springSecurityFilterChain<span class="hl-tag">&lt;/filter-name&gt;</span>
+	<span class="hl-tag">&lt;filter-class&gt;</span>org.springframework.web.filter.DelegatingFilterProxy<span class="hl-tag">&lt;/filter-class&gt;</span>
+<span class="hl-tag">&lt;/filter&gt;</span>
+<span class="hl-tag">&lt;filter-mapping&gt;</span>
+	<span class="hl-tag">&lt;filter-name&gt;</span>MultipartFilter<span class="hl-tag">&lt;/filter-name&gt;</span>
+	<span class="hl-tag">&lt;url-pattern&gt;</span>/*<span class="hl-tag">&lt;/url-pattern&gt;</span>
+<span class="hl-tag">&lt;/filter-mapping&gt;</span>
+<span class="hl-tag">&lt;filter-mapping&gt;</span>
+	<span class="hl-tag">&lt;filter-name&gt;</span>springSecurityFilterChain<span class="hl-tag">&lt;/filter-name&gt;</span>
+	<span class="hl-tag">&lt;url-pattern&gt;</span>/*<span class="hl-tag">&lt;/url-pattern&gt;</span>
+<span class="hl-tag">&lt;/filter-mapping&gt;</span></pre>
+</div>
+<div class="section"><div class="titlepage"><div><div><h4 class="title"><a name="csrf-include-csrf-token-in-action" href="#csrf-include-csrf-token-in-action"></a>Include CSRF token in action</h4></div></div></div>
+
+<p>If allowing unauthorized users to upload temporariy files is not acceptable, an alternative is to place the <code class="literal">MultipartFilter</code> after the Spring Security filter and include the CSRF as a query parameter in the action attribute of the form. An example with a jsp is shown below</p>
+<pre class="programlisting"><span class="hl-tag">&lt;form</span> <span class="hl-attribute">action</span>=<span class="hl-value">"./upload?${_csrf.parameterName}=${_csrf.token}"</span> <span class="hl-attribute">method</span>=<span class="hl-value">"post"</span> <span class="hl-attribute">enctype</span>=<span class="hl-value">"multipart/form-data"</span><span class="hl-tag">&gt;</span></pre>
+<p>The disadvantage to this approach is that query parameters can be leaked. More genearlly, it is considered best practice to place sensitive data within the body or headers to ensure it is not leaked. Additional information can be found in <a class="ulink" href="http://www.w3.org/Protocols/rfc2616/rfc2616-sec15.html#sec15.1.3" target="_top">RFC 2616 Section 15.1.3 Encoding Sensitive Information in URI&#8217;s</a>.</p>
+</div>
+</div>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="hiddenhttpmethodfilter" href="#hiddenhttpmethodfilter"></a>18.5.5&nbsp;HiddenHttpMethodFilter</h3></div></div></div>
+
+<p>The HiddenHttpMethodFilter should be placed before the Spring Security filter. In general this is true, but it could have additional implications when protecting against CSRF attacks.</p>
+<p>Note that the HiddenHttpMethodFilter only overrides the HTTP method on a POST, so this is actually unlikely to cause any real problems. However, it is still best practice to ensure it is placed before Spring Security&#8217;s filters.</p>
+</div>
+</div>
+<div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="overriding-defaults" href="#overriding-defaults"></a>18.6&nbsp;Overriding Defaults</h2></div></div></div>
+
+<p>Spring Security&#8217;s goal is to provide defaults that protect your users from exploits. This does not mean that you are forced to accept all of its defaults.</p>
+<p>For example, you can provide a custom CsrfTokenRepository to override the way in which the <code class="literal">CsrfToken</code> is stored.</p>
+<p>You can also specify a custom RequestMatcher to determine which requests are protected by CSRF (i.e. perhaps you don&#8217;t care if log out is exploited). In short, if Spring Security&#8217;s CSRF protection doesn&#8217;t behave exactly as you want it, you are able to customize the behavior. Refer to the <a class="xref" href="appendix-namespace.html#nsa-csrf" title="41.1.18&nbsp;<csrf&gt;">Section&nbsp;41.1.18, &#8220;&lt;csrf&gt;&#8221;</a> documentation for details on how to make these customizations with XML and the <code class="literal">CsrfConfigurer</code> javadoc for details on how to make these customizations when using Java configuration.</p>
+</div>
+</div><div class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="remember-me.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="u" href="web-app-security.html">Up</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="cors.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">17.&nbsp;Remember-Me Authentication&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right" valign="top">&nbsp;19.&nbsp;CORS</td></tr></table></div></body></html>

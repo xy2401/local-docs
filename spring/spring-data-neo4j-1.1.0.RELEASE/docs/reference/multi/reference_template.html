@@ -1,0 +1,79 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>Chapter&nbsp;23.&nbsp;Neo4jTemplate</title><link rel="stylesheet" href="css/html.css" type="text/css"><meta name="generator" content="DocBook XSL Stylesheets V1.73.2"><link rel="start" href="index.html" title="Good Relationships"><link rel="up" href="reference.html" title="Part&nbsp;II.&nbsp;Reference Documentation"><link rel="prev" href="reference:performance.html" title="Chapter&nbsp;22.&nbsp;Performance considerations"><link rel="next" href="reference:aspectj-details.html" title="Chapter&nbsp;24.&nbsp;AspectJ details"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div xmlns:fo="http://www.w3.org/1999/XSL/Format" style="background-color:white;border:none;height:73px;border:1px solid black;"><a style="border:none;" href="http://static.springframework.org/spring-ws/site/" title="The Spring Framework - Spring Web Services"><img style="border:none;" src="images/xdev-spring_logo.jpg"></a><a style="border:none;" href="http://www.springsource.com/" title="SpringSource"><img style="border:none;position:absolute;padding-top:5px;right:42px;" src="images/s2_box_logo.png"></a></div><div class="chapter" lang="en"><div class="titlepage"><div><div><h2 class="title"><a name="reference:template"></a>Chapter&nbsp;23.&nbsp;Neo4jTemplate</h2></div></div></div><p>
+        The <code class="code">Neo4jTemplate</code> offers the convenient API of Spring templates for the Neo4j graph
+        database.
+    </p><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e2673"></a>23.1.&nbsp;Basic operations</h2></div></div></div><p>
+            For direct retrieval of nodes and relationships, the <code class="code">getReferenceNode()</code>,
+            <code class="code">getNode()</code> and <code class="code">getRelationship()</code> methods can be used.
+        </p><p>
+            There are methods (<code class="code">createNode()</code> and <code class="code">createRelationship()</code>) for creating nodes and
+            relationships that automatically set provided properties.
+        </p><div class="example"><a name="d0e2695"></a><p class="title"><b>Example&nbsp;23.1.&nbsp;Neo4j template</b></p><div class="example-contents"><pre class="programlisting">&lt;![CDATA[<span class="hl-keyword">import</span> <span class="hl-keyword">static</span> org.neo4j.helpers.collection.MapUtil.map;
+
+Neo4jOperations neo = <span class="hl-keyword">new</span> Neo4jTemplate(graphDatabaseService);
+
+Node michael = neo.createNode(map(<span class="hl-string">"name"</span>,<span class="hl-string">"Michael"</span>));
+Node mark = neo.createNode(map(<span class="hl-string">"name"</span>,<span class="hl-string">"Mark"</span>));
+Node thomas = neo.createNode(map(<span class="hl-string">"name"</span>,<span class="hl-string">"Thomas"</span>));
+
+neo.createRelationship(mark,thomas, WORKS_WITH, map(<span class="hl-string">"project"</span>,<span class="hl-string">"spring-data"</span>));
+
+neo.index(<span class="hl-string">"devs"</span>,thomas, <span class="hl-string">"name"</span>,<span class="hl-string">"Thomas"</span>);
+
+<span class="hl-comment">// Cypher</span>
+assert <span class="hl-string">"Mark"</span>.equals(neo.query(<span class="hl-string">"start p=(%person) match p&lt;-[:WORKS_WITH]-other return other.name"</span>,
+    map(<span class="hl-string">"person"</span>,thomas)).to(String.<span class="hl-keyword">class</span>).single());
+
+<span class="hl-comment">// Gremlin</span>
+assert thomas.equals(neo.execute(<span class="hl-string">"g.v(person).out('WORKS_WITH')"</span>,
+    map(<span class="hl-string">"person"</span>,mark)).to(Node.<span class="hl-keyword">class</span>).single());
+
+<span class="hl-comment">// Index lookup</span>
+assert mark.equals(neo.lookup(<span class="hl-string">"devs"</span>,<span class="hl-string">"name"</span>,<span class="hl-string">"Mark"</span>).single());
+
+<span class="hl-comment">// Index lookup with Result Converter</span>
+assert <span class="hl-string">"Mark"</span>.equals(neo.lookup(<span class="hl-string">"devs"</span>,<span class="hl-string">"name"</span>,<span class="hl-string">"Mark"</span>).to(String.<span class="hl-keyword">class</span>, <span class="hl-keyword">new</span> ResultConverter&lt;PropertyContainer, String&gt; {
+        <span class="hl-keyword">public</span> String convert(PropertyContainer element, Class&lt;String&gt; type) {
+            <span class="hl-keyword">return</span> (String) element.getProperty(<span class="hl-string">"name"</span>);
+        }}));</pre></div></div><br class="example-break"></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e2700"></a>23.2.&nbsp;QueryResult</h2></div></div></div><p>
+            All querying methods of the template return a uniform result type: <code class="code">QueryResult&lt;T&gt;</code>
+            which is also an <code class="code">Iterable&lt;T&gt;</code>. The query result offers methods of converting each
+            element to a target type <code class="code">queryResult.to(Type.class)</code> optionally supplying a
+            <code class="code">ResultConverter&lt;FROM,TO&gt;</code> which takes care of custom conversions. By default most
+            query methods can already handle conversions from and to: Paths, Nodes, Relationship and GraphEntities
+            as well as conversions backed by registered ConversionServices. A converted <code class="code">QueryResult&lt;FROM&gt;</code> is an
+            <code class="code">Iterable&lt;TO&gt;</code>. QueryResults can be limited to a single value using the <code class="code">queryResult.single()</code>
+            method. It also offers support for a pure callback function using a <code class="code">Handler&lt;T&gt;</code>.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e2729"></a>23.3.&nbsp;Indexing</h2></div></div></div><p>
+            Adding nodes and relationships to an index is done with the <code class="code">index()</code> method.
+        </p><p>
+            The <code class="code">lookup()</code> methods either take a field/value combination to look for exact matches in the
+            index, or a Lucene query object or string to handle more complex queries. All <code class="code">lookup()</code>
+            methods return a <code class="code">QueryResult&lt;PropertyContainer&gt;</code> to be used or transformed.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e2748"></a>23.4.&nbsp;Graph traversal</h2></div></div></div><p>
+            The traversal methods are at the core of graph operations.
+            The <code class="code">traverse()</code> method covers the full traversal operation that takes a
+            <code class="code">TraversalDescription</code> (typically built with the <code class="code">Traversal.description()</code>
+            DSL) and runs it from the given start node. <code class="code">traverse</code> returns a <code class="code">QueryResult&lt;Path&gt;</code>
+            to be used or transformed.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e2768"></a>23.5.&nbsp;Cypher Queries</h2></div></div></div><p>
+            The <code class="code">Neo4jTemplate</code> also allows execution of arbitrary Cypher queries. Via the <code class="code">query</code>
+            methods the statement and parameter-Map are provided. Cypher Queries return tabular results, so the
+            <code class="code">QueryResult&lt;Map&lt;String,Object&gt;&gt;</code> contains the rows which can be either used as they are
+            or converted as needed.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e2782"></a>23.6.&nbsp;Gremlin Scripts</h2></div></div></div><p>
+            Gremlin Scripts can run with the <code class="code">execute</code> method, which also takes the parameters that will be
+            available as variables inside the script. The result of the executions is a generic
+            <code class="code">QueryResult&lt;Object&gt;</code> fit for conversion or usage.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e2793"></a>23.7.&nbsp;Transactions</h2></div></div></div><p>
+            The <code class="code">Neo4jTemplate</code> provides configurable implicit transactions for all its methods. By
+            default it creates a transaction for each call (which is a no-op if there is already a transaction
+            running). If you call the constructor with the <code class="code">useExplicitTransactions</code> parameter set to
+            true, it won't create any transactions so you have to provide them using <code class="code">@Transactional</code>
+            or the <code class="code">TransactionTemplate</code>.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e2810"></a>23.8.&nbsp;Neo4j REST Server</h2></div></div></div><p>If the template is configured to use a <code class="code">RestGraphDatabase</code> the expensive operations
+        like traversals and querying are executed efficiently on the server side by using the REST API to forward
+        those calls. All the other template methods require single network operations.
+        </p></div></div><div xmlns:fo="http://www.w3.org/1999/XSL/Format" class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="reference:performance.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="reference:aspectj-details.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">Chapter&nbsp;22.&nbsp;Performance considerations&nbsp;</td><td width="20%" align="center"><span style="color:white;font-size:90%;"><a href="http://www.springsource.com/" title="SpringSource">Sponsored by SpringSource
+                                        </a></span></td><td width="40%" align="right" valign="top">&nbsp;Chapter&nbsp;24.&nbsp;AspectJ details</td></tr></table></div></body></html>

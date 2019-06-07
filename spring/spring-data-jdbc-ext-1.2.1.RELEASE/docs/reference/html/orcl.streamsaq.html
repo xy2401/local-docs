@@ -1,0 +1,395 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>5.&nbsp;Oracle's Streams AQ (Advanced Queueing)</title><link rel="stylesheet" href="css/manual-multipage.css" type="text/css"><meta name="generator" content="DocBook XSL Stylesheets V1.75.2"><link rel="home" href="index.html" title="Spring Data JDBC Extensions Reference Documentation"><link rel="up" href="pt02.html" title="Part&nbsp;II.&nbsp;JDBC Extensions for the Oracle Database"><link rel="prev" href="orcl.failover.html" title="4.&nbsp;Fast Connection Failover"><link rel="next" href="orcl.xmltypes.html" title="6.&nbsp;XML Types"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="navheader"><table width="100%" summary="Navigation header"><tr><th colspan="3" align="center">5.&nbsp;Oracle's Streams AQ (Advanced Queueing)</th></tr><tr><td width="20%" align="left"><a accesskey="p" href="orcl.failover.html">Prev</a>&nbsp;</td><th width="60%" align="center">Part&nbsp;II.&nbsp;JDBC Extensions for the Oracle Database</th><td width="20%" align="right">&nbsp;<a accesskey="n" href="orcl.xmltypes.html">Next</a></td></tr></table><hr></div><div class="chapter" title="5.&nbsp;Oracle's Streams AQ (Advanced Queueing)"><div class="titlepage"><div><div><h2 class="title"><a name="orcl.streamsaq"></a>5.&nbsp;Oracle's Streams AQ (Advanced Queueing)</h2></div></div></div><p>Oracle Streams is a feature that enables the propagation and
+  management of data, transactions and events in a data stream either within a
+  database, or from one database to another. This can be used both for
+  replication and for messaging purposes. The Advanced Queuing (AQ) feature
+  provides the messaging support. This messaging support will integrate with
+  the standard JMS API provided with Java. Since the AQ support runs in the
+  database it is possible to use the same transaction for both messaging and
+  database access. This eliminates the need for expensive 2-phase commit
+  processing that would be necessary when integrating database access with a
+  traditional JMS solution.</p><p>Most of the JMS support we discuss in this chapter is provided
+  directly by the Spring Framework. See the <span class="emphasis"><em>Spring Framework
+  Reference Documentation</em></span> for the details regarding this JMS
+  support.</p><p>In addition to this standard support, The Advance Pack for Oracle
+  Database provides easier configuration of a connection factory using the
+  <code class="classname">&lt;orcl&gt;</code> namespace. It also provides support for
+  some payload types not directly supported by the Spring JMS support like the
+  <code class="classname">XMLType</code> and custom Advanced Data Types.</p><div class="section" title="5.1&nbsp;Supported payload types"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e1208"></a>5.1&nbsp;Supported payload types</h2></div></div></div><p>JMS and Oracle Streams AQ can support a variety of payloads. These
+    payloads are stored in the database and need to be converted to a Java
+    representation in order for our programs to manipulate them. The following
+    table outlines what payloads are supported and the corresponding classes
+    that will work with these payloads and that will be able to convert them
+    to and from a Java representation.</p><div class="table"><a name="supported-payload-types"></a><p class="title"><b>Table&nbsp;5.1.&nbsp;supported payload types</b></p><div class="table-contents"><table summary="supported payload types" style="border-collapse: collapse;border-top: 0.5pt solid ; border-bottom: 0.5pt solid ; border-left: 0.5pt solid ; border-right: 0.5pt solid ; "><colgroup><col><col></colgroup><thead><tr><th style="border-right: 0.5pt solid ; border-bottom: 0.5pt solid ; ">Payload Type</th><th style="border-bottom: 0.5pt solid ; ">Support Notes</th></tr></thead><tbody><tr><td style="border-right: 0.5pt solid ; border-bottom: 0.5pt solid ; "><code class="literal">SYS.AQ$_JMS_TEXT_MESSAGE,
+              SYS.AQ$_JMS_MAP_MESSAGE, SYS.AQ$_JMS_OBJECT_MESSAGE,
+              SYS.AQ$_JMS_BYTES_MESSAGE</code></td><td style="border-bottom: 0.5pt solid ; ">Directly supported by
+              <code class="classname">SimpleMessageConverter</code> which is the
+              default for the <code class="classname">JmsTemplate</code> and the
+              <code class="classname">DefaultMessageListenerContainer</code>. When
+              configuring a message listener container the
+              <code class="classname">DefaultMessageListenerContainer</code> is the
+              class that supports the Oracle AQ JMS features.</td></tr><tr><td style="border-right: 0.5pt solid ; border-bottom: 0.5pt solid ; "><code class="literal">SYS.XMLType</code></td><td style="border-bottom: 0.5pt solid ; ">This payload type requires a custom message listener
+              container named
+              <code class="classname">XmlMessageListenerContainer</code>. This
+              listener container also needs a
+              <code class="classname">MessageListenerAdapter</code> with an Oracle AQ
+              XML specific message converter specified as
+              <code class="classname">XmlMessageConverter</code>. See below for
+              configuration details.</td></tr><tr><td style="border-right: 0.5pt solid ; "><code class="literal">custom Advanced Data Type (ADT) (CREATE TYPE xxx
+              AS OBJECT)</code></td><td style="">This payload type requires a custom message listener
+              container named
+              <code class="classname">AdtMessageListenerContainer</code>. This
+              listener container also can use a
+              <code class="classname">MessageListenerAdapter</code> with a Oracle AQ
+              ADT specific message converter specified as
+              <code class="classname">MappingAdtMessageConverter</code>. This
+              converter works with an implementation of the
+              <code class="classname">DatumMapper</code> interface. See below for
+              configuration details.</td></tr></tbody></table></div></div><p><br class="table-break"></p></div><div class="section" title="5.2&nbsp;Configuration of the Connection Factory using the &#34;orcl&#34; namespace"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="orcl.streamsaq.orcl_config"></a>5.2&nbsp;Configuration of the Connection Factory using the "orcl"
+    namespace</h2></div></div></div><p>When you use the JmsTemplate together with the Oracle AQ JMS support
+    you can use the <code class="classname">aq-jms-connection-factory</code> entry to
+    provide a connection factory to the JmsTemplate.</p><pre class="programlisting"><span class="hl-tag">&lt;beans</span> <span class="hl-attribute">xmlns</span>=<span class="hl-value">"http://www.springframework.org/schema/beans"</span>
+       <span class="hl-attribute">xmlns:xsi</span>=<span class="hl-value">"http://www.w3.org/2001/XMLSchema-instance"</span>
+       <span class="hl-attribute">xmlns:context</span>=<span class="hl-value">"http://www.springframework.org/schema/context"</span>
+       <span class="bold"><strong>xmlns:orcl="http://www.springframework.org/schema/data/orcl"</strong></span> <a name="streamsaq.config.ns"></a><img src="images/callouts/1.png" alt="1" border="0">
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+       http://www.springframework.org/schema/context
+       http://www.springframework.org/schema/context/spring-context-3.0.xsd
+       <span class="bold"><strong>http://www.springframework.org/schema/data/orcl
+       http://www.springframework.org/schema/data/orcl/spring-data-orcl-1.0.xsd"&gt;</strong></span> <a name="streamsaq.config.xsd"></a><img src="images/callouts/2.png" alt="2" border="0">
+
+ 
+    <span class="bold"><strong>&lt;orcl:aq-jms-connection-factory id="connectionFactory" 
+            data-source="dataSource"/&gt;</strong></span> <a name="streamsaq.config.factory"></a><img src="images/callouts/3.png" alt="3" border="0">
+
+    <span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"jmsTemplate"</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.jms.core.JmsTemplate"</span><span class="hl-tag">&gt;</span>
+        <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"sessionTransacted"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"true"</span><span class="hl-tag">/&gt;</span>
+        <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"connectionFactory"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"connectionFactory"</span><span class="hl-tag">/&gt;</span>
+    <span class="hl-tag">&lt;/bean&gt;</span>
+
+    <span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"transactionManager"</span>
+          <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.jdbc.datasource.DataSourceTransactionManager"</span><span class="hl-tag">&gt;</span>
+        <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"dataSource"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"dataSource"</span><span class="hl-tag">/&gt;</span>
+    <span class="hl-tag">&lt;/bean&gt;</span>
+
+    <span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"dataSource"</span> <span class="hl-attribute">...</span><span class="hl-tag"> /&gt;</span>
+
+<span class="hl-tag">&lt;/beans&gt;</span></pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config.ns"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>Here we specify the reference to the
+          <code class="classname">orcl</code> schema.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config.xsd"><img src="images/callouts/2.png" alt="2" border="0"></a> </p></td><td valign="top" align="left"><p>We also specify the location for the
+          <code class="classname">orcl</code> schema.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config.factory"><img src="images/callouts/3.png" alt="3" border="0"></a> </p></td><td valign="top" align="left"><p>The connection factory is configured using a reference to the
+          data source to be used.</p></td></tr></table></div><p>The configuration for a Message-Driven POJO with a
+    <code class="classname">MessageListenerContainer</code> is very similar. You use
+    the same type of connection factory configuration. This is passed in to
+    the listener container configuration. Here is an example using the JMS
+    namespace support.</p><pre class="programlisting"><span class="hl-directive" style="color: maroon">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
+
+<span class="hl-tag">&lt;beans</span> <span class="hl-attribute">xmlns</span>=<span class="hl-value">"http://www.springframework.org/schema/beans"</span>
+       <span class="hl-attribute">xmlns:xsi</span>=<span class="hl-value">"http://www.w3.org/2001/XMLSchema-instance"</span>
+       <span class="hl-attribute">xmlns:tx</span>=<span class="hl-value">"http://www.springframework.org/schema/tx"</span>
+       <span class="hl-attribute">xmlns:context</span>=<span class="hl-value">"http://www.springframework.org/schema/context"</span>
+       <span class="bold"><strong>xmlns:orcl="http://www.springframework.org/schema/data/orcl" <a name="streamsaq.config2.ns"></a><img src="images/callouts/1.png" alt="1" border="0">
+       xmlns:jms="http://www.springframework.org/schema/jms"</strong></span>
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+       http://www.springframework.org/schema/tx
+       http://www.springframework.org/schema/tx/spring-tx-3.0.xsd
+       http://www.springframework.org/schema/context
+       http://www.springframework.org/schema/context/spring-context-3.0.xsd
+       <span class="bold"><strong>http://www.springframework.org/schema/data/orcl <a name="streamsaq.config2.xsd"></a><img src="images/callouts/2.png" alt="2" border="0">
+       http://www.springframework.org/schema/data/orcl/spring-data-orcl-1.0.xsd
+       http://www.springframework.org/schema/jms
+       http://www.springframework.org/schema/jms/spring-jms-3.0.xsd</strong></span>"&gt;
+
+    <span class="hl-tag">&lt;context:annotation-config/&gt;</span>
+    
+    <span class="hl-tag">&lt;tx:annotation-driven/&gt;</span>
+    
+    <span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"messageDelegate"</span> <span class="hl-attribute">class</span>=<span class="hl-value">"spring.test.MessageDelegate"</span><span class="hl-tag">/&gt;</span>
+    
+    <span class="bold"><strong>&lt;jms:listener-container connection-factory="connectionFactory" 
+            transaction-manager="transactionManager"&gt;
+        &lt;jms:listener destination="jmsadmin.jms_text_queue" 
+                ref="messageDelegate" method="handleMessage"/&gt;
+    &lt;/jms:listener-container&gt;</strong></span> <a name="streamsaq.config2.container"></a><img src="images/callouts/3.png" alt="3" border="0">
+    
+    <span class="bold"><strong>&lt;orcl:aq-jms-connection-factory id="connectionFactory" 
+            data-source="dataSource"/&gt;</strong></span> <a name="streamsaq.config2.factory"></a><img src="images/callouts/4.png" alt="4" border="0">
+    
+    <span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"transactionManager"</span>
+          <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.jdbc.datasource.DataSourceTransactionManager"</span><span class="hl-tag">&gt;</span>
+        <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"dataSource"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"dataSource"</span><span class="hl-tag">/&gt;</span>
+    <span class="hl-tag">&lt;/bean&gt;</span>
+
+    <span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"dataSource"</span> <span class="hl-attribute">...</span><span class="hl-tag"> /&gt;</span>
+
+<span class="hl-tag">&lt;/beans&gt;</span>
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config2.ns"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>Here we specify the reference to the
+          <code class="classname">orcl</code> and <code class="classname">jms</code>
+          schemas.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config2.xsd"><img src="images/callouts/2.png" alt="2" border="0"></a> </p></td><td valign="top" align="left"><p>We also specify the location for the
+          <code class="classname">orcl</code> and <code class="classname">jms</code>
+          schemas.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config2.factory"><img src="images/callouts/4.png" alt="4" border="0"></a> </p></td><td valign="top" align="left"><p>The listener container is configured using a reference to the
+          connection factory.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config2.factory"><img src="images/callouts/4.png" alt="4" border="0"></a> </p></td><td valign="top" align="left"><p>The connection factory is configured using a reference to the
+          data source to be used.</p></td></tr></table></div><p>See the next section for how to configure the transaction support
+    and use a the same local transaction as the JDBC or ORM data
+    access.</p></div><div class="section" title="5.3&nbsp;Configuring the Connection Factory to use the same local transaction as your data access code."><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="orcl.streamsaq.tx_config"></a>5.3&nbsp;Configuring the Connection Factory to use the same local
+    transaction as your data access code.</h2></div></div></div><p>The configurations in the previous section will take advantage of
+    the transaction synchronization provided by Spring, but there will be two
+    transactions. One transaction for the data access and one for the JMS
+    messaging. They will be synchronized, so if the data access transaction
+    commits then the messaging transaction will also commit while if the data
+    access transaction roll back then the messaging transaction will also roll
+    back.</p><p>There is always a chance that the commit for the messaging
+    transaction could fail after the data access transaction has committed
+    successfully. This is of course a problem that you would have to account
+    for in your code by checking for duplicate delivery of a message.</p><p>A better solution is to configure both data access and the messaging
+    to share a transaction. Most often this is done using JTA, and that works,
+    but has some impact on performance. For JTA you need to use distributed
+    transactions and XA capable resources designed for two-phase commits. This
+    comes at an extra cost that we try to avoid if possible.</p><p>Another option is to have the data access and the messaging share a
+    local data access transaction. This is possible since the Oracle AQ
+    implementation consists of a set of tables and stored procedures running
+    in the database accessed through a standard JDBC connection. If you use
+    the same database for data access and messaging with AQ, then you can
+    configure the connection factory to share the database connection and the
+    local transaction. You configure this connection and transaction sharing
+    by setting the attribute
+    <code class="classname">use-local-data-source-transaction</code> to
+    <code class="classname">true</code>.</p><pre class="programlisting">    <span class="hl-tag">&lt;orcl:aq-jms-connection-factory</span> <span class="hl-attribute">id</span>=<span class="hl-value">"connectionFactory"</span>
+        <span class="hl-attribute">use-local-data-source-transaction</span>=<span class="hl-value">"true"</span> <a name="streamsaq.sametx.attr"></a><img src="images/callouts/1.png" alt="1" border="0">
+        data-source="dataSource"/&gt;</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.sametx.attr"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>Setting the attribute
+          <code class="classname">use-local-data-source-transaction</code>.</p></td></tr></table></div><p>Configuring the connection factory to share a local data source
+    transaction with the data access code has some implications for JMS
+    connection and session caching. You can still configure a
+    MessageListenerContainer to cache the JMS connection since each JMS
+    session will be created as it's needed inside a data source transaction.
+    However, if you cache the JMS session, then the database connection for it
+    is established when the container starts up and it will not be possible to
+    have this cached JMS session participite in the local data source
+    transaction.</p><p>In many application server environments the JDBC connection is
+    wrapped in an implementation specific class that delegates to the
+    underlying native JDBC connection. Oracle's AQ connection factory needs
+    the native Oracle connection and will throw an "oracle.jms.AQjmsException:
+    JMS-112: Connection is invalid" exception if the connection is wrapped by
+    a foreign class. To solve this problem you can specify a
+    <code class="classname">NativeJdbcExtractor</code> that can be used to unwrap the
+    connection. Spring provides a number of implementations to match the
+    application server environment. Here is an example for specifying a
+    <code class="classname">NativeJdbcExtractor</code>.</p><pre class="programlisting">    <span class="hl-tag">&lt;orcl:aq-jms-connection-factory</span> <span class="hl-attribute">id</span>=<span class="hl-value">"connectionFactory"</span>
+        <span class="hl-attribute">use-local-data-source-transaction</span>=<span class="hl-value">"true"</span>
+        <span class="hl-attribute">native-jdbc-extractor</span>=<span class="hl-value">"dbcpNativeJdbcExtractor"</span> <a name="streamsaq.config.nativejdbc"></a><img src="images/callouts/1.png" alt="1" border="0">
+        data-source="dataSource" /&gt;
+
+    <span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"dbcpNativeJdbcExtractor"</span> 
+        <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.jdbc.support.nativejdbc.CommonsDbcpNativeJdbcExtractor"</span><span class="hl-tag">/&gt;</span>
+
+    <span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"dbcpDataSource"</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.apache.commons.dbcp.BasicDataSource"</span> 
+            <span class="hl-attribute">destroy-method</span>=<span class="hl-value">"close"</span><span class="hl-tag">&gt;</span>
+        <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"driverClassName"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"${jdbc.driverClassName}"</span><span class="hl-tag"> /&gt;</span>
+        <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"url"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"${jdbc.url}"</span><span class="hl-tag"> /&gt;</span>
+        <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"username"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"${jdbc.username}"</span><span class="hl-tag"> /&gt;</span>
+        <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"password"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"${jdbc.password}"</span><span class="hl-tag"> /&gt;</span>
+    <span class="hl-tag">&lt;/bean&gt;</span>
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config.nativejdbc"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>Here we specify the reference to the native JDBC
+          extractor.</p></td></tr></table></div><p>For some use cases the default plain ConnectionFactory does not work and
+	you need to explicitly use a QueueConnectionFactory or a TopicConnectionFactory.
+	To support this requirement it is possible to specify this using the
+	<code class="classname">connection-factory-type</code> attribute. The default is 
+	<code class="classname">CONNECTION</code> but you can specify <code class="classname">QUEUE_CONNECTION</code>
+	or <code class="classname">TOPIC_CONNECTION</code> instead. Here is an example for specifying the 
+	connection factory type.</p><pre class="programlisting">    <span class="hl-tag">&lt;orcl:aq-jms-connection-factory</span> <span class="hl-attribute">id</span>=<span class="hl-value">"connectionFactory"</span>
+        <span class="hl-attribute">use-local-data-source-transaction</span>=<span class="hl-value">"true"</span>
+        <span class="hl-attribute">connection-factory-type</span>=<span class="hl-value">"QUEUE_CONNECTION"</span> <a name="streamsaq.config.factoryType"></a><img src="images/callouts/1.png" alt="1" border="0">
+        data-source="dataSource" /&gt;
+
+    <span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"dbcpDataSource"</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.apache.commons.dbcp.BasicDataSource"</span>
+            <span class="hl-attribute">destroy-method</span>=<span class="hl-value">"close"</span><span class="hl-tag">&gt;</span>
+        <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"driverClassName"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"${jdbc.driverClassName}"</span><span class="hl-tag"> /&gt;</span>
+        <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"url"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"${jdbc.url}"</span><span class="hl-tag"> /&gt;</span>
+        <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"username"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"${jdbc.username}"</span><span class="hl-tag"> /&gt;</span>
+        <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"password"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"${jdbc.password}"</span><span class="hl-tag"> /&gt;</span>
+    <span class="hl-tag">&lt;/bean&gt;</span>
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config.factoryType"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>Here we specify the type of connection factory to be
+	      used.</p></td></tr></table></div></div><div class="section" title="5.4&nbsp;Configuration when using a SYS.XMLType payload"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="orcl.streamsaq.xmltype_config"></a>5.4&nbsp;Configuration when using a SYS.XMLType payload</h2></div></div></div><p>When you use a SYS.XMLType as payload there a few additional
+    configuration settings are needed.</p><div class="section" title="5.4.1&nbsp;Enqueuing XML messages"><div class="titlepage"><div><div><h3 class="title"><a name="d0e1446"></a>5.4.1&nbsp;Enqueuing XML messages</h3></div></div></div><p>When enqueuing messages the JmsTemplate can be configured with a
+      message converter. This message converter should be of a type
+      <code class="classname">XmlMessageConverter</code> configured with a specific
+      <code class="classname">XmlTypeHandler</code> that you would like to use. The
+      following handlers are available:</p><div class="table"><a name="xml-handlers"></a><p class="title"><b>Table&nbsp;5.2.&nbsp;xml handlers</b></p><div class="table-contents"><table summary="xml handlers" style="border-collapse: collapse;border-top: 0.5pt solid ; border-bottom: 0.5pt solid ; border-left: 0.5pt solid ; border-right: 0.5pt solid ; "><colgroup><col><col></colgroup><thead><tr><th style="border-right: 0.5pt solid ; border-bottom: 0.5pt solid ; ">XML Handler</th><th style="border-bottom: 0.5pt solid ; ">Usage</th></tr></thead><tbody><tr><td style="border-right: 0.5pt solid ; border-bottom: 0.5pt solid ; "><code class="literal">StringXmlTypeHandler</code></td><td style="border-bottom: 0.5pt solid ; ">Handles converting XMLTypes values to and from String
+                representation.</td></tr><tr><td style="border-right: 0.5pt solid ; border-bottom: 0.5pt solid ; "><code class="literal">DocumentXmlTypeHandler</code></td><td style="border-bottom: 0.5pt solid ; ">Handles converting XMLTypes values to and from Document
+                representation.</td></tr><tr><td style="border-right: 0.5pt solid ; "><code class="literal">StreamXmlTypeHandler</code></td><td style="">Handles converting XMLTypes values to and from an
+                InputStream.</td></tr></tbody></table></div></div><p><br class="table-break"></p><p>
+          </p><pre class="programlisting"><span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"jmsTemplate"</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.jms.core.JmsTemplate"</span><span class="hl-tag">&gt;</span>
+    <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"connectionFactory"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"connectionFactory"</span><span class="hl-tag">/&gt;</span> <a name="streamsaq.config.xmltype.enq.connfact"></a><img src="images/callouts/1.png" alt="1" border="0">
+    <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"messageConverter"</span><span class="hl-tag">&gt;</span>
+        <span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"messageConverter"</span><a name="streamsaq.config.xmltype.enq.converter"></a><img src="images/callouts/2.png" alt="2" border="0">
+           class="org.springframework.data.jdbc.jms.support.converter.oracle.XmlMessageConverter"&gt;
+            <span class="hl-tag">&lt;constructor-arg&gt;</span>
+                <span class="hl-tag">&lt;bean</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.data.jdbc.support.oracle.StringXmlTypeHandler"</span><span class="hl-tag">/&gt;</span> <a name="streamsaq.config.xmltype.enq.handler"></a><img src="images/callouts/3.png" alt="3" border="0">
+            <span class="hl-tag">&lt;/constructor-arg&gt;</span>
+        <span class="hl-tag">&lt;/bean&gt;</span>
+    <span class="hl-tag">&lt;/property&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span>
+</pre><p>
+
+          </p><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config.xmltype.enq.connfact"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>A reference to the configured connection factory.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config.xmltype.enq.converter"><img src="images/callouts/2.png" alt="2" border="0"></a> </p></td><td valign="top" align="left"><p>Declaration of an
+              <code class="classname">XmlMessageConverter</code> to convert from
+              <code class="classname">XMLType</code> to desired representation.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config.xmltype.enq.handler"><img src="images/callouts/3.png" alt="3" border="0"></a> </p></td><td valign="top" align="left"><p>Declaration of the specific
+              <code class="classname">XmlTypeHandler</code> that should be used. In
+              this case a <code class="classname">StringXmlTypeHandler</code>.</p></td></tr></table></div><p>
+      </p><p>Once the JmsTemplate is configured the XML value can be sent using
+      the <code class="classname">convertAndSend</code> method. In this example we are
+      passing in a String containing the value.</p><pre class="programlisting">        String xmlval = <span class="hl-string">"&lt;?xml version=\"1.0\" encoding=\"UTF-8\"?&gt;\n"</span> +
+                <span class="hl-string">"&lt;product id=\"10\"&gt;\n"</span> +
+                <span class="hl-string">" &lt;description&gt;Foo&lt;/description&gt;\n"</span> +
+                <span class="hl-string">" &lt;price&gt;2.05&lt;/price&gt;\n"</span> +
+                <span class="hl-string">"&lt;/product&gt;"</span>;
+
+        jmsTemplate.convertAndSend(<span class="hl-string">"jmsadmin.jms_xml_queue"</span>, xmlval);</pre></div><div class="section" title="5.4.2&nbsp;Dequeuing XML messages"><div class="titlepage"><div><div><h3 class="title"><a name="d0e1530"></a>5.4.2&nbsp;Dequeuing XML messages</h3></div></div></div><p>When you want to dequeue messages using a message listener
+      container you need to configure an
+      <code class="classname">XmlMessageListenerContainer</code> that can dequeue the
+      messages and convert the <code class="classname">XMLType</code> payload.</p><pre class="programlisting"><span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"messageDelegate"</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.data.jdbc.test.xml.MessageDelegate"</span><span class="hl-tag"> /&gt;</span>
+
+<span class="hl-tag">&lt;jms:listener-container</span> <span class="hl-attribute">connection-factory</span>=<span class="hl-value">"connectionFactory"</span> <a name="streamsaq.config.xmltype.connfact"></a><img src="images/callouts/1.png" alt="1" border="0">
+    transaction-manager="transactionManager"
+    message-converter="messageConverter" 
+    container-class="org.springframework.data.jdbc.jms.listener.oracle.XmlMessageListenerContainer"&gt; <a name="streamsaq.config.xmltype.class"></a><img src="images/callouts/2.png" alt="2" border="0">
+    <span class="hl-tag">&lt;jms:listener</span> <span class="hl-attribute">destination</span>=<span class="hl-value">"jmsadmin.jms_xml_queue"</span> 
+        <span class="hl-attribute">ref</span>=<span class="hl-value">"messageDelegate"</span> <span class="hl-attribute">method</span>=<span class="hl-value">"handleMessage"</span><span class="hl-tag">&gt;</span>
+    <span class="hl-tag">&lt;/jms:listener&gt;</span>
+<span class="hl-tag">&lt;/jms:listener-container&gt;</span>
+
+<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"messageConverter"</span> <a name="streamsaq.config.xmltype.converter"></a><img src="images/callouts/3.png" alt="3" border="0">
+   class="org.springframework.data.jdbc.jms.support.converter.oracle.XmlMessageConverter"&gt;
+    <span class="hl-tag">&lt;constructor-arg&gt;</span>
+        <span class="hl-tag">&lt;bean</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.data.jdbc.support.oracle.DocumentXmlTypeHandler"</span><span class="hl-tag">/&gt;</span> <a name="streamsaq.config.xmltype.handler"></a><img src="images/callouts/4.png" alt="4" border="0">
+    <span class="hl-tag">&lt;/constructor-arg&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span>
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config.xmltype.connfact"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>A reference to the configured connection factory.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config.xmltype.class"><img src="images/callouts/2.png" alt="2" border="0"></a> </p></td><td valign="top" align="left"><p>Configuring the class to use for the container - this is a
+            custom class <code class="classname">XmlMessageListenerContainer</code>
+            that dequeues the Oracle XMLType messages.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config.xmltype.converter"><img src="images/callouts/3.png" alt="3" border="0"></a> </p></td><td valign="top" align="left"><p>The <code class="classname">XmlMessageConverter</code> is defined
+            here.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config.xmltype.handler"><img src="images/callouts/4.png" alt="4" border="0"></a> </p></td><td valign="top" align="left"><p>The <code class="classname">DocumentXmlTypeHandler</code> is used to
+            retrieve XML value as a Document.</p></td></tr></table></div><p>Here is an example of the message delegate used in the above
+      message listener container:</p><pre class="programlisting"><span class="hl-keyword">public</span> <span class="hl-keyword">class</span> MessageDelegate {
+
+    <i><span class="hl-annotation" style="color: gray">@Autowired</span></i>
+    <span class="hl-keyword">private</span> DomainService domainService;
+
+    <span class="hl-keyword">public</span> <span class="hl-keyword">void</span> handleMessage(Document xmlDoc) 
+            <span class="hl-keyword">throws</span> MessageConversionException, JMSException {
+        domainService.processXmlMessage(xmlDoc);
+    }
+
+}
+</pre><p>As you can see the method that handles the message takes a
+      <code class="classname">Document</code> as its parameter. The conversion from
+      the XMLType to a Document representation is handled by the
+      <code class="classname">MessageListenerAdapter</code> since we specified a
+      message converter.</p></div></div><div class="section" title="5.5&nbsp;Configuration when using a custom ADT payload"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="orcl.streamsaq.adt_config"></a>5.5&nbsp;Configuration when using a custom ADT payload</h2></div></div></div><p>When you use a custom ADT as payload there are certain configuration
+    settings that are needed. When creating the queue and its queue table you
+    specify the custom type as the "queue_payload_type". This custom type is
+    defined using a regular "CREATE TYPE" statement. In the code example that
+    follow we have defined a PRODUCT type:</p><pre class="programlisting">create or replace TYPE PRODUCT_TYPE AS OBJECT
+(
+  id INTEGER,
+  description VARCHAR(50),
+  price DECIMAL(12,2)
+);
+</pre><div class="section" title="5.5.1&nbsp;Enqueuing ADT messages"><div class="titlepage"><div><div><h3 class="title"><a name="d0e1592"></a>5.5.1&nbsp;Enqueuing ADT messages</h3></div></div></div><p>When enqueuing messages the JmsTemplate can be configured with a
+      message converter. This message converter should be of a type
+      <code class="classname">MappingAdtMessageConverter</code> configured with a
+      specific <code class="classname">DatumMapper</code> that you would like to use.
+      This <code class="classname">DatumMapper</code> can be a custom implementation
+      or the provided <code class="classname">StructDatumMapper</code> that will map
+      between bean properties and STRUCT attributes of the same name.</p><p>The <code class="classname">DatumMapper</code> interface has the following
+      methods declared:</p><pre class="programlisting"><span class="hl-keyword">public</span> <span class="hl-keyword">interface</span> DatumMapper {
+
+    <span class="hl-keyword">public</span> Datum toDatum(Object object, Connection conn) <span class="hl-keyword">throws</span> SQLException;
+
+    <span class="hl-keyword">public</span> Object fromDatum(Datum datum) <span class="hl-keyword">throws</span> SQLException;
+
+}</pre><p>The <code class="classname">toDatum</code> method will be called with the
+      Object to convert to a STRUCT as the first parameter and the current
+      connection as the second. It's up to the mapping implementation to
+      extract the object properties and to create the STRUCT. For the
+      <code class="classname">fromDatum</code> method the STRUCT is passed in and the
+      implementation is responsible for retrieving the attributes and
+      constructing and instance of the required class.</p><p>
+          </p><pre class="programlisting"><span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"jmsTemplate"</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.jms.core.JmsTemplate"</span><span class="hl-tag">&gt;</span>
+  <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"connectionFactory"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"connectionFactory"</span><span class="hl-tag">/&gt;</span> <a name="streamsaq.config.adt.enq.connfact"></a><img src="images/callouts/1.png" alt="1" border="0">
+  <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"messageConverter"</span><span class="hl-tag">&gt;</span>
+    <span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"messageConverter"</span>
+       <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.data.jdbc.jms.support.converter.oracle.MappingAdtMessageConverter"</span><span class="hl-tag">&gt;</span><a name="streamsaq.config.adt.enq.converter"></a><img src="images/callouts/2.png" alt="2" border="0">
+       <span class="hl-tag">&lt;constructor-arg&gt;</span>
+         <span class="hl-tag">&lt;bean</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.data.jdbc.jms.support.oracle.StructDatumMapper"</span><span class="hl-tag">&gt;</span> <a name="streamsaq.config.adt.enq.mapper"></a><img src="images/callouts/3.png" alt="3" border="0">
+           <span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">index</span>=<span class="hl-value">"0"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"JMSADMIN.PRODUCT_TYPE"</span><span class="hl-tag">/&gt;</span>
+           <span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">index</span>=<span class="hl-value">"1"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"org.springframework.data.jdbc.test.domain.Product"</span><span class="hl-tag">/&gt;</span>
+         <span class="hl-tag">&lt;/bean&gt;</span>
+       <span class="hl-tag">&lt;/constructor-arg&gt;</span>
+    <span class="hl-tag">&lt;/bean&gt;</span>
+  <span class="hl-tag">&lt;/property&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span>
+</pre><p>
+
+          </p><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config.adt.enq.connfact"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>A reference to the configured connection factory.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config.adt.enq.converter"><img src="images/callouts/2.png" alt="2" border="0"></a> </p></td><td valign="top" align="left"><p>Declaration of an
+              <code class="classname">MappingAdtMessageConverter</code> to convert
+              from custom type to corresponding JavaBean.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config.adt.enq.mapper"><img src="images/callouts/3.png" alt="3" border="0"></a> </p></td><td valign="top" align="left"><p>Declaration of the specific
+              <code class="classname">DatumMapper</code> that should be used. In this
+              case the provided
+              <code class="classname">StructDatumMapper</code>.</p></td></tr></table></div><p>
+      </p><p>Once the JmsTemplate is configured the XML value can be sent using
+      the <code class="classname">convertAndSend</code> method. In this example we are
+      passing in a String containing the value.</p><pre class="programlisting">        Product product = <span class="hl-keyword">new</span> Product();
+        product.setId(<span class="hl-number">22L</span>);
+        product.setDescription(<span class="hl-string">"Foo"</span>);
+        product.setPrice(<span class="hl-keyword">new</span> BigDecimal(<span class="hl-string">"42.95"</span>));
+
+        jms.convertAndSend(<span class="hl-string">"jmsadmin.jms_product_queue"</span>, product);
+</pre></div><div class="section" title="5.5.2&nbsp;Dequeuing ADT messages"><div class="titlepage"><div><div><h3 class="title"><a name="d0e1662"></a>5.5.2&nbsp;Dequeuing ADT messages</h3></div></div></div><p>When you want to dequeue messages using a message listener
+      container you need to configure an
+      <code class="classname">AdtMessageListenerContainer</code> that can dequeue the
+      messages and convert the ADT payload.</p><pre class="programlisting"><span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"messageDelegate"</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.data.jdbc.test.adt.MessageDelegate"</span><span class="hl-tag"> /&gt;</span>
+
+<span class="hl-tag">&lt;jms:listener-container</span> <span class="hl-attribute">connection-factory</span>=<span class="hl-value">"connectionFactory"</span> <a name="streamsaq.config.adt.connfact"></a><img src="images/callouts/1.png" alt="1" border="0">
+    transaction-manager="transactionManager"
+    message-converter="messageConverter" 
+    container-class="org.springframework.data.jdbc.jms.listener.oracle.AdtMessageListenerContainer"&gt; <a name="streamsaq.config.adt.class"></a><img src="images/callouts/2.png" alt="2" border="0">
+  <span class="hl-tag">&lt;jms:listener</span> <span class="hl-attribute">destination</span>=<span class="hl-value">"jmsadmin.jms_product_queue"</span> 
+      <span class="hl-attribute">ref</span>=<span class="hl-value">"messageDelegate"</span> <span class="hl-attribute">method</span>=<span class="hl-value">"handleMessage"</span><span class="hl-tag">&gt;</span>
+  <span class="hl-tag">&lt;/jms:listener&gt;</span>
+<span class="hl-tag">&lt;/jms:listener-container&gt;</span>
+
+<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"messageConverter"</span> 
+   <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.data.jdbc.jms.support.converter.oracle.MappingAdtMessageConverter"</span><span class="hl-tag">&gt;</span><a name="streamsaq.config.adt.converter"></a><img src="images/callouts/3.png" alt="3" border="0">
+  <span class="hl-tag">&lt;constructor-arg&gt;</span>
+    <span class="hl-tag">&lt;bean</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.data.jdbc.jms.support.oracle.StructDatumMapper"</span><span class="hl-tag">&gt;</span> <a name="streamsaq.config.adt.mapper"></a><img src="images/callouts/4.png" alt="4" border="0">
+      <span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">index</span>=<span class="hl-value">"0"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"JMSADMIN.PRODUCT_TYPE"</span><span class="hl-tag">/&gt;</span>
+      <span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">index</span>=<span class="hl-value">"1"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"org.springframework.data.jdbc.test.domain.Product"</span><span class="hl-tag">/&gt;</span>
+    <span class="hl-tag">&lt;/bean&gt;</span>
+  <span class="hl-tag">&lt;/constructor-arg&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span>
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config.adt.connfact"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>A reference to the configured connection factory.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config.adt.connfact"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>Configuring the class to use for the container - this is a
+            custom class
+            <code class="classname">AdtMessageListenerContainer</code>
+            that dequeues the ADT messages.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config.adt.converter"><img src="images/callouts/3.png" alt="3" border="0"></a> </p></td><td valign="top" align="left"><p>The <code class="classname">MappingAdtMessageConverter</code> is
+            defined here.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#streamsaq.config.adt.mapper"><img src="images/callouts/4.png" alt="4" border="0"></a> </p></td><td valign="top" align="left"><p>The <code class="classname">StructDatumMapper</code> is used to map
+            the attributes of the STRUCT retrieved for the ADT to properties
+            of the bean class specified as the second constructor
+            argument.</p></td></tr></table></div><p>Here is an example of the message delegate used in the above
+      message listener container:</p><pre class="programlisting"><span class="hl-keyword">public</span> <span class="hl-keyword">class</span> MessageDelegate {
+
+    <i><span class="hl-annotation" style="color: gray">@Autowired</span></i>
+    <span class="hl-keyword">private</span> DomainService domainService;
+
+    <span class="hl-keyword">public</span> <span class="hl-keyword">void</span> handleMessage(Product product) 
+            <span class="hl-keyword">throws</span> MessageConversionException, JMSException {
+        domainService.saveProduct(product);
+    }
+
+}
+</pre><p>As you can see the method that handles the message takes a
+      <code class="classname">Product</code> as its parameter. The conversion from the
+      STRUCT to a Product is handled by the
+      <code class="classname">MessageListenerAdapter</code> since we specified a
+      message converter.</p></div></div></div><div class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="orcl.failover.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="u" href="pt02.html">Up</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="orcl.xmltypes.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">4.&nbsp;Fast Connection Failover&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right" valign="top">&nbsp;6.&nbsp;XML Types</td></tr></table></div></body></html>

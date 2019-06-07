@@ -1,0 +1,119 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>Chapter&nbsp;20.&nbsp;Cross-store persistence</title><link rel="stylesheet" href="css/html.css" type="text/css"><meta name="generator" content="DocBook XSL Stylesheets V1.73.2"><link rel="start" href="index.html" title="Good Relationships"><link rel="up" href="reference.html" title="Part&nbsp;II.&nbsp;Reference Documentation"><link rel="prev" href="setup.html" title="Chapter&nbsp;19.&nbsp;Environment setup"><link rel="next" href="reference:samples.html" title="Chapter&nbsp;21.&nbsp;Sample code"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div xmlns:fo="http://www.w3.org/1999/XSL/Format" style="background-color:white;border:none;height:73px;border:1px solid black;"><a style="border:none;" href="http://static.springframework.org/spring-ws/site/" title="The Spring Framework - Spring Web Services"><img style="border:none;" src="images/xdev-spring_logo.jpg"></a><a style="border:none;" href="http://www.springsource.com/" title="SpringSource"><img style="border:none;position:absolute;padding-top:5px;right:42px;" src="images/s2_box_logo.png"></a></div><div class="chapter" lang="en"><div class="titlepage"><div><div><h2 class="title"><a name="reference:cross-store"></a>Chapter&nbsp;20.&nbsp;Cross-store persistence</h2></div></div></div><p>
+        The Spring Data Graph project support cross-store persistence, which allows for parts of the data to be
+        stored in a traditional JPA data store (RDBMS), and other parts in a graph store. This means that an entity
+        can be partially stored in e.g. MySQL, and partially stored in Neo4j.
+    </p><p>
+        This allows existing JPA-based applications to embrace NOSQL data stores for evolving certain parts
+        of their data model. Possible use cases include adding social networking or geospatial information to
+        existing applications.
+    </p><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e2506"></a>20.1.&nbsp;Partial entities</h2></div></div></div><p>
+            Partial graph persistence is achieved by restricting the Spring Data Graph aspects to manage only
+            explicitly annotated parts of the entity. Those fields will be made <code class="code">@Transient</code> by the
+            aspect so that JPA ignores them.
+        </p><p>
+            A backing node in the graph store is only created when the entity has been assigned a JPA ID. Only
+            then will the association between the two stores be established. Until the entity has been persisted,
+            its state is just kept inside the POJO (in detached state), and then flushed to the backing graph
+            database on <code class="code">persist()</code>.
+        </p><p>
+            The association between the two entities is maintained via a FOREIGN_ID field in the node, that
+            contains the JPA ID. Currently only single-value IDs are supported. The entity class can be resolved
+            via the <code class="code">TypeRepresentationStrategy</code> that manages the Java type hierarchy within the graph
+            database. Given the ID and class, you can then retrieve the appropriate JPA entity for a given node.
+        </p><p>
+            The other direction is handled by indexing the Node with the FOREIGN_ID index which contains a
+            concatenation of the fully qualified class name of the JPA entity and the ID. The matching node
+            can then be found using the indexing facilities, and the two entities can be reassociated.
+        </p><p>
+            Using these mechanisms and the Spring Data Graph aspects, a single POJO can contain some fields
+            handled by JPA and others handles by Spring Data Graph. This also includes relationship fields persisted
+            in the graph database.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e2528"></a>20.2.&nbsp;Cross-store annotations</h2></div></div></div><p>
+            Cross-store persistence only requires the use of one additional annotation: <code class="code">@GraphProperty</code>.
+            See below for details and an example.
+        </p><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e2536"></a>20.2.1.&nbsp;@NodeEntity(partial = "true")</h3></div></div></div><p>
+                When annotating an entity with <code class="code">partial = true</code>, this marks it as a cross-store entity.
+                Spring Data Graph will thus only manage fields explicitly annotated with <code class="code">@GraphProperty</code>.
+            </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e2547"></a>20.2.2.&nbsp;@GraphProperty</h3></div></div></div><p>
+                Fields of primitive or convertible types do not normally have to be annotated in order to be
+                persisted by Spring Data Graph. In cross-store mode, Spring Data Graph <span class="emphasis"><em>only</em></span>
+                persists fields explicitly annotated with <code class="code">@GraphProperty</code>. JPA will ignore these fields.
+            </p></div><p>
+            The following example is taken from the
+            <a class="ulink" href="http://github.com/SpringSource/spring-data-graph-examples" target="_top">Spring Data Graph examples</a>
+            myrestaurants-social project:
+        </p><div class="example"><a name="d0e2563"></a><p class="title"><b>Example&nbsp;20.1.&nbsp;Cross-store node entity</b></p><div class="example-contents"><pre class="programlisting">@Entity
+@Table(name = <span class="hl-string">"user_account"</span>)
+@NodeEntity(partial = true)
+<span class="hl-keyword">public</span> <span class="hl-keyword">class</span> UserAccount {
+    <span class="hl-keyword">private</span> String userName;
+    <span class="hl-keyword">private</span> String firstName;
+    <span class="hl-keyword">private</span> String lastName;
+
+    @GraphProperty
+    String nickname;
+
+    @RelatedTo
+    Set&lt;UserAccount&gt; friends;
+
+    @RelatedToVia(type = <span class="hl-string">"recommends"</span>)
+    Iterable&lt;Recommendation&gt; recommendations;
+
+    @Temporal(TemporalType.TIMESTAMP)
+    @DateTimeFormat(style = <span class="hl-string">"S-"</span>)
+    <span class="hl-keyword">private</span> Date birthDate;
+
+    @ManyToMany(cascade = CascadeType.ALL)
+    <span class="hl-keyword">private</span> Set&lt;Restaurant&gt; favorites;
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.AUTO)
+    @Column(name = <span class="hl-string">"id"</span>)
+    <span class="hl-keyword">private</span> Long id;
+
+    <span class="hl-keyword">public</span> <span class="hl-keyword">void</span> knows(UserAccount friend) {
+        relateTo(friend, <span class="hl-string">"friends"</span>);
+    }
+
+    <span class="hl-keyword">public</span> Recommendation rate(Restaurant restaurant, <span class="hl-keyword">int</span> stars, String comment) {
+        Recommendation recommendation = relateTo(restaurant, Recommendation.<span class="hl-keyword">class</span>, <span class="hl-string">"recommends"</span>);
+        recommendation.rate(stars, comment);
+        <span class="hl-keyword">return</span> recommendation;
+    }
+
+    <span class="hl-keyword">public</span> Iterable&lt;Recommendation&gt; getRecommendations() {
+        <span class="hl-keyword">return</span> recommendations;
+    }
+}
+</pre></div></div><br class="example-break"></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e2568"></a>20.3.&nbsp;Configuring cross-store persistence</h2></div></div></div><p>
+            Configuring cross-store persistence is done similarly to the default Spring Data Graph configuration.
+            All you need to do is to specify an <code class="code">entityManagerFactory</code> in the XML namespace
+            <code class="code">config</code> element, and Spring Data Graph will configure itself for cross-store use.
+        </p><div class="example"><a name="d0e2579"></a><p class="title"><b>Example&nbsp;20.2.&nbsp;Cross-store Spring configuration</b></p><div class="example-contents"><pre class="programlisting">&lt;<span class="hl-tag">beans</span> <span class="hl-attribute">xmlns</span>=<span class="hl-value">"http://www.springframework.org/schema/beans"</span>
+    <span class="hl-attribute">xmlns:context</span>=<span class="hl-value">"http://www.springframework.org/schema/context"</span>
+    <span class="hl-attribute">xmlns:xsi</span>=<span class="hl-value">"http://www.w3.org/2001/XMLSchema-instance"</span>
+    <span class="hl-attribute">xmlns:datagraph</span>=<span class="hl-value">"http://www.springframework.org/schema/data/graph"</span>
+    <span class="hl-attribute">xsi:schemaLocation</span>=<span class="hl-value">"
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+        http://www.springframework.org/schema/context
+        http://www.springframework.org/schema/context/spring-context-3.0.xsd
+        http://www.springframework.org/schema/data/graph
+        http://www.springframework.org/schema/data/graph/datagraph-1.0.xsd
+        "</span>&gt;
+
+    &lt;<span class="hl-tag">context:annotation-config</span>/&gt;
+
+    &lt;<span class="hl-tag">datagraph:config</span> <span class="hl-attribute">storeDirectory</span>=<span class="hl-value">"target/config-test"</span>
+        <span class="hl-attribute">entityManagerFactory</span>=<span class="hl-value">"entityManagerFactory"</span>/&gt;
+
+    &lt;<span class="hl-tag">bean</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean"</span>
+            <span class="hl-attribute">id</span>=<span class="hl-value">"entityManagerFactory"</span>&gt;
+        &lt;<span class="hl-tag">property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"dataSource"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"dataSource"</span>/&gt;
+        &lt;<span class="hl-tag">property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"persistenceXmlLocation"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"classpath:META-INF/persistence.xml"</span>/&gt;
+    &lt;<span class="hl-tag">/bean</span>&gt;
+&lt;<span class="hl-tag">/beans</span>&gt;
+</pre></div></div><br class="example-break"></div></div><div xmlns:fo="http://www.w3.org/1999/XSL/Format" class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="setup.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="reference:samples.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">Chapter&nbsp;19.&nbsp;Environment setup&nbsp;</td><td width="20%" align="center"><span style="color:white;font-size:90%;"><a href="http://www.springsource.com/" title="SpringSource">Sponsored by SpringSource
+                                        </a></span></td><td width="40%" align="right" valign="top">&nbsp;Chapter&nbsp;21.&nbsp;Sample code</td></tr></table></div></body></html>

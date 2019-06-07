@@ -1,0 +1,125 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>1.&nbsp;Support classes that extend Spring features</title><link rel="stylesheet" href="css/manual-multipage.css" type="text/css"><meta name="generator" content="DocBook XSL Stylesheets V1.75.2"><link rel="home" href="index.html" title="Spring Data JDBC Extensions Reference Documentation"><link rel="up" href="pt01.html" title="Part&nbsp;I.&nbsp;Core JDBC Extensions"><link rel="prev" href="core.overview.html" title="Overview"><link rel="next" href="core.querydsl.html" title="2.&nbsp;Querydsl Support (Deprecated)"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="navheader"><table width="100%" summary="Navigation header"><tr><th colspan="3" align="center">1.&nbsp;Support classes that extend Spring features</th></tr><tr><td width="20%" align="left"><a accesskey="p" href="core.overview.html">Prev</a>&nbsp;</td><th width="60%" align="center">Part&nbsp;I.&nbsp;Core JDBC Extensions</th><td width="20%" align="right">&nbsp;<a accesskey="n" href="core.querydsl.html">Next</a></td></tr></table><hr></div><div class="chapter" title="1.&nbsp;Support classes that extend Spring features"><div class="titlepage"><div><div><h2 class="title"><a name="core.support"></a>1.&nbsp;Support classes that extend Spring features</h2></div></div></div><p>The Spring Framework projects JDBC support is excellent but every now
+  and then there are some features that seem useful, but might not warrant
+  inclusion in the framework project itself. The Spring Data JDBC Extensions
+  project provides a home for these type of extensions.</p><div class="section" title="1.1&nbsp;Mapping a one-to-many relationship"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="core.support.onetomany"></a>1.1&nbsp;Mapping a one-to-many relationship</h2></div></div></div><p>We often have to map one-to-many relationships in our database
+    projects. A customer can have many addresses, an order can contain many
+    line items and so on. We are now providing a
+    <code class="classname">ResultSetExtractor</code> implementation to deal with this
+    common task.</p><p>Let&#8217;s look at the schema definition first:</p><pre class="programlisting">CREATE TABLE customer(
+  id BIGINT IDENTITY PRIMARY KEY, 
+  name VARCHAR(255));
+CREATE TABLE address (
+  id BIGINT IDENTITY PRIMARY KEY, 
+  customer_id BIGINT CONSTRAINT address_customer_ref 
+    FOREIGN KEY REFERENCES customer (id), 
+  street VARCHAR(255), 
+  city VARCHAR(255));
+</pre><p>Two tables linked by a foreign key constraint. To map this we need
+    two domain classes - <code class="classname">Customer</code> and
+    <code class="classname">Address</code> where <code class="classname">Customer</code> has a
+    Set of <code class="classname">Addresse</code>s.</p><pre class="programlisting"><span class="hl-keyword">public</span> <span class="hl-keyword">class</span> Customer {
+
+  <span class="hl-keyword">private</span> Integer id;
+
+  <span class="hl-keyword">private</span> String name;
+
+  <span class="hl-keyword">private</span> Set&lt;Address&gt; addresses = <span class="hl-keyword">new</span> HashSet&lt;Address&gt;();
+
+  <span class="hl-keyword">public</span> Set&lt;Address&gt; getAddresses() {
+    <span class="hl-keyword">return</span> addresses;
+  }
+
+  <span class="hl-keyword">public</span> <span class="hl-keyword">void</span> addAddress(Address address) {
+    <span class="hl-keyword">this</span>.addresses.add(address);
+  }
+
+<span class="hl-comment">// other setters and getters</span>
+
+}</pre><pre class="programlisting"><span class="hl-keyword">public</span> <span class="hl-keyword">class</span> Address {
+
+  <span class="hl-keyword">private</span> Integer id;
+
+  <span class="hl-keyword">private</span> String street;
+
+  <span class="hl-keyword">private</span> String city;
+
+<span class="hl-comment">// setters and getters</span>
+
+}</pre><p>Executing the following query we would potentially get multiple rows
+    returned for each customer. </p><pre class="programlisting">List&lt;Customer&gt; result = template.query(
+  <span class="hl-string">"select customer.id, customer.name, address.id, "</span> +
+    <span class="hl-string">"address.customer_id, address.street, address.city "</span> +
+    <span class="hl-string">"from customer "</span> +
+    <span class="hl-string">"left join address on customer.id = address.customer_id "</span> +
+    <span class="hl-string">"order by customer.id"</span>,
+  resultSetExtractor);
+</pre><p>To be able to handle the multiple rows we create a new
+    <code class="classname">CustomerAddressExtractor</code> that extends the abstract
+    class <code class="classname">OneToManyResultSetExtractor</code>. We parameterize
+    the <code class="classname">OneToManyResultSetExtractor</code> with the root class
+    (<code class="classname">Customer</code>), the child class
+    (<code class="classname">Address</code>), and the class for the primary and
+    foreign key (<code class="classname">Integer</code>).</p><pre class="programlisting"><span class="hl-keyword">public</span> <span class="hl-keyword">class</span> CustomerAddressExtractor <span class="hl-keyword">extends</span>
+    OneToManyResultSetExtractor&lt;Customer, Address, Integer&gt; {
+
+  <span class="hl-keyword">public</span> CustomerAddressExtractor() {
+    <span class="hl-keyword">super</span>(<span class="hl-keyword">new</span> CustomerMapper(), <span class="hl-keyword">new</span> AddressMapper());
+  }
+
+  <i><span class="hl-annotation" style="color: gray">@Override</span></i>
+  <span class="hl-keyword">protected</span> Integer mapPrimaryKey(ResultSet rs) <span class="hl-keyword">throws</span> SQLException {
+    <span class="hl-keyword">return</span> rs.getInt(<span class="hl-string">"customer.id"</span>);
+  }
+
+  <i><span class="hl-annotation" style="color: gray">@Override</span></i>
+  <span class="hl-keyword">protected</span> Integer mapForeignKey(ResultSet rs) <span class="hl-keyword">throws</span> SQLException {
+    <span class="hl-keyword">if</span> (rs.getObject(<span class="hl-string">"address.customer_id"</span>) == null) {
+      <span class="hl-keyword">return</span> null;
+    }
+    <span class="hl-keyword">else</span> {
+      <span class="hl-keyword">return</span> rs.getInt(<span class="hl-string">"address.customer_id"</span>);
+    }
+  }
+
+  <i><span class="hl-annotation" style="color: gray">@Override</span></i>
+  <span class="hl-keyword">protected</span> <span class="hl-keyword">void</span> addChild(Customer root, Address child) {
+    root.addAddress(child);
+  }
+}
+</pre><p>We need a way to match the primary key of the Customer with the
+    foreign key of the Address so we provide mappings for these via the
+    abstract methods <code class="methodname">mapPrimaryKey</code> and
+    <code class="methodname">mapForeignKey</code>. We have to take into account that
+    there might not be an address record for every customer so the foreign key
+    could be <code class="literal">null</code>. We also need to add the mapped
+    <code class="classname">Address</code> instances to the
+    <code class="classname">Customer</code> instance. We do this by implementing the
+    abstract method <code class="classname">addChild</code>. We simply call the
+    <code class="methodname">addAddress</code> on the <code class="classname">Customer</code>
+    class here.</p><p>Looking at the constructor of the CustomerAddressExtractor we see
+    that we call the super constructor providing
+    <code class="classname">RowMapper</code> implementations for the
+    <code class="classname">Customer</code> and the <code class="classname">Address</code>
+    classes. These are standard <code class="classname">RowMapper</code>s that we in
+    this example provide as static inner classes.</p><pre class="programlisting"><span class="hl-keyword">private</span> <span class="hl-keyword">static</span> <span class="hl-keyword">class</span> CustomerMapper <span class="hl-keyword">implements</span> RowMapper&lt;Customer&gt; {
+
+  <span class="hl-keyword">public</span> Customer mapRow(ResultSet rs, <span class="hl-keyword">int</span> rowNum) <span class="hl-keyword">throws</span> SQLException {
+    Customer c = <span class="hl-keyword">new</span> Customer();
+    c.setId(rs.getInt(<span class="hl-string">"customer.id"</span>));
+    c.setName(rs.getString(<span class="hl-string">"customer.name"</span>));
+    <span class="hl-keyword">return</span> c;
+  }
+}
+</pre><pre class="programlisting"><span class="hl-keyword">private</span> <span class="hl-keyword">static</span> <span class="hl-keyword">class</span> AddressMapper <span class="hl-keyword">implements</span> RowMapper&lt;Address&gt; {
+
+  <span class="hl-keyword">public</span> Address mapRow(ResultSet rs, <span class="hl-keyword">int</span> rowNum) <span class="hl-keyword">throws</span> SQLException {
+    Address a = <span class="hl-keyword">new</span> Address();
+    a.setId(rs.getInt(<span class="hl-string">"address.id"</span>));
+    a.setStreet(rs.getString(<span class="hl-string">"address.street"</span>));
+    a.setCity(rs.getString(<span class="hl-string">"address.city"</span>));
+    <span class="hl-keyword">return</span> a;
+  }
+}
+</pre><p>We now have a complete solution for this common problem.</p></div></div><div class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="core.overview.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="u" href="pt01.html">Up</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="core.querydsl.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">Overview&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right" valign="top">&nbsp;2.&nbsp;Querydsl Support (Deprecated)</td></tr></table></div></body></html>

@@ -1,0 +1,178 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>29.&nbsp;LDAP Authentication</title><link rel="stylesheet" type="text/css" href="css/manual-multipage.css"><meta name="generator" content="DocBook XSL Stylesheets V1.78.1"><link rel="home" href="index.html" title="Spring Security Reference"><link rel="up" href="advanced-topics.html" title="Part&nbsp;VI.&nbsp;Additional Topics"><link rel="prev" href="preauth.html" title="28.&nbsp;Pre-Authentication Scenarios"><link rel="next" href="taglibs.html" title="30.&nbsp;JSP Tag Libraries"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="navheader"><table width="100%" summary="Navigation header"><tr><th colspan="3" align="center">29.&nbsp;LDAP Authentication</th></tr><tr><td width="20%" align="left"><a accesskey="p" href="preauth.html">Prev</a>&nbsp;</td><th width="60%" align="center">Part&nbsp;VI.&nbsp;Additional Topics</th><td width="20%" align="right">&nbsp;<a accesskey="n" href="taglibs.html">Next</a></td></tr></table><hr></div><div class="chapter"><div class="titlepage"><div><div><h2 class="title"><a name="ldap" href="#ldap"></a>29.&nbsp;LDAP Authentication</h2></div></div></div>
+
+<div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="ldap-overview" href="#ldap-overview"></a>29.1&nbsp;Overview</h2></div></div></div>
+
+<p>LDAP is often used by organizations as a central repository for user information and as an authentication service. It can also be used to store the role information for application users.</p>
+<p>There are many different scenarios for how an LDAP server may be configured so Spring Security&#8217;s LDAP provider is fully configurable. It uses separate strategy interfaces for authentication and role retrieval and provides default implementations which can be configured to handle a wide range of situations.</p>
+<p>You should be familiar with LDAP before trying to use it with Spring Security. The following link provides a good introduction to the concepts involved and a guide to setting up a directory using the free LDAP server OpenLDAP: <a class="ulink" href="http://www.zytrax.com/books/ldap/" target="_top">http://www.zytrax.com/books/ldap/</a>. Some familiarity with the JNDI APIs used to access LDAP from Java may also be useful. We don&#8217;t use any third-party LDAP libraries (Mozilla, JLDAP etc.) in the LDAP provider, but extensive use is made of Spring LDAP, so some familiarity with that project may be useful if you plan on adding your own customizations.</p>
+<p>When using LDAP authentication, it is important to ensure that you configure LDAP connection pooling properly. If you are unfamiliar with how to do this, you can refer to the <a class="ulink" href="http://docs.oracle.com/javase/jndi/tutorial/ldap/connect/config.html" target="_top">Java LDAP documentation</a>.</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="using-ldap-with-spring-security" href="#using-ldap-with-spring-security"></a>29.2&nbsp;Using LDAP with Spring Security</h2></div></div></div>
+
+<p>LDAP authentication in Spring Security can be roughly divided into the following stages.</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">
+Obtaining the unique LDAP "Distinguished Name", or DN, from the login name. This will often mean performing a search in the directory, unless the exact mapping of usernames to DNs is known in advance. So a user might enter the name "joe" when logging in, but the actual name used to authenticate to LDAP will be the full DN, such as <code class="literal">uid=joe,ou=users,dc=spring,dc=io</code>.
+</li><li class="listitem">
+Authenticating the user, either by "binding" as that user or by performing a remote "compare" operation of the user&#8217;s password against the password attribute in the directory entry for the DN.
+</li><li class="listitem">
+Loading the list of authorities for the user.
+</li></ul></div>
+<p>The exception is when the LDAP directory is just being used to retrieve user information and authenticate against it locally. This may not be possible as directories are often set up with limited read access for attributes such as user passwords.</p>
+<p>We will look at some configuration scenarios below. For full information on available configuration options, please consult the security namespace schema (information from which should be available in your XML editor).</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="ldap-server" href="#ldap-server"></a>29.3&nbsp;Configuring an LDAP Server</h2></div></div></div>
+
+<p>The first thing you need to do is configure the server against which authentication should take place. This is done using the <code class="literal">&lt;ldap-server&gt;</code> element from the security namespace. This can be configured to point at an external LDAP server, using the <code class="literal">url</code> attribute:</p>
+<pre class="programlisting"><span class="hl-tag">&lt;ldap-server</span> <span class="hl-attribute">url</span>=<span class="hl-value">"ldap://springframework.org:389/dc=springframework,dc=org"</span><span class="hl-tag"> /&gt;</span></pre>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="using-an-embedded-test-server" href="#using-an-embedded-test-server"></a>29.3.1&nbsp;Using an Embedded Test Server</h3></div></div></div>
+
+<p>The <code class="literal">&lt;ldap-server&gt;</code> element can also be used to create an embedded server, which can be very useful for testing and demonstrations. In this case you use it without the <code class="literal">url</code> attribute:</p>
+<pre class="programlisting"><span class="hl-tag">&lt;ldap-server</span> <span class="hl-attribute">root</span>=<span class="hl-value">"dc=springframework,dc=org"</span><span class="hl-tag">/&gt;</span></pre>
+<p>Here we&#8217;ve specified that the root DIT of the directory should be "dc=springframework,dc=org", which is the default. Used this way, the namespace parser will create an embedded Apache Directory server and scan the classpath for any LDIF files, which it will attempt to load into the server. You can customize this behaviour using the <code class="literal">ldif</code> attribute, which defines an LDIF resource to be loaded:</p>
+<pre class="programlisting"><span class="hl-tag">&lt;ldap-server</span> <span class="hl-attribute">ldif</span>=<span class="hl-value">"classpath:users.ldif"</span><span class="hl-tag"> /&gt;</span></pre>
+<p>This makes it a lot easier to get up and running with LDAP, since it can be inconvenient to work all the time with an external server. It also insulates the user from the complex bean configuration needed to wire up an Apache Directory server. Using plain Spring Beans the configuration would be much more cluttered. You must have the necessary Apache Directory dependency jars available for your application to use. These can be obtained from the LDAP sample application.</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="using-bind-authentication" href="#using-bind-authentication"></a>29.3.2&nbsp;Using Bind Authentication</h3></div></div></div>
+
+<p>This is the most common LDAP authentication scenario.</p>
+<pre class="programlisting"><span class="hl-tag">&lt;ldap-authentication-provider</span> <span class="hl-attribute">user-dn-pattern</span>=<span class="hl-value">"uid={0},ou=people"</span><span class="hl-tag">/&gt;</span></pre>
+<p>This simple example would obtain the DN for the user by substituting the user login name in the supplied pattern and attempting to bind as that user with the login password. This is OK if all your users are stored under a single node in the directory. If instead you wished to configure an LDAP search filter to locate the user, you could use the following:</p>
+<pre class="programlisting"><span class="hl-tag">&lt;ldap-authentication-provider</span> <span class="hl-attribute">user-search-filter</span>=<span class="hl-value">"(uid={0})"</span>
+	<span class="hl-attribute">user-search-base</span>=<span class="hl-value">"ou=people"</span><span class="hl-tag">/&gt;</span></pre>
+<p>If used with the server definition above, this would perform a search under the DN <code class="literal">ou=people,dc=springframework,dc=org</code> using the value of the <code class="literal">user-search-filter</code> attribute as a filter. Again the user login name is substituted for the parameter in the filter name, so it will search for an entry with the <code class="literal">uid</code> attribute equal to the user name. If <code class="literal">user-search-base</code> isn&#8217;t supplied, the search will be performed from the root.</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="loading-authorities" href="#loading-authorities"></a>29.3.3&nbsp;Loading Authorities</h3></div></div></div>
+
+<p>How authorities are loaded from groups in the LDAP directory is controlled by the following attributes.</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">
+<code class="literal">group-search-base</code>. Defines the part of the directory tree under which group searches should be performed.
+</li><li class="listitem">
+<code class="literal">group-role-attribute</code>. The attribute which contains the name of the authority defined by the group entry. Defaults to <code class="literal">cn</code>
+</li><li class="listitem">
+<code class="literal">group-search-filter</code>. The filter which is used to search for group membership. The default is <code class="literal">uniqueMember={0}</code>, corresponding to the <code class="literal">groupOfUniqueNames</code> LDAP class <a href="#ftn.d5e4644" class="footnote" name="d5e4644"><sup class="footnote">[19]</sup></a>. In this case, the substituted parameter is the full distinguished name of the user. The parameter <code class="literal">{1}</code> can be used if you want to filter on the login name.
+</li></ul></div>
+<p>So if we used the following configuration</p>
+<pre class="programlisting"><span class="hl-tag">&lt;ldap-authentication-provider</span> <span class="hl-attribute">user-dn-pattern</span>=<span class="hl-value">"uid={0},ou=people"</span>
+		<span class="hl-attribute">group-search-base</span>=<span class="hl-value">"ou=groups"</span><span class="hl-tag"> /&gt;</span></pre>
+<p>and authenticated successfully as user "ben", the subsequent loading of authorities would perform a search under the directory entry <code class="literal">ou=groups,dc=springframework,dc=org</code>, looking for entries which contain the attribute <code class="literal">uniqueMember</code> with value <code class="literal">uid=ben,ou=people,dc=springframework,dc=org</code>. By default the authority names will have the prefix <code class="literal">ROLE_</code> prepended. You can change this using the <code class="literal">role-prefix</code> attribute. If you don&#8217;t want any prefix, use <code class="literal">role-prefix="none"</code>. For more information on loading authorities, see the Javadoc for the <code class="literal">DefaultLdapAuthoritiesPopulator</code> class.</p>
+</div>
+</div>
+<div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="implementation-classes" href="#implementation-classes"></a>29.4&nbsp;Implementation Classes</h2></div></div></div>
+
+<p>The namespace configuration options we&#8217;ve used above are simple to use and much more concise than using Spring beans explicitly. There are situations when you may need to know how to configure Spring Security LDAP directly in your application context. You may wish to customize the behaviour of some of the classes, for example. If you&#8217;re happy using namespace configuration then you can skip this section and the next one.</p>
+<p>The main LDAP provider class, <code class="literal">LdapAuthenticationProvider</code>, doesn&#8217;t actually do much itself but delegates the work to two other beans, an <code class="literal">LdapAuthenticator</code> and an <code class="literal">LdapAuthoritiesPopulator</code> which are responsible for authenticating the user and retrieving the user&#8217;s set of <code class="literal">GrantedAuthority</code> s respectively.</p>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="ldap-ldap-authenticators" href="#ldap-ldap-authenticators"></a>29.4.1&nbsp;LdapAuthenticator Implementations</h3></div></div></div>
+
+<p>The authenticator is also responsible for retrieving any required user attributes. This is because the permissions on the attributes may depend on the type of authentication being used. For example, if binding as the user, it may be necessary to read them with the user&#8217;s own permissions.</p>
+<p>There are currently two authentication strategies supplied with Spring Security:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">
+Authentication directly to the LDAP server ("bind" authentication).
+</li><li class="listitem">
+Password comparison, where the password supplied by the user is compared with the one stored in the repository. This can either be done by retrieving the value of the password attribute and checking it locally or by performing an LDAP "compare" operation, where the supplied password is passed to the server for comparison and the real password value is never retrieved.
+</li></ul></div>
+<div class="section"><div class="titlepage"><div><div><h4 class="title"><a name="ldap-ldap-authenticators-common" href="#ldap-ldap-authenticators-common"></a>Common Functionality</h4></div></div></div>
+
+<p>Before it is possible to authenticate a user (by either strategy), the distinguished name (DN) has to be obtained from the login name supplied to the application. This can be done either by simple pattern-matching (by setting the <code class="literal">setUserDnPatterns</code> array property) or by setting the <code class="literal">userSearch</code> property. For the DN pattern-matching approach, a standard Java pattern format is used, and the login name will be substituted for the parameter <code class="literal">{0}</code>. The pattern should be relative to the DN that the configured <code class="literal">SpringSecurityContextSource</code> will bind to (see the section on <a class="link" href="ldap.html#ldap-context-source" title="29.4.2&nbsp;Connecting to the LDAP Server">connecting to the LDAP server</a> for more information on this). For example, if you are using an LDAP server with the URL <code class="literal">ldap://monkeymachine.co.uk/dc=springframework,dc=org</code>, and have a pattern <code class="literal">uid={0},ou=greatapes</code>, then a login name of "gorilla" will map to a DN <code class="literal">uid=gorilla,ou=greatapes,dc=springframework,dc=org</code>. Each configured DN pattern will be tried in turn until a match is found. For information on using a search, see the section on <a class="link" href="ldap.html#ldap-searchobjects" title="29.4.3&nbsp;LDAP Search Objects">search objects</a> below. A combination of the two approaches can also be used - the patterns will be checked first and if no matching DN is found, the search will be used.</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h4 class="title"><a name="ldap-ldap-authenticators-bind" href="#ldap-ldap-authenticators-bind"></a>BindAuthenticator</h4></div></div></div>
+
+<p>The class <code class="literal">BindAuthenticator</code> in the package <code class="literal">org.springframework.security.ldap.authentication</code> implements the bind authentication strategy. It simply attempts to bind as the user.</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h4 class="title"><a name="ldap-ldap-authenticators-password" href="#ldap-ldap-authenticators-password"></a>PasswordComparisonAuthenticator</h4></div></div></div>
+
+<p>The class <code class="literal">PasswordComparisonAuthenticator</code> implements the password comparison authentication strategy.</p>
+</div>
+</div>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="ldap-context-source" href="#ldap-context-source"></a>29.4.2&nbsp;Connecting to the LDAP Server</h3></div></div></div>
+
+<p>The beans discussed above have to be able to connect to the server. They both have to be supplied with a <code class="literal">SpringSecurityContextSource</code> which is an extension of Spring LDAP&#8217;s <code class="literal">ContextSource</code>. Unless you have special requirements, you will usually configure a <code class="literal">DefaultSpringSecurityContextSource</code> bean, which can be configured with the URL of your LDAP server and optionally with the username and password of a "manager" user which will be used by default when binding to the server (instead of binding anonymously). For more information read the Javadoc for this class and for Spring LDAP&#8217;s <code class="literal">AbstractContextSource</code>.</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="ldap-searchobjects" href="#ldap-searchobjects"></a>29.4.3&nbsp;LDAP Search Objects</h3></div></div></div>
+
+<p>Often a more complicated strategy than simple DN-matching is required to locate a user entry in the directory. This can be encapsulated in an <code class="literal">LdapUserSearch</code> instance which can be supplied to the authenticator implementations, for example, to allow them to locate a user. The supplied implementation is <code class="literal">FilterBasedLdapUserSearch</code>.</p>
+<div class="section"><div class="titlepage"><div><div><h4 class="title"><a name="ldap-searchobjects-filter" href="#ldap-searchobjects-filter"></a>FilterBasedLdapUserSearch</h4></div></div></div>
+
+<p>This bean uses an LDAP filter to match the user object in the directory. The process is explained in the Javadoc for the corresponding search method on the <a class="ulink" href="http://java.sun.com/j2se/1.4.2/docs/api/javax/naming/directory/DirContext.html#search(javax.naming.Name%2C%2520java.lang.String%2C%2520java.lang.Object%5B%5D%2C%2520javax.naming.directory.SearchControls)" target="_top">JDK DirContext class</a>. As explained there, the search filter can be supplied with parameters. For this class, the only valid parameter is <code class="literal">{0}</code> which will be replaced with the user&#8217;s login name.</p>
+</div>
+</div>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="ldap-authorities" href="#ldap-authorities"></a>29.4.4&nbsp;LdapAuthoritiesPopulator</h3></div></div></div>
+
+<p>After authenticating the user successfully, the <code class="literal">LdapAuthenticationProvider</code> will attempt to load a set of authorities for the user by calling the configured <code class="literal">LdapAuthoritiesPopulator</code> bean. The <code class="literal">DefaultLdapAuthoritiesPopulator</code> is an implementation which will load the authorities by searching the directory for groups of which the user is a member (typically these will be <code class="literal">groupOfNames</code> or <code class="literal">groupOfUniqueNames</code> entries in the directory). Consult the Javadoc for this class for more details on how it works.</p>
+<p>If you want to use LDAP only for authentication, but load the authorities from a difference source (such as a database) then you can provide your own implementation of this interface and inject that instead.</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="ldap-bean-config" href="#ldap-bean-config"></a>29.4.5&nbsp;Spring Bean Configuration</h3></div></div></div>
+
+<p>A typical configuration, using some of the beans we&#8217;ve discussed here, might look like this:</p>
+<pre class="programlisting"><span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"contextSource"</span>
+		<span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.security.ldap.DefaultSpringSecurityContextSource"</span><span class="hl-tag">&gt;</span>
+<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">value</span>=<span class="hl-value">"ldap://monkeymachine:389/dc=springframework,dc=org"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"userDn"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"cn=manager,dc=springframework,dc=org"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"password"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"password"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span>
+
+<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"ldapAuthProvider"</span>
+	<span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.security.ldap.authentication.LdapAuthenticationProvider"</span><span class="hl-tag">&gt;</span>
+<span class="hl-tag">&lt;constructor-arg&gt;</span>
+<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.security.ldap.authentication.BindAuthenticator"</span><span class="hl-tag">&gt;</span>
+	<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"contextSource"</span><span class="hl-tag">/&gt;</span>
+	<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"userDnPatterns"</span><span class="hl-tag">&gt;</span>
+	<span class="hl-tag">&lt;list&gt;</span><span class="hl-tag">&lt;value&gt;</span>uid={0},ou=people<span class="hl-tag">&lt;/value&gt;</span><span class="hl-tag">&lt;/list&gt;</span>
+	<span class="hl-tag">&lt;/property&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span>
+<span class="hl-tag">&lt;/constructor-arg&gt;</span>
+<span class="hl-tag">&lt;constructor-arg&gt;</span>
+<span class="hl-tag">&lt;bean</span>
+	<span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.security.ldap.userdetails.DefaultLdapAuthoritiesPopulator"</span><span class="hl-tag">&gt;</span>
+	<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"contextSource"</span><span class="hl-tag">/&gt;</span>
+	<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">value</span>=<span class="hl-value">"ou=groups"</span><span class="hl-tag">/&gt;</span>
+	<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"groupRoleAttribute"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"ou"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span>
+<span class="hl-tag">&lt;/constructor-arg&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span></pre>
+<p>This would set up the provider to access an LDAP server with URL <code class="literal">ldap://monkeymachine:389/dc=springframework,dc=org</code>. Authentication will be performed by attempting to bind with the DN <code class="literal">uid=&lt;user-login-name&gt;,ou=people,dc=springframework,dc=org</code>. After successful authentication, roles will be assigned to the user by searching under the DN <code class="literal">ou=groups,dc=springframework,dc=org</code> with the default filter <code class="literal">(member=&lt;user&#8217;s-DN&gt;)</code>. The role name will be taken from the "ou" attribute of each match.</p>
+<p>To configure a user search object, which uses the filter <code class="literal">(uid=&lt;user-login-name&gt;)</code> for use instead of the DN-pattern (or in addition to it), you would configure the following bean</p>
+<pre class="programlisting"><span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"userSearch"</span>
+	<span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.security.ldap.search.FilterBasedLdapUserSearch"</span><span class="hl-tag">&gt;</span>
+<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">index</span>=<span class="hl-value">"0"</span> <span class="hl-attribute">value</span>=<span class="hl-value">""</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">index</span>=<span class="hl-value">"1"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"(uid={0})"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">index</span>=<span class="hl-value">"2"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"contextSource"</span><span class="hl-tag"> /&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span></pre>
+<p>and use it by setting the <code class="literal">BindAuthenticator</code> bean&#8217;s <code class="literal">userSearch</code> property. The authenticator would then call the search object to obtain the correct user&#8217;s DN before attempting to bind as this user.</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="ldap-custom-user-details" href="#ldap-custom-user-details"></a>29.4.6&nbsp;LDAP Attributes and Customized UserDetails</h3></div></div></div>
+
+<p>The net result of an authentication using <code class="literal">LdapAuthenticationProvider</code> is the same as a normal Spring Security authentication using the standard <code class="literal">UserDetailsService</code> interface. A <code class="literal">UserDetails</code> object is created and stored in the returned <code class="literal">Authentication</code> object. As with using a <code class="literal">UserDetailsService</code>, a common requirement is to be able to customize this implementation and add extra properties. When using LDAP, these will normally be attributes from the user entry. The creation of the <code class="literal">UserDetails</code> object is controlled by the provider&#8217;s <code class="literal">UserDetailsContextMapper</code> strategy, which is responsible for mapping user objects to and from LDAP context data:</p>
+<pre class="programlisting"><span class="hl-keyword">public</span> <span class="hl-keyword">interface</span> UserDetailsContextMapper {
+
+UserDetails mapUserFromContext(DirContextOperations ctx, String username,
+		Collection&lt;GrantedAuthority&gt; authorities);
+
+<span class="hl-keyword">void</span> mapUserToContext(UserDetails user, DirContextAdapter ctx);
+}</pre>
+<p>Only the first method is relevant for authentication. If you provide an implementation of this interface and inject it into the <code class="literal">LdapAuthenticationProvider</code>, you have control over exactly how the UserDetails object is created. The first parameter is an instance of Spring LDAP&#8217;s <code class="literal">DirContextOperations</code> which gives you access to the LDAP attributes which were loaded during authentication. The <code class="literal">username</code> parameter is the name used to authenticate and the final parameter is the collection of authorities loaded for the user by the configured <code class="literal">LdapAuthoritiesPopulator</code>.</p>
+<p>The way the context data is loaded varies slightly depending on the type of authentication you are using. With the <code class="literal">BindAuthenticator</code>, the context returned from the bind operation will be used to read the attributes, otherwise the data will be read using the standard context obtained from the configured <code class="literal">ContextSource</code> (when a search is configured to locate the user, this will be the data returned by the search object).</p>
+</div>
+</div>
+<div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="ldap-active-directory" href="#ldap-active-directory"></a>29.5&nbsp;Active Directory Authentication</h2></div></div></div>
+
+<p>Active Directory supports its own non-standard authentication options, and the normal usage pattern doesn&#8217;t fit too cleanly with the standard <code class="literal">LdapAuthenticationProvider</code>. Typically authentication is performed using the domain username (in the form <code class="literal">user@domain</code>), rather than using an LDAP distinguished name. To make this easier, Spring Security 3.1 has an authentication provider which is customized for a typical Active Directory setup.</p>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="activedirectoryldapauthenticationprovider" href="#activedirectoryldapauthenticationprovider"></a>29.5.1&nbsp;ActiveDirectoryLdapAuthenticationProvider</h3></div></div></div>
+
+<p>Configuring <code class="literal">ActiveDirectoryLdapAuthenticationProvider</code> is quite straightforward. You just need to supply the domain name and an LDAP URL supplying the address of the server <a href="#ftn.d5e4766" class="footnote" name="d5e4766"><sup class="footnote">[20]</sup></a>. An example configuration would then look like this:</p>
+<pre class="programlisting"><span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"adAuthenticationProvider"</span>
+<span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.security.ldap.authentication.ad.ActiveDirectoryLdapAuthenticationProvider"</span><span class="hl-tag">&gt;</span>
+	<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">value</span>=<span class="hl-value">"mydomain.com"</span><span class="hl-tag"> /&gt;</span>
+	<span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">value</span>=<span class="hl-value">"ldap://adserver.mydomain.com/"</span><span class="hl-tag"> /&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span>
+}</pre>
+<p>Note that there is no need to specify a separate <code class="literal">ContextSource</code> in order to define the server location - the bean is completely self-contained. A user named "Sharon", for example, would then be able to authenticate by entering either the username <code class="literal">sharon</code> or the full Active Directory <code class="literal">userPrincipalName</code>, namely <code class="literal">sharon@mydomain.com</code>. The user&#8217;s directory entry will then be located, and the attributes returned for possible use in customizing the created <code class="literal">UserDetails</code> object (a <code class="literal">UserDetailsContextMapper</code> can be injected for this purpose, as described above). All interaction with the directory takes place with the identity of the user themselves. There is no concept of a "manager" user.</p>
+<p>By default, the user authorities are obtained from the <code class="literal">memberOf</code> attribute values of the user entry. The authorities allocated to the user can again be customized using a <code class="literal">UserDetailsContextMapper</code>. You can also inject a <code class="literal">GrantedAuthoritiesMapper</code> into the provider instance to control the authorities which end up in the <code class="literal">Authentication</code> object.</p>
+<div class="section"><div class="titlepage"><div><div><h4 class="title"><a name="active-directory-error-codes" href="#active-directory-error-codes"></a>Active Directory Error Codes</h4></div></div></div>
+
+<p>By default, a failed result will cause a standard Spring Security <code class="literal">BadCredentialsException</code>. If you set the property <code class="literal">convertSubErrorCodesToExceptions</code> to <code class="literal">true</code>, the exception messages will be parsed to attempt to extract the Active Directory-specific error code and raise a more specific exception. Check the class Javadoc for more information.</p>
+</div>
+</div>
+</div>
+<div class="footnotes"><br><hr style="width:100; text-align:left;margin-left: 0"><div id="ftn.d5e4644" class="footnote"><p><a href="#d5e4644" class="simpara"><sup class="simpara">[19] </sup></a>Note that this is different from the default configuration of the underlying <code class="literal">DefaultLdapAuthoritiesPopulator</code> which uses <code class="literal">member={0}</code>.</p></div><div id="ftn.d5e4766" class="footnote"><p><a href="#d5e4766" class="simpara"><sup class="simpara">[20] </sup></a>It is also possible to obtain the server&#8217;s IP address using a DNS lookup. This is not currently supported, but hopefully will be in a future version.</p></div></div></div><div class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="preauth.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="u" href="advanced-topics.html">Up</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="taglibs.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">28.&nbsp;Pre-Authentication Scenarios&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right" valign="top">&nbsp;30.&nbsp;JSP Tag Libraries</td></tr></table></div></body></html>

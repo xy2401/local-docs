@@ -1,0 +1,87 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>17.&nbsp;Remember-Me Authentication</title><link rel="stylesheet" type="text/css" href="css/manual-multipage.css"><meta name="generator" content="DocBook XSL Stylesheets V1.78.1"><link rel="home" href="index.html" title="Spring Security Reference"><link rel="up" href="web-app-security.html" title="Part&nbsp;IV.&nbsp;Web Application Security"><link rel="prev" href="basic.html" title="16.&nbsp;Basic and Digest Authentication"><link rel="next" href="csrf.html" title="18.&nbsp;Cross Site Request Forgery (CSRF)"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="navheader"><table width="100%" summary="Navigation header"><tr><th colspan="3" align="center">17.&nbsp;Remember-Me Authentication</th></tr><tr><td width="20%" align="left"><a accesskey="p" href="basic.html">Prev</a>&nbsp;</td><th width="60%" align="center">Part&nbsp;IV.&nbsp;Web Application Security</th><td width="20%" align="right">&nbsp;<a accesskey="n" href="csrf.html">Next</a></td></tr></table><hr></div><div class="chapter"><div class="titlepage"><div><div><h2 class="title"><a name="remember-me" href="#remember-me"></a>17.&nbsp;Remember-Me Authentication</h2></div></div></div>
+
+<div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="remember-me-overview" href="#remember-me-overview"></a>17.1&nbsp;Overview</h2></div></div></div>
+
+<p>Remember-me or persistent-login authentication refers to web sites being able to remember the identity of a principal between sessions. This is typically accomplished by sending a cookie to the browser, with the cookie being detected during future sessions and causing automated login to take place. Spring Security provides the necessary hooks for these operations to take place, and has two concrete remember-me implementations. One uses hashing to preserve the security of cookie-based tokens and the other uses a database or other persistent storage mechanism to store the generated tokens.</p>
+<p>Note that both implementations require a <code class="literal">UserDetailsService</code>. If you are using an authentication provider which doesn&#8217;t use a <code class="literal">UserDetailsService</code> (for example, the LDAP provider) then it won&#8217;t work unless you also have a <code class="literal">UserDetailsService</code> bean in your application context.</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="remember-me-hash-token" href="#remember-me-hash-token"></a>17.2&nbsp;Simple Hash-Based Token Approach</h2></div></div></div>
+
+<p>This approach uses hashing to achieve a useful remember-me strategy. In essence a cookie is sent to the browser upon successful interactive authentication, with the cookie being composed as follows:</p>
+<pre class="programlisting">base64(username + ":" + expirationTime + ":" +
+md5Hex(username + ":" + expirationTime + ":" password + ":" + key))
+
+username:          As identifiable to the UserDetailsService
+password:          That matches the one in the retrieved UserDetails
+expirationTime:    The date and time when the remember-me token expires, expressed in milliseconds
+key:               A private key to prevent modification of the remember-me token</pre>
+<p>As such the remember-me token is valid only for the period specified, and provided that the username, password and key does not change. Notably, this has a potential security issue in that a captured remember-me token will be usable from any user agent until such time as the token expires. This is the same issue as with digest authentication. If a principal is aware a token has been captured, they can easily change their password and immediately invalidate all remember-me tokens on issue. If more significant security is needed you should use the approach described in the next section. Alternatively remember-me services should simply not be used at all.</p>
+<p>If you are familiar with the topics discussed in the chapter on <a class="link" href="ns-config.html" title="6.&nbsp;Security Namespace Configuration">namespace configuration</a>, you can enable remember-me authentication just by adding the <code class="literal">&lt;remember-me&gt;</code> element:</p>
+<pre class="programlisting"><span class="hl-tag">&lt;http&gt;</span>
+...
+<span class="hl-tag">&lt;remember-me</span> <span class="hl-attribute">key</span>=<span class="hl-value">"myAppKey"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/http&gt;</span></pre>
+<p>The <code class="literal">UserDetailsService</code> will normally be selected automatically. If you have more than one in your application context, you need to specify which one should be used with the <code class="literal">user-service-ref</code> attribute, where the value is the name of your <code class="literal">UserDetailsService</code> bean.</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="remember-me-persistent-token" href="#remember-me-persistent-token"></a>17.3&nbsp;Persistent Token Approach</h2></div></div></div>
+
+<p>This approach is based on the article <a class="ulink" href="http://jaspan.com/improved_persistent_login_cookie_best_practice" target="_top">http://jaspan.com/improved_persistent_login_cookie_best_practice</a> with some minor modifications  <a href="#ftn.d5e2922" class="footnote" name="d5e2922"><sup class="footnote">[16]</sup></a>. To use the this approach with namespace configuration, you would supply a datasource reference:</p>
+<pre class="programlisting"><span class="hl-tag">&lt;http&gt;</span>
+...
+<span class="hl-tag">&lt;remember-me</span> <span class="hl-attribute">data-source-ref</span>=<span class="hl-value">"someDataSource"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/http&gt;</span></pre>
+<p>The database should contain a <code class="literal">persistent_logins</code> table, created using the following SQL (or equivalent):</p>
+<pre class="programlisting">create table persistent_logins (username varchar(64) not null,
+								series varchar(64) primary key,
+								token varchar(64) not null,
+								last_used timestamp not null)</pre>
+</div>
+<div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="remember-me-impls" href="#remember-me-impls"></a>17.4&nbsp;Remember-Me Interfaces and Implementations</h2></div></div></div>
+
+<p>Remember-me is used with <code class="literal">UsernamePasswordAuthenticationFilter</code>, and is implemented via hooks in the <code class="literal">AbstractAuthenticationProcessingFilter</code> superclass.
+It is also used within <code class="literal">BasicAuthenticationFilter</code>.
+The hooks will invoke a concrete <code class="literal">RememberMeServices</code> at the appropriate times.
+The interface looks like this:</p>
+<pre class="programlisting">Authentication autoLogin(HttpServletRequest request, HttpServletResponse response);
+
+<span class="hl-keyword">void</span> loginFail(HttpServletRequest request, HttpServletResponse response);
+
+<span class="hl-keyword">void</span> loginSuccess(HttpServletRequest request, HttpServletResponse response,
+	Authentication successfulAuthentication);</pre>
+<p>Please refer to the Javadoc for a fuller discussion on what the methods do, although note at this stage that <code class="literal">AbstractAuthenticationProcessingFilter</code> only calls the <code class="literal">loginFail()</code> and <code class="literal">loginSuccess()</code> methods. The <code class="literal">autoLogin()</code> method is called by <code class="literal">RememberMeAuthenticationFilter</code> whenever the <code class="literal">SecurityContextHolder</code> does not contain an <code class="literal">Authentication</code>. This interface therefore provides the underlying remember-me implementation with sufficient notification of authentication-related events, and delegates to the implementation whenever a candidate web request might contain a cookie and wish to be remembered. This design allows any number of remember-me implementation strategies. We&#8217;ve seen above that Spring Security provides two implementations. We&#8217;ll look at these in turn.</p>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="tokenbasedremembermeservices" href="#tokenbasedremembermeservices"></a>17.4.1&nbsp;TokenBasedRememberMeServices</h3></div></div></div>
+
+<p>This implementation supports the simpler approach described in <a class="xref" href="remember-me.html#remember-me-hash-token" title="17.2&nbsp;Simple Hash-Based Token Approach">Section&nbsp;17.2, &#8220;Simple Hash-Based Token Approach&#8221;</a>. <code class="literal">TokenBasedRememberMeServices</code> generates a <code class="literal">RememberMeAuthenticationToken</code>, which is processed by <code class="literal">RememberMeAuthenticationProvider</code>. A <code class="literal">key</code> is shared between this authentication provider and the <code class="literal">TokenBasedRememberMeServices</code>. In addition, <code class="literal">TokenBasedRememberMeServices</code> requires A UserDetailsService from which it can retrieve the username and password for signature comparison purposes, and generate the <code class="literal">RememberMeAuthenticationToken</code> to contain the correct <code class="literal">GrantedAuthority</code> s. Some sort of logout command should be provided by the application that invalidates the cookie if the user requests this. <code class="literal">TokenBasedRememberMeServices</code> also implements Spring Security&#8217;s <code class="literal">LogoutHandler</code> interface so can be used with <code class="literal">LogoutFilter</code> to have the cookie cleared automatically.</p>
+<p>The beans required in an application context to enable remember-me services are as follows:</p>
+<pre class="programlisting"><span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"rememberMeFilter"</span> <span class="hl-attribute">class</span>=
+<span class="hl-value">"org.springframework.security.web.authentication.rememberme.RememberMeAuthenticationFilter"</span><span class="hl-tag">&gt;</span>
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"rememberMeServices"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"rememberMeServices"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"authenticationManager"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"theAuthenticationManager"</span><span class="hl-tag"> /&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span>
+
+<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"rememberMeServices"</span> <span class="hl-attribute">class</span>=
+<span class="hl-value">"org.springframework.security.web.authentication.rememberme.TokenBasedRememberMeServices"</span><span class="hl-tag">&gt;</span>
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"userDetailsService"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"myUserDetailsService"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"key"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"springRocks"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span>
+
+<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"rememberMeAuthenticationProvider"</span> <span class="hl-attribute">class</span>=
+<span class="hl-value">"org.springframework.security.authentication.RememberMeAuthenticationProvider"</span><span class="hl-tag">&gt;</span>
+<span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"key"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"springRocks"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span></pre>
+<p>Don&#8217;t forget to add your <code class="literal">RememberMeServices</code> implementation to your <code class="literal">UsernamePasswordAuthenticationFilter.setRememberMeServices()</code> property, include the <code class="literal">RememberMeAuthenticationProvider</code> in your <code class="literal">AuthenticationManager.setProviders()</code> list, and add <code class="literal">RememberMeAuthenticationFilter</code> into your <code class="literal">FilterChainProxy</code> (typically immediately after your <code class="literal">UsernamePasswordAuthenticationFilter</code>).</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h3 class="title"><a name="persistenttokenbasedremembermeservices" href="#persistenttokenbasedremembermeservices"></a>17.4.2&nbsp;PersistentTokenBasedRememberMeServices</h3></div></div></div>
+
+<p>This class can be used in the same way as <code class="literal">TokenBasedRememberMeServices</code>, but it additionally needs to be configured with a <code class="literal">PersistentTokenRepository</code> to store the tokens. There are two standard implementations.</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">
+<code class="literal">InMemoryTokenRepositoryImpl</code> which is intended for testing only.
+</li><li class="listitem">
+<code class="literal">JdbcTokenRepositoryImpl</code> which stores the tokens in a database.
+</li></ul></div>
+<p>The database schema is described above in <a class="xref" href="remember-me.html#remember-me-persistent-token" title="17.3&nbsp;Persistent Token Approach">Section&nbsp;17.3, &#8220;Persistent Token Approach&#8221;</a>.</p>
+</div>
+</div>
+<div class="footnotes"><br><hr style="width:100; text-align:left;margin-left: 0"><div id="ftn.d5e2922" class="footnote"><p><a href="#d5e2922" class="simpara"><sup class="simpara">[16] </sup></a>Essentially, the username is not included in the cookie, to prevent exposing a valid login name unecessarily. There is a discussion on this in the comments section of this article.</p></div></div></div><div class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="basic.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="u" href="web-app-security.html">Up</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="csrf.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">16.&nbsp;Basic and Digest Authentication&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right" valign="top">&nbsp;18.&nbsp;Cross Site Request Forgery (CSRF)</td></tr></table></div></body></html>

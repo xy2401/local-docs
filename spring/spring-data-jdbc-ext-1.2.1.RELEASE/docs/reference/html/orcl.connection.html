@@ -1,0 +1,137 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>8.&nbsp;Custom DataSource Connection Configurations</title><link rel="stylesheet" href="css/manual-multipage.css" type="text/css"><meta name="generator" content="DocBook XSL Stylesheets V1.75.2"><link rel="home" href="index.html" title="Spring Data JDBC Extensions Reference Documentation"><link rel="up" href="pt02.html" title="Part&nbsp;II.&nbsp;JDBC Extensions for the Oracle Database"><link rel="prev" href="orcl.datatypes.html" title="7.&nbsp;Advanced Data Types"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="navheader"><table width="100%" summary="Navigation header"><tr><th colspan="3" align="center">8.&nbsp;Custom DataSource Connection Configurations</th></tr><tr><td width="20%" align="left"><a accesskey="p" href="orcl.datatypes.html">Prev</a>&nbsp;</td><th width="60%" align="center">Part&nbsp;II.&nbsp;JDBC Extensions for the Oracle Database</th><td width="20%" align="right">&nbsp;</td></tr></table><hr></div><div class="chapter" title="8.&nbsp;Custom DataSource Connection Configurations"><div class="titlepage"><div><div><h2 class="title"><a name="orcl.connection"></a>8.&nbsp;Custom DataSource Connection Configurations</h2></div></div></div><div class="section" title="8.1&nbsp;Configuration of a Proxy Authentication"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="orcl.connection.1"></a>8.1&nbsp;Configuration of a Proxy Authentication</h2></div></div></div><p>The Oracle JDBC implementation provides access to Oracle's Proxy
+    Authentication feature. The Proxy Authentication lets you configure a
+    connection pool using a proxy user account with very limited rights. Then,
+    during the connection process, you would specify the actual user name for
+    the end user. This user name must be configured to allow a proxy
+    connection through the user proxy ("grant connect through
+    proxyuser").</p><p>This is valuable for web applications where you typically set up a
+    data source with a shared database user. If this shared user is a proxy
+    user account and you supply the actual end user name then the proxy
+    authentication feature will make any database access this user performs to
+    be performed with the end users actual database user account.</p><p>To use this feature you must provide an implementation of the
+    <code class="classname">ConnectionUsernameProvider</code> interface. This
+    interface has a single method named <code class="classname">getUserName</code>
+    that should return the user name for the current end user to be connected
+    via the proxy user. It's up to the application developer to provide the
+    appropriate implementation. One type of implementation would be to
+    retrieve the current principal or user name from the
+    <code class="classname">SecurityContextHolder</code> provided when you use Spring
+    Security.</p><p>An example of what this implementation could look like is:</p><pre class="programlisting"><span class="hl-keyword">public</span> <span class="hl-keyword">class</span> CurrentUsernameProvider <span class="hl-keyword">implements</span> ConnectionUsernameProvider {
+
+    <span class="hl-keyword">public</span> String getUserName() {
+        Object principal = 
+            SecurityContextHolder.getContext().getAuthentication().getPrincipal(); 
+        <span class="hl-keyword">if</span> (principal <span class="hl-keyword">instanceof</span> UserDetails) { 
+            <span class="hl-keyword">return</span> ((UserDetails)principal).getUsername(); 
+        } <span class="hl-keyword">else</span> { 
+            <span class="hl-keyword">return</span> principal.toString(); 
+        }
+    }
+
+}
+</pre><p>See the Spring Security reference manual for more detail regarding
+    the use of the <code class="classname">SecurityContextHolder</code>. </p><p>Connection proxy authentication is configured using the
+    <code class="classname">username-connection-proxy</code> element. You also need to
+    provide a reference to the user name provider that implements the
+    <code class="classname">ConnectionUsernameProvider</code> interface mentioned
+    above. </p><pre class="programlisting"><span class="hl-tag">&lt;beans</span> <span class="hl-attribute">xmlns</span>=<span class="hl-value">"http://www.springframework.org/schema/beans"</span>
+       <span class="hl-attribute">xmlns:xsi</span>=<span class="hl-value">"http://www.w3.org/2001/XMLSchema-instance"</span>
+       <span class="hl-attribute">xmlns:context</span>=<span class="hl-value">"http://www.springframework.org/schema/context"</span>
+       <span class="hl-attribute">xmlns:orcl</span>=<span class="hl-value">"http://www.springframework.org/schema/data/orcl"</span>
+       <span class="hl-attribute">xsi:schemaLocation</span>=<span class="hl-value">"http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+       http://www.springframework.org/schema/context
+       http://www.springframework.org/schema/context/spring-context-3.0.xsd
+       http://www.springframework.org/schema/data/orcl
+       http://www.springframework.org/schema/data/orcl/spring-data-orcl-1.0.xsd"</span><span class="hl-tag">&gt;</span>
+
+    <span class="bold"><strong>&lt;orcl:pooling-datasource id="dataSource" 
+        properties-location="classpath:orcl.properties"&gt;
+        &lt;orcl:username-connection-proxy connection-context-provider="usernameProvider"/&gt; <a name="datasource.4.4.prop"></a><img src="images/callouts/1.png" alt="1" border="0">
+    &lt;/orcl:pooling-datasource&gt;
+
+    &lt;bean id="usernameProvider" 
+      class="org.springframework.data.jdbc.test.CurrentUsernameProvider"/&gt;</strong></span>
+
+<span class="hl-tag">&lt;/beans&gt;</span></pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#datasource.4.4.prop"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>The connection proxy user name provider is specified
+          here.</p></td></tr></table></div><p>To set up the database proxy user and to grant the user accounts to
+    participate in the proxy authentication you could use this SQL:
+    </p><pre class="programlisting">-- create the new proxy user account
+create user proxyuser identified by proxypasswd;
+grant create session to proxyuser;
+-- grant existing user to connect  through the proxy
+alter user spring grant connect through proxyuser;
+</pre><p>In your connection properties file (orcl.properties) you
+    would need to provide the proxy user credentials:</p><pre class="programlisting">url=jdbc:oracle:thin:@//localhost:1521/xe
+username=proxyuser
+password=proxypasswd</pre><div class="note" title="Note" style="margin-left: 0.5in; margin-right: 0.5in;"><table border="0" summary="Note"><tr><td rowspan="2" align="center" valign="top" width="25"><img alt="[Note]" src="images/note.png"></td><th align="left">Note</th></tr><tr><td align="left" valign="top"><p>We are currently only supporting proxy authentication using user
+      name with no password authentication for the user connecting through the
+      proxy. Support for other types of proxy connections will be provided in
+      future releases.</p></td></tr></table></div></div><div class="section" title="8.2&nbsp;Configuration of a Custom DataSource Connection Preparer"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="orcl.connection.2"></a>8.2&nbsp;Configuration of a Custom DataSource Connection Preparer</h2></div></div></div><p>There are times when you want to prepare the database connection in
+    certain ways that aren't easily supported using standard connection
+    properties. One example would be to set certain session properties in the
+    SYS_CONTEXT like MODULE or CLIENT_IDENTIFIER. This chapter explains how to
+    use a <code class="classname">ConnectionPreparer</code> to accomplish this. The
+    example will set the CLIENT_IDENTIFIER.</p><p>We will need to add a <code class="classname">ConnectionInterceptor</code>
+    using AOP and then configure the
+    <code class="classname">ConnectionInterceptor</code> with a
+    <code class="classname">ConnectionPreparer</code> implementation that performs the
+    necessary preparations. Lets first look at our custom
+    <code class="classname">ClientIdentifierConnectionPreparer</code> that implements
+    the <code class="classname">ConnectionPreparer</code> interface. There is only a
+    single method named <code class="classname">prepare</code> that needs to be
+    implemented. The prepared connection is the return value which gives you
+    an opportunity to wrap the connection with a proxy class if needed.</p><pre class="programlisting"><span class="hl-keyword">package</span> org.springframework.data.jdbc.samples;
+
+<span class="hl-keyword">import</span> org.springframework.data.jdbc.support.ConnectionPreparer;
+
+<span class="hl-keyword">import</span> java.sql.CallableStatement;
+<span class="hl-keyword">import</span> java.sql.Connection;
+<span class="hl-keyword">import</span> java.sql.SQLException;
+
+<span class="hl-keyword">public</span> <span class="hl-keyword">class</span> ClientIdentifierConnectionPreparer <span class="hl-keyword">implements</span> ConnectionPreparer {
+
+    String prepSql = <span class="hl-string">"{ call DBMS_SESSION.SET_IDENTIFIER('SPRING') }"</span>; <a name="conn.prep.sql"></a><img src="images/callouts/1.png" alt="1" border="0">
+
+    <span class="hl-keyword">public</span> Connection prepare(Connection conn) <span class="hl-keyword">throws</span> SQLException {
+        CallableStatement cs = conn.prepareCall(prepSql); <a name="conn.prep.call"></a><img src="images/callouts/2.png" alt="2" border="0">
+        cs.execute();
+        cs.close();
+        <span class="hl-keyword">return</span> conn;
+    }
+
+}
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#conn.prep.sql"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>We define the SQL needed to set the CLIENT_IDENTIFIER
+          attribute.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#conn.prep.call"><img src="images/callouts/2.png" alt="2" border="0"></a> </p></td><td valign="top" align="left"><p>We prepare a <code class="classname">CallableStatement</code> and
+          execute it.</p></td></tr></table></div><p>This example sets the CLIENT_IDENTIFIER to a fixed value, but you
+    could implement a ConnectionPreparer that would use the current users
+    login id. That way you can capture user login information even if your
+    data source is configured with a shared user name.</p><p>The following application context entries show how this could be
+    configured for your data source.</p><pre class="programlisting">    <span class="hl-tag">&lt;orcl:pooling-datasource</span> <span class="hl-attribute">id</span>=<span class="hl-value">"dataSource"</span> <a name="conn.prep.ac.ds"></a><img src="images/callouts/1.png" alt="1" border="0">
+        connection-properties-prefix="conn"
+        properties-location="classpath:orcl.properties"/&gt;
+
+    <span class="hl-tag">&lt;aop:config&gt;</span> <a name="conn.prep.ac.aop"></a><img src="images/callouts/2.png" alt="2" border="0">
+        <span class="hl-tag">&lt;aop:advisor</span> 
+            <span class="hl-attribute">pointcut</span>=<span class="hl-value">"execution(java.sql.Connection javax.sql.DataSource.getConnection(..))"</span> 
+            <span class="hl-attribute">advice-ref</span>=<span class="hl-value">"testInterceptor"</span><span class="hl-tag">/&gt;</span>
+    <span class="hl-tag">&lt;/aop:config&gt;</span>
+
+    <span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"testInterceptor"</span> 
+          <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.data.jdbc.aop.ConnectionInterceptor"</span><span class="hl-tag">&gt;</span>
+        <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"connectionPreparer"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"connectionPreparer"</span><span class="hl-tag">/&gt;</span> <a name="conn.prep.ac.int"></a><img src="images/callouts/3.png" alt="3" border="0">
+    <span class="hl-tag">&lt;/bean&gt;</span>
+
+    <span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"connectionPreparer"</span> 
+        <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.data.jdbc.samples.ClientIdentifierConnectionPreparer"</span><span class="hl-tag">/&gt;</span> <a name="conn.prep.ac.prep"></a><img src="images/callouts/4.png" alt="4" border="0">
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#conn.prep.ac.ds"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>The regular dataSource definition, no extra configuration
+          needed here.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#conn.prep.ac.aop"><img src="images/callouts/2.png" alt="2" border="0"></a> </p></td><td valign="top" align="left"><p>The AOP configuration defining the pointcut as the
+          <code class="classname">getConnection</code> method.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#conn.prep.ac.int"><img src="images/callouts/3.png" alt="3" border="0"></a> </p></td><td valign="top" align="left"><p>The interceptor that has its
+          <code class="classname">connectionPreparer</code> property set to our custom
+          <code class="classname">ClientIdentifierConnectionPreparer</code>.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#conn.prep.ac.ds"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>A bean defining the custom
+          <code class="classname">ClientIdentifierConnectionPreparer</code>.</p></td></tr></table></div><p>Every time a new connection is obtained the connection preparer will
+    set the CLIENT_IDENTIFIER. During database processing the value it was set
+    to can be accessed using a call to a standard Oracle function -
+    "<code class="code">sys_context('USERENV', 'CLIENT_IDENTIFIER')</code>"</p></div></div><div class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="orcl.datatypes.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="u" href="pt02.html">Up</a></td><td width="40%" align="right">&nbsp;</td></tr><tr><td width="40%" align="left" valign="top">7.&nbsp;Advanced Data Types&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right" valign="top">&nbsp;</td></tr></table></div></body></html>

@@ -1,0 +1,521 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>7.&nbsp;Advanced Data Types</title><link rel="stylesheet" href="css/manual-multipage.css" type="text/css"><meta name="generator" content="DocBook XSL Stylesheets V1.75.2"><link rel="home" href="index.html" title="Spring Data JDBC Extensions Reference Documentation"><link rel="up" href="pt02.html" title="Part&nbsp;II.&nbsp;JDBC Extensions for the Oracle Database"><link rel="prev" href="orcl.xmltypes.html" title="6.&nbsp;XML Types"><link rel="next" href="orcl.connection.html" title="8.&nbsp;Custom DataSource Connection Configurations"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="navheader"><table width="100%" summary="Navigation header"><tr><th colspan="3" align="center">7.&nbsp;Advanced Data Types</th></tr><tr><td width="20%" align="left"><a accesskey="p" href="orcl.xmltypes.html">Prev</a>&nbsp;</td><th width="60%" align="center">Part&nbsp;II.&nbsp;JDBC Extensions for the Oracle Database</th><td width="20%" align="right">&nbsp;<a accesskey="n" href="orcl.connection.html">Next</a></td></tr></table><hr></div><div class="chapter" title="7.&nbsp;Advanced Data Types"><div class="titlepage"><div><div><h2 class="title"><a name="orcl.datatypes"></a>7.&nbsp;Advanced Data Types</h2></div></div></div><p>The Oracle database and the PL/SQL language used for stored procedures
+  in Oracle has built in support for some advanced data types. These data
+  types can't easily be accessed using standard JDBC APIs, so it is necessary
+  to rely on Oracle's JDBC extensions like ARRAY and STRUCT and the APIs that
+  are used to access them.</p><p>The JDBC framework provided with the Spring Framework supports most of
+  this already via <code class="classname">SqlTypeValue</code> and
+  <code class="classname">SqlReturnType</code>. The
+  <code class="classname">SqlTypeValue</code> interface is used to pass IN parameter
+  values. This is easiest accomplished by extending the
+  <code class="classname">AbstractSqlTypeValue</code> class. Here you need to
+  implement the createTypeValue method. In this method you have access to the
+  current connection, the <code class="classname">SqlType</code> and the type name for
+  any custom processing that is necessary. When you retrieve advanced data
+  types you need to implement the <code class="classname">SqlReturnType</code>
+  interface and pass that implementation into the
+  <code class="classname">SqlOutParameter</code> constructor. The
+  <code class="classname">SqlReturnType</code> interface has one method named
+  <code class="classname">getTypeValue</code> that must be implemented. Here you have
+  access to the CallableStatement that is currently executing as well as the
+  parameterIndex, the <code class="classname">SqlType</code> and the type name for
+  customizing the processing.</p><p>When implementing these interfaces there is some boilerplate type code
+  that is necessary and it makes your data access code look unnecessarily
+  complex. That is the reason why we are providing a number of Oracle specific
+  implementations that can handle the Oracle advanced types. The usage of
+  these type handlers is documented in this chapter. These features are
+  specifically targeted for an Oracle environment so teams can take advantage
+  of this support and have a reference for best practices for the use of these
+  features in an Oracle/Spring environment.</p><p>We will use the following simple table for all the examples in this
+  chapter. This table is used to store some basic information about
+  actors.</p><pre class="programlisting">CREATE TABLE actor (
+    id NUMBER(10),
+    name VARCHAR2(50),
+    age NUMBER,
+    PRIMARY KEY (id));</pre><div class="section" title="7.1&nbsp;Using a STRUCT parameter"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="orcl.datatypes.struct"></a>7.1&nbsp;Using a STRUCT parameter</h2></div></div></div><p>When your stored procedures has parameters that are declared using
+    custom object types that aren't part of the standard JDBC types they are
+    managed using JDBC <code class="classname">Struct</code> objects. When working
+    with Oracle it's easier to work with Oracle's extension to
+    <code class="classname">Struct</code> which is
+    <code class="classname">oracle.sql.STRUCT</code>.</p><p>For the <code class="literal">STRUCT</code> examples we will use the following
+    type declaration.</p><pre class="programlisting">CREATE OR REPLACE TYPE actor_type
+    AS OBJECT (id NUMBER(10), name VARCHAR2(50), age NUMBER);</pre><p>The data contained in a STRUCT parameter can be accessed in two
+    ways. Either using the <code class="classname">SQLData</code> interface which is
+    part of the JDBC specification, or by using Oracle specific calls
+    accessing the attributes directly. We will cover both methods.</p><p>Now we will look at the sample procedures used for this example.
+    First one is the procedure we use to add the actor data.</p><pre class="programlisting">CREATE OR REPLACE PROCEDURE add_actor (in_actor IN actor_type)
+AS
+BEGIN
+  INSERT into actor (id, name, age) VALUES(in_actor.id, in_actor.name, in_actor.age);
+END;</pre><p>This procedure has one IN parameter (in_actor) of object type
+    <code class="classname">actor_type</code>.</p><p>Next we show the procedure used to retrieve the actor data.</p><pre class="programlisting">CREATE OR REPLACE PROCEDURE get_actor (in_actor_id IN NUMBER, out_actor OUT actor_type)
+AS
+BEGIN
+  SELECT actor_type(id, name, age) INTO out_actor FROM actor WHERE id = in_actor_id;
+END;</pre><p>This procedure has two parameters, one IN parameter
+    (<code class="classname">in_actor_id</code>) that is the id of the actor to
+    retrieve and one OUT parameter (<code class="classname">out_actor</code>) of type
+    <code class="classname">actor_type</code> to pass back the data retrieved.</p><p>The last piece we will cover here is the Java class that represents
+    the type we are accessing. Here is the <code class="classname">Actor</code>
+    implementation used in this example. It has the Java equivalent of the
+    variables we defined for the type in the database. We also have setters
+    and getters for all fields.</p><pre class="programlisting"><span class="hl-keyword">package</span> org.springframework.data.jdbc.samples;
+
+<span class="hl-keyword">import</span> java.sql.SQLData;
+<span class="hl-keyword">import</span> java.sql.SQLException;
+<span class="hl-keyword">import</span> java.sql.SQLInput;
+<span class="hl-keyword">import</span> java.sql.SQLOutput;
+<span class="hl-keyword">import</span> java.math.BigDecimal;
+
+<span class="hl-keyword">public</span> <span class="hl-keyword">class</span> Actor {
+
+    <span class="hl-keyword">private</span> Long id;
+    <span class="hl-keyword">private</span> String name;
+    <span class="hl-keyword">private</span> <span class="hl-keyword">int</span> age;
+
+
+    <span class="hl-keyword">public</span> Long getId() {
+        <span class="hl-keyword">return</span> id;
+    }
+
+    <span class="hl-keyword">public</span> <span class="hl-keyword">void</span> setId(Long id) {
+        <span class="hl-keyword">this</span>.id = id;
+    }
+
+    <span class="hl-keyword">public</span> String getName() {
+        <span class="hl-keyword">return</span> name;
+    }
+
+    <span class="hl-keyword">public</span> <span class="hl-keyword">void</span> setName(String name) {
+        <span class="hl-keyword">this</span>.name = name;
+    }
+
+    <span class="hl-keyword">public</span> <span class="hl-keyword">int</span> getAge() {
+        <span class="hl-keyword">return</span> age;
+    }
+
+    <span class="hl-keyword">public</span> <span class="hl-keyword">void</span> setAge(<span class="hl-keyword">int</span> age) {
+        <span class="hl-keyword">this</span>.age = age;
+    }
+
+    <span class="hl-keyword">public</span> String toString() {
+    <span class="hl-keyword">return</span> <span class="hl-string">"Actor: ["</span> + id + <span class="hl-string">"] "</span> + name + <span class="hl-string">" "</span> + age;
+    }
+
+}
+</pre><div class="section" title="7.1.1&nbsp;Using an SQLData implementation for a STRUCT IN parameter"><div class="titlepage"><div><div><h3 class="title"><a name="d0e2044"></a>7.1.1&nbsp;Using an SQLData implementation for a STRUCT IN parameter</h3></div></div></div><p>For the examples that use <code class="classname">SQLData</code> we first
+      need a Java class that implements the SQLData interface. For this
+      example we create an <code class="classname">SqlActor</code> class that extends
+      the <code class="classname">Actor</code> class shown earlier and provides the
+      <code class="classname">SQLData</code> implementation for our
+      <code class="classname">ACTOR_TYPE</code>.</p><pre class="programlisting"><span class="hl-keyword">package</span> org.springframework.data.jdbc.samples;
+
+<span class="hl-keyword">import</span> java.sql.SQLData;
+<span class="hl-keyword">import</span> java.sql.SQLException;
+<span class="hl-keyword">import</span> java.sql.SQLInput;
+<span class="hl-keyword">import</span> java.sql.SQLOutput;
+<span class="hl-keyword">import</span> java.math.BigDecimal;
+
+<span class="hl-keyword">public</span> <span class="hl-keyword">class</span> SqlActor <span class="hl-keyword">extends</span> Actor <span class="hl-keyword">implements</span> SQLData {
+
+    <span class="hl-keyword">public</span> String getSQLTypeName() <span class="hl-keyword">throws</span> SQLException {
+        <span class="hl-keyword">return</span> <span class="hl-string">"ACTOR_TYPE"</span>; <a name="datatypes.sqldata.returntype"></a><img src="images/callouts/1.png" alt="1" border="0">
+    }
+
+    <span class="hl-keyword">public</span> <span class="hl-keyword">void</span> readSQL(SQLInput sqlInput, String string) <span class="hl-keyword">throws</span> SQLException { <a name="datatypes.sqldata.readsql"></a><img src="images/callouts/2.png" alt="2" border="0">
+        setId(Long.valueOf(sqlInput.readLong()));
+        setName(sqlInput.readString());
+        setAge(sqlInput.readInt());
+    }
+
+    <span class="hl-keyword">public</span> <span class="hl-keyword">void</span> writeSQL(SQLOutput sqlOutput) <span class="hl-keyword">throws</span> SQLException { <a name="datatypes.sqldata.writesql"></a><img src="images/callouts/3.png" alt="3" border="0">
+        sqlOutput.writeLong(getId().longValue());
+        sqlOutput.writeString(getName());
+        sqlOutput.writeInt(getAge());
+    }
+
+}
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.sqldata.returntype"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>Here we specify the <code class="classname">ACTOR_TYPE</code>
+            advanced data type as the type supported by this implementation.
+            Note: Since Oracle's metadata is stored using all caps, unless the
+            name was explicitly defined as mixed case using quotes, we define
+            the type name here as all caps.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.sqldata.readsql"><img src="images/callouts/2.png" alt="2" border="0"></a> </p></td><td valign="top" align="left"><p>Here we specify the implementation used to map data between
+            the <code class="classname">ACTOR_TYPE</code> advanced data type and the
+            <code class="classname">Actor</code> class during a read operation.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.sqldata.writesql"><img src="images/callouts/3.png" alt="3" border="0"></a> </p></td><td valign="top" align="left"><p>Here we specify the implementation used to map data between
+            the <code class="classname">Actor</code> class and the
+            <code class="classname">ACTOR_TYPE</code> advanced data type during a
+            write operation.</p></td></tr></table></div><p>As you can see, the <code class="classname">SQLData</code> implementation
+      is fairly straightforward. We implemented the three methods required in
+      the <code class="classname">SQLData</code> interface. These methods are
+      getSQLTypeName, readSQL and writeSQL.</p><p>Now we can move on to actually call the stored procedure. First
+      example is using the newer <code class="classname">SimpleJdbcCall</code> API but
+      the <code class="classname">SqlParameter</code> would be the same if you used
+      the classic <code class="classname">StoredProcedure</code> approach. We create
+      the <code class="classname">SimpleJdbcCall</code> and in the
+      <code class="classname">declareParameters</code> method call we pass in an
+      <code class="classname">SqlParameter</code> that defines the parameter with the
+      type as OracleTypes.STRUCT and a type name of ACTOR_TYPE to match what
+      it is defined in the database. Note that the type name is defined here
+      as all caps since that is how it is stored in the database metadata. Any
+      type names declared here are case sensitive and must match what is
+      actually stored in the database metadata.</p><pre class="programlisting">    <span class="hl-keyword">this</span>.addSqlActorCall =
+            <span class="hl-keyword">new</span> SimpleJdbcCall(dataSource).withProcedureName(<span class="hl-string">"add_actor"</span>)
+                .declareParameters(
+                    <span class="hl-keyword">new</span> SqlParameter(<span class="hl-string">"in_actor"</span>, OracleTypes.STRUCT, <span class="hl-string">"ACTOR_TYPE"</span>)); <a name="datatypes.sqldata.in.call.1"></a><img src="images/callouts/1.png" alt="1" border="0">
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.sqldata.in.call.1"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>We define the <code class="classname">SqlParameter</code> with
+            parameter name, the Oracle type and the type name as it is
+            declared in the database.</p></td></tr></table></div><p>Next we look at the code that executes this
+      <code class="classname">SimpleJdbcCall</code>.</p><pre class="programlisting">    <span class="hl-keyword">public</span> <span class="hl-keyword">void</span> addSqlActor(<span class="hl-keyword">final</span> SqlActor actor) {
+        Map in = Collections.singletonMap(<span class="hl-string">"in_actor"</span>, actor); <a name="datatypes.sqldata.in.exec.1"></a><img src="images/callouts/1.png" alt="1" border="0">
+        addSqlActorCall.execute(in);
+    }
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.sqldata.in.exec.1"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>We execute the call by passing in a
+            <code class="classname">Map</code> containing any in parameters - in this
+            case the actor object.</p></td></tr></table></div><p>What happens here is that the JDBC driver access the data in the
+      passed in Actor instance via the <code class="classname">SQLData</code>
+      interface and maps that data to the ACTOR_TYPE passed in to the stored
+      procedure. There is no need to implement anything else since this is all
+      handled by the JDBC layer.</p><p>Please note that since <code class="classname">SimpleJdbcCall</code> is
+      relying on database metadata, the parameter names used for the input
+      must match the names used when declaring the stored procedure. They are
+      however not case sensitive, only the type names are case
+      sensitive.</p><p>If you prefer to use the classic StoredProcedure class then the
+      equivalent configuration would look like this:</p><pre class="programlisting">    <span class="hl-keyword">private</span> <span class="hl-keyword">class</span> AddSqlActorProc <span class="hl-keyword">extends</span> StoredProcedure {
+
+        <span class="hl-keyword">public</span> AddSqlActorProc(DataSource dataSource) {
+            <span class="hl-keyword">super</span>(dataSource, <span class="hl-string">"add_actor"</span>);
+            declareParameter(<span class="hl-keyword">new</span> SqlParameter(<span class="hl-string">"in_actor"</span>, OracleTypes.STRUCT, <span class="hl-string">"ACTOR_TYPE"</span>));
+        }
+
+        <span class="hl-keyword">public</span> <span class="hl-keyword">void</span> execute(Actor actor) {
+            Map in = Collections.singletonMap(<span class="hl-string">"in_actor"</span>, actor);
+            <span class="hl-keyword">this</span>.execute(in);
+        }
+
+    }
+</pre></div><div class="section" title="7.1.2&nbsp;Using SqlReturnSqlData with an SQLData implementation from a STRUCT OUT parameter"><div class="titlepage"><div><div><h3 class="title"><a name="d0e2166"></a>7.1.2&nbsp;Using SqlReturnSqlData with an SQLData implementation from a
+      STRUCT OUT parameter</h3></div></div></div><p>Now we will call the stored procedure that retrieves actor data.
+      We are still using the newer <code class="classname">SimpleJdbcCall</code> API.
+      We create the <code class="classname">SimpleJdbcCall</code> and in the
+      <code class="classname">declareParameters</code> call we pass in an
+      <code class="classname">SqlOutParameter</code> that uses an
+      <code class="classname">SqlReturnType</code> to handle the configuration
+      necessary for the mapping between the Oracle type and the Java type
+      which is still the <code class="classname">SqlActor</code>. We also need to link
+      between the <code class="classname">Actor</code> class and the
+      <code class="classname">ACTOR_TYPE</code> since the JDBC driver is not aware of
+      this relationship when we are reading data from the database. This is
+      done by declaring a SqlReturnSqlData class and passing in the target
+      class in the constructor.</p><pre class="programlisting">        <span class="hl-keyword">this</span>.getSqlActorCall =
+                <span class="hl-keyword">new</span> SimpleJdbcCall(dataSource).withProcedureName(<span class="hl-string">"get_actor"</span>)
+                    .declareParameters(
+                        <span class="hl-keyword">new</span> SqlOutParameter(<span class="hl-string">"out_actor"</span>, OracleTypes.STRUCT, <span class="hl-string">"ACTOR_TYPE"</span>, <a name="datatypes.sqldata.out.call.1"></a><img src="images/callouts/1.png" alt="1" border="0">
+                            <span class="hl-keyword">new</span> SqlReturnSqlData(SqlActor.<span class="hl-keyword">class</span>)) <a name="datatypes.sqldata.out.call.2"></a><img src="images/callouts/2.png" alt="2" border="0">
+                    );
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.sqldata.out.call.1"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>We define the parameter name and the Oracle type and the
+            type name as it is declared in the database.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.sqldata.out.call.2"><img src="images/callouts/2.png" alt="2" border="0"></a> </p></td><td valign="top" align="left"><p>Here we define the <code class="classname">SqlReturnSqlData</code>
+            and the desired target class.</p></td></tr></table></div><p>Next we look at the code that executes this
+      <code class="classname">SimpleJdbcCall</code>.</p><pre class="programlisting">    <span class="hl-keyword">public</span> SqlActor getSqlActor(<span class="hl-keyword">int</span> id) {
+        Map in = Collections.singletonMap(<span class="hl-string">"in_actor_id"</span>, id);
+        <span class="hl-keyword">return</span> getSqlActorCall.executeObject(SqlActor.<span class="hl-keyword">class</span>, in); <a name="datatypes.sqldata.out.exec.1"></a><img src="images/callouts/1.png" alt="1" border="0">
+    }
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.sqldata.out.exec.1"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>We execute the call by passing in a
+            <code class="classname">Map</code> containing any in parameters. The
+            <code class="classname">execute</code>Object method returns an
+            <code class="classname">SqlActor</code> containing the data returned by
+            the stored procedure call.</p></td></tr></table></div><p>If you prefer to use the classic StoredProcedure class then the
+      equivalent configuration would look like this:</p><pre class="programlisting">    <span class="hl-keyword">private</span> <span class="hl-keyword">class</span> GetSqlActorProc <span class="hl-keyword">extends</span> StoredProcedure {
+
+        <span class="hl-keyword">public</span> GetSqlActorProc(DataSource dataSource) {
+            <span class="hl-keyword">super</span>(dataSource, <span class="hl-string">"get_actor"</span>);
+            declareParameter(<span class="hl-keyword">new</span> SqlParameter(<span class="hl-string">"in_actor_id"</span>, Types.NUMERIC));
+            declareParameter(
+                <span class="hl-keyword">new</span> SqlOutParameter(<span class="hl-string">"out_actor"</span>, OracleTypes.STRUCT, <span class="hl-string">"ACTOR_TYPE"</span>,
+                    <span class="hl-keyword">new</span> SqlReturnSqlData(SqlActor.<span class="hl-keyword">class</span>))
+            );
+        }
+
+        <span class="hl-keyword">public</span> SqlActor execute(Long id) {
+            Map in = Collections.singletonMap(<span class="hl-string">"in_actor_id"</span>, id);
+            Map out = <span class="hl-keyword">this</span>.execute(in);
+            <span class="hl-keyword">return</span> (SqlActor) out.get(<span class="hl-string">"out_actor"</span>);
+        }
+
+    }
+</pre></div><div class="section" title="7.1.3&nbsp;Setting STRUCT attribute values using SqlStructValue for an IN parameter"><div class="titlepage"><div><div><h3 class="title"><a name="d0e2237"></a>7.1.3&nbsp;Setting STRUCT attribute values using SqlStructValue for an IN
+      parameter</h3></div></div></div><p>An alternate access technique is to use the
+      <code class="classname">Struct</code> interface to access a generic collection
+      of attributes representing the type. The
+      <code class="classname">SqlStructValue</code> implementation will map properties
+      in a JavaBean to the corresponding attributes of the STRUCT so there is
+      no need to provide custom mapping code. The following example will
+      perform the same operations as the previous example using this alternate
+      technique.</p><p>The SimpleJdbcCall declaration for the "add_actor" call looks the
+      same.</p><pre class="programlisting">    <span class="hl-keyword">this</span>.addActorCall =
+            <span class="hl-keyword">new</span> SimpleJdbcCall(dataSource).withProcedureName(<span class="hl-string">"add_actor"</span>)
+                .declareParameters(
+                    <span class="hl-keyword">new</span> SqlParameter(<span class="hl-string">"in_actor"</span>, OracleTypes.STRUCT, <span class="hl-string">"ACTOR_TYPE"</span>)); <a name="datatypes.struct.in.call.1"></a><img src="images/callouts/1.png" alt="1" border="0">
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.struct.in.call.1"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>We define the <code class="classname">SqlParameter</code> with
+            parameter name, the Oracle type and the type name as it is
+            declared in the database.</p></td></tr></table></div><p>Next we'll look at the code used to execute this procedure call.
+      The difference is in the execution and the mapping of attributes.
+      Instead of relying on the <code class="classname">SqlActor</code> class to do
+      the mapping, we create a <code class="classname">SqlStructValue</code> and pass
+      in the <code class="classname">Actor</code> instance in the constructor. The
+      <code class="classname">SqlStructValue</code> class will do the mapping between
+      the bean properties of the Actor class and the attributes of the STRUCT.
+      This <code class="classname">SqlStructValue</code> is then passed in as the data
+      value in the input map for the execute call.</p><pre class="programlisting">    <span class="hl-keyword">public</span> <span class="hl-keyword">void</span> addActor(<span class="hl-keyword">final</span> Actor actor) {
+        Map in = Collections.singletonMap(<span class="hl-string">"in_actor"</span>, <span class="hl-keyword">new</span> SqlStructValue(actor)); <a name="datatypes.struct.in.exec.1"></a><img src="images/callouts/1.png" alt="1" border="0">
+        addActorCall.execute(in); <a name="datatypes.struct.in.exec.2"></a><img src="images/callouts/2.png" alt="2" border="0">
+    }
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.struct.in.exec.1"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>We create an <code class="classname">SqlStructValue</code> that will
+            handle the type creation and mapping and add it to the
+            <code class="classname">Map</code> containing the in parameters.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.struct.in.exec.2"><img src="images/callouts/2.png" alt="2" border="0"></a> </p></td><td valign="top" align="left"><p>We execute the call by passing in the input
+            <code class="classname">Map</code>.</p></td></tr></table></div><p>If you prefer to use the classic StoredProcedure class then the
+      equivalent configuration would look like this:</p><pre class="programlisting">    <span class="hl-keyword">private</span> <span class="hl-keyword">class</span> AddActorProc <span class="hl-keyword">extends</span> StoredProcedure {
+
+        <span class="hl-keyword">public</span> AddActorProc(DataSource dataSource) {
+            <span class="hl-keyword">super</span>(dataSource, <span class="hl-string">"add_actor"</span>);
+            declareParameter(<span class="hl-keyword">new</span> SqlParameter(<span class="hl-string">"in_actor"</span>, OracleTypes.STRUCT, <span class="hl-string">"ACTOR_TYPE"</span>));
+        }
+
+        <span class="hl-keyword">public</span> <span class="hl-keyword">void</span> execute(Actor actor) {
+            Map in = Collections.singletonMap(<span class="hl-string">"in_actor"</span>, <span class="hl-keyword">new</span> SqlStructValue(actor));
+            <span class="hl-keyword">this</span>.execute(in);
+        }
+
+    }
+</pre></div><div class="section" title="7.1.4&nbsp;Using SqlReturnStruct to access STRUCT data from an OUT parameter"><div class="titlepage"><div><div><h3 class="title"><a name="d0e2304"></a>7.1.4&nbsp;Using SqlReturnStruct to access STRUCT data from an OUT
+      parameter</h3></div></div></div><p>You can use the <code class="classname">SqlReturnStruct</code> class to
+      map between the attributes of a <code class="classname">STRUCT</code> object and
+      properties of a <code class="classname">JavaBean</code>. This is more convenient
+      than providing this mapping yourself. This example will show how this
+      can be done using an SqlOutParameter combined with the
+      <code class="classname">SqlReturnStruct</code> class.</p><pre class="programlisting">    <span class="hl-keyword">this</span>.getActorCall =
+            <span class="hl-keyword">new</span> SimpleJdbcCall(dataSource).withProcedureName(<span class="hl-string">"get_actor"</span>)
+                .declareParameters(
+                    <span class="hl-keyword">new</span> SqlOutParameter(<span class="hl-string">"out_actor"</span>, OracleTypes.STRUCT, <span class="hl-string">"ACTOR_TYPE"</span>, <a name="datatypes.struct.out.call.1"></a><img src="images/callouts/1.png" alt="1" border="0">
+                            <span class="hl-keyword">new</span> SqlReturnStruct(Actor.<span class="hl-keyword">class</span>)) <a name="datatypes.struct.out.call.2"></a><img src="images/callouts/2.png" alt="2" border="0">
+            );
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.struct.out.call.1"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>We define the <code class="classname">SqlParameter</code> with
+            parameter name, the Oracle type and the type name as it is
+            declared in the database.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.struct.out.call.2"><img src="images/callouts/2.png" alt="2" border="0"></a> </p></td><td valign="top" align="left"><p>The <code class="classname">SqlReturnStruct</code> will retrieve the
+            STRUCT and access the array of objects representing the attributes
+            and then map them to the properties of the
+            <code class="classname">JavaBean</code> instance provided n the
+            constructor.</p></td></tr></table></div><p>Next we look at the code that executes this
+      <code class="classname">SimpleJdbcCall</code>.</p><pre class="programlisting">    <span class="hl-keyword">public</span> Actor getActor(<span class="hl-keyword">int</span> id) {
+        Map in = Collections.singletonMap(<span class="hl-string">"in_actor_id"</span>, id);
+        <span class="hl-keyword">return</span> getActorCall.executeObject(Actor.<span class="hl-keyword">class</span>, in); <a name="datatypes.struct.out.exec.1"></a><img src="images/callouts/1.png" alt="1" border="0">
+    }
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.struct.out.exec.1"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>We execute the call by passing in a
+            <code class="classname">Map</code> containing any in parameters. The
+            <code class="classname">execute</code>Object method returns an
+            <code class="classname">Actor</code> containing the data returned by the
+            stored procedure call.</p></td></tr></table></div><p>If you prefer to use the classic StoredProcedure class then the
+      equivalent configuration would look like this:</p><pre class="programlisting">    <span class="hl-keyword">private</span> <span class="hl-keyword">class</span> GetActorProc <span class="hl-keyword">extends</span> StoredProcedure {
+
+        <span class="hl-keyword">public</span> GetActorProc(DataSource dataSource) {
+            <span class="hl-keyword">super</span>(dataSource, <span class="hl-string">"get_actor"</span>);
+            declareParameter(<span class="hl-keyword">new</span> SqlParameter(<span class="hl-string">"in_actor_id"</span>, Types.NUMERIC));
+            declareParameter(
+                <span class="hl-keyword">new</span> SqlOutParameter(<span class="hl-string">"out_actor"</span>, OracleTypes.STRUCT, <span class="hl-string">"ACTOR_TYPE"</span>,
+                        <span class="hl-keyword">new</span> SqlReturnStruct(Actor.<span class="hl-keyword">class</span>))
+            );
+        }
+
+        <span class="hl-keyword">public</span> Actor execute(Long id) {
+            Map in = Collections.singletonMap(<span class="hl-string">"in_actor_id"</span>, id);
+            Map out = <span class="hl-keyword">this</span>.execute(in);
+            <span class="hl-keyword">return</span> (Actor) out.get(<span class="hl-string">"out_actor"</span>);
+        }
+
+    }
+</pre></div></div><div class="section" title="7.2&nbsp;Using an ARRAY parameter"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="orcl.datatypes.array"></a>7.2&nbsp;Using an ARRAY parameter</h2></div></div></div><p>Sometimes your stored procedures has parameters that are declared as
+    arrays of some type. These arrays are managed using JDBC
+    <code class="classname">Array</code> objects. When working with Oracle it's
+    sometimes easier to work with Oracle's extension to
+    <code class="classname">Array</code> which is
+    <code class="classname">oracle.sql.ARRAY</code>.</p><p>For the <code class="literal">ARRAY</code> examples we will use the following
+    type declarations.</p><pre class="programlisting">CREATE OR REPLACE TYPE actor_name_array 
+    AS VARRAY(20) OF VARCHAR2(50);
+CREATE OR REPLACE TYPE actor_id_array 
+    AS VARRAY(20) OF NUMBER;
+</pre><p>We will show how to access parameters using these declarations in
+    two JDBC calls. The first one is a procedure call that deletes actor
+    entries based on ids provided in an <code class="literal">actor_id_array</code>. The
+    second example calls a function to retrieve an array of the names for all
+    actors in the table.</p><div class="section" title="7.2.1&nbsp;Setting ARRAY values using SqlArrayValue for an IN parameter"><div class="titlepage"><div><div><h3 class="title"><a name="d0e2395"></a>7.2.1&nbsp;Setting ARRAY values using SqlArrayValue for an IN
+      parameter</h3></div></div></div><p>We are using the SimpleJdbcCall for this example and when we
+      configure this call its important to note that we can't rely on the
+      database metadata. Whenever a collection type is used the metadata
+      reported back from the JDBC driver contains entries bot for the
+      collection type and for the type contained in the collection so it looks
+      like there are additional parameters. Because of this it is best to turn
+      off the metadata processing by calling
+      the<code class="classname">withoutProcedureColumnMetaDataAccess</code>
+      method.</p><p>This example calls a procedure that deletes actors based on the
+      ids provided in an array. Here is the source for this procedure:</p><pre class="programlisting">CREATE OR REPLACE PROCEDURE delete_actors (in_actor_ids IN actor_id_array)
+AS
+BEGIN
+  FOR i IN 1..in_actor_ids.count loop
+    DELETE FROM actor WHERE id = in_actor_ids(i);
+  END LOOP;
+END;</pre><p>The declaration of the ARRAY parameter follows the same pattern as
+      we used previously for the STRUCT parameters. We are simply providing
+      the <code class="classname">OracleTypes.ARRAY</code> SQL type along with the
+      type name as it is specified in the database metadata.</p><p>
+          </p><pre class="programlisting">    <span class="hl-keyword">this</span>.deleteActorsCall =
+            <span class="hl-keyword">new</span> SimpleJdbcCall(dataSource).withProcedureName(<span class="hl-string">"delete_actors"</span>)
+                .withoutProcedureColumnMetaDataAccess()
+                .declareParameters(
+                    <span class="hl-keyword">new</span> SqlParameter(<span class="hl-string">"in_actor_ids"</span>, OracleTypes.ARRAY, <span class="hl-string">"ACTOR_ID_ARRAY"</span>)); <a name="datatypes.array.in.call.1"></a><img src="images/callouts/1.png" alt="1" border="0">
+</pre><p>
+
+          </p><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.array.in.call.1"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>We define the <code class="classname">SqlParameter</code> with
+              parameter name, the Oracle type and the type name as it is
+              declared in the database.</p></td></tr></table></div><p>
+      Next we look at the code that executes this
+      <code class="classname">SimpleJdbcCall</code>. For IN parameters the arrays are
+      managed using an <code class="classname">SqlArrayValue</code> implementation
+      that will handle the ArrayDescriptor creation and the mapping of the
+      array to an oracle.sql.ARRAY instance.
+          </p><pre class="programlisting">    <span class="hl-keyword">public</span> <span class="hl-keyword">void</span> deleteActors(<span class="hl-keyword">final</span> Long[] ids) {
+        Map in = Collections.singletonMap(<span class="hl-string">"in_actor_ids"</span>, <span class="hl-keyword">new</span> SqlArrayValue(ids)); <a name="array.type.in.execute"></a><img src="images/callouts/1.png" alt="1" border="0">
+        deleteActorsCall.execute(in);
+    }
+</pre><p>
+
+          </p><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#array.type.in.execute"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>We declare an <code class="classname">SqlArrayValue</code>
+              instance that will handle creating the
+              <code class="classname">ArrayDesriptor</code> and the
+              <code class="classname">ARRAY</code> to be passed in as the parameter
+              value.</p></td></tr></table></div><p>
+      </p><p>If you prefer to use the classic StoredProcedure class then the
+      equivalent configuration would look like this:</p><pre class="programlisting">    <span class="hl-keyword">private</span> <span class="hl-keyword">class</span> DeleteActorsProc <span class="hl-keyword">extends</span> StoredProcedure {
+
+        <span class="hl-keyword">public</span> DeleteActorsProc(DataSource dataSource) {
+            <span class="hl-keyword">super</span>(dataSource, <span class="hl-string">"delete_actors"</span>);
+            declareParameter(
+                <span class="hl-keyword">new</span> SqlParameter(<span class="hl-string">"in_actor_ids"</span>, OracleTypes.ARRAY, <span class="hl-string">"ACTOR_ID_ARRAY"</span>));
+        }
+
+        <span class="hl-keyword">public</span> <span class="hl-keyword">void</span> execute(Long[] ids) {
+            Map in = Collections.singletonMap(<span class="hl-string">"in_actor_ids"</span>, <span class="hl-keyword">new</span> SqlArrayValue(ids));
+            Map out = <span class="hl-keyword">this</span>.execute(in);
+        }
+
+    }
+</pre></div><div class="section" title="7.2.2&nbsp;Using SqlReturnArray to handle the ARRAY from an OUT parameter"><div class="titlepage"><div><div><h3 class="title"><a name="d0e2456"></a>7.2.2&nbsp;Using SqlReturnArray to handle the ARRAY from an OUT
+      parameter</h3></div></div></div><p>Now it is time to handle the OUT parameter scenario. Here it is an
+      SqlOutParameter combined with an SqlReturnArray instance that is
+      responsible for handling the
+      <code class="classname">Array</code>.
+
+          </p><pre class="programlisting">    <span class="hl-keyword">this</span>.getActorNamesCall =
+            <span class="hl-keyword">new</span> SimpleJdbcCall(dataSource).withFunctionName(<span class="hl-string">"get_actor_names"</span>)
+                .withoutProcedureColumnMetaDataAccess()
+                .declareParameters(
+                     <span class="hl-keyword">new</span> SqlOutParameter(<span class="hl-string">"return"</span>, Types.ARRAY, <span class="hl-string">"ACTOR_NAME_ARRAY"</span>, <a name="datatypes.array.out.call.1"></a><img src="images/callouts/1.png" alt="1" border="0">
+                         <span class="hl-keyword">new</span> SqlReturnArray())); <a name="datatypes.array.out.call.2"></a><img src="images/callouts/2.png" alt="2" border="0">
+</pre><p>
+
+          </p><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.array.out.call.1"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>We declare an <code class="classname">SqlOutParameter</code> with
+              parameter name, the Oracle type and the type name as it is
+              declared in the database.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.array.out.call.2"><img src="images/callouts/2.png" alt="2" border="0"></a> </p></td><td valign="top" align="left"><p>The <code class="classname">SqlReturnArray</code> accesses the
+              ARRAY parameter using the JDBC calls and creates the
+              <code class="classname">String</code> array that is the return value for
+              this example.</p></td></tr></table></div><p>
+      Next we look at the code that executes this
+      <code class="classname">SimpleJdbcCall</code>.</p><p>
+
+          </p><pre class="programlisting">    <span class="hl-keyword">public</span> String[] getActorNames() {
+        Map in = Collections.emptyMap();
+        <span class="hl-keyword">return</span> getActorNamesCall.executeFunction(String[].<span class="hl-keyword">class</span>, in); <a name="datatypes.array.out.exec.1"></a><img src="images/callouts/1.png" alt="1" border="0">
+    }
+</pre><p>
+
+          </p><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.array.out.exec.1"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>Here we just have to call executeFunction passing in the
+              expected output class and an empty map since there are no IN
+              parameters.</p></td></tr></table></div><p>
+      </p><p>If you prefer to use the classic StoredProcedure class then the
+      equivalent configuration would look like this:</p><pre class="programlisting">    <span class="hl-keyword">private</span> <span class="hl-keyword">class</span> GetActorNamesProc <span class="hl-keyword">extends</span> StoredProcedure {
+
+        <span class="hl-keyword">public</span> GetActorNamesProc(DataSource dataSource) {
+            <span class="hl-keyword">super</span>(dataSource, <span class="hl-string">"get_actor_names"</span>);
+            setFunction(true);
+            declareParameter(<span class="hl-keyword">new</span> SqlOutParameter(<span class="hl-string">"return"</span>, Types.ARRAY, <span class="hl-string">"ACTOR_NAME_ARRAY"</span>,
+                    <span class="hl-keyword">new</span> SqlReturnArray()));
+        }
+
+        <span class="hl-keyword">public</span> String[] execute() {
+            Map in = Collections.emptyMap();
+            Map out = <span class="hl-keyword">this</span>.execute(in);
+            <span class="hl-keyword">return</span> (String[]) out.get(<span class="hl-string">"return"</span>);
+        }
+
+    }
+</pre></div></div><div class="section" title="7.3&nbsp;Handling a REF CURSOR"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="orcl.datatypes.ref_cur"></a>7.3&nbsp;Handling a REF CURSOR</h2></div></div></div><p>The Spring Framework already contains implementations that simplify
+    the handling of REF CURSORS but we include an example here just to
+    complete the coverage of the handling of Oracle specific advanced data
+    types. The procedure we are calling is declared as follows:</p><pre class="programlisting">CREATE OR REPLACE PROCEDURE read_actors (out_actors_cur OUT sys_refcursor)
+AS
+BEGIN
+  OPEN out_actors_cur FOR 'select * from actor';
+END;</pre><div class="section" title="7.3.1&nbsp;Retrieving data using a ParameterizedBeanPropertyRowMapper from a REF CURSOR"><div class="titlepage"><div><div><h3 class="title"><a name="d0e2514"></a>7.3.1&nbsp;Retrieving data using a ParameterizedBeanPropertyRowMapper from a
+      REF CURSOR</h3></div></div></div><p>First we'll look at a <code class="classname">SimpleJdbcCall</code>
+      implementation where we use the
+      <code class="classname">returningResultSet</code> method to declare the
+      <code class="classname">RowMapper</code> we want to use. We have an Actor class
+      that is a JavaBean and the properties match the column names so we can
+      use the ParameterizedBeanPropertyRowMapper to automatically map data
+      from the <code class="classname">ResultSet</code> to the bean properties. Here
+      is the code used to declare this
+      <code class="classname">SimpleJdbcCall</code>:</p><pre class="programlisting">    <span class="hl-keyword">this</span>.readActorsCall =
+            <span class="hl-keyword">new</span> SimpleJdbcCall(dataSource).withProcedureName(<span class="hl-string">"read_actors"</span>)
+                .returningResultSet(<span class="hl-string">"out_actors_cur"</span>, <a name="datatypes.refcur.out.call.1"></a><img src="images/callouts/1.png" alt="1" border="0">
+                        ParameterizedBeanPropertyRowMapper.newInstance(Actor.<span class="hl-keyword">class</span>)); <a name="datatypes.refcur.out.call.2"></a><img src="images/callouts/2.png" alt="2" border="0">
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.refcur.out.call.1"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>We declare a <code class="classname">returningResultSet</code> with
+            parameter name and the <code class="classname">RowMapper</code> we would
+            like to use.</p></td></tr><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.refcur.out.call.2"><img src="images/callouts/2.png" alt="2" border="0"></a> </p></td><td valign="top" align="left"><p>The
+            <code class="classname">ParameterizedBeanPropertyRowMapper</code> accesses
+            the <code class="classname">ResultSetMetaData</code> and maps the row
+            columns to corresponding bean properties in the class specified as
+            parameter to the <code class="classname">newInstace</code> method
+            call.</p></td></tr></table></div><p>To execute this call we use the following code:</p><pre class="programlisting">    <span class="hl-keyword">public</span> List&lt;Actor&gt; getActors() {
+        <span class="hl-keyword">return</span> readActorsCall.executeObject(List.<span class="hl-keyword">class</span>, Collections.emptyMap()); <a name="datatypes.refcur.out.exec.1"></a><img src="images/callouts/1.png" alt="1" border="0">
+    }
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.refcur.out.exec.1"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>Here we just have to call executeObject passing in the
+            expected output class which is a <code class="classname">List</code> and
+            an empty map since there are no IN parameters.</p></td></tr></table></div><p>When using the StoredProcedure class we would need to use an
+      <code class="classname">SqlOutParameter</code> that accepts a
+      <code class="classname">RowMapper</code>. Here is an example of an
+      <code class="classname">SqlOutParameter</code> configured with a
+      <code class="classname">ParameterizedBeanPropertyRowMapper</code>.</p><pre class="programlisting">        <span class="hl-keyword">new</span> SqlOutParameter(<span class="hl-string">"out_actors_cur"</span>, OracleTypes.CURSOR, 
+                ParameterizedBeanPropertyRowMapper.newInstance(Actor.<span class="hl-keyword">class</span>)) <a name="datatypes.refcur.out.proc.1"></a><img src="images/callouts/1.png" alt="1" border="0">
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#datatypes.refcur.out.proc.1"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>Here we specify the parameter name and the SQL type which is
+            <code class="classname">OracleTypes.CURSOR</code> and instantiate a
+            <code class="classname">ParameterizedBeanPropertyRowMapper</code> to be
+            used to map row data to the <code class="classname">Actor</code>
+            class.</p></td></tr></table></div><p>If you prefer to use the classic StoredProcedure class then the
+      equivalent configuration would look like this:</p><pre class="programlisting">    <span class="hl-keyword">private</span> <span class="hl-keyword">class</span> ReadActorsProc <span class="hl-keyword">extends</span> StoredProcedure {
+
+        <span class="hl-keyword">public</span> ReadActorsProc(DataSource dataSource) {
+            <span class="hl-keyword">super</span>(dataSource, <span class="hl-string">"read_actors"</span>);
+            declareParameter(
+                <span class="hl-keyword">new</span> SqlOutParameter(<span class="hl-string">"out_actors_cur"</span>, OracleTypes.CURSOR,
+                        ParameterizedBeanPropertyRowMapper.newInstance(Actor.<span class="hl-keyword">class</span>))
+            );
+
+        }
+
+        <span class="hl-keyword">public</span> List execute() {
+            Map in = Collections.emptyMap();
+            Map out = <span class="hl-keyword">this</span>.execute(in);
+            <span class="hl-keyword">return</span> (List) out.get(<span class="hl-string">"out_actors_cur"</span>);
+        }
+
+    }
+</pre></div></div></div><div class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="orcl.xmltypes.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="u" href="pt02.html">Up</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="orcl.connection.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">6.&nbsp;XML Types&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right" valign="top">&nbsp;8.&nbsp;Custom DataSource Connection Configurations</td></tr></table></div></body></html>

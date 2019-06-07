@@ -1,0 +1,778 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>Chapter&nbsp;18.&nbsp;Programming model</title><link rel="stylesheet" href="css/html.css" type="text/css"><meta name="generator" content="DocBook XSL Stylesheets V1.73.2"><link rel="start" href="index.html" title="Good Relationships"><link rel="up" href="reference.html" title="Part&nbsp;II.&nbsp;Reference Documentation"><link rel="prev" href="neo4j.html" title="Chapter&nbsp;17.&nbsp;Introduction to Neo4j"><link rel="next" href="setup.html" title="Chapter&nbsp;19.&nbsp;Environment setup"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div xmlns:fo="http://www.w3.org/1999/XSL/Format" style="background-color:white;border:none;height:73px;border:1px solid black;"><a style="border:none;" href="http://static.springframework.org/spring-ws/site/" title="The Spring Framework - Spring Web Services"><img style="border:none;" src="images/xdev-spring_logo.jpg"></a><a style="border:none;" href="http://www.springsource.com/" title="SpringSource"><img style="border:none;position:absolute;padding-top:5px;right:42px;" src="images/s2_box_logo.png"></a></div><div class="chapter" lang="en"><div class="titlepage"><div><div><h2 class="title"><a name="programming-model"></a>Chapter&nbsp;18.&nbsp;Programming model</h2></div></div></div><p>
+        This chapter covers the fundamentals of the programming model behind Spring Data Graph. It discusses the
+        AspectJ features used and the annotations provided by Spring Data Graph and how to use them.
+        Examples for this section are taken from the "IMDB" project of
+        <a class="ulink" href="http://github.com/SpringSource/spring-data-graph-examples" target="_top">Spring Data Graph examples</a>.
+    </p><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="reference:aspectj"></a>18.1.&nbsp;AspectJ support</h2></div></div></div><p>
+        Behind the scenes, Spring Data Graph leverages <a class="ulink" href="http://www.eclipse.org/aspectj/" target="_top">AspectJ</a>
+        aspects to modify the behavior of simple annotated POJO entities
+        (see <a class="xref" href="reference:aspectj-details.html" title="Chapter&nbsp;24.&nbsp;AspectJ details">Chapter&nbsp;24, <i>AspectJ details</i></a>). Each node entity is backed by a graph node that holds its
+        properties and relationships to other entities. AspectJ is used for intercepting field access, so that
+        Spring Data Graph can retrieve the information from the entity's backing node or relationship in the database.
+    </p><p>
+        The aspect introduces some internal fields and some public methods
+        (see <a class="xref" href="programming-model.html#reference:programming-model:introduced-methods" title="18.4.&nbsp;Introduced methods">Section&nbsp;18.4, &#8220;Introduced methods&#8221;</a>) to the entities, such as
+        <code class="code">entity.getPersistentState()</code> and <code class="code">entity.relateTo</code>.
+        It also introduces repository methods like<code class="code">find(Class&lt;? extends NodeEntity&gt;, TraversalDescription)</code>.
+        Introduced methods for <code class="code">equals()</code> and <code class="code">hashCode()</code> use the underlying node or relationship.
+    </p><p>
+        Spring Data Graph internally uses an abstraction called <code class="code">EntityState</code> that the field
+        access and instantiation advices of the aspect delegate to. This way, the aspect code is kept to a
+        minimum, focusing mainly on the pointcuts and delegation code. The <code class="code">EntityState</code> then uses
+        a number of <code class="code">FieldAccessorFactories</code> to create a <code class="code">FieldAccessor</code> instance per
+        field that does the specific handling needed for the concrete field type. There are various layers of
+        caching involved as well, so it handles repeated instantiation efficiently.
+    </p><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e1193"></a>18.1.1.&nbsp;AspectJ IDE support</h3></div></div></div><p>
+            As Spring Data Graph uses some advanced features of AspectJ, users may experience issues with
+            their IDE reporting errors where in fact there are none. Features that might be reported wrongfully
+            include: introduction of methods to interfaces, declaration of additional interfaces for annotated
+            classes, and generified introduced methods.
+        </p><p>
+            IDE's not providing the full AJ support might mark parts of your code as errors.
+            You should rely on your build-system and test to verify the correctness of the code. You might also have
+            your Entities (or their interfaces) implement the <code class="code">NodeBacked</code> and <code class="code">RelationshipBacked</code>
+            interfaces directly to benefit from completion support and error checking.
+        </p><p>
+            Eclipse and STS support AspectJ via the AJDT plugin which can be installed from the update-site:
+            <a class="ulink" href="http://download.eclipse.org/tools/ajdt/36/update/" target="_top">http://download.eclipse.org/tools/ajdt/36/update/</a>
+            (it might be necessary to use the latest development snapshot of the plugin
+            <a class="ulink" href="http://download.eclipse.org/tools/ajdt/36/dev/update" target="_top">http://download.eclipse.org/tools/ajdt/36/dev/update</a>).
+            The current version that does not show incorrect errors is AspectJ 1.6.12.M1 (included in STS 2.7.0.M2), previous versions are reported
+            to mislead the user.
+        </p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+            There might be some issues with the eclipse maven plugin not adding AspectJ files correctly to the build path.
+            If you encounter issues, please try the following:
+
+            Try editing the build path to <code class="code">include **/*.aj</code> for the spring-data-neo4j project.
+            You can do this by selecting "Build Path -&gt; Configure Build Path ..." from the Package Explorer.
+            Then for the <code class="code">spring-data-neo4j/src/main/java</code> add <code class="code">**/*.aj</code> to the Included path.
+        </p></div><p>
+            The AspectJ support in IntelliJ IDEA lacks some of the features. JetBrains is working on improving
+            the situation in their upcoming 11 release of their popular IDE. Their latest work is available
+            under their early access program (EAP). Building the project with the AspectJ compiler
+            <code class="code">ajc</code> works in IDEA (Options -&gt; Compiler -&gt; Java Compiler should show ajc). Make sure to
+            give the compiler at least 512 MB of RAM.
+        </p></div></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="reference:programming-model:annotations"></a>18.2.&nbsp;Defining node entities</h2></div></div></div><p>
+        Node entities are declared using the <code class="code">@NodeEntity</code> annotation. Relationship entities use
+        the <code class="code">@RelationshipEntity</code> annotation.
+    </p><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e1242"></a>18.2.1.&nbsp;@NodeEntity: The basic building block</h3></div></div></div><p>
+            The <code class="code">@NodeEntity</code> annotation is used to turn a POJO class into an entity backed by a node
+            in the graph database. Fields on the entity are by default mapped to properties of the node. Fields
+            referencing other node entities (or collections thereof) are linked with relationships. If the
+            <code class="code">useShortNames</code> attribute overridden to false, the property and relationship names will
+            have the class name of the entity prepended.
+        </p><p>
+            <code class="code">@NodeEntity</code> annotations are inherited from super-types and interfaces. It is not necessary
+            to annotate your domain objects at every inheritance level.
+        </p><p>
+            If the <code class="code">partial</code> attribute is set to true, this entity takes part in a cross-store setting,
+            where the entity lives in both the graph database and a JPA data source. See
+            <a class="xref" href="">???</a> for more information.
+        </p><p>
+            Entity fields can be annotated with <code class="code">@GraphProperty</code>, <code class="code">@RelatedTo</code>,
+            <code class="code">@RelatedToVia</code>, <code class="code">@Indexed</code>, <code class="code">@GraphId</code> and
+            <code class="code">@GraphTraversal</code>.
+        </p><div class="example"><a name="d0e1285"></a><p class="title"><b>Example&nbsp;18.1.&nbsp;Simple node entity</b></p><div class="example-contents"><pre class="programlisting">@NodeEntity
+<span class="hl-keyword">public</span> <span class="hl-keyword">class</span> Movie {
+    String title;
+}
+</pre></div></div><br class="example-break"></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e1290"></a>18.2.2.&nbsp;@GraphProperty: Optional annotation for property fields</h3></div></div></div><p>
+            It is not necessary to annotate data fields, as they are persisted by default; all fields that
+            contain primitive values are persisted directly to the graph. All fields convertible to String
+            using the Spring conversion services will be stored as a string. Spring Data Graph includes a
+            custom conversion factory that comes with converters for <code class="code">Enum</code>s and <code class="code">Date</code>s.
+            Transient fields are not persisted.
+        </p><p>
+            Currently there is no support for handling arbitrary collections of primitive or convertable values.
+            Support for this will be added by the 1.1. release.
+        </p><p>
+            This annotation is typically used with cross-store persistence. When a node entity is configured
+            as partial, then all fields that should be persisted to the graph must be explicitly annotated
+            with <code class="code">@GraphProperty</code>.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e1308"></a>18.2.3.&nbsp;@Indexed: Making entities searchable by field value</h3></div></div></div><p>
+            The @Indexed annotation can be declared on fields that are intended to be indexed by the Neo4j
+            indexing facilities. The resulting index can be used to later retrieve nodes or relationships
+            that contain a certain property value, e.g. a name. Often an index is used to establish the start
+            node for a traversal. Indexes are accessed by a repository for a particular node or relationship
+            entity type. See <a class="xref" href="programming-model.html#reference:programming-model:indexing" title="18.5.&nbsp;Indexing">Section&nbsp;18.5, &#8220;Indexing&#8221;</a> and
+            <a class="xref" href="programming-model.html#reference:programming-model:repositories" title="18.6.&nbsp;CRUD with repositories">Section&nbsp;18.6, &#8220;CRUD with repositories&#8221;</a> for more information.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e1317"></a>18.2.4.&nbsp;@Query: fields as query result views</h3></div></div></div><p>
+            The <code class="code">@Query</code> annotation leverages the delegation infrastructure used by the
+            Spring Data Graph aspects. It provides dynamic fields which, when accessed, return the values
+            selected by the provided query language expression. The provided query must contain a placeholder named <code class="code">%start</code>
+            for the id of the current entity. For instance <code class="code">start n=(%start) match n-[:FRIEND]-&gt;friend return friend</code>.
+            Graph queries can return variable number of entities. That's why annotation can be put onto fields
+            with a single value, an Iterable of a concrete type or an Iterable of <code class="code">Map&lt;String,Object&gt;</code>.
+            Additional parameters are taken from the params attribute of the <code class="code">@Query</code> annotation.
+            The tuples form key-value pairs that are provided to the query at execution time.
+        </p><div class="example"><a name="d0e1337"></a><p class="title"><b>Example&nbsp;18.2.&nbsp;@Graph on a node entity field</b></p><div class="example-contents"><pre class="programlisting">@NodeEntity
+<span class="hl-keyword">public</span> <span class="hl-keyword">class</span> Group {
+    @Query(value = <span class="hl-string">"start n=(%start) match (n)-[:%relType]-&gt;(friend) return friend"</span>,
+                params = {<span class="hl-string">"relType"</span>, <span class="hl-string">"FRIEND"</span>})
+    <span class="hl-keyword">private</span> Iterable&lt;Person&gt; friends;
+}
+</pre></div></div><br class="example-break"><p>
+            </p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3>
+                Please note that this annotation can also be used on repository methods.
+            </div><p>
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e1347"></a>18.2.5.&nbsp;@GraphTraversal: fields as traversal result views</h3></div></div></div><p>
+            The <code class="code">@GraphTraversal</code> annotation leverages the delegation infrastructure used by the
+            Spring Data Graph aspects. It provides dynamic fields which, when accessed, return an Iterable
+            of node entities that are the result of a traversal starting at the entity containing the field.
+            The <code class="code">TraversalDescription</code> used for this is created by the
+            <code class="code">FieldTraversalDescriptionBuilder</code> class defined by the <code class="code">traversalBuilder</code>
+            attribute. The class of the resulting node entities must be provided with the
+            <code class="code">elementClass</code> attribute.
+        </p><div class="example"><a name="d0e1367"></a><p class="title"><b>Example&nbsp;18.3.&nbsp;@GraphTraversal from a node entity</b></p><div class="example-contents"><pre class="programlisting">@NodeEntity
+<span class="hl-keyword">public</span> <span class="hl-keyword">class</span> Group {
+    @GraphTraversal(traversalBuilder = PeopleTraversalBuilder.<span class="hl-keyword">class</span>,
+            elementClass = Person.<span class="hl-keyword">class</span>, params = <span class="hl-string">"persons"</span>)
+    <span class="hl-keyword">private</span> Iterable&lt;Person&gt; people;
+
+    <span class="hl-keyword">private</span> <span class="hl-keyword">static</span> <span class="hl-keyword">class</span> PeopleTraversalBuilder <span class="hl-keyword">implements</span> FieldTraversalDescriptionBuilder {
+        @Override
+        <span class="hl-keyword">public</span> TraversalDescription build(NodeBacked start, Field field, String... params) {
+            <span class="hl-keyword">return</span> <span class="hl-keyword">new</span> TraversalDescriptionImpl()
+                    .relationships(DynamicRelationshipType.withName(params[0]))
+                    .filter(Traversal.returnAllButStartNode());
+        }
+    }
+}
+</pre></div></div><br class="example-break"></div></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="reference:programming_model:relationships"></a>18.3.&nbsp;Relating node entities</h2></div></div></div><p>
+        Since relationships are first-class citizens in Neo4j, associations between node entities are represented
+        by relationships. In general, relationships are categorized by a type, and start and end nodes (which
+        imply the direction of the relationship). Relationships can have an arbitrary number of properties.
+        Spring Data Graph has special support to represent Neo4j relationships as entities too, but it is often
+        not needed.
+    </p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+            As of Neo4j 1.4.M03, circular references are allowed. Spring Data Graph reflects this accordingly.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="reference:programming_model:relationships:relatedto"></a>18.3.1.&nbsp;@RelatedTo: Connecting node entities</h3></div></div></div><p>
+            Every field of a node entity that references one or more other node entities is backed by relationships
+            in the graph. These relationships are managed by Spring Data Graph automatically.
+        </p><p>
+            The simplest kind of relationship is a single field pointing to another node entity (1:1).
+            In this case, the field does not have to be annotated at all, although the annotation may be
+            used to control the direction and type of the relationship. When setting the field, a
+            relationship is created. If the field is set to <code class="code">null</code>, the relationship is removed.
+        </p><div class="example"><a name="d0e1390"></a><p class="title"><b>Example&nbsp;18.4.&nbsp;Single relationship field</b></p><div class="example-contents"><pre class="programlisting">@NodeEntity
+<span class="hl-keyword">public</span> <span class="hl-keyword">class</span> Movie {
+    <span class="hl-keyword">private</span> Actor mostPaidActor;
+}
+</pre></div></div><br class="example-break"><p>
+            It is also possible to have fields that reference a set of node entities (1:N). These fields come in
+            two forms, modifiable or read-only. Modifiable fields are of the type <code class="code">java.util.Set&lt;T&gt;</code>,
+            and read-only fields are <code class="code">java.lang.Iterable&lt;T&gt;</code>, where T is a @NodeEntity-annotated
+            class.
+        </p><div class="example"><a name="d0e1403"></a><p class="title"><b>Example&nbsp;18.5.&nbsp;Node entity with relationships</b></p><div class="example-contents"><pre class="programlisting">@NodeEntity
+<span class="hl-keyword">public</span> <span class="hl-keyword">class</span> Actor {
+    @RelatedTo(type = <span class="hl-string">"mostPaidActor"</span>, direction = Direction.INCOMING)
+    <span class="hl-keyword">private</span> Set&lt;Movie&gt; mostPaidIn;
+
+    @RelatedTo(type = <span class="hl-string">"ACTS_IN"</span>)
+    <span class="hl-keyword">private</span> Set&lt;Movie&gt; movies;
+}
+</pre></div></div><br class="example-break"><p>
+            Fields referencing other entities should not be manually initialized, as they are managed by
+            Spring Data Graph under the hood. 1:N fields can be accessed immediately, and Spring Data Graph
+            will provide a java.util.Set representing the relationships. If the returned set is modified,
+            the changes are reflected in the graph. Spring Data Graph also ensures that there is only one
+            relationship of a given type between any two given entities.
+        </p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+                Before an entity has been attached with <code class="code">persist()</code> for the first time, it will
+                not have its state managed by Spring Data Graph. For example, given the Actor class defined above,
+                if <code class="code">actor.movies</code> was accessed in a non-persisted entity, it would return
+                <code class="code">null</code>, whereas if it was accessed in a persisted entity, it would return
+                an empty managed set.
+            </p></div><p>
+            When you use an Interface as target type for the <code class="code">Set</code> and/or as <code class="code">elementClass</code>
+            please make sure that it implements <code class="code">NodeBacked</code> either by extending that Super-Interface manually
+            or by annotating the Interface with <code class="code">@NodeEntity</code> too.
+        </p><p>
+            By setting direction to <code class="code">BOTH</code>, relationships are created in the outgoing direction, but when the
+            1:N field is read, it will include relationships in both directions. A cardinality of M:N is
+            not necessary because relationships can be navigated in both directions.
+        </p><p>
+            The relationships can also be accessed by using the aspect-introduced methods
+            <code class="code">entity.getRelationshipTo(target, type)</code> and
+            <code class="code">entity.relateTo(target, type)</code> available on each NodeEntity.
+            These methods find and create Neo4j relationships. It is also possible to manually remove
+            relationships by using <code class="code">entity.removeRelationshipTo(target, type)</code>.
+            Using these methods is significantly faster than adding/removing from the collection of
+            relationships as it doesn't have to re-synchronize a whole set of relationships with the graph.
+        </p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+                Other collection types than <code class="code">Set</code> are not supported so far, also currently NO
+                <code class="code">Map&lt;RelationshipType,Set&lt;NodeBacked&gt;&gt;</code>.
+            </p></div></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e1461"></a>18.3.2.&nbsp;@RelationshipEntity: Rich relationships</h3></div></div></div><p>
+            To access the full data model of graph relationships, POJOs can also be annotated with
+            <code class="code">@RelationshipEntity</code>, making them relationship entities. Just as node entities represent
+            nodes in the graph, relationship entities represent relationships. As described above,
+            fields annotated with <code class="code">@RelatedTo</code> provide a way to link node entities together
+            via relationships, but it provides no way of accessing the relationships themselves.
+        </p><p>
+            Relationship entities cannot be instantiated directly but are rather created via
+            node entities, either by @RelatedToVia-annotated fields
+            (see <a class="xref" href="programming-model.html#reference:programming_model:relationships:relatedtovia" title="18.3.3.&nbsp;@RelatedToVia: Accessing relationship entities">Section&nbsp;18.3.3, &#8220;@RelatedToVia: Accessing relationship entities&#8221;</a>),
+            or by the introduced
+            <code class="code">entity.relateTo(target, relationshipClass, type)</code> and
+            <code class="code">entity.getRelationshipTo(target, relationshipClass, type)</code> methods
+            (see <a class="xref" href="programming-model.html#reference:programming-model:introduced-methods" title="18.4.&nbsp;Introduced methods">Section&nbsp;18.4, &#8220;Introduced methods&#8221;</a>).
+        </p><p>
+            Fields in relationship entities are, similarly to node entities, persisted as properties on
+            the relationship. For accessing the two endpoints of the relationship, two special annotations
+            are available: <code class="code">@StartNode</code> and <code class="code">@EndNode</code>. A field annotated with
+            one of these annotations will provide read-only access to the corresponding endpoint, depending
+            on the chosen annotation.
+        </p><div class="example"><a name="d0e1492"></a><p class="title"><b>Example&nbsp;18.6.&nbsp;Relationship entity</b></p><div class="example-contents"><pre class="programlisting">@NodeEntity
+<span class="hl-keyword">public</span> <span class="hl-keyword">class</span> Actor {
+    <span class="hl-keyword">public</span> Role playedIn(Movie movie, String title) {
+        <span class="hl-keyword">return</span> relatedTo(movie, Role.<span class="hl-keyword">class</span>, <span class="hl-string">"ACTS_IN"</span>);
+    }
+}
+
+@RelationshipEntity
+<span class="hl-keyword">public</span> <span class="hl-keyword">class</span> Role {
+    String title;
+
+    @StartNode <span class="hl-keyword">private</span> Actor actor;
+    @EndNode <span class="hl-keyword">private</span> Movie movie;
+}
+        </pre></div></div><br class="example-break"></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="reference:programming_model:relationships:relatedtovia"></a>18.3.3.&nbsp;@RelatedToVia: Accessing relationship entities</h3></div></div></div><p>
+            To provide easy programmatic access to the richer relationship entities of the data model,
+            the annotation <code class="code">@RelatedToVia</code> can be added on fields of type
+            <code class="code">java.lang.Iterable&lt;T&gt;</code>, where T is a <code class="code">@RelationshipEntity</code>-annotated
+            class. These fields provide read-only access to relationship entities.
+        </p><div class="example"><a name="d0e1511"></a><p class="title"><b>Example&nbsp;18.7.&nbsp;Accessing relationship entities using @RelatedToVia</b></p><div class="example-contents"><pre class="programlisting">@NodeEntity
+<span class="hl-keyword">public</span> <span class="hl-keyword">class</span> Actor {
+    @RelatedToVia(type = <span class="hl-string">"ACTS_IN"</span>)
+    <span class="hl-keyword">private</span> Iterable&lt;Role&gt; roles;
+
+    <span class="hl-keyword">public</span> Role playedIn(Movie movie, String title) {
+        Role role = relateTo(movie, Role.<span class="hl-keyword">class</span>, <span class="hl-string">"ACTS_IN"</span>);
+        role.setTitle(title);
+        <span class="hl-keyword">return</span> role;
+    }
+}
+</pre></div></div><br class="example-break"></div></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="reference:programming-model:introduced-methods"></a>18.4.&nbsp;Introduced methods</h2></div></div></div><p>
+        The node and relationship aspects introduce (via AspectJ ITD - inter type declaration) several
+        methods to the entities.
+        </p><div class="variablelist"><dl><dt><span class="term">
+                    Persisting the node entity after creation and after changes outside of a transaction.
+                    Participates in an open transaction, or creates its own implicit transaction otherwise.
+                </span></dt><dd><p><code class="code">nodeEntity.persist()</code></p></dd><dt><span class="term">
+                    Accessing node and relationship IDs
+                </span></dt><dd><p><code class="code">nodeEntity.getNodeId()</code> and <code class="code">relationshipEntity.getRelationshipId()</code></p></dd><dt><span class="term">
+                    Accessing the node or relationship backing the entity
+                </span></dt><dd><p><code class="code">entity.getPersistentState()</code></p></dd><dt><span class="term">
+                    equals() and hashCode() are delegated to the underlying state
+                </span></dt><dd><p><code class="code">entity.equals()</code> and <code class="code">entity.hashCode()</code></p></dd><dt><span class="term">
+                    Creating relationships to a target node entity, and returning the relationship entity instance
+                </span></dt><dd><p><code class="code">nodeEntity.relateTo(targetEntity, relationshipClass, relationshipType)</code></p></dd><dt><span class="term">
+                    Retrieving a single relationship entity
+                </span></dt><dd><p><code class="code">nodeEntity.getRelationshipTo(targetEntity, relationshipClass, relationshipType)</code></p></dd><dt><span class="term">
+                    Creating relationships to a target node entity and returning the relationship
+                </span></dt><dd><p><code class="code">nodeEntity.relateTo(targetEntity, relationshipType)</code></p></dd><dt><span class="term">
+                    Retrieving a single relationship
+                </span></dt><dd><p><code class="code">nodeEntity.getRelationshipTo(targetEnttiy, relationshipType)</code></p></dd><dt><span class="term">
+                    Removing a single relationship
+                </span></dt><dd><p><code class="code">nodeEntity.removeRelationshipTo(targetEntity, relationshipType)</code></p></dd><dt><span class="term">
+                    Remove the node entity, its relationships, and all index entries for it
+                </span></dt><dd><p><code class="code">nodeEntity.remove()</code> and <code class="code">relationshipEntity.remove()</code></p></dd><dt><span class="term">
+                    Project entity to a different target type, using the same backing state
+                </span></dt><dd><p><code class="code">entity.projectTo(targetClass)</code></p></dd><dt><span class="term">
+                    Traverse, starting from the current node. Returns end nodes of traversal converted to
+                    the provided type.
+                </span></dt><dd><p><code class="code">nodeEntity.findAllByTraversal(targetType, traversalDescription)</code></p></dd><dt><span class="term">
+                    Traverse, starting from the current node. Returns <code class="code">EntityPath</code>s of the traversal result
+                    bound to the provided start and end-node-entity types
+                </span></dt><dd><p><code class="code">Iterable&lt;EntityPath&gt; findAllPathsByTraversal(traversalDescription)</code></p></dd><dt><span class="term">Executes the given query, replacing <code class="code">%start</code> with the node-id and returning the results converted to the target type.</span></dt><dd><p><code class="code">&lt;T&gt; Iterable&lt;T&gt; NodeBacked.findAllByQuery(final String query, final Class&lt;T&gt; targetType)</code></p></dd><dt><span class="term">Executes the given query, replacing <code class="code">%start</code> with the node-id and returning the original result, but with nodes and relationships replaced by their appropriate entities.</span></dt><dd><p><code class="code">Iterable&lt;Map&lt;String,Object&gt;&gt; NodeBacked.findAllByQuery(final String query)</code></p></dd><dt><span class="term">Executes the given query, replacing <code class="code">%start</code> with the node-id and returns a single result converted to the target type.</span></dt><dd><p><code class="code">&lt;T&gt; T NodeBacked.findByQuery(final String query, final Class&lt;T&gt; targetType)</code></p></dd></dl></div><p>
+    </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="reference:programming-model:indexing"></a>18.5.&nbsp;Indexing</h2></div></div></div><p>
+        The Neo4j graph database can use different so-called index providers for exact lookups and fulltext
+        searches. Lucene is the default index provider implementation. Each named index is configured to be
+        fulltext or exact.
+    </p><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e1661"></a>18.5.1.&nbsp;Exact and numeric index</h3></div></div></div><p>
+            When using the standard Neo4j API, nodes and relationships have to be manually indexed with
+            key-value pairs, typically being the property name and value. When using Spring Data Graph,
+            this task is simplified to just adding an <code class="code">@Indexed</code> annotation on entity fields
+            by which the entity should be searchable. This will result in automatic updates of the index
+            every time an indexed field changes.
+        </p><p>
+            Numerical fields are indexed numerically so that they are available for range queries. All
+            other fields are indexed with their string representation.
+        </p><p>
+            The @Indexed annotation also provides the option of using a custom index. The default index
+            name is the simple class name of the entity, so that each class typically gets its own index.
+            It is recommended to not have two entity classes with the same class name, regardless of
+            package.
+        </p><p>
+            The indexes can be queried by using a repository (see
+            <a class="xref" href="programming-model.html#reference:programming-model:repositories" title="18.6.&nbsp;CRUD with repositories">Section&nbsp;18.6, &#8220;CRUD with repositories&#8221;</a>).
+            Typically, the repository is an instance of
+            <code class="code">org.springframework.data.neo4j.repository.DirectGraphRepositoryFactory</code>.
+            The methods <code class="code">findByPropertyValue()</code> and <code class="code">findAllByPropertyValue()</code> work on
+            the exact indexes and return the first or all matches. To do range queries, use
+            <code class="code">findAllByRange()</code> (please note that currently both values are inclusive).
+        </p><div class="example"><a name="d0e1689"></a><p class="title"><b>Example&nbsp;18.8.&nbsp;Indexing entities</b></p><div class="example-contents"><pre class="programlisting">@NodeEntity
+<span class="hl-keyword">class</span> Person {
+    @Indexed(indexName = <span class="hl-string">"people"</span>) String name;
+    @Indexed <span class="hl-keyword">int</span> age;
+}
+
+GraphRepository&lt;Person&gt; graphRepository = graphRepositoryFactory
+        .createGraphRepository(Person.<span class="hl-keyword">class</span>);
+
+<span class="hl-comment">// Exact match, in named index</span>
+Person mark = graphRepository.findByPropertyValue(<span class="hl-string">"people"</span>, <span class="hl-string">"name"</span>, <span class="hl-string">"mark"</span>);
+
+<span class="hl-comment">// Numeric range query, index name inferred automatically</span>
+<span class="hl-keyword">for</span> (Person middleAgedDeveloper : graphRepository.findAllByRange(<span class="hl-string">"age"</span>, 20, 40)) {
+    Developer developer=middleAgedDeveloper.projectTo(Developer.<span class="hl-keyword">class</span>);
+}
+</pre></div></div><br class="example-break"></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e1694"></a>18.5.2.&nbsp;Fulltext indexes</h3></div></div></div><p>
+            Spring Data Graph also supports fulltext indexes. By default, indexed fields are stored in
+            an exact lookup index. To have them analyzed and prepared for fulltext search, the
+            <code class="code">@Indexed</code> annotation has the boolean <code class="code">fulltext</code> attribute.
+
+            Please note that fulltext indexes require a separate index name as the fulltext configuration
+            is stored in the index itself.
+        </p><p>
+            Access to the fulltext index is provided by the <code class="code">findAllByQuery()</code> repository method.
+            Wildcards like <code class="code">*</code> are allowed. Generally though, the fulltext querying rules of the
+            underlying index provider apply. See the
+            <a class="ulink" href="http://lucene.apache.org/java/3_0_1/" target="_top">Lucene documentation</a> for more
+            information on this.
+        </p><p>
+            </p><div class="example"><a name="d0e1718"></a><p class="title"><b>Example&nbsp;18.9.&nbsp;Fulltext indexing</b></p><div class="example-contents"><pre class="programlisting">@NodeEntity
+<span class="hl-keyword">class</span> Person {
+    @Indexed(indexName = <span class="hl-string">"people-search"</span>, fulltext=true) String name;
+}
+
+GraphRepository&lt;Person&gt; graphRepository = graphRepositoryFactory
+        .createGraphRepository(Person.<span class="hl-keyword">class</span>);
+
+Person mark = graphRepository.findAllByQuery(<span class="hl-string">"people-search"</span>, <span class="hl-string">"name"</span>, <span class="hl-string">"ma*"</span>);
+</pre></div></div><p><br class="example-break">
+
+        </p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3>
+            Please note that indexes are currently created on demand, so whenever an index that doesn't exist
+            is requested from a query or get operation it is created. This is subject to change but has
+            currently the implication that those indexes won't be configured as fulltext which causes
+            subsequent fulltext updates to those indexes to fail.
+        </div></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e1726"></a>18.5.3.&nbsp;Manual index access</h3></div></div></div><p>
+            The index for a domain class is also available from <code class="code">GraphDatabaseContext</code> via
+            the <code class="code">getIndex()</code> method. The second parameter is optional and takes the index name
+            if it should not be inferred from the class name. It returns the index implementation that is
+            provided by Neo4j.
+        </p><div class="example"><a name="d0e1737"></a><p class="title"><b>Example&nbsp;18.10.&nbsp;Manual index usage</b></p><div class="example-contents"><pre class="programlisting">@Autowired GraphDatabaseContext gdc;
+
+<span class="hl-comment">// Default index</span>
+Index&lt;Node&gt; personIndex = gdc.getIndex(Person.<span class="hl-keyword">class</span>);
+personIndex.query(<span class="hl-keyword">new</span> QueryContext(NumericRangeQuery.new&Iacute;ntRange(<span class="hl-string">"age"</span>, 20, 40, true, true))
+                       .sort(<span class="hl-keyword">new</span> Sort(<span class="hl-keyword">new</span> SortField(<span class="hl-string">"age"</span>, SortField.INT, false))));
+
+<span class="hl-comment">// Named index</span>
+Index&lt;Node&gt; namedPersonIndex = gdc.getIndex(Person.<span class="hl-keyword">class</span>, <span class="hl-string">"people"</span>);
+namedPersonIndex.get(<span class="hl-string">"name"</span>, <span class="hl-string">"Mark"</span>);
+
+<span class="hl-comment">// Fulltext index</span>
+Index&lt;Node&gt; personFulltextIndex = gdc.getIndex(Person.<span class="hl-keyword">class</span>, <span class="hl-string">"people-search"</span>, true);
+personFulltextIndex.query(<span class="hl-string">"name"</span>, <span class="hl-string">"*cha*"</span>);
+personFulltextIndex.query(<span class="hl-string">"{name:*cha*}"</span>);
+</pre></div></div><br class="example-break"></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e1742"></a>18.5.4.&nbsp;Indexing in Neo4jTemplate</h3></div></div></div><p>
+            Neo4jTemplate also offers index support, providing auto-indexing for fields at creation time.
+            There is an <code class="code">autoIndex</code> method that can also add indexes for a set of fields in one go.
+        </p><p>
+            For querying the index, the template offers query methods that take either the exact match
+            parameters or a query object/expression, and push the results wrapped uniformly as Paths to
+            the supplied <code class="code">PathMapper</code> to be converted or collected.
+        </p></div></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="reference:programming-model:repositories"></a>18.6.&nbsp;CRUD with repositories</h2></div></div></div><p>
+        The repositories provided by Spring Data Graph build on the composable repository infrastructure
+        in <a class="ulink" href="http://static.springsource.org/spring-data/data-jpa/docs/current/reference/html/#repositories.custom-implementations" target="_top">Spring Data Commons</a>.
+        They allow for interface based composition of repositories consisting of provided default
+        implementations for certain interfaces and additional custom implementations for other methods.
+    </p><p>
+        Spring Data Graph repositories support annotated and named queries for the Neo4j
+        <a class="ulink" href="http://docs.neo4j.org/chunked/milestone/query-lang.html" target="_top">Cypher</a> query-language.
+    </p><p>
+        Spring Data Graph comes with typed repository implementations that provide methods for
+        locating node and relationship entities. There are 3 types of basic repository interfaces
+        and implementations. <code class="code">CRUDRepository</code> provides basic operations,
+        <code class="code">IndexRepository</code> and <code class="code">NamedIndexRepository</code> delegate to Neo4j's internal
+        indexing subsystem for queries, and <code class="code">TraversalRepository</code> handles Neo4j traversals.
+    </p><p>
+        <code class="code">GraphRepository</code> is a convenience repository interface, extending <code class="code">CRUDRepository</code>,
+        <code class="code">IndexRepository</code>, and <code class="code">TraversalRepository</code>. Generally, it has all the
+        desired repository methods. If named index operations are required, then <code class="code">NamedIndexRepository</code>
+        may also be included.
+    </p><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e1810"></a>18.6.1.&nbsp;CRUDRepository</h3></div></div></div><p>
+            <code class="code">CRUDRepository</code> delegates to the configured <code class="code">TypeRepresentationStrategy</code>
+            (see <a class="xref" href="programming-model.html#reference:programming-model:typerepresentationstrategy" title="18.9.&nbsp;Entity type representation">Section&nbsp;18.9, &#8220;Entity type representation&#8221;</a>)
+            for type based queries.
+            </p><div class="variablelist"><dl><dt><span class="term">Load an instance via a Neo4j node id</span></dt><dd><p><code class="code">T findOne(id)</code></p></dd><dt><span class="term">Check for existence of a Neo4j node id</span></dt><dd><p><code class="code">boolean exists(id)</code></p></dd><dt><span class="term">Iterate over all nodes of a node entity type</span></dt><dd><p><code class="code">Iterable&lt;T&gt; findAll()</code>
+                        (supported in future versions:
+                        <code class="code">Iterable&lt;T&gt; findAll(Sort)</code> and
+                        <code class="code">Page&lt;T&gt; findAll(Pageable)</code>)</p></dd><dt><span class="term">Count the instances of a node entity type</span></dt><dd><p><code class="code">Long count()</code></p></dd><dt><span class="term">Save a graph entity</span></dt><dd><p><code class="code">T save(T)</code> and <code class="code">Iterable&lt;T&gt; save(Iterable&lt;T&gt;)</code></p></dd><dt><span class="term">Delete a graph entity</span></dt><dd><p><code class="code">void delete(T)</code>, <code class="code">void; delete(Iterable&lt;T&gt;)</code>,
+                        and <code class="code">deleteAll()</code></p></dd></dl></div><p>
+        </p><p>
+            Important to note here is that the <code class="code">save</code>, <code class="code">delete</code>, and <code class="code">deleteAll</code>
+            methods are only there to conform to the <code class="code">org.springframework.data.repository.Repository</code>
+            interface. The recommended way of saving and deleting entities is by using <code class="code">entity.persist()</code>
+            and <code class="code">entity.remove()</code>.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e1903"></a>18.6.2.&nbsp;IndexRepository and NamedIndexRepository</h3></div></div></div><p>
+            <code class="code">IndexRepository</code> works with the indexing subsystem and provides methods to find
+            entities by indexed properties, ranged queries, and combinations thereof. The index key is
+            the name of the indexed entity field, unless overridden in the <code class="code">@Indexed</code> annotation.
+            </p><div class="variablelist"><dl><dt><span class="term">Iterate over all indexed entity instances with a certain field value</span></dt><dd><p><code class="code">Iterable&lt;T&gt; findAllByPropertyValue(key, value)</code></p></dd><dt><span class="term">Get a single entity instance with a certain field value</span></dt><dd><p><code class="code">T findByPropertyValue(key, value)</code></p></dd><dt><span class="term">Iterate over all indexed entity instances with field values in a certain numerical range (inclusive)</span></dt><dd><p><code class="code">Iterable&lt;T&gt; findAllByRange(key, from, to)</code></p></dd><dt><span class="term">Iterate over all indexed entity instances with field values matching the given fulltext string or QueryContext query</span></dt><dd><p><code class="code">Iterable&lt;T&gt; findAllByQuery(key, queryOrQueryContext)</code></p></dd></dl></div><p>
+        </p><p>
+            There is also a <code class="code">NamedIndexRepository</code> with the same methods, but with an additional index
+            name parameter, making it possible to query any index.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e1949"></a>18.6.3.&nbsp;TraversalRepository</h3></div></div></div><p>
+            <code class="code">TraversalRepository</code> delegates to the Neo4j traversal framework.
+            </p><div class="variablelist"><dl><dt><span class="term">Iterate over a traversal result</span></dt><dd><p><code class="code">Iterable&lt;T&gt; findAllByTraversal(startEntity, traversalDescription)</code></p></dd></dl></div><p>
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e1966"></a>18.6.4.&nbsp;Cypher-Queries</h3></div></div></div><div class="section" lang="en"><div class="titlepage"><div><div><h4 class="title"><a name="d0e1969"></a>18.6.4.1.&nbsp;Annotated Queries</h4></div></div></div><p>
+            Queries for the cypher graph-query language can be supplied with the <code class="code">@Query</code> annotation.
+            That means every method annotated with <code class="code">@Query("start n=(%node) match (n)--&gt;(m) return m")</code>
+            will use the query string. The named parameter <code class="code">%node</code> will be replaced by the actual method parameters.
+            Node and Relationship-Entities are resolved to their respective id's and all other parameters are
+            replaced directly (i.e. Strings, Longs, etc). There is special support for the <code class="code">Sort</code> and <code class="code">Pageable</code>
+            parameters from Spring Data Commons, which are supported to add programmatic paging and sorting (alternatively
+            static paging and sorting can be supplied in the query string itself).
+
+            For using the named parameters you have to either annotate the parameters of the method with the
+            <code class="code">@Param("node")</code> annotation or enable debug symbols.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h4 class="title"><a name="d0e1992"></a>18.6.4.2.&nbsp;Named Queries</h4></div></div></div><p>Spring Data Graph also supports the notion of named queries which are externalized in property-config-files
+            (<code class="code">META-INF/graph-named-queries.properties</code>). Those files have the format:
+            <code class="code">Entity.finderName=query</code> (e.g. <code class="code">Person.findBoss=start p=(%person) match (p)&lt;-[:BOSS]-(boss) return boss</code>).
+            Otherwise named queries support the same parameters as annotated queries. For using the named parameters you have to either
+            annotate the parameters of the method with the <code class="code">@Param("person")</code> annotation or enable debug symbols.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h4 class="title"><a name="d0e2009"></a>18.6.4.3.&nbsp;Query results</h4></div></div></div><p>Typical results for queries are <code class="code">Iterable&lt;Type&gt;, Iterable&lt;Map&lt;String,Object&gt;&gt;, Type and Page&lt;Type&gt;</code>.
+                Nodes and Relationships are converted to their respective Entities (if they exist). Other values are converted
+                using the registered Spring conversion services (e.g. enums).
+            </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h4 class="title"><a name="d0e2017"></a>18.6.4.4.&nbsp;Cypher Examples</h4></div></div></div><p>There is a <a class="ulink" href="http://neo4j.vidcaster.com/U2Y/introduction-to-cypher" target="_top">screencast</a> available showing many features of the query language.
+                The following examples are taken from the cineasts dataset of the tutorial section.
+                </p><div class="variablelist"><dl><dt><span class="term"><code class="code">start n=(0) return n</code></span></dt><dd><p>returns the node with id 0</p></dd><dt><span class="term"><code class="code">start movie=(Movie,title,'Matrix') return movie</code></span></dt><dd><p>returns the nodes which are indexed as 'Matrix'</p></dd><dt><span class="term"><code class="code">start movie=(Movie,title,'Matrix') match (movie)&lt;-[:ACTS_IN]-(actor) return actor.name</code></span></dt><dd><p>returns the names of the actors that have a ACTS_IN relationship to the movie node for matrix</p></dd><dt><span class="term"><code class="code">start movie=(Movie,title,'Matrix') match (movie)&lt;-[r,:RATED]-(user) where r.stars &gt; 3 return user.name, r.stars, r.comment</code></span></dt><dd><p>returns users names and their ratings (&gt;3) of the movie matrix</p></dd><dt><span class="term"><code class="code">start user=(User,login,'micha') match (user)-[:FRIEND]-(friend)-[r,:RATED]-&gt;(movie) return movie.title, AVG(r.stars), count(*) order by AVG(r.stars) desc, count(*) desc</code></span></dt><dd><p>returns the movies rate by the friends of the user 'micha', aggregated by movie.title, with averaged ratings and rating-counts sorted by both</p></dd></dl></div><p>
+            </p></div></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e2062"></a>18.6.5.&nbsp;Creating repositories</h3></div></div></div><p>
+            The <code class="code">Repository</code> instances are either created manually via a
+            <code class="code">DirectGraphRepositoryFactory</code>, bound to a concrete node or relationship entity class.
+            The <code class="code">DirectGraphRepositoryFactory</code> is configured in the Spring context and can be injected.
+        </p><div class="example"><a name="d0e2076"></a><p class="title"><b>Example&nbsp;18.11.&nbsp;Using GraphRepositories</b></p><div class="example-contents"><pre class="programlisting">GraphRepository&lt;Person&gt; graphRepository = graphRepositoryFactory
+        .createGraphRepository(Person.<span class="hl-keyword">class</span>);
+
+Person michael = graphRepository.save(<span class="hl-keyword">new</span> Person(<span class="hl-string">"Michael"</span>, 36));
+
+Person dave = graphRepository.findOne(123);
+
+Long numberOfPeople = graphRepository.count();
+
+Person mark = graphRepository.findByPropertyValue(<span class="hl-string">"name"</span>, <span class="hl-string">"mark"</span>);
+
+Iterable&lt;Person&gt; devs = graphRepository.findAllByProperyValue(<span class="hl-string">"occupation"</span>, <span class="hl-string">"developer"</span>);
+
+Iterable&lt;Person&gt; middleAgedPeople = graphRepository.findAllByRange(<span class="hl-string">"age"</span>, 20, 40);
+
+Iterable&lt;Person&gt; aTeam = graphRepository.findAllByQuery(<span class="hl-string">"name"</span>, <span class="hl-string">"A*"</span>);
+
+Iterable&lt;Person&gt; davesFriends = graphRepository.findAllByTraversal(dave,
+    Traversal.description().pruneAfterDepth(1)
+    .relationships(KNOWS).filter(returnAllButStartNode()));
+</pre></div></div><br class="example-break"></div><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="d0e2081"></a>18.6.6.&nbsp;Composing repositories</h3></div></div></div><p>
+            The recommended way of providing repositories is to define a repository interface per domain
+            class. The mechanisms provided by the repository infrastructure will automatically detect
+            them, along with additional implementation classes, and create an injectable repository
+            implementation to be used in services or other spring beans.
+        </p><div class="example"><a name="d0e2086"></a><p class="title"><b>Example&nbsp;18.12.&nbsp;Composing repositories</b></p><div class="example-contents"><pre class="programlisting"><span class="hl-keyword">public</span> <span class="hl-keyword">interface</span> PersonRepository <span class="hl-keyword">extends</span> GraphRepository&lt;Person&gt;, PersonRepositoryExtension {}
+
+<span class="hl-comment">// alternatively select some of the required repositories individually</span>
+<span class="hl-keyword">public</span> <span class="hl-keyword">interface</span> PersonRepository <span class="hl-keyword">extends</span> CRUDGraphRepository&lt;Node,Person&gt;,
+        IndexQueryExecutor&lt;Node,Person&gt;, TraversalQueryExecutor&lt;Node,Person&gt;,
+        PersonRepositoryExtension {}
+
+<span class="hl-comment">// provide a custom extension if needed</span>
+<span class="hl-keyword">public</span> <span class="hl-keyword">interface</span> PersonRepositoryExtension {
+    Iterable&lt;Person&gt; findFriends(Person person);
+}
+
+<span class="hl-keyword">public</span> <span class="hl-keyword">class</span> PersonRepositoryImpl <span class="hl-keyword">implements</span> PersonRepositoryExtension {
+    <span class="hl-comment">// optionally inject default repository, or use DirectGraphRepositoryFactory</span>
+    @Autowired PersonRepository baseRepository;
+    <span class="hl-keyword">public</span> Iterable&lt;Person&gt; findFriends(Person person) {
+        <span class="hl-keyword">return</span> baseRepository.findAllByTraversal(person, friendsTraversal);
+    }
+}
+
+<span class="hl-comment">// configure the repositories, preferably via the datagraph:repositories namespace</span>
+<span class="hl-comment">// (graphDatabaseContext reference is optional)</span>
+&lt;datagraph:repositories base-<span class="hl-keyword">package</span>=<span class="hl-string">"org.springframework.data.neo4j"</span>
+    graph-database-context-ref=<span class="hl-string">"graphDatabaseContext"</span>/&gt;
+
+<span class="hl-comment">// have it injected</span>
+@Autowired
+PersonRepository personRepository;
+
+Person michael = personRepository.save(<span class="hl-keyword">new</span> Person(<span class="hl-string">"Michael"</span>,36));
+
+Person dave=personRepository.findOne(123);
+
+Iterable&lt;Person&gt; devs = personRepository.findAllByProperyValue(<span class="hl-string">"occupation"</span>,<span class="hl-string">"developer"</span>);
+
+Iterable&lt;Person&gt; aTeam = graphRepository.findAllByQuery( <span class="hl-string">"name"</span>,<span class="hl-string">"A*"</span>);
+
+Iterable&lt;Person&gt; friends = personRepository.findFriends(dave);
+</pre></div></div><br class="example-break"></div></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="reference:programming-model:transactions"></a>18.7.&nbsp;Transactions</h2></div></div></div><p>
+        Neo4j is a transactional database, only allowing modifications to be performed within transaction
+        boundaries. Reading data does however not require transactions.
+    </p><p>
+        Spring Data Graph integrates with transaction managers configured using Spring. The simplest
+        scenario of just running the graph database uses a SpringTransactionManager provided by the
+        Neo4j kernel to be used with Spring's JtaTransactionManager. That is, configuring Spring to
+        use Neo4j's transaction manager.
+    </p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+            The explicit XML configuration given below is encoded in the <code class="code">Neo4jConfiguration</code>
+            configuration bean that uses Spring's <code class="code">@Configuration</code> feature. This greatly
+            simplifies the configuration of Spring Data Graph.
+            
+        </p></div><div class="example"><a name="d0e2109"></a><p class="title"><b>Example&nbsp;18.13.&nbsp;Simple transaction manager configuration</b></p><div class="example-contents"><pre class="programlisting">&lt;<span class="hl-tag">bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"transactionManager"</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.transaction.jta.JtaTransactionManager"</span>&gt;
+    &lt;<span class="hl-tag">property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"transactionManager"</span>&gt;
+        &lt;<span class="hl-tag">bean</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.neo4j.kernel.impl.transaction.SpringTransactionManager"</span>&gt;
+            &lt;<span class="hl-tag">constructor-arg</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"graphDatabaseService"</span>/&gt;
+        &lt;<span class="hl-tag">/bean</span>&gt;
+    &lt;<span class="hl-tag">/property</span>&gt;
+    &lt;<span class="hl-tag">property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"userTransaction"</span>&gt;
+        &lt;<span class="hl-tag">bean</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.neo4j.kernel.impl.transaction.UserTransactionImpl"</span>&gt;
+            &lt;<span class="hl-tag">constructor-arg</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"graphDatabaseService"</span>/&gt;
+        &lt;<span class="hl-tag">/bean</span>&gt;
+    &lt;<span class="hl-tag">/property</span>&gt;
+&lt;<span class="hl-tag">/bean</span>&gt;
+
+&lt;<span class="hl-tag">tx:annotation-driven</span> <span class="hl-attribute">mode</span>=<span class="hl-value">"aspectj"</span> <span class="hl-attribute">transaction-manager</span>=<span class="hl-value">"transactionManager"</span>/&gt;
+</pre></div></div><br class="example-break"><p>
+        For scenarios with multiple transactional resources there are two options. The first option
+        is to have Neo4j participate in the externally configured transaction manager by using the
+        Spring support in Neo4j by enabling the configuration parameter for your graph database.
+        Neo4j will then use Spring's transaction manager instead of its own.
+    </p><div class="example"><a name="d0e2116"></a><p class="title"><b>Example&nbsp;18.14.&nbsp;Neo4j Spring integration</b></p><div class="example-contents"><pre class="programlisting">&lt;<span class="hl-tag">![CDATA[&lt;context:annotation-config</span> /&gt;
+&lt;<span class="hl-tag">context:spring-configured</span>/&gt;
+
+&lt;<span class="hl-tag">bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"transactionManager"</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.transaction.jta.JtaTransactionManager"</span>&gt;
+    &lt;<span class="hl-tag">property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"transactionManager"</span>&gt;
+        &lt;<span class="hl-tag">bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"jotm"</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.data.neo4j.transaction.JotmFactoryBean"</span>/&gt;
+    &lt;<span class="hl-tag">/property</span>&gt;
+&lt;<span class="hl-tag">/bean</span>&gt;
+
+&lt;<span class="hl-tag">bean</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.neo4j.kernel.EmbeddedGraphDatabase"</span> <span class="hl-attribute">destroy-method</span>=<span class="hl-value">"shutdown"</span>&gt;
+    &lt;<span class="hl-tag">constructor-arg</span> <span class="hl-attribute">value</span>=<span class="hl-value">"target/test-db"</span>/&gt;
+    &lt;<span class="hl-tag">constructor-arg</span>&gt;
+        &lt;<span class="hl-tag">map</span>&gt;
+            &lt;<span class="hl-tag">entry</span> <span class="hl-attribute">key</span>=<span class="hl-value">"tx_manager_impl"</span> <span class="hl-attribute">value</span>=<span class="hl-value">"spring-jta"</span>/&gt;
+        &lt;<span class="hl-tag">/map</span>&gt;
+    &lt;<span class="hl-tag">/constructor-arg</span>&gt;
+&lt;<span class="hl-tag">/bean</span>&gt;
+
+&lt;<span class="hl-tag">tx:annotation-driven</span> <span class="hl-attribute">mode</span>=<span class="hl-value">"aspectj"</span> <span class="hl-attribute">transaction-manager</span>=<span class="hl-value">"transactionManager"</span>/&gt;
+</pre></div></div><br class="example-break"><p>
+        One can also configure a stock XA transaction manager (e.g. Atomikos, JOTM, App-Server-TM) to be
+        used with Neo4j and the other resources. For a bit less secure but fast 1 phase commit best effort,
+        use <code class="code">ChainedTransactionManager</code>, which comes bundled with Spring Data Graph. It takes a
+        list of transaction managers as constructor params and will handle them in order for transaction
+        start and commit (or rollback) in the reverse order.
+    </p><div class="example"><a name="d0e2126"></a><p class="title"><b>Example&nbsp;18.15.&nbsp;ChainedTransactionManager example</b></p><div class="example-contents"><pre class="programlisting">&lt;<span class="hl-tag">![CDATA[&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"jpaTransactionManager"</span>
+        <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.orm.jpa.JpaTransactionManager"</span>&gt;
+    &lt;<span class="hl-tag">property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"entityManagerFactory"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"entityManagerFactory"</span>/&gt;
+&lt;<span class="hl-tag">/bean</span>&gt;
+&lt;<span class="hl-tag">bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"jtaTransactionManager"</span>
+        <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.transaction.jta.JtaTransactionManager"</span>&gt;
+    &lt;<span class="hl-tag">property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"transactionManager"</span>&gt;
+        &lt;<span class="hl-tag">bean</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.neo4j.kernel.impl.transaction.SpringTransactionManager"</span>&gt;
+            &lt;<span class="hl-tag">constructor-arg</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"graphDatabaseService"</span> /&gt;
+        &lt;<span class="hl-tag">/bean</span>&gt;
+    &lt;<span class="hl-tag">/property</span>&gt;
+    &lt;<span class="hl-tag">property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"userTransaction"</span>&gt;
+        &lt;<span class="hl-tag">bean</span>  <span class="hl-attribute">class</span>=<span class="hl-value">"org.neo4j.kernel.impl.transaction.UserTransactionImpl"</span>&gt;
+            &lt;<span class="hl-tag">constructor-arg</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"graphDatabaseService"</span> /&gt;
+        &lt;<span class="hl-tag">/bean</span>&gt;
+    &lt;<span class="hl-tag">/property</span>&gt;
+&lt;<span class="hl-tag">/bean</span>&gt;
+&lt;<span class="hl-tag">bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"transactionManager"</span>
+        <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.data.neo4j.transaction.ChainedTransactionManager"</span>&gt;
+    &lt;<span class="hl-tag">constructor-arg</span>&gt;
+        &lt;<span class="hl-tag">list</span>&gt;
+            &lt;<span class="hl-tag">ref</span> <span class="hl-attribute">bean</span>=<span class="hl-value">"jpaTransactionManager"</span>/&gt;
+            &lt;<span class="hl-tag">ref</span> <span class="hl-attribute">bean</span>=<span class="hl-value">"jtaTransactionManager"</span>/&gt;
+        &lt;<span class="hl-tag">/list</span>&gt;
+    &lt;<span class="hl-tag">/constructor-arg</span>&gt;
+&lt;<span class="hl-tag">/bean</span>&gt;
+
+&lt;<span class="hl-tag">tx:annotation-driven</span> <span class="hl-attribute">mode</span>=<span class="hl-value">"aspectj"</span> <span class="hl-attribute">transaction-manager</span>=<span class="hl-value">"transactionManager"</span>/&gt;
+</pre></div></div><br class="example-break"></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="reference:programming-model:lifecycle"></a>18.8.&nbsp;Detached node entities</h2></div></div></div><p>
+        Node entities can be in two different persistence state: attached or detached. By default, newly created node
+        entities are in the detached state. When <code class="code">persist()</code> is called on the entity, it becomes
+        attached to the graph, and its properties and relationships are stores in the database. If
+        <code class="code">persist()</code> is not called within a transaction, it automatically creates an implicit
+        transaction for the operation.
+    </p><p>
+        Changing an attached entity inside a transaction will immediately write through the changes to
+        the datastore. Whenever an entity is changed outside of a transaction it becomes detached. The
+        changes are stored in the entity itself until the next call to <code class="code">persist()</code>.
+    </p><p>
+        All entities returned by library functions are initially in an attached state.
+        Just as with any other entity, changing them outside of a transaction detaches them, and they
+        must be reattached with <code class="code">persist()</code> for the data to be saved.
+    </p><div class="example"><a name="d0e2158"></a><p class="title"><b>Example&nbsp;18.16.&nbsp;Persisting entities</b></p><div class="example-contents"><pre class="programlisting">@NodeEntity
+<span class="hl-keyword">class</span> Person {
+    String name;
+    Person(String name) { <span class="hl-keyword">this</span>.name = name; }
+}
+
+<span class="hl-comment">// Store Michael in the database.</span>
+Person p = <span class="hl-keyword">new</span> Person(<span class="hl-string">"Michael"</span>).persist();
+</pre></div></div><br class="example-break"><div class="section" lang="en"><div class="titlepage"><div><div><h3 class="title"><a name="reference:programming-model:detached:relating"></a>18.8.1.&nbsp;Relating detached entities</h3></div></div></div><p>
+            As mentioned above, an entity simply created with the <code class="code">new</code> keyword starts out detached.
+            It also has no state assigned to it. If you create a new entity with <code class="code">new</code> and then throw
+            it away, the database won't be touched at all.
+        </p><p>
+            Now consider this scenario:
+            </p><div class="example"><a name="d0e2176"></a><p class="title"><b>Example&nbsp;18.17.&nbsp;Relationships outside of transactions</b></p><div class="example-contents"><pre class="programlisting">@NodeEntity
+<span class="hl-keyword">class</span> Movie {
+    <span class="hl-keyword">private</span> Actor topActor;
+    <span class="hl-keyword">public</span> <span class="hl-keyword">void</span> setTopActor(Actor actor) {
+        topActor = actor;
+    }
+}
+
+@NodeEntity
+<span class="hl-keyword">class</span> Actor {
+}
+
+Movie movie = <span class="hl-keyword">new</span> Movie();
+Actor actor = <span class="hl-keyword">new</span> Actor();
+
+movie.setTopActor(actor);
+</pre></div></div><p><br class="example-break">
+        </p><p>
+            Neither the actor nor the movie has been assigned a node in the graph. If we were to call
+            <code class="code">movie.persist()</code>, then Spring Data Graph would first create a node for the movie.
+            It would then note that there is a relationship to an actor, so it would call actor.persist()
+            in a cascading fashion. Once the actor has been persisted, it will create the relationship
+            from the movie to the actor. All of this will be done atomically in one transaction.
+        </p><p>
+            Important to note here is that if <code class="code">actor.persist()</code> is called instead, then only
+            the actor will be persisted. The reason for this is that the actor entity knows nothing about
+            the movie entity. It is the movie entity that has the reference to the actor. Also note that
+            this behavior is not dependent on any configured relationship direction on the annotations.
+            It is a matter of Java references and is not related to the data model in the database.
+        </p><p>
+            The persist operation (merge) stores all properties of the entity to the graph database
+            and puts the entity in attached mode. There is no need to update the reference to the Java
+            POJO as the underlying backing node handles the read-through transparently. If multiple
+            object instances that point to the same node are persisted, the ordering is not important
+            as long as they contain distinct changes. For concurrent changes a concurrent modification
+            exception is thrown (subject to be parametrizable in the future).
+        </p><p>
+            If the relationships form a cycle, then the entities will first all be assigned a node in
+            the database, and then the relationships will be created. The cascading of <code class="code">persist()</code>
+            is however only cascaded to related entity fields that have been modified.
+        </p><p>
+            In the following example, the actor and the movie are both attached entites, having both been
+            previously persisted to the graph:
+            </p><div class="example"><a name="d0e2201"></a><p class="title"><b>Example&nbsp;18.18.&nbsp;Cascade for modified fields</b></p><div class="example-contents"><pre class="programlisting">actor.setName(<span class="hl-string">"Billy Bob"</span>);
+movie.persist();
+</pre></div></div><p><br class="example-break">
+            In this case, even though the movie has a reference to the actor, the name change on the actor
+            will not be persisted by the call to <code class="code">movie.persist()</code>. The reason for this is, as
+            mentioned above, that cascading will only be done for fields that have been modified. Since the
+            <code class="code">movie.topActor</code> field has not been modified, it will not cascade the persist operation
+            to the actor.
+        </p></div></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="reference:programming-model:typerepresentationstrategy"></a>18.9.&nbsp;Entity type representation</h2></div></div></div><p>
+        There are several ways to represent the Java type hierarchy of the data model in the graph. In general, for all
+        node and relationship entities, type information is needed to perform certain repository operations. Some of
+        this type information is saved in the graph database.
+    </p><p>
+        Implementations of <code class="code">TypeRepresentationStrategy</code> take care of persisting this information on entity instance
+        creation. They also provide the repository methods that use this type information to perform their operations,
+        like findAll and count.
+    </p><p>
+        There are three available implementations for node entities to choose from.
+        </p><div class="itemizedlist"><ul type="disc"><li><p>
+                    <code class="code">IndexingNodeTypeRepresentationStrategy</code>
+                </p><p>
+                    Stores entity types in the integrated index. Each entity node gets indexed with its type and
+                    any supertypes that are also<code class="code">@NodeEntity</code>-annotated. The special index used for this
+                    is called<code class="code">__types__</code>. Additionally, in order to get the type of an entity node, each
+                    node has a property
+                    <code class="code">__type__</code>
+                    with the type of that entity.
+                </p></li><li><p>
+                    <code class="code">SubReferenceNodeTypeRepresentationStrategy</code>
+                </p><p>
+                    Stores entity types in a tree in the graph representing the type hierarchy. Each entity
+                    has a INSTANCE_OF relationship to a type node representing that entity's type. The type may or
+                    may not have a SUBCLASS_OF relationship to another type node.
+                </p></li><li><p>
+                    <code class="code">NoopNodeTypeRepresentationStrategy</code>
+                </p><p>
+                    Does not store any type information, and does hence not support finding by type, counting by type,
+                    or retrieving the type of any entity.
+                </p></li></ul></div><p>
+    </p><p>
+        There are two implementations for relationship entities available, same behavior as the corresponding ones
+        above:
+        </p><div class="itemizedlist"><ul type="disc"><li><p>
+                    <code class="code">IndexingRelationshipTypeRepresentationStrategy</code>
+                </p></li><li><p>
+                    <code class="code">NoopRelationshipTypeRepresentationStrategy</code>
+                </p></li></ul></div><p>
+    </p><p>
+        Spring Data Graph will by default autodetect which are the most suitable strategies for node and relationship
+        entities. For new data stores, it will always opt for the indexing strategies. If a data store was created
+        with the older<code class="code">SubReferenceNodeTypeRepresentationStrategy</code>, then it will continue to use that
+        strategy for node entities. It will however in that case use the no-op strategy for relationship entities,
+        which means that the old data stores have no support for searching for relationship entities. The indexing
+        strategies are recommended for all new users.
+    </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="reference:programming-model:projection"></a>18.10.&nbsp;Projecting entities</h2></div></div></div><p>
+        As the underlying data model of a graph database doesn't imply and enforce strict type constraints like a
+        relational model does, it offers much more flexibility on how to model your domain classes and which of
+        those to use in different contexts.
+    </p><p>
+        For instance an order can be used in these contexts: customer, procurement, logistics, billing, fulfillment
+        and many more. Each of those contexts requires its distinct set of attributes and operations. As Java
+        doesn't support mixins one would put the sum of all of those into the entity class and thereby making it
+        very big, brittle and hard to understand. Being able to take a basic order and project it to a different
+        (not related in the inheritance hierarchy or even an interface) order type that is valid in the current
+        context and only offers the attributes and methods needed here would be very benefitial.
+    </p><p>Spring Data Graph offers initial support for projecting node and relationship entities to different target
+        types. All instances of this projected entity share the same backing node or relationship, so data changes are
+        reflected immediately.
+    </p><p>
+        This could for instance also be used to handle nodes of a traversal with a unified (simpler) type (e.g. for
+        reporting or auditing) and only project them to a concrete, more functional target type when the business
+        logic requires it.
+    </p><div class="example"><a name="d0e2315"></a><p class="title"><b>Example&nbsp;18.19.&nbsp;Projection of entities</b></p><div class="example-contents"><pre class="programlisting">@NodeEntity
+<span class="hl-keyword">class</span> Trainee {
+    String name;
+    @RelatedTo
+    Set&lt;Training&gt; trainings;
+}
+
+<span class="hl-keyword">for</span> (Person person : graphRepository.findAllByProperyValue(<span class="hl-string">"occupation"</span>,<span class="hl-string">"developer"</span>)) {
+    Developer developer = person.projectTo(Developer.<span class="hl-keyword">class</span>);
+    <span class="hl-keyword">if</span> (developer.isJavaDeveloper()) {
+        trainInSpringData(developer.projectTo(Trainee.<span class="hl-keyword">class</span>));
+    }
+}
+</pre></div></div><br class="example-break"></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="reference:programming-model:validation"></a>18.11.&nbsp;Bean validation (JSR-303)</h2></div></div></div><p>
+        Spring Data Graph supports property-based validation support. When a property is changed, it is
+        checked against the annotated constraints, e.g. <code class="code">@Min</code>, <code class="code">@Max</code>,
+        <code class="code">@Size</code>, etc. Validation errors throw a <code class="code">ValidationException</code>. The validation
+        support that comes with Spring is used for evaluating the constraints. To use this feature, a validator
+        has to be registered with the <code class="code">GraphDatabaseContext</code>.
+    </p><div class="example"><a name="d0e2340"></a><p class="title"><b>Example&nbsp;18.20.&nbsp;Bean validation</b></p><div class="example-contents"><pre class="programlisting">@NodeEntity
+<span class="hl-keyword">class</span> Person {
+    @Size(min = 3, max = 20)
+    String name;
+
+    @Min(0) @Max(100)
+    <span class="hl-keyword">int</span> age;
+}
+</pre></div></div><br class="example-break"></div></div><div xmlns:fo="http://www.w3.org/1999/XSL/Format" class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="neo4j.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="setup.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">Chapter&nbsp;17.&nbsp;Introduction to Neo4j&nbsp;</td><td width="20%" align="center"><span style="color:white;font-size:90%;"><a href="http://www.springsource.com/" title="SpringSource">Sponsored by SpringSource
+                                        </a></span></td><td width="40%" align="right" valign="top">&nbsp;Chapter&nbsp;19.&nbsp;Environment setup</td></tr></table></div></body></html>

@@ -1,0 +1,94 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>Chapter&nbsp;25.&nbsp;Neo4j Server</title><link rel="stylesheet" href="css/html.css" type="text/css"><meta name="generator" content="DocBook XSL Stylesheets V1.73.2"><link rel="start" href="index.html" title="Good Relationships"><link rel="up" href="reference.html" title="Part&nbsp;II.&nbsp;Reference Documentation"><link rel="prev" href="reference:aspectj-details.html" title="Chapter&nbsp;24.&nbsp;AspectJ details"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div xmlns:fo="http://www.w3.org/1999/XSL/Format" style="background-color:white;border:none;height:73px;border:1px solid black;"><a style="border:none;" href="http://static.springframework.org/spring-ws/site/" title="The Spring Framework - Spring Web Services"><img style="border:none;" src="images/xdev-spring_logo.jpg"></a><a style="border:none;" href="http://www.springsource.com/" title="SpringSource"><img style="border:none;position:absolute;padding-top:5px;right:42px;" src="images/s2_box_logo.png"></a></div><div class="chapter" lang="en"><div class="titlepage"><div><div><h2 class="title"><a name="reference:neo4j-server"></a>Chapter&nbsp;25.&nbsp;Neo4j Server</h2></div></div></div><p>
+        Neo4j is not only available in embedded mode. It can also be installed and run as a stand-alone server
+        accessible via a REST API. Developers can integrate Spring Data Graph into the Neo4j server infrastructure
+        in two ways: in an unmanaged server extension, or via the REST API.
+    </p><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e2863"></a>25.1.&nbsp;Server Extension</h2></div></div></div><p>
+            When should you write a server extension? The default REST API is essentially a REST'ified representation
+            of the Neo4j core API. It is nice for getting started, and for simpler scenarios. For more involved
+            solutions that require high-volume access or more complex operations, writing a server extension that
+            is able to process external parameters, do all the computations locally in the plugin, and then return
+            just the relevant information to the calling client is preferable.
+        </p><p>
+            The Neo4j Server has two built-in extension mechanisms. It is possible to extend existing URI endpoints
+            like the graph database, nodes, or relationships, adding new URIs or methods to those. This is achieved
+            by writing a <a class="ulink" href="http://docs.neo4j.org/chunked/milestone/server-plugins.html" target="_top">server plugin</a>.
+            This plugin type has some restrictions though.
+        </p><p>
+            For complete freedom in the implementation, an
+            <a class="ulink" href="http://docs.neo4j.org/chunked/milestone/server-unmanaged-extensions.html" target="_top">unmanaged extension</a>
+            can be used. Unmanaged extensions are essentially <a class="ulink" href="http://jersey.java.net/" target="_top">Jersey</a>
+            resource implementations. The resource constructors or methods can get the
+            <code class="code">GraphDatabaseService</code> injected to execute the necessary operations and return appropriate
+            <code class="code">Representations</code>.
+        </p><p>
+            Both kinds of extensions have to be packaged as JAR files and added to the Neo4j Server's plugin
+            directory. Server Plugins are picked up by the server at startup if they provide the necessary
+            <code class="code">META-INF.services/org.neo4j.server.plugins.ServerPlugin</code> file for Java's ServiceLoader
+            facility. Unmanaged extensions have to be registered with the Neo4j Server configuration.
+        </p><div class="example"><a name="d0e2892"></a><p class="title"><b>Example&nbsp;25.1.&nbsp;Configuring an unmanaged extension</b></p><div class="example-contents"><pre class="programlisting"><span class="hl-keyword">org.neo4j.server.thirdparty_jaxrs_classes=com.example.mypackage=</span>/my-context</pre></div></div><br class="example-break"><p>
+            Running Spring Data Graph on the Neo4j Server is easy. You need to tell the server where to find the
+            Spring context configuration file, and which beans from it to expose:
+            </p><div class="example"><a name="d0e2899"></a><p class="title"><b>Example&nbsp;25.2.&nbsp;Server plugin initialization</b></p><div class="example-contents"><pre class="programlisting"><span class="hl-keyword">public</span> <span class="hl-keyword">class</span> HelloWorldInitializer <span class="hl-keyword">extends</span> SpringPluginInitializer {
+    <span class="hl-keyword">public</span> HelloWorldInitializer() {
+        <span class="hl-keyword">super</span>(<span class="hl-keyword">new</span> String[]{<span class="hl-string">"spring/helloWorldServer-Context.xml"</span>},
+              Pair.of(<span class="hl-string">"worldRepository"</span>, WorldRepository.<span class="hl-keyword">class</span>),
+              Pair.of(<span class="hl-string">"graphRepositoryFactory"</span>, GraphRepositoryFactory.<span class="hl-keyword">class</span>));
+    }
+}
+</pre></div></div><p><br class="example-break">
+
+            Now, your resources can require the spring-beans they need, annotated with <code class="code">@Context</code> like this:
+            </p><div class="example"><a name="d0e2908"></a><p class="title"><b>Example&nbsp;25.3.&nbsp;Jersey resource</b></p><div class="example-contents"><pre class="programlisting">@Path( <span class="hl-string">"/path"</span> )
+@POST
+@Produces( MediaType.APPLICATION_JSON )
+<span class="hl-keyword">public</span> <span class="hl-keyword">void</span> foo( @Context WorldRepository repo ) {
+    ...
+}
+</pre></div></div><p><br class="example-break">
+            The <code class="code">SpringPluginInitializer</code> merges the GraphDatabaseService with the Spring configuration
+            and registers the named beans as Jersey <code class="code">Injectables</code>. It is still necessary to list the
+            initializer's fully qualified class name in a file named
+            <code class="code">META-INF/services/org.neo4j.server.plugins.PluginLifecycle</code>. The Neo4j Server can then pick
+            up and run the initialization classes before the extensions are loaded.
+        </p></div><div class="section" lang="en"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="d0e2923"></a>25.2.&nbsp;Using Spring Data Graph as a REST client</h2></div></div></div><p>
+            Spring Data Graph can use a set of Java REST bindings which come as a drop in replacement for the
+            GraphDatabaseService API. By simply configuring the <code class="code">graphDatabaseService</code> to be a
+            <code class="code">RestGraphDatabase</code> pointing to a Neo4j Server instance.
+        </p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+                The Neo4j Server REST API does not allow for transactions to span across requests, which means
+                that Spring Data Graph is not transactional when running with a <code class="code">RestGraphDatabase</code>.
+            </p></div><p>
+            Please also keep in mind that performing graph operations via the REST-API is about one order of
+            magnitude slower than location operations. Try to use the Neo4j Cypher query language,
+            server-side traversals (<code class="code">RestTraversal</code>) or Gremlin expressions whenever possible for retrieving large sets of data.
+            Future versions of Spring Data Graph will use the more performant batching as well as a binary protocol.
+        </p><p>
+        To set up your project to use the REST bindings, add this dependency to your pom.xml:
+</p><div class="example"><a name="d0e2947"></a><p class="title"><b>Example&nbsp;25.4.&nbsp;REST-Client configuration - pom.xml</b></p><div class="example-contents"><pre class="programlisting">
+&lt;<span class="hl-tag">dependency</span>&gt;
+  &lt;<span class="hl-tag">groupId</span>&gt;org.springframework.data&lt;<span class="hl-tag">/groupId</span>&gt;
+  &lt;<span class="hl-tag">artifactId</span>&gt;spring-data-neo4j-rest&lt;<span class="hl-tag">/artifactId</span>&gt;
+  &lt;<span class="hl-tag">version</span>&gt;1.1.0&lt;<span class="hl-tag">/version</span>&gt;
+&lt;<span class="hl-tag">/dependency</span>&gt;
+</pre></div></div><p><br class="example-break">
+            Now, you set up the normal Spring Data Graph configuration, but point the database to an URL instead
+            of a local directory, like so:
+            </p><div class="example"><a name="d0e2953"></a><p class="title"><b>Example&nbsp;25.5.&nbsp;REST client configuration - application context</b></p><div class="example-contents"><pre class="programlisting">&lt;<span class="hl-tag">datagraph:config</span> <span class="hl-attribute">graphDatabaseService</span>=<span class="hl-value">"graphDatabaseService"</span>/&gt;
+
+&lt;<span class="hl-tag">bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"graphDatabaseService"</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.data.neo4j.rest.RestGraphDatabase"</span>&gt;
+    &lt;<span class="hl-tag">constructor-arg</span> <span class="hl-attribute">value</span>=<span class="hl-value">"http://localhost:7474/db/data/"</span>/&gt;
+&lt;<span class="hl-tag">/bean</span>&gt;
+</pre></div></div><p><br class="example-break">
+            Your project is now set up to work against a remote Neo4j Server.
+        </p><p>
+            The remote REST implementation works for both the Neo4jTemplate as well as the GraphEntities. For traversals
+            and cypher-graph-queries it is sensible to forward those to the remote and execute them there instead of
+            walking the graph over the wire. RestGraphDatabase already supports that by providing methods that forward
+            to the remote instance. (e.g. <code class="code">queryEngineFor(), index() and createTraversalDescription()</code>).
+            Please use those methods when interacting with a remote server for optimal performance.
+        </p><p>
+
+        </p></div></div><div xmlns:fo="http://www.w3.org/1999/XSL/Format" class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="reference:aspectj-details.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right">&nbsp;</td></tr><tr><td width="40%" align="left" valign="top">Chapter&nbsp;24.&nbsp;AspectJ details&nbsp;</td><td width="20%" align="center"><span style="color:white;font-size:90%;"><a href="http://www.springsource.com/" title="SpringSource">Sponsored by SpringSource
+                                        </a></span></td><td width="40%" align="right" valign="top">&nbsp;</td></tr></table></div></body></html>

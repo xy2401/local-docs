@@ -1,0 +1,187 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>6.&nbsp;XML Types</title><link rel="stylesheet" href="css/manual-multipage.css" type="text/css"><meta name="generator" content="DocBook XSL Stylesheets V1.75.2"><link rel="home" href="index.html" title="Spring Data JDBC Extensions Reference Documentation"><link rel="up" href="pt02.html" title="Part&nbsp;II.&nbsp;JDBC Extensions for the Oracle Database"><link rel="prev" href="orcl.streamsaq.html" title="5.&nbsp;Oracle's Streams AQ (Advanced Queueing)"><link rel="next" href="orcl.datatypes.html" title="7.&nbsp;Advanced Data Types"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="navheader"><table width="100%" summary="Navigation header"><tr><th colspan="3" align="center">6.&nbsp;XML Types</th></tr><tr><td width="20%" align="left"><a accesskey="p" href="orcl.streamsaq.html">Prev</a>&nbsp;</td><th width="60%" align="center">Part&nbsp;II.&nbsp;JDBC Extensions for the Oracle Database</th><td width="20%" align="right">&nbsp;<a accesskey="n" href="orcl.datatypes.html">Next</a></td></tr></table><hr></div><div class="chapter" title="6.&nbsp;XML Types"><div class="titlepage"><div><div><h2 class="title"><a name="orcl.xmltypes"></a>6.&nbsp;XML Types</h2></div></div></div><p>Oracle has some advanced XML Type support built into the database. XML
+  data stored in the database is accessible wia JDBC using some Oracle
+  specific classes.</p><p>The JDBC framework provided with the Spring Framework supports most of
+  this already via SqlTypeValue and SqlReturnType. There is however a need for
+  documentation and examples which are specifically targeted for an Oracle
+  environment so teams can take advantage of this support and have a reference
+  for best practices for the use of these features in an Oracle/Spring
+  environment.</p><div class="section" title="6.1&nbsp;Dependencies"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="orcl.xmltypes.1"></a>6.1&nbsp;Dependencies</h2></div></div></div><p>To use the Oracle XML support you need to use a couple of jar files
+    available in the <em class="citetitle">Oracle XML Developers Kit</em> download
+    available from Oracle. You need <code class="filename">xdb.jar</code> and also the
+    <code class="filename">xmlparserv2.jar</code> since the XMLType depends on this
+    parser library.</p><p>There is optional support for Spring's Object/XML Mapping (OXM) support.
+    If you use this support then you would also need a dependency for the Spring 
+    Framework OXM sub-project. The jar files needed is 
+    <code class="filename">spring-oxm.jar</code>.</p><p>All samples in this chapter access a table named "xml_table". Here
+    is the DDL to create this table:</p><pre class="programlisting">CREATE TABLE xml_table (
+    id NUMBER(10),
+    xml_text XMLTYPE,
+    PRIMARY KEY (id));
+</pre></div><div class="section" title="6.2&nbsp;Writing XML to an XMLTYPE column"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="orcl.xmltypes.2"></a>6.2&nbsp;Writing XML to an XMLTYPE column</h2></div></div></div><p>To write XML data to a table you need to pass in the XML using a
+    custom <code class="classname">SqlTypeValue</code>. In this implementation you
+    would be responsible for setting the parameter value for the XML column in
+    accordance with the API provided by the database driver.</p><p>For Oracle we provide a database specific implementation of an
+    <code class="classname">SqlXmlValue</code>, which is an extension of the
+    <code class="classname">SqlTypeValue</code>, that is easier to use. It works
+    together with an <code class="classname">SqlXmlHandler</code> and adds an
+    abstraction layer on top of the database specific APIs provided by the
+    database vendors. There is a new <code class="classname">SQLXML</code> datatype in
+    JDBC 4.0 that provides an abstraction, but so far it is not widely
+    implemented.</p><p>In this example we have an XML value that we pass in as the second
+    parameter. This XML value can be in the form of a
+    <code class="classname">String</code> or an
+    <code class="classname">org.w3c.dom.Document</code>. We use an
+    <code class="classname">SqlXmlHandler</code> instance to gain access to a new
+    instance of the <code class="classname">SqlXmlValue</code>. For the Oracle support
+    the implementation classes are <code class="classname">OracleXmlHandler</code> and
+    <code class="classname">OracleXmlTypeValue</code> respectively.</p><pre class="programlisting">    simpleJdbcTemplate.update(
+            "INSERT INTO xml_table (id, xml_text) VALUES (?, ?)",
+            id,
+            sqlXmlHandler.newSqlXmlValue(xml));<a name="xmltypes.sqlxml.in.1"></a><img src="images/callouts/1.png" alt="1" border="0">
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#xmltypes.sqlxml.in.1"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>We instantiate a new <code class="classname">SqlXmlValue</code> that
+          will handle setting the parameter value for the XML.</p></td></tr></table></div><p>The implementation of the SqlXmlHandler is chosen in the data access
+    configuration file and should be injected into the DAO or Repository
+    class.</p><pre class="programlisting"><span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"sqlXmlHandler"</span> 
+    <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.data.jdbc.support.oracle.OracleXmlHandler"</span><span class="hl-tag">/&gt;</span>
+</pre><p>Oracle's <code class="classname">XMLType</code> supports passing in an
+    <code class="classname">java.io.InputStream</code> but since this is not supported
+    by the JDBC 4.0 <code class="classname">SQLXML</code> datatype you will have to
+    use the Oracle specific <code class="classname">OracleXmlTypeValue</code>
+    directly.</p><pre class="programlisting">    simpleJdbcTemplate.update(
+            <span class="hl-string">"INSERT INTO xml_table (id, xml_text) VALUES (?, ?)"</span>,
+            id,
+            <span class="hl-keyword">new</span> OracleXmlTypeValue(is));
+</pre></div><div class="section" title="6.3&nbsp;Reading XML from an XMLTYPE column"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="orcl.xmltypes.3"></a>6.3&nbsp;Reading XML from an XMLTYPE column</h2></div></div></div><p>Running a query against a table with an XMLTYPE column requires a
+    RowMapper that can handle retrieval of the XMLType and the corrsponding
+    XML data. The <code class="classname">OracleXmlHandler</code> provides several
+    methods that supports easy access to the XML data. It is typically used in
+    a RowMapper.</p><pre class="programlisting">    String s = simpleJdbcTemplate.queryForObject(
+            "SELECT xml_text FROM xml_table WHERE id = ?",
+            new ParameterizedRowMapper&lt;String&gt;() {
+                public String mapRow(ResultSet rs, int i) throws SQLException {
+                    String s = sqlXmlHandler.getXmlAsString(rs, 1);<a name="xmltypes.sqlxml.out.1"></a><img src="images/callouts/1.png" alt="1" border="0">
+                    return s;
+                }
+            },
+            id);
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#xmltypes.sqlxml.out.1"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>We use the <code class="classname">OracleXmlHandler</code> to retreive
+          the XML value as a String.</p></td></tr></table></div><p>The XML data can be retreived as a String, a java.io.InputStream, a
+    java.io.Reader or a javax.xml.transform.Source.</p></div><div class="section" title="6.4&nbsp;Marshalling an object to an XMLTYPE column"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="orcl.xmltypes.4"></a>6.4&nbsp;Marshalling an object to an XMLTYPE column</h2></div></div></div><p>To map an object to XML and write this XML to a table you first need
+    to use marshalling support available from the Spring Web Services project.
+    Once the object data is marshalled to XML we can write the XML to a column
+    in a database table. The latter part is very similar to the the XML
+    support discussed above. We need to pass in the XML using a custom
+    <code class="classname">SqlTypeValue</code>. In the object mapping implementation
+    you would be responsible for marshalling the object to XML before setting
+    the parameter value.</p><p>In this example we have an object that needs to be marshalled to
+    XML. We are using a <code class="classname">Marshaller</code> provided by the
+    Spring Web Services project. The marshaller is typically configured and
+    then injected into the DAO or Repository. Here is an example configuration
+    using the JAXB 2.0 support. In addition to JAXB 2.0, there is also support
+    for JAXB 1.0, Castor, XML Beans, JiBX and XStream.</p><pre class="programlisting">    <span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"marshaller"</span> <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.oxm.jaxb.Jaxb2Marshaller"</span><span class="hl-tag">&gt;</span>
+        <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"classesToBeBound"</span><span class="hl-tag">&gt;</span>
+            <span class="hl-tag">&lt;list&gt;</span>
+                <span class="hl-tag">&lt;value&gt;</span>org.springframework.data.jdbc.samples.Item<span class="hl-tag">&lt;/value&gt;</span>
+            <span class="hl-tag">&lt;/list&gt;</span>
+        <span class="hl-tag">&lt;/property&gt;</span>
+    <span class="hl-tag">&lt;/bean&gt;</span>
+</pre><p>The JAXB 2.0 class that we are marshalling is a typical
+    javaBean and it uses annotations for the meta data so there is no
+    additional configuration needed.</p><pre class="programlisting"><span class="hl-keyword">package</span> org.springframework.data.jdbc.samples;
+
+<span class="hl-keyword">import</span> javax.xml.bind.annotation.*;
+<span class="hl-keyword">import</span> java.math.BigDecimal;
+
+<i><span class="hl-annotation" style="color: gray">@XmlRootElement(name = "item")</span></i>
+<i><span class="hl-annotation" style="color: gray">@XmlType(propOrder = {"name", "price"})</span></i>
+<span class="hl-keyword">public</span> <span class="hl-keyword">class</span> Item{
+    <span class="hl-keyword">private</span> Long id = <span class="hl-number">0L</span>;
+    <span class="hl-keyword">private</span> String name;
+    <span class="hl-keyword">private</span> BigDecimal price;
+
+    <i><span class="hl-annotation" style="color: gray">@XmlAttribute(name="id")</span></i>
+    <span class="hl-keyword">public</span> Long getId() {
+        <span class="hl-keyword">return</span> id;
+    }
+
+    <span class="hl-keyword">public</span> <span class="hl-keyword">void</span> setId(Long id) {
+        <span class="hl-keyword">this</span>.id = id;
+    }
+
+    <i><span class="hl-annotation" style="color: gray">@XmlElement(name = "item-name")</span></i>
+    <span class="hl-keyword">public</span> String getName() {
+        <span class="hl-keyword">return</span> name;
+    }
+
+    <span class="hl-keyword">public</span> <span class="hl-keyword">void</span> setName(String name) {
+        <span class="hl-keyword">this</span>.name = name;
+    }
+
+    <i><span class="hl-annotation" style="color: gray">@XmlElement(name = "price")</span></i>
+    <span class="hl-keyword">public</span> BigDecimal getPrice() {
+        <span class="hl-keyword">return</span> price;
+    }
+
+    <span class="hl-keyword">public</span> <span class="hl-keyword">void</span> setPrice(BigDecimal price) {
+        <span class="hl-keyword">this</span>.price = price;
+    }
+
+
+    <span class="hl-keyword">public</span> String toString() {
+        <span class="hl-keyword">return</span> <span class="hl-string">"["</span> + id + <span class="hl-string">"] "</span> + name + <span class="hl-string">" "</span> + price;
+    }
+}
+</pre><p>For Oracle we provide a database specific implementation of an
+    <code class="classname">SqlXmlMarshallingValue</code>, which is an extension of
+    the <code class="classname">SqlXmlValue</code>, that is easier to use. It works
+    together with an <code class="classname">SqlXmlObjectMappingHandler</code> similar
+    to the <code class="classname">SqlXmlHandler</code> that we used in the previous
+    example. The object to be marshalled is passed in when the new instance of
+    the <code class="classname">SqlXmlValue</code> is created.</p><p>For our dabase insert we pass in the marshalled value as the second
+    parameter. The first parameter is the id of the object, and this will be
+    use as the primary key for the row. We use an
+    <code class="classname">SqlXmlHandler</code> instance to gain access to a new
+    instance of the <code class="classname">SqlXmlMappingValue</code>. For the Oracle
+    support the implementation classes are
+    <code class="classname">OracleXmlObjectMappingHandler</code> and
+    <code class="classname">OracleXmlMarshallingValue</code> respectively.</p><pre class="programlisting">    simpleJdbcTemplate.update(
+            <span class="hl-string">"INSERT INTO xml_table (id, xml_text) VALUES (?, ?)"</span>,
+            item.getId(),
+            sqlXmlObjectMappingHandler
+                    .newMarshallingSqlXmlValue(item));<a name="xmltypes.mapping.in.1"></a><img src="images/callouts/1.png" alt="1" border="0">
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#xmltypes.mapping.in.1"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>We instantiate a new marshalling
+          <code class="classname">SqlXmlValue</code> that will handle mapping the
+          parameter object to XML using a marshaller.</p></td></tr></table></div><p>The implementation of the SqlXmlObjectMappingHandler is chosen in
+    the data access configuration file and should be injected into the DAO or
+    Repository class.</p><pre class="programlisting"><span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"sqlXmlHandler"</span> 
+    <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.data.jdbc.support.oracle.OracleXmlObjectMappingHandler"</span><span class="hl-tag">&gt;</span>
+    <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"marshaller"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"marshaller"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span>
+</pre></div><div class="section" title="6.5&nbsp;Unmarshalling an object from an XMLTYPE column"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="orcl.xmltypes.5"></a>6.5&nbsp;Unmarshalling an object from an XMLTYPE column</h2></div></div></div><p>Last piece we need is reading the XML from the database and have it
+    unmarshalled to an Item object. We will perform this work in a
+    <code class="classname">RowMapper</code> together with the
+    <code class="classname">SqlXmlObjectMappingHandler</code>.</p><pre class="programlisting">    Item i = simpleJdbcTemplate.queryForObject(
+            "SELECT xml_text FROM xml_table WHERE id = ?",
+            new ParameterizedRowMapper&lt;Item&gt;() {
+                public Item mapRow(ResultSet rs, int i) throws SQLException {
+                    return (Item) sqlXmlObjectMappingHandler
+                            .getXmlAsObject(rs, 1);<a name="xmltypes.mapping.out.1"></a><img src="images/callouts/1.png" alt="1" border="0">
+                }
+            },
+            id);
+</pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td width="5%" valign="top" align="left"><p><a href="#xmltypes.mapping.out.1"><img src="images/callouts/1.png" alt="1" border="0"></a> </p></td><td valign="top" align="left"><p>We use the <code class="classname">SqlXmlObjectMappingHandler</code>
+          to retreive the XML value and have it unmarshalled to an Item
+          instance.</p></td></tr></table></div><p>The XML data is unsmarshalled using an
+    <code class="classname">Unmarshaller</code> which in the JAXB 2.0 case is also
+    implemented by the <code class="classname">Jaxb2Marshaller</code> class. It must
+    be injected into the <code class="classname">unmarshaller</code> property of the
+    SqlXmlObjectMappingHandler. Since marshalling and unmarshalling is
+    performed by the same object we pass in the bean named
+    <code class="classname">marshaller</code> for the
+    <code class="classname">unmarshaller</code> property. </p><pre class="programlisting"><span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"sqlXmlHandler"</span> 
+    <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.data.jdbc.support.oracle.OracleXmlObjectMappingHandler"</span><span class="hl-tag">&gt;</span>
+    <span class="hl-tag">&lt;property</span> <span class="hl-attribute">name</span>=<span class="hl-value">"unmarshaller"</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"marshaller"</span><span class="hl-tag">/&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span>
+</pre></div></div><div class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="orcl.streamsaq.html">Prev</a>&nbsp;</td><td width="20%" align="center"><a accesskey="u" href="pt02.html">Up</a></td><td width="40%" align="right">&nbsp;<a accesskey="n" href="orcl.datatypes.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">5.&nbsp;Oracle's Streams AQ (Advanced Queueing)&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right" valign="top">&nbsp;7.&nbsp;Advanced Data Types</td></tr></table></div></body></html>

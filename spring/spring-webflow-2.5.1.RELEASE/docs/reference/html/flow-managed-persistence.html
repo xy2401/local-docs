@@ -1,0 +1,87 @@
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+   <title>7.&nbsp;Flow Managed Persistence</title><link rel="stylesheet" type="text/css" href="css/manual-multipage.css"><meta name="generator" content="DocBook XSL Stylesheets V1.78.1"><link rel="home" href="index.html" title="Spring Web Flow Reference Guide"><link rel="up" href="index.html" title="Spring Web Flow Reference Guide"><link rel="prev" href="actions.html" title="6.&nbsp;Executing actions"><link rel="next" href="flow-security.html" title="8.&nbsp;Securing Flows"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="navheader"><table width="100%" summary="Navigation header"><tr><th colspan="3" align="center">7.&nbsp;Flow Managed Persistence</th></tr><tr><td width="20%" align="left"><a accesskey="p" href="actions.html">Prev</a>&nbsp;</td><th width="60%" align="center">&nbsp;</th><td width="20%" align="right">&nbsp;<a accesskey="n" href="flow-security.html">Next</a></td></tr></table><hr></div><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a name="flow-managed-persistence" href="#flow-managed-persistence"></a>7.&nbsp;Flow Managed Persistence</h1></div></div></div>
+	
+	<div class="sect1"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="flow-managed-persistence-introduction" href="#flow-managed-persistence-introduction"></a>7.1.&nbsp;Introduction</h2></div></div></div>
+		
+		<p>
+			Most applications access data in some way.
+			Many modify data shared by multiple users and therefore require transactional data access properties.
+			They often transform relational data sets into domain objects to support application processing.
+			Web Flow offers "flow managed persistence" where a flow can create, commit, and close a object persistence context for you.
+			Web Flow integrates both Hibernate and JPA object persistence technologies.
+		</p>
+		<p>
+			Apart from flow-managed persistence, there is the pattern of fully encapsulating PersistenceContext management within the service layer of your application.
+			In that case, the web layer does not get involved with persistence, instead it works entirely with detached objects that are passed to and returned by your service layer.
+			This chapter will focus on the flow-managed persistence, exploring how and when to use this feature.
+		</p>
+	</div>
+	<div class="sect1"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="flowScopedPersistenceContext" href="#flowScopedPersistenceContext"></a>7.2.&nbsp;FlowScoped PersistenceContext</h2></div></div></div>
+		
+		<p>
+			This pattern creates a <code class="code">PersistenceContext</code> in <code class="code">flowScope</code> on flow startup,
+			uses that context for data access during the course of flow execution, and commits changes made to persistent entities at the end.
+			This pattern provides isolation of intermediate edits by only committing changes to the database at the end of flow execution.
+			This pattern is often used in conjunction with an optimistic locking strategy to protect the integrity of data modified in parallel by multiple users.
+			To support saving and restarting the progress of a flow over an extended period of time, a durable store for flow state must be used.
+			If a save and restart capability is not required, standard HTTP session-based storage of flow state is sufficient.
+			In that case, session expiration or termination before commit could potentially result in changes being lost.
+		</p>
+		<p>
+			To use the FlowScoped PersistenceContext pattern, first mark your flow as a <code class="code">persistence-context</code>:
+		</p>
+<pre class="programlisting">
+<span class="hl-directive" style="color: maroon">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
+<span class="hl-tag">&lt;flow</span> <span class="hl-attribute">xmlns</span>=<span class="hl-value">"http://www.springframework.org/schema/webflow"</span>
+      <span class="hl-attribute">xmlns:xsi</span>=<span class="hl-value">"http://www.w3.org/2001/XMLSchema-instance"</span>
+      <span class="hl-attribute">xsi:schemaLocation</span>=<span class="hl-value">"http://www.springframework.org/schema/webflow
+                          http://www.springframework.org/schema/webflow/spring-webflow.xsd"</span><span class="hl-tag">&gt;</span>
+
+    <span class="hl-tag">&lt;persistence-context /&gt;</span>
+
+<span class="hl-tag">&lt;/flow&gt;</span>
+</pre>
+		<p>
+			Then configure the correct <code class="code">FlowExecutionListener</code> to apply this pattern to your flow.
+			If using Hibernate, register the <code class="code">HibernateFlowExecutionListener</code>.  If using JPA, register the <code class="code">JpaFlowExecutionListener</code>.
+		</p>
+<pre class="programlisting">
+<span class="hl-tag">&lt;webflow:flow-executor</span> <span class="hl-attribute">id</span>=<span class="hl-value">"flowExecutor"</span> <span class="hl-attribute">flow-registry</span>=<span class="hl-value">"flowRegistry"</span><span class="hl-tag">&gt;</span>
+    <span class="hl-tag">&lt;webflow:flow-execution-listeners&gt;</span>
+        <span class="hl-tag">&lt;webflow:listener</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"jpaFlowExecutionListener"</span><span class="hl-tag"> /&gt;</span>
+    <span class="hl-tag">&lt;/webflow:flow-execution-listeners&gt;</span>
+<span class="hl-tag">&lt;/webflow:flow-executor&gt;</span>
+
+<span class="hl-tag">&lt;bean</span> <span class="hl-attribute">id</span>=<span class="hl-value">"jpaFlowExecutionListener"</span>
+      <span class="hl-attribute">class</span>=<span class="hl-value">"org.springframework.webflow.persistence.JpaFlowExecutionListener"</span><span class="hl-tag">&gt;</span>
+    <span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"entityManagerFactory"</span><span class="hl-tag"> /&gt;</span>
+    <span class="hl-tag">&lt;constructor-arg</span> <span class="hl-attribute">ref</span>=<span class="hl-value">"transactionManager"</span><span class="hl-tag"> /&gt;</span>
+<span class="hl-tag">&lt;/bean&gt;</span>
+</pre>
+		<p>
+			To trigger a commit at the end, annotate your end-state with the commit attribute:
+		</p>
+		<p>
+</p><pre class="programlisting">
+<span class="hl-tag">&lt;end-state</span> <span class="hl-attribute">id</span>=<span class="hl-value">"bookingConfirmed"</span> <span class="hl-attribute">commit</span>=<span class="hl-value">"true"</span><span class="hl-tag"> /&gt;</span>
+</pre><p>
+		</p>
+		<p>
+			That is it.  When your flow starts, the listener will handle allocating a new <code class="code">EntityManager</code> in <code class="code">flowScope</code>.
+			Reference this EntityManager at anytime from within your flow by using the special <code class="code">persistenceContext</code> variable.
+			In addition, any data access that occurs using a Spring managed data access object will use this EntityManager automatically.
+			Such data access operations should always execute non transactionally or in read-only transactions to maintain isolation of intermediate edits.
+		</p>
+	</div>
+	<div class="sect1"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="flow-managed-persistence-propagation" href="#flow-managed-persistence-propagation"></a>7.3.&nbsp;Flow Managed Persistence And Sub-Flows</h2></div></div></div>
+		
+		<p>
+			A flow managed <code class="code">PersistenceContext</code> is automatically extended
+			(propagated) to subflows assuming the subflow also has the <code class="code">&lt;perstistence-context/&gt;</code>
+			variable. When a subflow re-uses the <code class="code">PersistenceContext</code> started by its parent it ignores
+			commit flags when an end state is reached thereby deferring the final decision (to commit or not) to
+			its parent.
+		</p>
+	</div>
+</div><div class="navfooter"><hr><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="actions.html">Prev</a>&nbsp;</td><td width="20%" align="center">&nbsp;</td><td width="40%" align="right">&nbsp;<a accesskey="n" href="flow-security.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">6.&nbsp;Executing actions&nbsp;</td><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td><td width="40%" align="right" valign="top">&nbsp;8.&nbsp;Securing Flows</td></tr></table></div></body></html>
