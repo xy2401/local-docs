@@ -120,6 +120,12 @@
     repo.spring.io/release/org/springframework/integration/spring-integration-social-twitter/
 
 
+471.53 MB 
+[Index of release/org/springframework/xd/spring-xd/1.3.2.RELEASE](https://repo.spring.io/release/org/springframework/xd/spring-xd/1.3.2.RELEASE/)
+
+41.97 MB
+[Index of release/org/springframework/batch/spring-batch-dist/1.1.0.RELEASE](https://repo.spring.io/release/org/springframework/batch/spring-batch-dist/1.1.0.RELEASE/)
+
 
 # 20190522
 
