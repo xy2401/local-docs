@@ -20,9 +20,22 @@
 [Seam - 语境相关的组件 by满江红20080327](jboss/jboss-seam-2.0.0.GA/doc/reference/zh/html_single/)
 [官方地址](https://docs.jboss.org/seam/2.0.0.GA/reference/zh/html_single/)
 
+# oschina
+开源中国组织翻译
+[Apache+Mesos+官方文档_V1.0.html](oschina/Apache+Mesos+官方文档_V1.0.html)
+[gRPC+官方文档中文版_V1.0.html](oschina/gRPC+官方文档中文版_V1.0.html)
+[Reactor+指南中文版_V2.0.html](oschina/Reactor+指南中文版_V2.0.html)
+
+
 
 # online
 
-存放其他的文档地址
+其他文档在线地址
 
+[eclipse-collections/guide.md at master · eclipse/eclipse-collections](https://github.com/eclipse/eclipse-collections/blob/master/docs/guide.md#eclipse-collections-reference-guide)
+
+
+
+`graphql.github.io`[GraphQL | A query language for your API](https://graphql.github.io/)
+`graphql.cn`[GraphQL | 一种为你的 API 而生的查询语言](https://graphql.cn/)
 
