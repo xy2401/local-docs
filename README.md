@@ -142,10 +142,34 @@ spring
 
 oracle
 
-[The Java™ Tutorials](http://localhost/code/local/local-docs/oracle/java/tutorial/)
+[The Java™ Tutorials](oracle/java/tutorial/)
 `详细目录`[DETAIL.md#javaTutorial](DETAIL.md#javaTutorial)
 
+[JDK 11 Documentation - Books](https://docs.oracle.com/en/java/javase/11/books.html)
 
+本地地址
+,[access](oracle/java/11/access)
+,[core](oracle/java/11/core)
+,[gctuning](oracle/java/11/gctuning)
+,[install](oracle/java/11/install)
+,[intl](oracle/java/11/intl)
+,[javadoc](oracle/java/11/javadoc)
+,[jmx](oracle/java/11/jmx)
+,[jrockit-hotspot](oracle/java/11/jrockit-hotspot)
+,[jshell](oracle/java/11/jshell)
+,[language](oracle/java/11/language)
+,[management](oracle/java/11/management)
+,[migrate](oracle/java/11/migrate)
+,[nashorn](oracle/java/11/nashorn)
+,[rmi](oracle/java/11/rmi)
+,[scripting](oracle/java/11/scripting)
+,[security](oracle/java/11/security)
+,[sp_common](oracle/java/11/sp_common)
+,[tools](oracle/java/11/tools)
+,[troubleshoot](oracle/java/11/troubleshoot)
+,[vm](oracle/java/11/vm)
+
+`详细说明`[DETAIL.md#java11book](DETAIL.md#java11book)
 
 # online
 
