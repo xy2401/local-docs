@@ -273,3 +273,220 @@
 
 * [Jetty The Definitive Reference](eclipse/jetty-9.4.16.v20190411/)
 * [Eclipse OpenJ9](eclipse/openj9-docs-0.13.0/)
+
+
+oracle
+
+## javaTutorial
+
+
+- The Java™ Tutorials Java™教程 [/javase/tutorial/tutorialLearningPaths.html][tutorial-tutorialLearningPaths] [local][tutorial-tutorialLearningPaths-3]  [本地][tutorial-tutorialLearningPaths-4]
+    - **New To Java 新到Java**
+        - Getting Started 入门 [/javase/tutorial/getStarted/index.html][tutorial-getStarted] [local][tutorial-getStarted-3]  [本地][tutorial-getStarted-4]
+        - Learning the Java Language 学习Java语言[/javase/tutorial/java/index.html][tutorial-java] [local][tutorial-java-3]  [本地][tutorial-java-4]
+        - Essential Java Classes 基本Java类[/javase/tutorial/essential/index.html][tutorial-essential] [local][tutorial-essential-3]  [本地][tutorial-essential-4]
+    - **Building On The Foundation 建立在基础上**
+        - Collections 集合   [/javase/tutorial/collections/index.html][tutorial-collections] [local][tutorial-collections-3]  [本地][tutorial-collections-4]              
+        - Lambda Expressions Lambda表达式             [/javase/tutorial/java/javaOO/lambdaexpressions.html][tutorial-java-javaOO-lambdaexpressions]    [local][tutorial-java-javaOO-lambdaexpressions-3]  [本地][tutorial-java-javaOO-lambdaexpressions-4]
+        - Aggregate Operations 聚合操作    [/javase/tutorial/collections/streams/index.html][tutorial-collections-streams]  [local][tutorial-collections-streams-3]  [本地][tutorial-collections-streams-4]      
+        - Packaging Programs In JAR Files JAR文件中的打包程序 [/javase/tutorial/deployment/jar/index.html][tutorial-deployment-jar]  [local][tutorial-deployment-jar-3]  [本地][tutorial-deployment-jar-4]
+        - Internationalization 国际化           [/javase/tutorial/i18n/index.html][tutorial-i18n] [local][tutorial-i18n-3]  [本地][tutorial-i18n-4]
+        - Reflection    反射                 [/javase/tutorial/reflect/index.html][tutorial-reflect] [local][tutorial-reflect-3]  [本地][tutorial-reflect-4]
+        - Security   安全性                    [/javase/tutorial/security/index.html][tutorial-security] [local][tutorial-security-3]  [本地][tutorial-security-4]
+        - JavaBeans  JavaBeans                    [/javase/tutorial/javabeans/index.html][tutorial-javabeans] [local][tutorial-javabeans-3]  [本地][tutorial-javabeans-4]
+        - The Extension Mechanism 扩展机制        [/javase/tutorial/ext/index.html][tutorial-ext] [local][tutorial-ext-3]  [本地][tutorial-ext-4]
+        - Generics   泛型  [/javase/tutorial/extra/generics/index.html][tutorial-extra-generics] [local][tutorial-extra-generics-3]  [本地][tutorial-extra-generics-4]                
+    - **Cherish the Client? 珍惜客户？**
+        - Get Started with JavaFX   JavaFX入门 [/javase/8/javafx/get-started-tutorial/get_start_apps.htm][get-started-tutorial-get_start_apps]  [local][get-started-tutorial-get_start_apps-3]  [本地][get-started-tutorial-get_start_apps-4]
+        - Get Started with Scene Builder  Scene Builder入门   [/javase/8/scene-builder-2/get-started-tutorial/jfxsb-get_started.htm][get-started-tutorial-jfxsb-get_started]  [local][get-started-tutorial-jfxsb-get_started-3]  [本地][get-started-tutorial-jfxsb-get_started-4]
+        - Creating a GUI with Swing  使用Swing创建GUI         [/javase/tutorial/uiswing/index.html][tutorial-uiswing] [local][tutorial-uiswing-3]  [本地][tutorial-uiswing-4]
+        - Deployment      部署                   [/javase/tutorial/deployment/index.html][tutorial-deployment] relative][tutorial-deployment-3]  [本地][tutorial-deployment-4]
+        - 2D Graphics   2D图形                    [/javase/tutorial/2d/index.html][tutorial-2d]  [local][tutorial-2d-3]  [本地][tutorial-2d-4]
+        - Full-Screen Exclusive Mode API  全屏独占模式API   [/javase/tutorial/extra/fullscreen/index.html][tutorial-extra-fullscreen] [local][tutorial-extra-fullscreen-3]  [本地][tutorial-extra-fullscreen-4]
+    - **Fervor Over Server! 热情服务器！**
+        - JDBC Database Access JDBC数据库访问 [/javase/tutorial/jdbc/index.html][tutorial-jdbc] [local][tutorial-jdbc-3]  [本地][tutorial-jdbc-4]
+        - JMX      [/javase/tutorial/jmx/index.html][tutorial-jmx] [local][tutorial-jmx-3]  [本地][tutorial-jmx-4]
+        - JNDI     [/javase/tutorial/jndi/index.html][tutorial-jndi] [local][tutorial-jndi-3]  [本地][tutorial-jndi-4]
+        - JAXP                [/javase/tutorial/jaxp/index.html][tutorial-jaxp] [local][tutorial-jaxp-3]  [本地][tutorial-jaxp-4]
+        - RMI   [/javase/tutorial/rmi/index.html][tutorial-rmi] [local][tutorial-rmi-3]  [本地][tutorial-rmi-4]            
+        - Concurrency    并发    [/javase/tutorial/essential/concurrency/index.html][tutorial-essential-concurrency]  [local][tutorial-essential-concurrency-3]  [本地][tutorial-essential-concurrency-4] 
+
+
+[tutorial-tutorialLearningPaths]: https://docs.oracle.com/javase/tutorial/tutorialLearningPaths.html
+[tutorial-tutorialLearningPaths-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/tutorialLearningPaths.html
+[tutorial-tutorialLearningPaths-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/tutorialLearningPaths.html
+[tutorial-tutorialLearningPaths-3]: oracle/java/tutorial/tutorialLearningPaths.html
+[tutorial-tutorialLearningPaths-4]: oracle/java-zh/tutorial/tutorialLearningPaths.html
+
+[tutorial-getStarted]: https://docs.oracle.com/javase/tutorial/getStarted/index.html
+[tutorial-getStarted-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/getStarted/index.html
+[tutorial-getStarted-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/getStarted/index.html
+[tutorial-getStarted-3]: oracle/java/tutorial/getStarted/index.html
+[tutorial-getStarted-4]: oracle/java-zh/tutorial/getStarted/index.html
+
+
+[tutorial-java]: https://docs.oracle.com/javase/tutorial/java/index.html
+[tutorial-java-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/java/index.html
+[tutorial-java-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/java/index.html
+[tutorial-java-3]: oracle/java/tutorial/java/index.html
+[tutorial-java-4]: oracle/java-zh/tutorial/java/index.html
+
+
+[tutorial-essential]: https://docs.oracle.com/javase/tutorial/essential/index.html
+[tutorial-essential-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/essential/index.html
+[tutorial-essential-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/essential/index.html
+[tutorial-essential-3]: oracle/java/tutorial/essential/index.html
+[tutorial-essential-4]: oracle/java-zh/tutorial/essential/index.html
+
+[tutorial-collections]: https://docs.oracle.com/javase/tutorial/collections/index.html
+[tutorial-collections-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/collections/index.html
+[tutorial-collections-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/collections/index.html
+[tutorial-collections-3]: oracle/java/tutorial/collections/index.html
+[tutorial-collections-4]: oracle/java-zh/tutorial/collections/index.html
+
+[tutorial-java-javaOO-lambdaexpressions]: https://docs.oracle.com/javase/tutorial/java/javaOO/lambdaexpressions.html
+[tutorial-java-javaOO-lambdaexpressions-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/java/javaOO/lambdaexpressions.html
+[tutorial-java-javaOO-lambdaexpressions-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/java/javaOO/lambdaexpressions.html
+[tutorial-java-javaOO-lambdaexpressions-3]: oracle/java/tutorial/java/javaOO/lambdaexpressions.html
+[tutorial-java-javaOO-lambdaexpressions-4]: oracle/java-zh/tutorial/java/javaOO/lambdaexpressions.html
+
+
+[tutorial-collections-streams]: https://docs.oracle.com/javase/tutorial/collections/streams/index.html
+[tutorial-collections-streams-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/collections/streams/index.html
+[tutorial-collections-streams-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/collections/streams/index.html
+[tutorial-collections-streams-3]: oracle/java/tutorial/collections/streams/index.html
+[tutorial-collections-streams-4]: oracle/java-zh/tutorial/collections/streams/index.html
+
+
+[tutorial-deployment-jar]: https://docs.oracle.com/javase/tutorial/deployment/jar/index.html
+[tutorial-deployment-jar-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/deployment/jar/index.html
+[tutorial-deployment-jar-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/deployment/jar/index.html
+[tutorial-deployment-jar-3]: oracle/java/tutorial/deployment/jar/index.html
+[tutorial-deployment-jar-4]: oracle/java-zh/tutorial/deployment/jar/index.html
+
+
+[tutorial-i18n]: https://docs.oracle.com/javase/tutorial/i18n/index.html
+[tutorial-i18n-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/i18n/index.html
+[tutorial-i18n-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/i18n/index.html
+[tutorial-i18n-3]: oracle/java/tutorial/i18n/index.html
+[tutorial-i18n-4]: oracle/java-zh/tutorial/i18n/index.html
+
+
+[tutorial-reflect]: https://docs.oracle.com/javase/tutorial/reflect/index.html
+[tutorial-reflect-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/reflect/index.html
+[tutorial-reflect-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/reflect/index.html
+[tutorial-reflect-3]: oracle/java/tutorial/reflect/index.html
+[tutorial-reflect-4]: oracle/java-zh/tutorial/reflect/index.html
+
+
+[tutorial-security]: https://docs.oracle.com/javase/tutorial/security/index.html
+[tutorial-security-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/security/index.html
+[tutorial-security-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/security/index.html
+[tutorial-security-3]: oracle/java/tutorial/security/index.html
+[tutorial-security-4]: oracle/java-zh/tutorial/security/index.html
+
+
+[tutorial-javabeans]: https://docs.oracle.com/javase/tutorial/javabeans/index.html
+[tutorial-javabeans-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/javabeans/index.html
+[tutorial-javabeans-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/javabeans/index.html
+[tutorial-javabeans-3]: oracle/java/tutorial/javabeans/index.html
+[tutorial-javabeans-4]: oracle/java-zh/tutorial/javabeans/index.html
+
+
+[tutorial-ext]: https://docs.oracle.com/javase/tutorial/ext/index.html
+[tutorial-ext-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/ext/index.html
+[tutorial-ext-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/ext/index.html
+[tutorial-ext-3]: oracle/java/tutorial/ext/index.html
+[tutorial-ext-4]: oracle/java-zh/tutorial/ext/index.html
+
+
+[tutorial-extra-generics]: https://docs.oracle.com/javase/tutorial/extra/generics/index.html
+[tutorial-extra-generics-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/extra/generics/index.html
+[tutorial-extra-generics-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/extra/generics/index.html
+[tutorial-extra-generics-3]: oracle/java/tutorial/extra/generics/index.html
+[tutorial-extra-generics-4]: oracle/java-zh/tutorial/extra/generics/index.html
+
+[get-started-tutorial-get_start_apps]: https://docs.oracle.com/javase/8/javafx/get-started-tutorial/get_start_apps.htm
+[get-started-tutorial-get_start_apps-1]: https://xy2401-local-doc-java.github.io/javase/8/javafx/get-started-tutorial/get_start_apps.htm
+[get-started-tutorial-get_start_apps-2]: https://xy2401-local-doc-java-zh.github.io/javase/8/javafx/get-started-tutorial/get_start_apps.htm
+[get-started-tutorial-get_start_apps-3]: oracle/java/8/javafx/get-started-tutorial/get_start_apps.htm
+[get-started-tutorial-get_start_apps-4]: oracle/java-zh/8/javafx/get-started-tutorial/get_start_apps.htm
+
+
+[get-started-tutorial-jfxsb-get_started]: https://docs.oracle.com/javase/8/scene-builder-2/get-started-tutorial/jfxsb-get_started.htm
+[get-started-tutorial-jfxsb-get_started-1]: https://xy2401-local-doc-java.github.io/javase/8/scene-builder-2/get-started-tutorial/jfxsb-get_started.htm
+[get-started-tutorial-jfxsb-get_started-2]: https://xy2401-local-doc-java-zh.github.io/javase/8/scene-builder-2/get-started-tutorial/jfxsb-get_started.htm
+[get-started-tutorial-jfxsb-get_started-3]: oracle/java/8/scene-builder-2/get-started-tutorial/jfxsb-get_started.htm
+[get-started-tutorial-jfxsb-get_started-4]: oracle/java-zh/8/scene-builder-2/get-started-tutorial/jfxsb-get_started.htm
+
+
+[tutorial-uiswing]: https://docs.oracle.com/javase/tutorial/uiswing/index.html
+[tutorial-uiswing-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/uiswing/index.html
+[tutorial-uiswing-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/uiswing/index.html
+[tutorial-uiswing-3]: oracle/java/tutorial/uiswing/index.html
+[tutorial-uiswing-4]: oracle/java-zh/tutorial/uiswing/index.html
+
+
+[tutorial-deployment]: https://docs.oracle.com/javase/tutorial/deployment/index.html
+[tutorial-deployment-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/deployment/index.html
+[tutorial-deployment-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/deployment/index.html
+[tutorial-deployment-3]: oracle/java/tutorial/deployment/index.html
+[tutorial-deployment-4]: oracle/java-zh/tutorial/deployment/index.html
+
+
+[tutorial-2d]: https://docs.oracle.com/javase/tutorial/2d/index.html
+[tutorial-2d-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/2d/index.html
+[tutorial-2d-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/2d/index.html
+[tutorial-2d-3]: oracle/java/tutorial/2d/index.html
+[tutorial-2d-4]: oracle/java-zh/tutorial/2d/index.html
+
+
+[tutorial-extra-fullscreen]: https://docs.oracle.com/javase/tutorial/extra/fullscreen/index.html
+[tutorial-extra-fullscreen-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/extra/fullscreen/index.html
+[tutorial-extra-fullscreen-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/extra/fullscreen/index.html
+[tutorial-extra-fullscreen-3]: oracle/java/tutorial/extra/fullscreen/index.html
+[tutorial-extra-fullscreen-4]: oracle/java-zh/tutorial/extra/fullscreen/index.html
+
+
+[tutorial-jdbc]: https://docs.oracle.com/javase/tutorial/jdbc/index.html
+[tutorial-jdbc-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/jdbc/index.html
+[tutorial-jdbc-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/jdbc/index.html
+[tutorial-jdbc-3]: oracle/java/tutorial/jdbc/index.html
+[tutorial-jdbc-4]: oracle/java-zh/tutorial/jdbc/index.html
+
+
+
+[tutorial-jmx]: https://docs.oracle.com/javase/tutorial/jmx/index.html
+[tutorial-jmx-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/jmx/index.html
+[tutorial-jmx-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/jmx/index.html
+[tutorial-jmx-3]: oracle/java/tutorial/jmx/index.html
+[tutorial-jmx-4]: oracle/java-zh/tutorial/jmx/index.html
+
+
+[tutorial-jndi]: https://docs.oracle.com/javase/tutorial/jndi/index.html
+[tutorial-jndi-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/jndi/index.html
+[tutorial-jndi-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/jndi/index.html
+[tutorial-jndi-3]: oracle/java/tutorial/jndi/index.html
+[tutorial-jndi-4]: oracle/java-zh/tutorial/jndi/index.html
+
+
+[tutorial-jaxp]: https://docs.oracle.com/javase/tutorial/jaxp/index.html
+[tutorial-jaxp-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/jaxp/index.html
+[tutorial-jaxp-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/jaxp/index.html
+[tutorial-jaxp-3]: oracle/java/tutorial/jaxp/index.html
+[tutorial-jaxp-4]: oracle/java-zh/tutorial/jaxp/index.html
+
+
+
+[tutorial-rmi]: https://docs.oracle.com/javase/tutorial/rmi/index.html
+[tutorial-rmi-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/rmi/index.html
+[tutorial-rmi-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/rmi/index.html
+[tutorial-rmi-3]: oracle/java/tutorial/rmi/index.html
+[tutorial-rmi-4]: oracle/java-zh/tutorial/rmi/index.html
+
+
+[tutorial-essential-concurrency]: https://docs.oracle.com/javase/tutorial/essential/concurrency/index.html
+[tutorial-essential-concurrency-1]: https://xy2401-local-doc-java.github.io/javase/tutorial/essential/concurrency/index.html
+[tutorial-essential-concurrency-2]: https://xy2401-local-doc-java-zh.github.io/javase/tutorial/essential/concurrency/index.html
+[tutorial-essential-concurrency-3]: oracle/java/tutorial/essential/concurrency/index.html
+[tutorial-essential-concurrency-4]: oracle/java-zh/tutorial/essential/concurrency/index.html

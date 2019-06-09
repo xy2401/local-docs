@@ -140,6 +140,12 @@ spring
 - [Reactor+指南中文版_V2.0.html](oschina/Reactor+指南中文版_V2.0.html)
 
 
+oracle
+
+[The Java™ Tutorials](http://localhost/code/local/local-docs/oracle/java/tutorial/)
+`详细目录`[DETAIL.md#javaTutorial](DETAIL.md#javaTutorial)
+
+
 
 # online
 
