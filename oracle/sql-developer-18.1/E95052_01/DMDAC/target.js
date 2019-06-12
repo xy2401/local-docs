@@ -1,0 +1,38 @@
+jsonData = { "docs": [
+{ "a": "DMDACidm139879231562256", "t": "Oracle\u00AE SQL Developer Data Modeler Accessibility Guide", "h": "toc.htm", 
+ "c": [{ "a": "DMDACidm139879232371376", "t": "Preface", "h": "GUID-0B21503F-C903-4C55-8040-E9A35C8019C0.htm#DMDAC-GUID-0B21503F-C903-4C55-8040-E9A35C8019C0" },
+{ "a": "DMDACidm139879122990544", "t": "Data Modeler Accessibility Information", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7", 
+ "c": [ { "t": "About Oracle SQL Developer Data Modeler Accessibility", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-AC391F98-6E1A-4D3D-80F2-8B5F7CFA3B94" },
+ { "t": "Using a Screen Reader and Java Access Bridge with Oracle SQL Developer Data Modeler", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-7237AD1E-B83A-4985-9F24-C4129E1C2C6B" },
+{ "a": "DMDACidm139879229671552", "t": "Oracle SQL Developer Data Modeler Features that Support Accessibility", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-7FAB795F-623B-4771-8BD0-EB75DF65673D", 
+ "c": [ { "t": "Keyboard Access", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-625DBF11-E2F4-4A7B-8A65-16E3A9F73F46" },
+ { "t": "Screen Reader Readability", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-F4DE2185-A182-4BC4-BF6B-16DAA5E55F18" },
+ { "t": "Flexibility in Font and Color Choices", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-892AB095-5D6A-4A3E-B676-213E0577680F" },
+ { "t": "No Audio-only Feedback", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-4A06AF12-34D2-4EE7-A3D6-984CA2D221F9" },
+ { "t": "No Dependency on Blinking Cursor and Animation", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-675FD8EB-D560-4DEA-A4F2-C16E9EBD1A2F" },
+ { "t": "Screen Magnifier Usability", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-EDAA0A24-9C9E-4689-BB5F-80221F7ED36B" },
+ { "t": "How to Change the Editor or Tabbed View of a File", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-8EC76F76-54A8-403F-9CDF-E0CA026CE456" },
+ { "t": "How to Read Text in a Multiline Edit Field", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-B58644C4-3387-43A9-944D-D8B12C32EC34" },
+ { "t": "How to Read the Line Number in the Source Editor", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-5EEC0142-BAEF-4EB2-86DF-0ADFCE79F6BA" },
+ { "t": "How to Access Exception Stack HTML Links and Generated Javadoc Links in the Log Window", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-2B0D9C3D-2304-45BD-A74A-2E01A2B5DDC4" },
+ { }
+ ]
+ },
+{ "a": "DMDACidm139879124219264", "t": "Recommendations for Customizing Oracle SQL Developer Data Modeler", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-B81E785E-4D69-4E95-8303-AEC809E2744E", 
+ "c": [ { "t": "How to Customize the Accelerators Keys", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-23DFF68A-CE8C-408A-BD30-2A652795177C" },
+ { "t": "How to Pass a Conflicting Accelerator Key to Oracle SQL Developer Data Modeler", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-35D07793-5885-4870-9B3A-6F7D5743C9CC" },
+ { "t": "How to Change the Look and Feel of Data Modeler", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-71C9549A-249A-4509-AF11-67ED20CBEA53" },
+ { "t": "How to Customize the Fonts in Code Editors", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-61D40086-0086-46E1-B79E-EDF11117D3CC" },
+ { "t": "How to Customize Syntax Highlighting", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-1C49ACB1-FEAF-4B07-A3C8-2761E9BA2DAA" },
+ { "t": "How to Display Line Numbers in Code Editors", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-FA80D333-05DD-4717-AEDB-8AE3F26935A8" },
+ { "t": "How to Change the Timing for Completion Insight", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-C12C79BB-52B2-4BE5-A431-8BF243497326" },
+ { "t": "How to Specify the Columns in the Debugger", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-D24DD4EF-DF83-4733-9F66-7A35BD6B106C" },
+ { }
+ ]
+ },
+ { "t": "Highly Visual Features of Oracle SQL Developer Data Modeler", "h": "GUID-6B7197AE-9B1E-456E-B0B3-4D01ADA878C7.htm#DMDAC-GUID-1E10469F-2483-478F-92D9-BD6C70E4641E" },
+ { }
+ ]
+ },
+  { }
+ ] } ]};

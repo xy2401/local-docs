@@ -1,0 +1,15 @@
+var chapters = [
+  { topic: "chapter", section: "", title: "Oracle Data Miner ", anchor: "start_datamining", file: "oracle-data-miner.htm" },
+  { topic: "chapter", section: "", title: " Connections for Data Mining", anchor: "db_connect", file: "connections-for-data-mining.htm" },
+  { topic: "chapter", section: "", title: " Data Miner Projects ", anchor: "odmr_project_over", file: "data-miner-projects.htm" },
+  { topic: "chapter", section: "", title: "Workflow", anchor: "DMRUG148", file: "data-miner-workflows.htm" },
+  { topic: "chapter", section: "", title: "Data Nodes", anchor: "DMRUG1115", file: "data-nodes.htm" },
+  { topic: "chapter", section: "", title: "Using the Oracle Data Miner GUI ", anchor: "DMRUG356", file: "data-miner-gui.htm" },
+  { topic: "chapter", section: "", title: "Transforms Nodes ", anchor: "DMRUG418", file: "transform-nodes.htm" },
+  { topic: "chapter", section: "", title: "Model Nodes ", anchor: "DMRUG533", file: "model-nodes.htm" },
+  { topic: "chapter", section: "", title: "Model Operations", anchor: "DMRUG687", file: "model-operations.htm" },
+  { topic: "chapter", section: "", title: "Predictive Query Nodes ", anchor: "DMRUG728", file: "predictive-query-nodes.htm" },
+  { topic: "chapter", section: "", title: "Text Nodes ", anchor: "text", file: "text-nodes.htm" },
+  { topic: "chapter", section: "", title: "Testing and Tuning Models ", anchor: "test_tune", file: "testing-and-tuning-models.htm" },
+  { topic: "chapter", section: "", title: "Data Mining Algorithms ", anchor: "DMRUG873", file: "data-mininig-algorithms.htm" },
+  { } ];
