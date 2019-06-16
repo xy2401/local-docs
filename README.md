@@ -68,7 +68,38 @@ jboss
 [Overview (Hibernate Search 5.11.1.Final)](jboss/hibernate-search-5.11.1.Final/docs/api/) , 
 [Hibernate Search 5.11.1.Final: Reference Guide](jboss/hibernate-search-5.11.1.Final/docs/reference/en-US/html_single/)
 
+WildFly
 
+[WildFly Documentation](jboss/wildfly/)
+, [17](jboss/wildfly/17/)
+, [16](jboss/wildfly/16/)
+, [15](jboss/wildfly/15/)
+, [14](jboss/wildfly/14/)
+, [13](jboss/wildfly/13/)
+, [12](jboss/wildfly/12/)
+
+`详细目录` 
+, [wildfly17](DETAIL.md#wildfly17)
+, [wildfly16](DETAIL.md#wildfly16)
+, [wildfly15](DETAIL.md#wildfly15)
+, [wildfly14](DETAIL.md#wildfly14)
+, [wildfly13](DETAIL.md#wildfly13)
+, [wildfly12](DETAIL.md#wildfly12)
+
+
+`Red Hat JBoss Enterprise Application Platform`
+, [7.2](jboss/red_hat_jboss/7.2/)
+, [6.4](jboss/red_hat_jboss/6.4/)
+, [5](jboss/red_hat_jboss/5/)
+
+`详细目录`
+, [7.2](DETAIL.md#JBossEAP7.2)
+, [6.4](DETAIL.md#JBossEAP6.4)
+, [5](DETAIL.md#JBossEAP5)
+
+ 
+
+ 
 spring 
 
 `spring-framework-reference`
@@ -131,7 +162,9 @@ spring
 - [Spring Framework 开发参考手册 2.5 by 满江红](spring/spring-framework-2.5-reference-redsaga-zh/)
 - [HIBERNATE - Relational Persistence for Idiomatic Java](jboss/hibernate-distribution-3.6.10.Final/documentation/manual/zh-CN/html_single/)
 - [jboss-seam-2.0.0 - 语境相关的组件 by满江红20080327](jboss/jboss-seam-2.0.0.GA/doc/reference/zh/html_single/)
- 
+
+
+
 
 # oschina
 开源中国组织翻译

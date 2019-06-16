@@ -244,6 +244,143 @@
     - [Drools Documentation 7.20.0.Final](jboss/drools-docs-7.20.0.Final/html_single/)
     - [Drools Documentation 6.5.0.Final](jboss/drools-docs-6.5.0.Final/html_single/)
 
+# wildfly17
+
+- [WildFly Documentation](jboss/wildfly/17/)
+- Administrator Guides
+- [Getting Started Guide](jboss/wildfly/17/Getting_Started_Guide.html)
+- [WildFly Admin Guide](jboss/wildfly/17/Admin_Guide.html)
+- [High Availability Guide](jboss/wildfly/17/High_Availability_Guide.html)
+- Developer Guides
+- [Getting Started Developing Applications Guide](jboss/wildfly/17/Getting_Started_Developing_Applications_Guide.html)
+- [Developer Guide](jboss/wildfly/17/Developer_Guide.html)
+- [JavaEE 7 Tutorial](jboss/wildfly/17/JavaEE_Tutorial.html)
+- [Extending WildFly](jboss/wildfly/17/Extending_WildFly.html)
+- [WildFly Testsuite](jboss/wildfly/17/Testsuite.html)
+- Security Guide
+- [WildFly Elytron Security](jboss/wildfly/17/WildFly_Elytron_Security.html)
+- Client Guide
+- [WildFly Client Configuration](jboss/wildfly/17/Client_Guide.html)
+- Quickstarts
+- [jboss-developer-shared-resources/CONTRIBUTING.md at master · jboss-developer/jboss-developer-shared-resources](https://github.com/jboss-developer/jboss-developer-shared-resources/blob/master/guides/CONTRIBUTING.md#contribute-a-quickstart)
+
+# JBossEAP7.2
+
+`官方地址`
+[Product Documentation for Red Hat JBoss Enterprise Application Platform 7.2 - Red Hat Customer Portal](https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/)
+
+
+- Release Notes
+- [7.2 Update 02](https://access.redhat.com/articles/4159071)
+- [7.2 Update 01](https://access.redhat.com/articles/3970391)
+- [7.2.0 Release Notes](jboss/red_hat_jboss/7.2/release_notes/)
+- Getting Started
+- [jboss-developer/jboss-eap-quickstarts: The quickstarts demonstrate JBoss EAP, Java EE 7 and a few additional technologies. They provide small, specific, working examples that can be used as a reference for your own project.](https://github.com/jboss-developer/jboss-eap-quickstarts)
+- [Introduction to JBoss EAP](jboss/red_hat_jboss/7.2/introduction_to_jboss_eap/)
+- [Getting Started Guide](jboss/red_hat_jboss/7.2/getting_started_guide/)
+- [Getting Started with JBoss EAP for OpenShift Online](jboss/red_hat_jboss/7.2/for_openshift_online/)
+- [Getting Started with JBoss EAP for OpenShift Container Platform](jboss/red_hat_jboss/7.2/for_openshift_container_platform/)
+- Installation and Upgrade
+- [Installation Guide](jboss/red_hat_jboss/7.2/installation_guide/)
+- [Migration Guide](jboss/red_hat_jboss/7.2/migration_guide/)
+- [Patching and Upgrading Guide](jboss/red_hat_jboss/7.2/patching_and_upgrading_guide/)
+- [Using the JBoss Server Migration Tool](jboss/red_hat_jboss/7.2/using_the_jboss_server_migration_tool/)
+- Development
+- [Development Guide](jboss/red_hat_jboss/7.2/development_guide/)
+- [Developing Web Services Applications](jboss/red_hat_jboss/7.2/developing_web_services_applications/)
+- [Developing EJB Applications](jboss/red_hat_jboss/7.2/developing_ejb_applications/)
+- [Developing Hibernate Applications](jboss/red_hat_jboss/7.2/developing_hibernate_applications/)
+- [Managing Transactions on JBoss EAP](jboss/red_hat_jboss/7.2/managing_transactions_on_jboss_eap/)
+- Configuring and maintaining
+- [Configuration Guide](jboss/red_hat_jboss/7.2/configuration_guide/)
+- [Configuring Messaging](jboss/red_hat_jboss/7.2/configuring_messaging/)
+- Security
+- [Security Architecture](jboss/red_hat_jboss/7.2/security_architecture/)
+- [How to Configure Server Security](jboss/red_hat_jboss/7.2/how_to_configure_server_security/)
+- [How to Configure Identity Management](jboss/red_hat_jboss/7.2/how_to_configure_identity_management/)
+- [How To Set Up SSO with SAML v2](jboss/red_hat_jboss/7.2/how_to_set_up_sso_with_saml_v2/)
+- [How to Set Up SSO with Kerberos](jboss/red_hat_jboss/7.2/how_to_set_up_sso_with_kerberos/)
+- Cloud
+- [Using JBoss EAP in Microsoft Azure](jboss/red_hat_jboss/7.2/using_jboss_eap_in_microsoft_azure/)
+- [Deploying JBoss EAP on Amazon Web Services](jboss/red_hat_jboss/7.2/deploying_jboss_eap_on_amazon_web_services/)
+- Reference
+- [Management CLI Guide](jboss/red_hat_jboss/7.2/management_cli_guide/)
+- [Login Module Reference](jboss/red_hat_jboss/7.2/login_module_reference/)
+- [Performance Tuning Guide](jboss/red_hat_jboss/7.2/performance_tuning_guide/)
+- [API Javadocs ](https://access.redhat.com/webassets/avalon/d/red-hat-jboss-enterprise-application-platform/7.2/javadocs/)
+ 
+# JBossEAP6.4
+
+`官方地址`
+[Product Documentation for Red Hat JBoss Enterprise Application Platform 6.4 - Red Hat Customer Portal](https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/6.4/)
+
+Release Notes
+- [6.4 Update 22](https://access.redhat.com/articles/4126421)
+- ......
+- [6.4 Update 01](https://access.redhat.com/jbossnetwork/restricted/softwareDetail.html?softwareId=38313&product=appplatform&version=6.4&downloadType=patches#eap64_details)
+- [6.4.0 Release Notes](jboss/red_hat_jboss/6.4/release_notes/)
+- Installation and Upgrade
+- [Installation Guide](jboss/red_hat_jboss/6.4/installation_guide/)
+- [Getting Started Guide](jboss/red_hat_jboss/6.4/getting_started_guide/)
+- [Migration Guide](jboss/red_hat_jboss/6.4/migration_guide/)
+- Administration & Configuration
+- [Administration and Configuration Guide](jboss/red_hat_jboss/6.4/administration_and_configuration_guide/)
+- Development
+- [Development Guide](jboss/red_hat_jboss/6.4/development_guide/)
+- [Development](https://docs.openshift.com/enterprise/3.0/using_images/xpaas_images/eap.html)
+- [API Documentation](https://access.redhat.com/webassets/avalon/d/red-hat-jboss-enterprise-application-platform/6.4/javadocs/index.html)
+- Security
+- [How to Configure Identity Management](jboss/red_hat_jboss/6.4/how_to_configure_identity_management/)
+- [How to Setup SSO with SAML v2](jboss/red_hat_jboss/6.4/how_to_setup_sso_with_saml_v2/)
+- [How to Setup SSO with Kerberos](jboss/red_hat_jboss/6.4/how_to_setup_sso_with_kerberos/)
+- [How To Configure Server Security](jboss/red_hat_jboss/6.4/how_to_configure_server_security/)
+- [Login Module Reference](jboss/red_hat_jboss/6.4/login_module_reference/)
+- [Security Architecture](jboss/red_hat_jboss/6.4/security_architecture/)
+- [Security Guide](jboss/red_hat_jboss/6.4/security_guide/)
+
+
+
+# JBossEAP5
+
+[Product Documentation for JBoss Enterprise Application Platform - Red Hat Customer Portal](https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/5/)
+
+- Release Notes
+- [Release Notes 5.2.0](jboss/red_hat_jboss/5/release_notes_5.2.0/)
+- [Release Notes 5.1.2](jboss/red_hat_jboss/5/release_notes_5.1.2/) 
+- [Release Notes 5.1.1](jboss/red_hat_jboss/5/release_notes_5.1.1/)
+- [Release Notes 5.1.0](jboss/red_hat_jboss/5/release_notes_5.1.0/)
+- [Release Notes 5.0.1](jboss/red_hat_jboss/5/release_notes_5.0.1/)
+- [Release Notes](jboss/red_hat_jboss/5/release_notes/)
+- Administration & Configuration
+- [Admin Console User Guide](jboss/red_hat_jboss/5/admin_console_user_guide/)
+- [Administration and Configuration Guide](jboss/red_hat_jboss/5/administration_and_configuration_guide/)
+- [Cache Frequently Asked Questions](jboss/red_hat_jboss/5/cache_frequently_asked_questions/)
+- [Cache Tutorial](jboss/red_hat_jboss/5/cache_tutorial/)
+- [Cache User Guide](jboss/red_hat_jboss/5/cache_user_guide/)
+- [Getting Started Guide](jboss/red_hat_jboss/5/getting_started_guide/)
+- [Getting Started on Amazon EC2](jboss/red_hat_jboss/5/getting_started_on_amazon_ec2/)
+- [Hibernate Annotations Reference Guide](jboss/red_hat_jboss/5/hibernate_annotations_reference_guide/)
+- [Hibernate Core Reference Guide](jboss/red_hat_jboss/5/hibernate_core_reference_guide/)
+- [Hibernate Entity Manager Reference Guide](jboss/red_hat_jboss/5/hibernate_entity_manager_reference_guide/)
+- [Hibernate Search Reference Guide](jboss/red_hat_jboss/5/hibernate_search_reference_guide/)
+- [Hibernate Validator Reference Guide](jboss/red_hat_jboss/5/hibernate_validator_reference_guide/)
+- [HornetQ User Guide](jboss/red_hat_jboss/5/hornetq_user_guide/)
+- [HTTP Connectors Load Balancing Guide](jboss/red_hat_jboss/5/http_connectors_load_balancing_guide/)
+- [Installation Guide](jboss/red_hat_jboss/5/installation_guide/)
+- [Messaging User Guide](jboss/red_hat_jboss/5/messaging_user_guide/)
+- [Microcontainer User Guide](jboss/red_hat_jboss/5/microcontainer_user_guide/)
+- [Negotiation User Guide](jboss/red_hat_jboss/5/negotiation_user_guide/)
+- [Performance Tuning Guide](jboss/red_hat_jboss/5/performance_tuning_guide/)
+- [RESTEasy Reference Guide](jboss/red_hat_jboss/5/resteasy_reference_guide/)
+- [RichFaces Developer Guide](jboss/red_hat_jboss/5/richfaces_developer_guide/)
+- [Seam Reference Guide](jboss/red_hat_jboss/5/seam_reference_guide/)
+- [Security Guide](jboss/red_hat_jboss/5/security_guide/)
+- [Transactions Administrators Guide](jboss/red_hat_jboss/5/transactions_administrators_guide/)
+- [Transactions Development Guide](jboss/red_hat_jboss/5/transactions_development_guide/)
+- [Transactions Development Quick Start Guide](jboss/red_hat_jboss/5/transactions_development_quick_start_guide/)
+- [Web Services CXF User Guide](jboss/red_hat_jboss/5/web_services_cxf_user_guide/)
+
+
 # java 
 
 * gradle-5.4
