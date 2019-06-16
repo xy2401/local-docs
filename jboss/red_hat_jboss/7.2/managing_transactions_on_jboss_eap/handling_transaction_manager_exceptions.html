@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 5. Handling Transaction Manager Exceptions</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="handling_transaction_manager_exceptions"/>Chapter 5. Handling Transaction Manager Exceptions</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="debugging_timed_out_transaction"/>Debugging a Timed-out Transaction</h1></div></div></div><p>
+				There can be many reasons for a transaction timeout, such as:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						Slow server performance
+					</li><li class="listitem">
+						Thread is stuck waiting for something or hangs up
+					</li><li class="listitem">
+						Thread needs more than the configured transaction timeout time to complete the processing
+					</li></ul></div><p>
+				You can look at the logs for following error message to identify a timed-out transaction:
+			</p><pre class="screen">WARN ARJUNA012117 "TransactionReaper::check timeout for TX <span class="emphasis"><em>{0}</em></span> in state <span class="emphasis"><em>{1}</em></span>"</pre><p>
+				where <code class="literal"><span class="emphasis"><em>{0}</em></span></code> is the Uid of the transaction and <code class="literal"><span class="emphasis"><em>{1}</em></span></code> is the transaction manager’s view of the state {1} of the timed-out transaction.
+			</p><p>
+				Transaction Manager provides the following options to debug the transaction timeouts:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						You can configure timeout values for transactions to control the transaction lifetimes. The <code class="literal">transactions</code> subsystem rolls back the transaction if the timeout value elapses before a transaction terminates because of committing or rolling back.
+					</li><li class="listitem"><p class="simpara">
+						You can use the <code class="literal">setTransactionTimeout</code> method of the <code class="literal">XAResource</code> interface to propagate the current transaction to the resource manager. If supported, this operation overrides any default timeout associated with the resource manager. Overriding the timeout is useful in situations like the following:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								when long-running transactions have lifetimes that exceed the default
+							</li><li class="listitem">
+								when using the default timeout might cause the resource manager to roll back before the transaction terminates, causing the transaction to roll back as well.
+							</li></ul></div></li><li class="listitem"><p class="simpara">
+						If you do not specify a timeout value or use a value of <code class="literal">0</code>, transaction manager uses an implementation-specific default value. In JBoss EAP transaction manager, the <code class="literal">CoordinatorEnvironmentBean.defaultTimeout</code> property represents this implementation-specific default value. The default value is <code class="literal">300</code> seconds. A value of <code class="literal">0</code> disables the default transaction timeouts.
+					</p><p class="simpara">
+						You can modify the default transaction timeout using the following management CLI command:
+					</p><pre class="screen">/subsystem=transactions:write-attribute(name=default-timeout,value=<span class="emphasis"><em>VALUE</em></span>)</pre><p class="simpara">
+						When running in a managed domain, you must specify which profile to update by preceding the command with <code class="literal">/profile=<span class="emphasis"><em>PROFILE_NAME</em></span></code>
+					</p></li><li class="listitem">
+						JBoss EAP Transaction Manager supports an all-or-nothing approach to call the <code class="literal">setTransactionTimeout</code> method on the <code class="literal">XAResource</code> instances. You can set the <code class="literal">JTAEnvironmentBean.xaTransactionTimeoutEnabled</code> property to <code class="literal">true</code>, which is the default, to call the method on all the instances. Otherwise, you can use the <code class="literal">setXATransactionTimeoutEnabled</code> method of the <code class="literal">com.arjuna.ats.jta.common.JTAEnvironmentBean</code> class to disable timeout and specify them on a per-transaction basis.
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="migrating_logs_to_new_server"/>Migrating Logs to a New JBoss EAP Server</h1></div></div></div><div class="title"><strong>Prerequisites</strong></div><p>
+					Ensure that the <code class="literal">transactions</code> subsystem is configured identically between the old and the new JBoss EAP. This identical configuration includes the list of JTA datasources because recovering the logs needs to contact the datasources used by any of the recovered logs.
+				</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="migrating_the_file_based_log_storage"/>Migrating the File-based Log Storage</h2></div></div></div><p>
+					To migrate the transaction manager logs to a new JBoss EAP server, you can copy the logs to the new JBoss EAP server.
+				</p><p>
+					You can use the following commands to copy the file-based logs:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							Browse to your <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span></code> directory.
+						</li><li class="listitem"><p class="simpara">
+							Create an archive of the logs using the following command:
+						</p><pre class="screen">$ tar -cf logs.tar ./standalone/data/tx-object-store</pre></li><li class="listitem"><p class="simpara">
+							Extract the archived logs to the new <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span></code> directory using the following command:
+						</p><pre class="screen">$ tar -xf logs.tar -C <span class="emphasis"><em>NEW_EAP_HOME</em></span></pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="migrating_the_jdbc_store_based_log_storage"/>Migrating the JDBC Store-based Log Storage</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							You can configure the new JBoss EAP server to use the old database and tables as described in <a class="link" href="managing_transactions.html#using_jdbc_datasource_as_transactions_object_store" title="Using a JDBC Datasource as a Transactions Object Store">Using a JDBC Datasource as a Transactions Object Store</a>.
+						</li><li class="listitem"><p class="simpara">
+							Alternatively, you can determine the database and the tables used for the transaction logs. Then, you can use an SQL tool to back up the tables and restore them to the new database.
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								You can find an SQL query tool in the <code class="literal">h2</code> JAR file shipped with JBoss EAP.
+							</p></div></li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="enabling_xts_on_eap"/>Enabling XTS on JBoss EAP</h1></div></div></div><p>
+				XML Transaction Service (XTS) component of the transaction manager supports the coordination of private and public web services in a business transaction. XTS provides WS-AT and WS-BA support for web services hosted on the JBoss EAP server. It is an optional subsystem, which can be enabled using the <code class="literal">standalone-xts.xml</code> configuration.
+			</p><div class="orderedlist"><p class="title"><strong>Starting JBoss EAP Server with XTS Enabled</strong></p><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Change to the JBoss EAP server directory:
+					</p><pre class="screen">cd $<span class="emphasis"><em>EAP_HOME</em></span></pre></li><li class="listitem"><p class="simpara">
+						Copy the example XTS configuration file into the <code class="literal">/configuration</code> directory:
+					</p><pre class="screen">cp docs/examples/configs/standalone-xts.xml standalone/configuration</pre></li><li class="listitem"><p class="simpara">
+						Start the JBoss EAP server, specifying the <code class="literal">xts</code> configuration:
+					</p><p class="simpara">
+						Linux:
+					</p><pre class="screen">bin/standalone.sh --server-config=standalone-xts.xml</pre><p class="simpara">
+						Windows:
+					</p><pre class="screen">bin\standalone.bat --server-config=standalone-xts.xml</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="clearing_expired_transactions"/>Clearing Up Expired Transactions</h1></div></div></div><p>
+				The following properties allow you to clear up the expired transactions:
+			</p><div class="variablelist"><dl class="variablelist"><dt><span class="term"><code class="literal">ExpiryEntryMonitor</code></span></dt><dd><p class="simpara">
+							When the Recovery Manager initializes an expiry scanner thread, the <code class="literal">ExpiryEntryMonitor</code> object is created, which is used to remove dead items from the object store. A number of scanner modules are loaded dynamically, which removes the dead items for a particular type.
+						</p><p class="simpara">
+							You can configure the scanner modules in the properties file using the <code class="literal">RecoveryEnvironmentBean.expiryScanners</code> system property. The scanner modules are loaded at the time of initialization.
+						</p><pre class="screen">$ <span class="emphasis"><em>EAP_HOME</em></span>/bin/standalone.sh -DRecoveryEnvironmentBean.expiryScanners=<span class="emphasis"><em>CLASSNAME1</em></span>,<span class="emphasis"><em>CLASSNAME2</em></span></pre></dd><dt><span class="term"><code class="literal">expiryScanInterval</code></span></dt><dd><p class="simpara">
+							All the scanner modules are called periodically to scan for dead items by the <code class="literal">ExpiryEntryMonitor</code> thread. You can configure this period, in hours, using the <code class="literal">expiryScanInterval</code> system property, as shown in the example below:
+						</p><pre class="screen">$ <span class="emphasis"><em>EAP_HOME</em></span>/bin/standalone.sh -DRecoveryEnvironmentBean.expiryScanInterval=<span class="emphasis"><em>EXPIRY_SCAN_INTERVAL</em></span></pre></dd></dl></div><p>
+				All scanner modules inherit the same behavior from the <code class="literal">ExpiryScanner</code> interface. This interface provides a scan method that is implemented by all the scanner modules, including the following. The scanner thread calls this scan method.
+			</p><div class="variablelist"><dl class="variablelist"><dt><span class="term"><code class="literal">ExpiredTransactionStatusManagerScanner</code></span></dt><dd><p class="simpara">
+							The <code class="literal">ExpiredTransactionStatusManagerScanner</code> removes the dead <code class="literal">TransactionStatusManagerItems</code> from the object store. These items remain in the object store for a certain period before they are deleted, which is 12 hours by default. You can configure this time period, in hours, using the <code class="literal">transactionStatusManagerExpiryTime</code> system property as shown in the example below:
+						</p><pre class="screen">$ <span class="emphasis"><em>EAP_HOME</em></span>/bin/standalone.sh -DRecoveryEnvironmentBean.transactionStatusManagerExpiryTime=<span class="emphasis"><em>TRANSACTION_STATUS_MANAGER_EXPIRY_TIME</em></span></pre></dd><dt><span class="term"><code class="literal">AtomicActionExpiryScanner</code></span></dt><dd><p class="simpara">
+							The <code class="literal">AtomicActionExpiryScanner</code> moves transaction logs for <code class="literal">AtomicActions</code> that are assumed to have completed. For example, if a failure occurs after a participant has been told to commit but before the <code class="literal">transactions</code> subsystem can update the logs, then upon recovery the JBoss EAP transaction manager attempts to replay the commit request. This replay will obviously fail, thus preventing the log from being removed. The <code class="literal">AtomicActionExpiryScanner</code> is also used when logs cannot be recovered automatically for reasons such as being corrupt or zero length. All logs are moved to a specific location based on the old location appended with <code class="literal">/Expired</code>.
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								<code class="literal">AtomicActionExpiryScanner</code> is disabled by default. You can enable it by adding it to the transaction manager properties file. You need not enable it to cope with corrupt logs.
+							</p></div></dd></dl></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="recovering_heuristic_outcomes"/>Recovering Heuristic Outcomes</h1></div></div></div><p>
+				A heuristic completion occurs when a transaction resource makes a one-sided decision, during the completion stage of a distributed transaction, to commit or rollback the transaction updates. This can leave distributed data in an indeterminate state. Network failures or resource timeouts are possible causes for heuristic completion. Heuristic completion throws one of the following heuristic outcome exceptions:
+			</p><div class="variablelist"><dl class="variablelist"><dt><span class="term"><code class="literal">HEURISTIC_COMMIT</code></span></dt><dd>
+							This exception is thrown when the transaction manager decides to rollback, but somehow all the resources had already committed on their own. In this case, you need not do anything because a consistent termination was reached.
+						</dd><dt><span class="term"><code class="literal">HEURISTIC_ROLLBACK</code></span></dt><dd>
+							This exception implies that the resources have all done a rollback because the commit decision from the transaction manager was delayed. Similar to <code class="literal">HEURISTIC_COMMIT</code>, in this case also you need not do anything because a consistent termination was reached.
+						</dd><dt><span class="term"><code class="literal">HEURISTIC_HAZARD</code></span></dt><dd>
+							This exception occurs when the disposition of some of the updates is unknown. For those that are known, they have either all been committed or all rolled back.
+						</dd><dt><span class="term"><code class="literal">HEURISTIC_MIXED</code></span></dt><dd>
+							This exception occurs when some parts of the transaction were rolled back while others were committed.
+						</dd></dl></div><p>
+				This procedure shows how to handle a heuristic outcome of a transaction using the Java Transaction API (JTA).
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						The cause of a heuristic outcome in a transaction is that a resource manager promised it could commit or rollback, and then failed to fulfill the promise. This could be due to a problem with a third-party component, the integration layer between the third-party component and JBoss EAP, or JBoss EAP itself.
+					</p><p class="simpara">
+						By far, the most common two causes of heuristic errors are transient failures in the environment and coding errors dealing with resource managers.
+					</p></li><li class="listitem"><p class="simpara">
+						Usually, if there is a transient failure in your environment, you will know about it before you find out about the heuristic error. This could be due to a network outage, hardware failure, database failure, power outage, or a host of other things.
+					</p><p class="simpara">
+						If you come across a heuristic outcome in a test environment during stress testing, it implies weaknesses in your test environment.
+					</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+							JBoss EAP automatically recovers transactions that were in a non-heuristic state at the time of failure, but it does not attempt to recover the heuristic transactions.
+						</p></div></li><li class="listitem"><p class="simpara">
+						If you have no obvious failure in your environment, or if the heuristic outcome is easily reproducible, it is probably due to a coding error. You must contact the third-party vendors to find out if a solution is available.
+					</p><p class="simpara">
+						If you suspect the problem is in the transaction manager of JBoss EAP itself, you must raise a support ticket.
+					</p></li><li class="listitem">
+						You can attempt to recover the transaction manually using the management CLI. For instructions on manually recovering a transaction, see the <a class="link" href="managing_transactions.html#recover_a_transaction" title="Recovering a Transaction Participant">Recovering a Transaction Participant</a> section.
+					</li><li class="listitem"><p class="simpara">
+						The process of resolving the transaction outcome manually is dependent on the exact circumstance of the failure. Perform the following steps, as applicable to your environment:
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+								Identify which resource managers were involved.
+							</li><li class="listitem">
+								Examine the state of the transaction manager and the resource managers.
+							</li><li class="listitem">
+								Manually force log cleanup and data reconciliation in one or more of the involved components.
+							</li></ol></div></li><li class="listitem"><p class="simpara">
+						In a test environment, or if you do not care about the integrity of the data, deleting the transaction logs and restarting JBoss EAP gets rid of the heuristic outcome. By default, the transaction logs are located in the <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/standalone/data/tx-object-store/</code> directory for a standalone server, or the <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/domain/servers/<span class="emphasis"><em>SERVER_NAME</em></span>/data/tx-object-store/</code> directory in a managed domain. In the case of a managed domain, <span class="emphasis"><em>SERVER_NAME</em></span> refers to the name of the individual server participating in a server group.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The location of the transaction log also depends on the object store in use and the values set for the <code class="literal">object-store-relative-to</code> and <code class="literal">object-store-path</code> parameters. For file system logs, such as a standard shadow and Apache ActiveMQ Artemis logs, the default directory location is used, but when using a JDBC object store, the transaction logs are stored in a database.
+						</p></div></li></ol></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="guidelines_on_decision_making"/>Guidelines on Making Decisions for Heuristic Outcomes</h2></div></div></div><h4><a id="problem_detection"/>Problem Detection</h4><p>
+					A heuristic decision is one of the most critical errors that can happen in a transaction system. It can lead to parts of the transaction being committed, while other parts are rolled back. Thus, it can violate the atomicity property of the transaction and can possibly lead to corruption of the data integrity.
+				</p><p>
+					A recoverable resource maintains all the information about the heuristic decision in stable storage until it is required by the transaction manager. The actual data saved in stable storage depends on the type of recoverable resource and is not standardized. You can parse through the data and possibly edit the resource to correct any data integrity problems.
+				</p><p>
+					Heuristic outcomes are stored in the server log and can be identified using the resource manager and transaction manager.
+				</p><h4><a id="manually_committing_or_rolling_back_a_transaction"/>Manually Committing or Rolling Back a Transaction</h4><p>
+					Generally, you cannot manually commit or rollback a transaction. From the JBoss EAP transaction management perspective, you can move a transaction back to the pending list for automated recovery to try again or delete the record. For example:
+				</p><p>
+					You can use the <code class="literal">read-resource</code> operation to check the status of the participants in the transaction:
+				</p><pre class="screen">/subsystem=transactions/log-store=log-store/transactions=0\:ffff7f000001\:-b66efc2\:4f9e6f8f\:9/participants=2:read-resource</pre><p>
+					The result will look similar to this:
+				</p><pre class="screen">{
+   "outcome" =&gt; "success",
+   "result" =&gt; {
+       "eis-product-name" =&gt; "ArtemisMQ",
+       "eis-product-version" =&gt; "2.0",
+       "jndi-name" =&gt; "java:/JmsXA",
+       "status" =&gt; "HEURISTIC_HAZARD",
+       "type" =&gt; "/StateManager/AbstractRecord/XAResourceRecord"
+   }
+}</pre><p>
+					The outcome status shown here is a <code class="literal">HEURISTIC_HAZARD</code> state and is eligible for recovery.
+				</p><h5><a id="recovering_the_heuristic_hazard_exception"/>Recovering the HEURISTIC_HAZARD Exception</h5><p>
+					The following steps show an example of how to recover a <code class="literal">hazard</code> type heuristic outcome.
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							To begin the recovery, you must consult each resource manager and establish the outcomes of the various branches that are identifiable from the transaction manager tooling. However, you should not need to force a resource manager to commit or rollback. You must rather inspect the resource manager to know the state of the heuristic exception.
+						</p><p class="simpara">
+							The following are reference links for listing and resolving heuristic outcomes for various resource managers:
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								These links are for reference purpose only and are subject to change. Please consult the vendor documentation for details.
+							</p></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									<a class="link" href="https://docs.oracle.com/cd/B28359_01/server.111/b28310/ds_txns004.htm#ADMIN12237java/util/logging/package-summary.html">Manual resolution of in-doubt transactions in Oracle</a>
+								</li><li class="listitem">
+									<a class="link" href="https://www.ibm.com/support/knowledgecenter/en/SSEPGG_9.7.0/com.ibm.db2.luw.admin.2pc.doc/doc/t0004636.html">Manual resolution of in-doubt transactions in DB2</a>
+								</li><li class="listitem">
+									<a class="link" href="https://www.postgresql.org/docs/9.3/view-pg-prepared-xacts.html">View prepared transactions</a> for two-phase commit in PostGreSQL and <a class="link" href="https://www.postgresql.org/docs/9.3/sql-commit-prepared.html">commit</a> or <a class="link" href="https://www.postgresql.org/docs/9.3/sql-rollback-prepared.html">rollback</a>
+								</li><li class="listitem">
+									<a class="link" href="https://dev.mysql.com/doc/refman/8.0/en/xa-statements.html">XA transaction syntax in MySQL</a>
+								</li><li class="listitem">
+									<a class="link" href="https://mariadb.com/kb/en/library/xa-transactions/">XA transaction implementation in MariaDB</a>
+								</li></ul></div></li><li class="listitem"><p class="simpara">
+							You must execute the recover operation, as shown in the following example:
+						</p><pre class="screen">/subsystem=transactions/log-store=log-store/transactions=0\:ffff7f000001\:-b66efc2\:4f9e6f8f\:9/participants=2:recover</pre><p class="simpara">
+							Running the <code class="literal">recover</code> operation changes the state of the transaction to <code class="literal">PREPARE</code> and triggers a recovery attempt by replaying the <code class="literal">commit</code> operation. If the recovery attempt is successful, the participant is removed from the transaction log.
+						</p><p class="simpara">
+							You can verify this by running the <code class="literal">probe</code> operation on the <code class="literal">log-store</code> element again. The participant should no longer be listed. If this is the last participant, the transaction is also deleted.
+						</p></li></ol></div><h5><a id="recovering_the_heuristic_rollback_and_heuristic_commit_exceptions"/>Recovering the HEURISTIC_ROLLBACK and HEURISTIC_COMMIT Exceptions</h5><p>
+					If the heuristic outcome is a <code class="literal">rollback</code> type, then:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The resource should not be able to commit the transaction, provided the resource manager is well implemented.
+						</li><li class="listitem">
+							You must decide whether you should delete the branch from the resource manager, using a forget call, so that the rest of the transaction can commit normally and be cleaned from the transaction store.
+						</li><li class="listitem">
+							If you do not delete the branch from the resource manager, then the transaction will remain in the transaction store forever.
+						</li></ul></div><p>
+					On the other hand, if the heuristic outcome was a <code class="literal">commit</code> type, then you must use the business semantics to deal with the inconsistent outcome.
+				</p><h4><a id="further_actions_when_manual_reconciliation_fails"/>Further Actions When Manual Reconciliation Fails</h4><p>
+					You can check the database transaction table, which is the <code class="literal">DBA_2PC_PENDING</code> table for Oracle. However, these will depend upon the specific resource managers. Transaction Manager can provide you with the branches to inspect in each resource manager.
+				</p><p>
+					You should consult the vendor’s documentation on this resource manager for details. If you suspect that the problem is caused by the third party resource manager, you must consider raising a support ticket with your supplier.
+				</p><p>
+					<br/><br/><br/><br/>
+				</p><p>
+					<span class="emphasis"><em><span class="right">Revised on 2019-05-02 08:54:53 UTC</span></em></span>
+				</p></div></div></div></body></html>

@@ -1,0 +1,434 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 29. Clusters Overview</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="clusters_overview"/>Chapter 29. Clusters Overview</h1></div></div></div><p>
+				JBoss EAP messaging clusters allow groups of JBoss EAP messaging servers to be grouped together in order to share message processing load. Each active node in the cluster is an active JBoss EAP messaging server which manages its own messages and handles its own connections.
+			</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+					A mixed cluster consisting of different versions of JBoss EAP is not supported by the <code class="literal">messaging-activemq</code> subsystem. The servers that form the messaging cluster must all use the same version of JBoss EAP.
+				</p></div><p>
+				The cluster is formed by each node declaring cluster connections to other nodes in the JBoss EAP configuration file. When a node forms a cluster connection to another node, it internally creates a <a class="link" href="configuring_core_bridges.html" title="Chapter 28. Configuring Core Bridges">core bridge</a> connection between itself and the other node. This is done transparently behind the scenes; you do not have to declare an explicit bridge for each node. These cluster connections allow messages to flow between the nodes of the cluster to balance the load.
+			</p><p>
+				An important part of clustering is <a class="link" href="clusters_overview.html#server_discovery" title="Server Discovery">server discovery</a> where servers can broadcast their connection details so clients or other servers can connect to them with minimum configuration.
+			</p><p>
+				This section also discusses <a class="link" href="clusters_overview.html#client_side_load_balancing" title="Client-side Load Balancing">client-side load balancing</a>, to balance client connections across the nodes of the cluster, and <a class="link" href="clusters_overview.html#message_redistribution" title="Message Redistribution">message redistribution</a>, where JBoss EAP messaging will redistribute messages between nodes to avoid starvation.
+			</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+					Once a cluster node has been configured, it is common to simply copy that configuration to other nodes to produce a symmetric cluster.
+				</p><p>
+					In fact, each node in the cluster must share the same configuration for the following elements in order to avoid unexpected errors:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							cluster-connection
+						</li><li class="listitem">
+							broadcast-group
+						</li><li class="listitem">
+							discovery-group
+						</li><li class="listitem">
+							address-settings, including queues and topics
+						</li></ul></div><p>
+					However, care must be taken when copying the JBoss EAP messaging files. Do not copy the messaging data, the bindings, journal, and large-messages directories from one node to another. When a cluster node is started for the first time and initializes its journal files, it persists a special identifier to the journal directory. The identifier must be unique among nodes for the cluster to form properly.
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="server_discovery"/>Server Discovery</h1></div></div></div><p>
+					Server discovery is a mechanism by which servers can propagate their connection details to:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							Messaging clients
+						</p><p class="simpara">
+							A messaging client wants to be able to connect to the servers of the cluster without having specific knowledge of which servers in the cluster are up at any one time.
+						</p></li><li class="listitem"><p class="simpara">
+							Other servers
+						</p><p class="simpara">
+							Servers in a cluster want to be able to create cluster connections to each other without having prior knowledge of all the other servers in the cluster.
+						</p></li></ul></div><p>
+					This information, or cluster topology, is sent around normal JBoss EAP messaging connections to clients and to other servers over cluster connections. However, you need a way to establish the initial first connection. This can be done using dynamic discovery techniques like UDP and JGroups, or by providing a <a class="link" href="clusters_overview.html#static_discovery" title="Static Discovery">static list</a> of initial connectors.
+				</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="broadcast_groups"/>Broadcast Groups</h2></div></div></div><p>
+						A broadcast group is the means by which a server broadcasts connectors over the network. A <a class="link" href="acceptors_and_connectors.html" title="Chapter 8. Configuring the Messaging Transports">connector</a> defines a way in which a client, or other server, can make connections to the server.
+					</p><p>
+						The broadcast group takes a set of connectors and broadcasts them on the network. Depending on which broadcasting technique you configure the cluster, it uses either UDP or JGroups to broadcast connector pairs information.
+					</p><p>
+						Broadcast groups are defined in the <code class="literal">messaging-activemq</code> subsystem of the server configuration. There can be many broadcast groups per JBoss EAP messaging server.
+					</p><h4><a id="configure_a_broadcast_group_using_udp"/>Configure a Broadcast Group Using UDP</h4><p>
+						Below is an example configuration of a messaging server that defines a UDP broadcast group. Note that this configuration relies on a <code class="literal">messaging-group</code> socket binding.
+					</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+  &lt;server name="default"&gt;
+    ...
+    &lt;broadcast-group name="my-broadcast-group" connectors="http-connector" socket-binding="messaging-group"/&gt;
+    ...
+  &lt;/server&gt;
+&lt;/subsystem&gt;
+...
+&lt;socket-binding-group name="standard-sockets" default-interface="public" port-offset="${jboss.socket.binding.port-offset:0}"&gt;
+  ...
+  &lt;socket-binding name="messaging-group" interface="private" port="5432" multicast-address="231.7.7.7" multicast-port="9876"/&gt;
+  ...
+&lt;/socket-binding-group&gt;</pre><p>
+						This configuration can be achieved using the following management CLI commands:
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Add the <code class="literal">messaging-group</code> socket binding.
+							</p><pre class="screen">/socket-binding-group=standard-sockets/socket-binding=messaging-group:add(interface=private,port=5432,multicast-address=231.7.7.7,multicast-port=9876)</pre></li><li class="listitem"><p class="simpara">
+								Add the broadcast group.
+							</p><pre class="screen">/subsystem=messaging-activemq/server=default/broadcast-group=my-broadcast-group:add(socket-binding=messaging-group,broadcast-period=2000,connectors=[http-connector])</pre></li></ol></div><h4><a id="configure_a_broadcast_group_using_jgroups"/>Configure a Broadcast Group Using JGroups</h4><p>
+						Below is an example configuration of a messaging server that defines broadcast group that uses the default JGroups broadcast group, which uses UDP. Note that to be able to use JGroups to broadcast, you must set a <code class="literal">jgroups-channel</code>.
+					</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+  &lt;server name="default"&gt;
+    ...
+    &lt;broadcast-group name="my-broadcast-group" connectors="http-connector" jgroups-cluster="activemq-cluster"/&gt;
+    ...
+  &lt;/server&gt;
+&lt;/subsystem&gt;</pre><p>
+						This can be configured using the following management CLI command:
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/broadcast-group=my-broadcast-group:add(connectors=[http-connector],jgroups-cluster=activemq-cluster)</pre><h4><a id="broadcast_group_attributes"/>Broadcast Group Attributes</h4><p>
+						The below table lists the configurable attributes for a broadcast group.
+					</p><div class="informaltable"><table border="1" width="100%"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										broadcast-period
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The period in milliseconds between consecutive broadcasts.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										connectors
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The names of connectors that will be broadcast.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										jgroups-channel
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The name of a channel defined in the <code class="literal">jgroups</code> subsystem that is used in combination with the <code class="literal">jgroups-cluster</code> attribute to form a cluster. If undefined, the <code class="literal">default</code> channel will be used. Note that a <code class="literal">jgroups-channel</code> multiplexes group communication between distinct logical groups, which are identified by the <code class="literal">jgroups-cluster</code> attribute.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										jgroups-cluster
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The logical name used for the communication between a broadcast group and a discovery group. A discovery group intending to receive messages from a particular broadcast group must use the same cluster name used by the broadcast group.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										jgroups-stack
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The name of a stack defined in the <code class="literal">jgroups</code> subsystem that is used to form a cluster. This attribute is deprecated. Use <code class="literal">jgroups-channel</code> to form a cluster instead. Since each <code class="literal">jgroups-stack</code> is already associated with a <code class="literal">jgroups-channel</code>, you can use that channel or you can create a new <code class="literal">jgroups-channel</code> and associate it with the <code class="literal">jgroups-stack</code>.
+									</p>
+									 <div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+											If a <code class="literal">jgroups-stack</code> and a <code class="literal">jgroups-channel</code> are both specified, a new <code class="literal">jgroups-channel</code> is generated and is registered in the same namespace as the <code class="literal">jgroups-stack</code> and <code class="literal">jgroups-channel</code>. For this reason, the <code class="literal">jgroups-stack</code> and <code class="literal">jgroup-channel</code> names must be unique.
+										</p></div>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										socket-binding
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The broadcast group socket binding.
+									</p>
+									 </td></tr></tbody></table></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="discovery_groups"/>Discovery Groups</h2></div></div></div><p>
+						While the broadcast group defines how connector information is broadcasted from a server, a discovery group defines how connector information is received from a broadcast endpoint, for example, a UDP multicast address or JGroup channel.
+					</p><p>
+						A discovery group maintains a list of connectors, one for each broadcast by a different server. As it receives broadcasts on the broadcast endpoint from a particular server, it updates its entry in the list for that server. If it has not received a broadcast from a particular server for a length of time it will remove that server’s entry from its list.
+					</p><p>
+						Discovery groups are used in two places in JBoss EAP messaging:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								By cluster connections so they know how to obtain an initial connection to download the topology.
+							</li><li class="listitem">
+								By messaging clients so they know how to obtain an initial connection to download the topology.
+							</li></ul></div><p>
+						Although a discovery group will always accept broadcasts, its current list of available live and backup servers is only ever used when an initial connection is made. From then on, server discovery is done over the normal JBoss EAP messaging connections.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							Each discovery group must be configured with a broadcast endpoint (UDP or JGroups) that matches its broadcast group counterpart. For example, if the broadcast group is configured using UDP, the discovery group must also use UDP and the same multicast address.
+						</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="configure_discovery_groups_on_the_server"/>Configure Discovery Groups on the Server</h3></div></div></div><p>
+							Discovery groups are defined in the <code class="literal">messaging-activemq</code> subsystem of the server configuration. There can be many discovery groups per JBoss EAP messaging server.
+						</p><h5><a id="configure_a_discovery_group_using_udp"/>Configure a Discovery Group Using UDP</h5><p>
+							Below is an example configuration of a messaging server that defines a UDP discovery group. Note that this configuration relies on a <code class="literal">messaging-group</code> socket binding.
+						</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+  &lt;server name="default"&gt;
+    ...
+    &lt;discovery-group name="my-discovery-group" refresh-timeout="10000" socket-binding="messaging-group"/&gt;
+    ...
+  &lt;/server&gt;
+&lt;/subsystem&gt;
+...
+&lt;socket-binding-group name="standard-sockets" default-interface="public" port-offset="${jboss.socket.binding.port-offset:0}"&gt;
+  ...
+  &lt;socket-binding name="messaging-group" interface="private" port="5432" multicast-address="231.7.7.7" multicast-port="9876"/&gt;
+  ...
+&lt;/socket-binding-group&gt;</pre><p>
+							This configuration can be achieved using the following management CLI commands:
+						</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									Add the <code class="literal">messaging-group</code> socket binding.
+								</p><pre class="screen">/socket-binding-group=standard-sockets/socket-binding=messaging-group:add(interface=private,port=5432,multicast-address=231.7.7.7,multicast-port=9876)</pre></li><li class="listitem"><p class="simpara">
+									Add the discovery group.
+								</p><pre class="screen">/subsystem=messaging-activemq/server=default/discovery-group=my-discovery-group:add(socket-binding=messaging-group,refresh-timeout=10000)</pre></li></ol></div><h5><a id="configure_a_discovery_group_using_jgroups"/>Configure a Discovery Group Using JGroups</h5><p>
+							Below is an example configuration of a messaging server that defines a JGroups discovery group.
+						</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+  &lt;server name="default"&gt;
+    ...
+    &lt;discovery-group name="my-discovery-group" refresh-timeout="10000" jgroups-cluster="activemq-cluster"/&gt;
+    ...
+  &lt;/server&gt;
+&lt;/subsystem&gt;</pre><p>
+							This can be configured using the following management CLI command:
+						</p><pre class="screen">/subsystem=messaging-activemq/server=default/discovery-group=my-discovery-group:add(refresh-timeout=10000,jgroups-cluster=activemq-cluster)</pre><h5><a id="discovery_group_attributes"/>Discovery Group Attributes</h5><p>
+							The below table lists the configurable attributes for a discovery group.
+						</p><div class="informaltable"><table border="1" width="100%"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+											initial-wait-timeout
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											Period, in milliseconds, to wait for an initial broadcast to give us at least one node in the cluster.
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											jgroups-channel
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											The name of a channel defined in the <code class="literal">jgroups</code> subsystem that is used in combination with the <code class="literal">jgroups-cluster</code> attribute to form a cluster. If undefined, the <code class="literal">default</code> channel will be used. Note that a <code class="literal">jgroups-channel</code> multiplexes group communication between distinct logical groups, which are identified by the <code class="literal">jgroups-cluster</code> attribute.
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											jgroups-cluster
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											The logical name used for the communication between a broadcast group and a discovery group. A discovery group intending to receive messages from a particular broadcast group must use the same cluster name used by the broadcast group.
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											jgroups-stack
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											The name of a stack defined in the <code class="literal">jgroups</code> subsystem that is used to form a cluster. This attribute is deprecated. Use <code class="literal">jgroups-channel</code> to form a cluster instead. Since each <code class="literal">jgroups-stack</code> is already associated with a <code class="literal">jgroups-channel</code>, you can use that channel or you can create a new <code class="literal">jgroups-channel</code> and associate it with the <code class="literal">jgroups-stack</code>.
+										</p>
+										 <div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+												If a <code class="literal">jgroups-stack</code> and a <code class="literal">jgroups-channel</code> are both specified, a new <code class="literal">jgroups-channel</code> is generated and is registered in the same namespace as the <code class="literal">jgroups-stack</code> and <code class="literal">jgroups-channel</code>. For this reason, the <code class="literal">jgroups-stack</code> and <code class="literal">jgroup-channel</code> names must be unique.
+											</p></div>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											refresh-timeout
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											Period the discovery group waits after receiving the last broadcast from a particular server before removing that server’s connector pair entry from its list.
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											socket-binding
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											The discovery group socket binding.
+										</p>
+										 </td></tr></tbody></table></div><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+								The JGroups attributes and UDP-specific attributes described above are exclusive of each other. Only one set can be specified in a discovery group configuration.
+							</p></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="configure_discovery_groups_on_the_client_side"/>Configure Discovery Groups on the Client Side</h3></div></div></div><p>
+							You can use JMS or the core API to configure a JBoss EAP messaging client to discover a list of servers to which it can connect.
+						</p><h5><a id="configure_client_discovery_using_jms"/>Configure Client Discovery using JMS</h5><p>
+							Clients using JMS can look up the relevant <code class="literal">ConnectionFactory</code> with JNDI. The <code class="literal">entries</code> attribute of a <code class="literal">connection-factory</code> or a <code class="literal">pooled-connection-factory</code> specifies the JNDI name under which the factory will be exposed. Below is an example of a <code class="literal">ConnectionFactory</code> configured for a remote client to lookup with JNDI:
+						</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+  &lt;server name="default"&gt;
+    ...
+    &lt;connection-factory name="RemoteConnectionFactory" entries="java:jboss/exported/jms/RemoteConnectionFactory" connectors="http-connector"/&gt;
+    ...
+  &lt;/server&gt;
+&lt;/subsystem&gt;</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								It is important to remember that only JNDI names bound in the <code class="literal">java:jboss/exported</code> namespace are available to remote clients. If a <code class="literal">connection-factory</code> has an entry bound in the <code class="literal">java:jboss/exported</code> namespace a remote client would look up the <code class="literal">connection-factory</code> using the text after <code class="literal">java:jboss/exported</code>. For example, the <code class="literal">RemoteConnectionFactory</code> is bound by default to <code class="literal">java:jboss/exported/jms/RemoteConnectionFactory</code> which means a remote client would look-up this <code class="literal">connection-factory</code> using <code class="literal">jms/RemoteConnectionFactory</code>. A <code class="literal">pooled-connection-factory</code> should not have any entry bound in the <code class="literal">java:jboss/exported</code> namespace because a <code class="literal">pooled-connection-factory</code> is not suitable for remote clients.
+							</p></div><p>
+							Since JMS 2.0, a default JMS connection factory is accessible to Java EE applications under the JNDI name <code class="literal">java:comp/DefaultJMSConnectionFactory</code>. The JBoss EAP <code class="literal">messaging-activemq</code> subsystem defines a <code class="literal">pooled-connection-factory</code> that is used to provide this default connection factory. Any parameter change on this <code class="literal">pooled-connection-factory</code> will be taken into account by any Java EE application looking the default JMS provider under the JNDI name <code class="literal">java:comp/DefaultJMSConnectionFactory</code>. Below is the default pooled connection factory as defined in the <code class="literal">*-full</code> and <code class="literal">*-full-ha</code> profiles.
+						</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+  &lt;server name="default"&gt;
+    ...
+    &lt;pooled-connection-factory name="activemq-ra" transaction="xa" entries="java:/JmsXA java:jboss/DefaultJMSConnectionFactory" connectors="in-vm"/&gt;
+    ...
+  &lt;/server&gt;
+&lt;/subsystem&gt;</pre><h5><a id="configure_client_discovery_using_the_core_api"/>Configure Client Discovery using the Core API</h5><p>
+							If you are using the core API to directly instantiate <code class="literal">ClientSessionFactory</code> instances, then you can specify the discovery group parameters directly when creating the session factory. For example:
+						</p><pre class="programlisting">final String groupAddress = "231.7.7.7";
+final int groupPort = 9876;
+
+ServerLocator factory =
+  ActiveMQClient.createServerLocatorWithHA(new DiscoveryGroupConfiguration(
+      groupAddress,
+      groupPort,
+      new UDPBroadcastGroupConfiguration(groupAddress, groupPort, null, -1)));
+ClientSessionFactory factory = locator.createSessionFactory();
+ClientSession session1 = factory.createSession();
+ClientSession session2 = factory.createSession();</pre><p>
+							You can use the <code class="literal">setDiscoveryRefreshTimeout()</code> setter method on the <code class="literal">DiscoveryGroupConfiguration</code> to set the <code class="literal">refresh-timeout</code> value, which defaults to <code class="literal">10000</code> milliseconds.
+						</p><p>
+							You can also use the <code class="literal">setDiscoveryInitialWaitTimeout()</code> setter method on the <code class="literal">DiscoveryGroupConfiguration</code> to set the <code class="literal">initial-wait-timeout</code> value, which determines how long the session factory will wait before creating the first session. The default value is <code class="literal">10000</code> milliseconds.
+						</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="static_discovery"/>Static Discovery</h2></div></div></div><p>
+						In situations where you can not or do not want to use UDP on your network, you can configure a connection with an initial list of one or more servers.
+					</p><p>
+						This does not mean that you have to know where all your servers are going to be hosted. You can configure these servers to connect to a reliable server, and have their connection details propagated by way of that server.
+					</p><h4><a id="configuring_a_cluster_connection"/>Configuring a Cluster Connection</h4><p>
+						For cluster connections there, is no additional configuration needed, you just need to make sure that any <a class="link" href="acceptors_and_connectors.html" title="Chapter 8. Configuring the Messaging Transports">connectors</a> are defined in the usual manner. These are then referenced by the cluster connection configuration.
+					</p><h4><a id="configuring_a_client_connection"/>Configuring a Client Connection</h4><p>
+						A static list of possible servers can also be used by a client.
+					</p><h5><a id="configuring_client_discovery_using_jms"/>Configuring Client Discovery Using JMS</h5><p>
+						The recommended way to use static discovery with JMS is to configure a <code class="literal">connection-factory</code> with multiple connectors (each pointing to a unique node in the cluster) and have the client look up the ConnectionFactory using JNDI. Below is a snippet of configuration showing just such a <code class="literal">connection-factory</code>:
+					</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+  &lt;server name="default"&gt;
+    ...
+    &lt;connection-factory name="MyConnectionFactory" entries="..." connectors="http-connector http-node1 http-node2"/&gt;
+    ...
+  &lt;/server&gt;
+&lt;/subsystem&gt;</pre><p>
+						In the above example, <code class="literal">http-connector</code> is an HTTP connector (<code class="literal">&lt;http-connector&gt;</code>) pointing to the local server, <code class="literal">http-node1</code> is an HTTP connector pointing to server <code class="literal">node1</code>, and so on. See the <a class="link" href="acceptors_and_connectors.html" title="Chapter 8. Configuring the Messaging Transports">Connectors and Acceptors</a> section for configuring connectors in the server configuration.
+					</p><h5><a id="configuring_client_discovery_using_the_core_api"/>Configuring Client Discovery Using the Core API</h5><p>
+						If you are using the core API, create a unique <code class="literal">TransportConfiguration</code> for each server in the cluster and pass them into the method responsible for creating the <code class="literal">ServerLocator</code>, as in the below example code.
+					</p><pre class="programlisting">HashMap&lt;String, Object&gt; map = new HashMap&lt;String, Object&gt;();
+map.put("host", "myhost");
+map.put("port", "8080");
+
+HashMap&lt;String, Object&gt; map2 = new HashMap&lt;String, Object&gt;();
+map2.put("host", "myhost2");
+map2.put("port", "8080");
+
+TransportConfiguration server1 = new TransportConfiguration(NettyConnectorFactory.class.getName(), map);
+TransportConfiguration server2 = new TransportConfiguration(NettyConnectorFactory.class.getName(), map2);
+
+ServerLocator locator = ActiveMQClient.createServerLocatorWithHA(server1, server2);
+ClientSessionFactory factory = locator.createSessionFactory();
+ClientSession session = factory.createSession();</pre></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="server_side_message_load_balancing"/>Server-side Message Load Balancing</h1></div></div></div><p>
+					If a cluster connection is defined between nodes of a cluster, then JBoss EAP messaging will load balance messages arriving at a particular node from a client.
+				</p><p>
+					A messaging cluster connection can be configured to load balance messages in a round robin fashion, irrespective of whether there are any matching consumers on other nodes. It can also be configured to distribute to other nodes only if matching consumers exist. See the <a class="link" href="clusters_overview.html#message_redistribution" title="Message Redistribution">Message Redistribution</a> section for more information.
+				</p><h3><a id="cluster_connections"/>Configuring the Cluster Connection</h3><p>
+					A cluster connection group servers into clusters so that messages can be load balanced between the nodes of the cluster. A cluster connection is defined in the JBoss EAP server configuration using the <code class="literal">cluster-connection</code> element.
+				</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+						Red Hat supports using only one <code class="literal">cluster-connection</code> within the <code class="literal">messaging-activemq</code> subsystem.
+					</p></div><p>
+					Below is the default <code class="literal">cluster-connection</code> as defined in the <code class="literal">*-full</code> and <code class="literal">*-full-ha</code> profiles. See <a class="link" href="reference_material.html#cluster_connection_attributes" title="Cluster Connection Attributes">Cluster Connection Attributes</a> for the complete list of attributes.
+				</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+  &lt;server name="default"&gt;
+    ...
+    &lt;cluster-connection name="my-cluster" discovery-group="dg-group1" connector-name="http-connector" address="jms"/&gt;
+    ...
+  &lt;/server&gt;
+&lt;/subsystem&gt;</pre><p>
+					In the case shown above the cluster connection will load balance messages sent to addresses that start with "jms". This cluster connection will, in effect, apply to all JMS queues and topics since they map to core queues that start with the substring "jms".
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						When a packet is sent using a cluster connection and is at a blocked state and waiting for acknowledgements, the <code class="literal">call-timeout</code> attribute specifies how long it will wait for the reply before throwing an exception. The default value is <code class="literal">30000</code>. In certain cases, for example, if the remote JMS broker is disconnected from network and the transaction is incomplete, the thread could remain stuck until connection is re-established. To avoid this situation, it is recommended to use the <code class="literal">call-failover-timeout</code> attribute along with the <code class="literal">call-timeout</code> attribute. The <code class="literal">call-failover-timeout</code> attribute is used when a call is made during a failover attempt. The default value is <code class="literal">-1</code>, which means no timeout. For more information on Client Failover, see <a class="link" href="messaging-ha.html#messaging_auto_client_failover" title="Automatic Client Failover">Automatic Client Failover</a>.
+					</p></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						Alternatively, if you would like the cluster connection to use a static list of servers for discovery then you can use the <code class="literal">static-connectors</code> attribute. For example:
+					</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+  &lt;server name="default"&gt;
+    ...
+    &lt;cluster-connection name="my-cluster" static-connectors="server0-connector server1-connector" .../&gt;
+    ...
+  &lt;/server&gt;
+&lt;/subsystem&gt;</pre><p>
+						In this example, there are two servers defined where we know that at least one will be available. There may be many more servers in the cluster, but these will be discovered using one of these connectors once an initial connection has been made.
+					</p></div><h3><a id="configuring_a_cluster_connection_for_duplicate_detection"/>Configuring a Cluster Connection for Duplicate Detection</h3><p>
+					The cluster connection internally uses a <a class="link" href="configuring_core_bridges.html" title="Chapter 28. Configuring Core Bridges">core bridge</a> to move messages between nodes of the cluster. To configure a cluster connection for duplicate message detection, set the <code class="literal">use-duplicate-detection</code> attribute to <code class="literal">true</code>, which is the default value.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/cluster-connection=my-cluster:write-attribute(name=use-duplicate-detection,value=true)</pre><h3><a id="cluster_user_credentials"/>Cluster User Credentials</h3><p>
+					When creating connections between nodes of a cluster to form a cluster connection, JBoss EAP messaging uses a cluster user and password.
+				</p><p>
+					You can set the cluster user and password by using the following management CLI commands.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default:write-attribute(name=cluster-user,value="NewClusterUser")
+/subsystem=messaging-activemq/server=default:write-attribute(name=cluster-password,value="NewClusterPassword123")</pre><p>
+					This adds the following XML content to the <code class="literal">messaging-activemq</code> subsystem in the JBoss EAP configuration file.
+				</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+  &lt;server name="default"&gt;
+    ...
+    &lt;cluster user="NewClusterUser" password="NewClusterPassword123"/&gt;
+    ...
+  &lt;/server&gt;
+&lt;/subsystem&gt;</pre><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+						The default value for <code class="literal">cluster-user</code> is <code class="literal">ACTIVEMQ.CLUSTER.ADMIN.USER</code> and the default value for <code class="literal">cluster-password</code> is <code class="literal">CHANGE ME!!</code>. It is imperative that these values are changed from their default, or remote clients will be able to make connections to the server using the default values. If they are not changed from the default, JBoss EAP messaging will detect this and display a warning upon every startup.
+					</p></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						You can also use the <code class="literal">cluster-credential-reference</code> attribute to reference a credential store instead of setting a cluster password.
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default:write-attribute(name=cluster-credential-reference,value={clear-text=SecretStorePassword})</pre></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="client_side_load_balancing"/>Client-side Load Balancing</h1></div></div></div><p>
+					With JBoss EAP messaging client-side load balancing, subsequent sessions created using a single session factory can be connected to different nodes of the cluster. This allows sessions to spread smoothly across the nodes of a cluster and not be clumped on any particular node.
+				</p><p>
+					The recommended way to declare a load balancing policy to be used by the client factory is to set the <code class="literal">connection-load-balancing-policy-class-name</code> attribute of the <code class="literal">&lt;connection-factory&gt;</code> resource. JBoss EAP messaging provides the following out-of-the-box load balancing policies, and you can also implement your own.
+				</p><div class="variablelist"><dl class="variablelist"><dt><span class="term">Round robin</span></dt><dd><p class="simpara">
+								With this policy, the first node is chosen randomly then each subsequent node is chosen sequentially in the same order.
+							</p><p class="simpara">
+								For example, nodes might be chosen in the order <code class="literal">B</code>, <code class="literal">C</code>, <code class="literal">D</code>, <code class="literal">A</code>, <code class="literal">B</code>, <code class="literal">C</code>, <code class="literal">D</code>, <code class="literal">A</code>, <code class="literal">B</code> or <code class="literal">D</code>, <code class="literal">A</code>, <code class="literal">B</code>, <code class="literal">C</code>, <code class="literal">D</code>, <code class="literal">A</code>, <code class="literal">B</code>, <code class="literal">C</code>.
+							</p><p class="simpara">
+								Use <code class="literal">org.apache.activemq.artemis.api.core.client.loadbalance.RoundRobinConnectionLoadBalancingPolicy</code> as the <code class="literal">connection-load-balancing-policy-class-name</code> .
+							</p></dd><dt><span class="term">Random</span></dt><dd><p class="simpara">
+								With this policy, each node is chosen randomly.
+							</p><p class="simpara">
+								Use <code class="literal">org.apache.activemq.artemis.api.core.client.loadbalance.RandomConnectionLoadBalancingPolicy</code> as the <code class="literal">connection-load-balancing-policy-class-name</code> .
+							</p></dd><dt><span class="term">Random Sticky</span></dt><dd><p class="simpara">
+								With this policy, the first node is chosen randomly and then reused for subsequent connections.
+							</p><p class="simpara">
+								Use <code class="literal">org.apache.activemq.artemis.api.core.client.loadbalance.RandomStickyConnectionLoadBalancingPolicy</code> as the <code class="literal">connection-load-balancing-policy-class-name</code> .
+							</p></dd><dt><span class="term">First Element</span></dt><dd><p class="simpara">
+								With this policy, the first, or 0th, node is always returned.
+							</p><p class="simpara">
+								Use <code class="literal">org.apache.activemq.artemis.api.core.client.loadbalance.FirstElementConnectionLoadBalancingPolicy</code> as the <code class="literal">connection-load-balancing-policy-class-name</code> .
+							</p></dd></dl></div><p>
+					You can also implement your own policy by implementing the interface <code class="literal">org.apache.activemq.artemis.api.core.client.loadbalance.ConnectionLoadBalancingPolicy</code>
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="message_redistribution"/>Message Redistribution</h1></div></div></div><p>
+					With message redistribution, JBoss EAP messaging can be configured to automatically redistribute messages from queues which have no consumers back to other nodes in the cluster which do have matching consumers. To enable this functionality, cluster connection’s <code class="literal">message-load-balancing-type</code> must be set to <code class="literal">ON_DEMAND</code>, which is the default value. You can set this using the following management CLI command.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/cluster-connection=my-cluster:write-attribute(name=message-load-balancing-type,value=ON_DEMAND)</pre><p>
+					Message redistribution can be configured to kick in immediately after the last consumer on a queue is closed, or to wait a configurable delay after the last consumer on a queue is closed before redistributing. This is configured using the <code class="literal">redistribution-delay</code> attribute.
+				</p><p>
+					You use the <code class="literal">redistribution-delay</code> attribute to set how many milliseconds to wait after the last consumer is closed on a queue before redistributing messages from that queue to other nodes of the cluster that have matching consumers. A value of <code class="literal">-1</code>, which is the default value, means that messages will never be redistributed. A value of <code class="literal">0</code> means that messages will be immediately redistributed.
+				</p><p>
+					The <code class="literal">address-setting</code> in the default JBoss EAP configuration sets a <code class="literal">redistribution-delay</code> value of <code class="literal">1000</code>, meaning that it will wait 1000 milliseconds before redistributing messages.
+				</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+  &lt;server name="default"&gt;
+    ...
+    &lt;address-setting name="#" redistribution-delay="1000" message-counter-history-day-limit="10" page-size-bytes="2097152" max-size-bytes="10485760" expiry-address="jms.queue.ExpiryQueue" dead-letter-address="jms.queue.DLQ"/&gt;
+    ...
+  &lt;/server&gt;
+&lt;/subsystem&gt;</pre><p>
+					It often makes sense to introduce a delay before redistributing as it is a common case that a consumer closes but another one quickly is created on the same queue. In this case, you may not want to redistribute immediately since the new consumer will arrive shortly.
+				</p><p>
+					Below is an example of an <code class="literal">address-setting</code> that sets a <code class="literal">redistribution-delay</code> of <code class="literal">0</code> for any queue or topic that is bound to an address that starts with "jms.". In this case, messages will be redistributed immediately.
+				</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+  &lt;server name="default"&gt;
+    ...
+    &lt;address-setting name="jms.#" redistribution-delay="0"/&gt;
+    ...
+  &lt;/server&gt;
+&lt;/subsystem&gt;</pre><p>
+					This address setting can be added using the following management CLI command.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/address-setting=jms.#:add(redistribution-delay=1000)</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="clustered_grouping"/>Clustered Message Grouping</h1></div></div></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						This feature is not supported.
+					</p></div><p>
+					Clustered grouping follows a different approach relative to normal <a class="link" href="about_message_grouping.html" title="Chapter 22. Message Grouping">message grouping</a>. In a cluster, message groups with specific group ids can arrive on any of the nodes. It is important for a node to determine which group ids are bound to which consumer on which node. Each node is responsible for routing message groups correctly to the node which has the consumer processing those group ids, irrespective of where the message groups arrive by default. Once messages with a given group id are sent to a specific consumer connected to the given node in the cluster, then those messages are never sent to another node even if the consumer is disconnected.
+				</p><p>
+					This situation is addressed by a grouping handler. Each node has a grouping handler and this grouping handler (along with other handlers) is responsible for routing the message groups to the correct node. There are two types of grouping handlers: <code class="literal">LOCAL</code> and <code class="literal">REMOTE</code>.
+				</p><p>
+					The local handler is responsible for deciding the route that a message group should take. The remote handlers communicate with the local handler and work accordingly. Each cluster should choose a specific node to have a local grouping handler and all the other nodes should have remote handlers.
+				</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+						If message grouping is used in a cluster, it will break if a node configured as a remote grouping handler fails. Setting up a backup for the remote grouping handler will not correct this.
+					</p></div><p>
+					The node that initially receives a message group takes the routing decision based on regular cluster routing conditions (round-robin queue availability). The node proposes this decision to the respective grouping handler which then routes the messages to the proposed queue if it accepts the proposal.
+				</p><p>
+					If the grouping handler rejects the proposal, it proposes some other route and the routing takes place accordingly. The other nodes follow suite and forward the message groups to the chosen queue. After a message arrives on a queue, it is pinned to a customer on that queue.
+				</p><p>
+					You can configure grouping handlers using the management CLI. The following command adds a <code class="literal">LOCAL</code> grouping handler with the address <code class="literal">news.europe.#</code>.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/grouping-handler=my-group-handler:add(grouping-handler-address="news.europe.#",type=LOCAL)</pre><p>
+					This will require a server reload.
+				</p><pre class="screen">reload</pre><p>
+					The below table lists the configurable attributes for a <code class="literal">grouping-handler</code>.
+				</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+									group-timeout
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									With a <code class="literal">REMOTE</code> handler, this value specifies how often the <code class="literal">REMOTE</code> will notify the <code class="literal">LOCAL</code> that the route was used. With a <code class="literal">LOCAL</code> handler, if a route is not used for the time specified, it is removed, and a new path would need to be established. The value is in milliseconds.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									grouping-handler-address
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									A reference to a cluster connection and the address it uses.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									reaper-period
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									How often the reaper will be run to check for timed out group bindings (only valid for <code class="literal">LOCAL</code> handlers).
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									timeout
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									How long to wait for a handling decision to be made; an exception will be thrown during the send if this timeout is reached, ensuring that strict ordering is kept.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									type
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Whether the handler is the single local handler for the cluster, which makes handling decisions, or a remote handler which converses with the local handler. Possible values are <code class="literal">LOCAL</code> or <code class="literal">REMOTE</code>.
+								</p>
+								 </td></tr></tbody></table></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="best_practices_for_clustered_grouping"/>Best Practices for Clustered Message Grouping</h2></div></div></div><p>
+						Some best practices for clustered grouping are as follows:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								If you create and close consumers regularly, make sure that your consumers are distributed evenly across the different nodes. Once a queue is pinned, messages are automatically transferred to that queue regardless of removing customers from it.
+							</li><li class="listitem">
+								If you wish to remove a queue that has a message group bound to it, make sure the queue is deleted by the session that is sending the messages. Doing this will ensure that other nodes will not try to route messages to this queue after it is removed.
+							</li><li class="listitem">
+								As a failover mechanism, always replicate the node that has the local grouping handler.
+							</li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="starting_and_stopping_messaging_clusters"/>Starting and Stopping Messaging Clusters</h1></div></div></div><p>
+					When you configure JBoss EAP 7.2 servers to form an ActiveMQ Artemis cluster, there can be other servers and clients that are connected to the running clustered servers. It is recommended to shutdown the connected clients and servers first, before shutting down the JBoss EAP 7.2 servers that are running in the cluster. This must be done in sequence and not in parallel in order to provide enough time for the servers to close all connections and avoid failures during closing that might lead to inconsistent states. ActiveMQ Artemis does not support automatic scale down of cluster nodes and expects that all cluster nodes will be restarted.
+				</p><p>
+					The same holds true when starting the servers. You must first start the JBoss EAP 7.2 servers in the ActiveMQ Artemis cluster. When startup is complete, you can then start the other servers and clients that connect to the cluster.
+				</p></div></div></body></html>

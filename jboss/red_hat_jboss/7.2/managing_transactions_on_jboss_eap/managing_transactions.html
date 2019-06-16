@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 3. Managing Transactions</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="managing_transactions"/>Chapter 3. Managing Transactions</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="browse_and_manage_transactions"/>Browsing Transactions</h1></div></div></div><p>
+				The management CLI supports the ability to browse and manipulate transaction records. This functionality is provided by the interaction between the TM and the management API of JBoss EAP.
+			</p><p>
+				The Transaction Manager stores information about each pending transaction and the participants involved the transaction, in a persistent storage called the object store. The management API exposes the object store as a resource called the <code class="literal">log-store</code>. The <code class="literal">probe</code> operation reads the transaction logs and creates a node path for each record. You can call the <code class="literal">probe</code> operation manually, whenever you need to refresh the <code class="literal">log-store</code>. It is normal for transaction logs to appear and disappear quickly.
+			</p><h3><a id="refresh_the_log_store"/>Refreshing the Log Store</h3><p>
+				The following command refreshes the log store for server groups which use the profile <code class="literal">default</code> in a managed domain. For a standalone server, remove the <code class="literal">profile=default</code> from the command.
+			</p><pre class="screen">/profile=default/subsystem=transactions/log-store=log-store:probe</pre><h3><a id="viewing_all_prepared_transactions"/>Viewing All Prepared Transactions</h3><p>
+				To view all prepared transactions, first <a class="link" href="managing_transactions.html#refresh_the_log_store" title="Refreshing the Log Store">refresh the log store</a>, then run the following command, which functions similarly to a file system <code class="literal">ls</code> command.
+			</p><pre class="screen">ls /profile=default/subsystem=transactions/log-store=log-store/transactions</pre><p>
+				Or
+			</p><pre class="screen">/host=master/server=server-one/subsystem=transactions/log-store=log-store:read-children-names(child-type=transactions)</pre><p>
+				Each transaction is shown, along with its unique identifier. Individual operations can be run against an individual transaction. For more information, see <a class="link" href="managing_transactions.html#manage_a_transaction" title="Administering a Transaction">Administering a Transaction</a>.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="manage_a_transaction"/>Administering a Transaction</h1></div></div></div><h3><a id="viewing_the_attributes_of_a_transaction"/>Viewing the Attributes of a Transaction</h3><p>
+				To view information about a transaction, such as its JNDI name, EIS product name and version, or its status, use the <code class="literal">read-resource</code> operation.
+			</p><pre class="screen">/profile=default/subsystem=transactions/log-store=log-store/transactions=0\:ffff7f000001\:-b66efc2\:4f9e6f8f\:9:read-resource</pre><h3><a id="viewing_the_details_of_a_transaction_participant"/>Viewing the Details of a Transaction Participant</h3><p>
+				Each transaction log contains a child element called <code class="literal">participants</code>. Use the <code class="literal">read-resource</code> operation on this element to see the details of a participant of the transaction. Participants are identified by their JNDI names.
+			</p><pre class="screen">/profile=default/subsystem=transactions/log-store=log-store/transactions=0\:ffff7f000001\:-b66efc2\:4f9e6f8f\:9/participants=java\:\/JmsXA:read-resource</pre><p>
+				The result may look similar to this:
+			</p><pre class="screen">{
+   "outcome" =&gt; "success",
+   "result" =&gt; {
+       "eis-product-name" =&gt; "ActiveMQ",
+       "eis-product-version" =&gt; "2.0",
+       "jndi-name" =&gt; "java:/JmsXA",
+       "status" =&gt; "HEURISTIC",
+       "type" =&gt; "/StateManager/AbstractRecord/XAResourceRecord"
+   }
+}</pre><p>
+				The outcome status shown here is in a <code class="literal">HEURISTIC</code> state and is eligible for recovery. See <a class="link" href="managing_transactions.html#recover_a_transaction" title="Recovering a Transaction Participant">Recover a Transaction Participant</a> for more details.
+			</p><p>
+				In special cases it is possible to create orphan records in the object store, that is XAResourceRecords, which do not have any corresponding transaction record in the log. For example, XA resource prepared but crashed before the TM recorded and is inaccessible for the domain management API. To access such records you need to set management option <code class="literal">expose-all-logs</code> to <code class="literal">true</code>. This option is not saved in management model and is restored to <code class="literal">false</code> when the server is restarted.
+			</p><pre class="screen">/profile=default/subsystem=transactions/log-store=log-store:write-attribute(name=expose-all-logs, value=true)</pre><p>
+				You can use this alternate command, which shows participant IDs of transaction in an aggregated form.
+			</p><pre class="screen">/host=master/server=server-one/subsystem=transactions/log-store=log-store/transactions=0\:ffff7f000001\:-b66efc2\:4f9e6f8f\:9:read-children-names(child-type=participants)</pre><h3><a id="delete_a_transaction"/>Deleting a Transaction Participant</h3><p>
+				Each transaction log supports a <code class="literal">delete</code> operation, to delete the transaction log representing the transaction.
+			</p><pre class="screen">/profile=default/subsystem=transactions/log-store=log-store/transactions=0\:ffff7f000001\:-b66efc2\:4f9e6f8f\:9:delete</pre><p>
+				This deletes all participants in the transaction as well.
+			</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+					Typically, you would leave participant log management to the recovery system or to the transaction log that owns it, but the <code class="literal">delete</code> operation is available for cases when you know it is safe to do so. In the case of heuristically completed XA resources, a <code class="literal">forget</code> call is triggered so that XA resource vendor logs are cleaned correctly. If this <code class="literal">forget</code> call fails, by default the <code class="literal">delete</code> operation will still succeed. You can override this behavior by setting the <code class="literal">ObjectStoreEnvironmentBean.ignoreMBeanHeuristics</code> system property to <code class="literal">false</code>.
+				</p></div><h3><a id="recover_a_transaction"/>Recovering a Transaction Participant</h3><p>
+				Each transaction participant supports recovery by using the <code class="literal">recover</code> operation.
+			</p><pre class="screen">/profile=default/subsystem=transactions/log-store=log-store/transactions=0\:ffff7f000001\:-b66efc2\:4f9e6f8f\:9/participants=2:recover</pre><p>
+				If the transaction participant’s status is <code class="literal">HEURISTIC</code>, the <code class="literal">recover</code> operation switches the status to <code class="literal">PREPARE</code> and asks the periodic recovery process to replay the commit.
+			</p><p>
+				If the commit is successful, the participant is removed from the transaction log. You can verify this by running the <code class="literal">probe</code> operation on the <code class="literal">log-store</code> and checking that the participant is no longer listed. If this is the last participant, the transaction is also deleted.
+			</p><h3><a id="refreshing_the_status_of_a_transaction_participant"/>Refreshing the Status of a Transaction Participant</h3><p>
+				If a transaction needs recovery, you can use the <code class="literal">refresh</code> operation to be sure it still requires recovery, before attempting the recovery.
+			</p><pre class="screen">/profile=default/subsystem=transactions/log-store=log-store/transactions=0\:ffff7f000001\:-b66efc2\:4f9e6f8f\:9/participants=2:refresh</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					In JBoss EAP 7.0, transaction failure exceptions are simply serialized and passed over the wire to the client. The client gets a <code class="literal">ClassNotFoundException</code> exception if they do not have the exception class on their class path.
+				</p><p>
+					JBoss EAP 7.1 introduced the <code class="literal">org.wildfly.common.rpc.RemoteExceptionCause</code> exception, which is known to the client as it is from the <code class="literal">wildfly</code> library. The server clones the original exception to this new one, puts all field of the original exception to a string form and adds them to the exception’s message. The server then passes only exceptions of type <code class="literal">RemoteExceptionCause</code> to the client.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="view_transaction_statistics"/>Viewing Transaction Statistics</h1></div></div></div><p>
+				If transaction manager statistics are enabled, you can view statistics on processed transactions by the transaction manager. See the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuration_guide/#configuring_the_transaction_manager">Configuring the Transaction Manager</a> section of the JBoss EAP <span class="emphasis"><em>Configuration Guide</em></span> for information about how to enable transaction manager statistics.
+			</p><p>
+				You can view statistics using either the management console or the management CLI. In the management console, transaction statistics are available by navigating to the <span class="strong"><strong>Transaction</strong></span> subsystem from the <span class="strong"><strong>Runtime</strong></span> tab. From the management CLI, you can view statistics by using <code class="literal">include-runtime=true</code> to the <code class="literal">read-resource</code> operation. For example:
+			</p><pre class="screen">/subsystem=transactions:read-resource(include-runtime=true)</pre><p>
+				The following table shows the management console display name, management CLI attribute, and description for each transaction statistic.
+			</p><div class="table"><a id="idm139754357936000"/><p class="title"><strong>Table 3.1. Transactions Subsystem Statistics</strong></p><div class="table-contents"><table summary="Transactions Subsystem Statistics" border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Display Name</th><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+								Aborted
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								number-of-aborted-transactions
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The number of aborted transactions.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								Application Failures
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								number-of-application-rollbacks
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The number of failed transactions, including timeouts, whose failure origin was an application.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								Average Commit Time
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								average-commit-time
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The average time of transaction commit, in nanoseconds, measured from when the client calls commit until the transaction manager determines that it was successful.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								Committed
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								number-of-committed-transactions
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The number of committed transactions.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								Heuristics
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								number-of-heuristics
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The number of transactions in a heuristic state.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								Inflight Transactions
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								number-of-inflight-transactions
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The number of transactions which have begun but not yet terminated.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								Nested Transactions
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								number-of-nested-transactions
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The total number of nested transactions created.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								Number of Transactions
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								number-of-transactions
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The total number of transactions created, including nested.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								Resource Failures
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								number-of-resource-rollbacks
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The number of failed transactions whose failure origin was a resource.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								System Failures
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								number-of-system-rollbacks
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The number of transactions that have been rolled back due to internal system errors.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								Timed Out
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								number-of-timed-out-transactions
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The number of transactions that have rolled back due to timeout.
+							</p>
+							 </td></tr></tbody></table></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="transactions_object_store"/>Configuring the Transactions Object Store</h1></div></div></div><p>
+				Transactions need a place to store objects. One of the options for object storage is a JDBC datasource. If performance is a particular concern, the JDBC object store can be slower than a file system or ActiveMQ journal object store.
+			</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+					If the <code class="literal">transactions</code> subsystem is configured to use Apache ActiveMQ Artemis journal as storage type for transaction logs, then two instances of JBoss EAP are not permitted to use the same directory for storing the journal. Application server instances can not share the same location and each has to configure a unique location for it.
+				</p></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Losing a transaction object store can lead to losing data consistency. Thus, the object store needs to be placed on a <span class="emphasis"><em>safe</em></span> drive.
+				</p></div><h3><a id="using_jdbc_datasource_as_transactions_object_store"/>Using a JDBC Datasource as a Transactions Object Store</h3><p>
+				Follow the below steps to use a JDBC datasource as a transactions object store.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						Create a datasource, for example, <code class="literal">TransDS</code>. For instructions on a non-XA datasource, see the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuration_guide/#create_a_non_xa_datasource">Create a Non-XA datasource</a> section of the JBoss EAP <span class="emphasis"><em>Configuration Guide</em></span>. Note that the datasource’s JDBC driver must be <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuration_guide/#install_a_jdbc_driver_as_a_core_module">installed as a core module</a>, as described in the JBoss EAP <span class="emphasis"><em>Configuration Guide</em></span>, not as a JAR deployment, for the object store to work properly.
+					</li></ol></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Set the datasource’s <code class="literal">jta</code> attribute to <code class="literal">false</code>.
+					</p><pre class="screen">/subsystem=datasources/data-source=TransDS:write-attribute(name=jta, value=false)</pre></li><li class="listitem"><p class="simpara">
+						Set the <code class="literal">jdbc-store-datasource</code> attribute to the JNDI name for the datasource to use, for example, <code class="literal">java:jboss/datasources/TransDS</code>.
+					</p><pre class="screen">/subsystem=transactions:write-attribute(name=jdbc-store-datasource, value=java:jboss/datasources/TransDS)</pre></li><li class="listitem"><p class="simpara">
+						Set the <code class="literal">use-jdbc-store</code> attribute to <code class="literal">true</code>.
+					</p><pre class="screen">/subsystem=transactions:write-attribute(name=use-jdbc-store, value=true)</pre></li><li class="listitem">
+						Restart the JBoss EAP server for the changes to take effect.
+					</li></ol></div><h3><a id="transactions_jdbc_store_attributes"/>Transactions JDBC Store Attributes</h3><p>
+				The following table identifies all of the available attributes related to JDBC object storage.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Attribute names in this table are listed as they appear in the management model, for example, when using the management CLI. See the schema definition file located at <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/docs/schema/wildfly-txn_4_0.xsd</code> to view the elements as they appear in the XML, as there may be differences from the management model.
+				</p></div><div class="table"><a id="idm139754345270976"/><p class="title"><strong>Table 3.2. JDBC Store Attributes for Transactions</strong></p><div class="table-contents"><table summary="JDBC Store Attributes for Transactions" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Property</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+								use-jdbc-store
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Set this to <code class="literal">true</code> to enable the JDBC store for transactions.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								jdbc-store-datasource
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The JNDI name of the JDBC datasource used for storage.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								jdbc-action-store-drop-table
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Whether to drop and recreate the action store tables at launch. The default is <code class="literal">false</code>.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								jdbc-action-store-table-prefix
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The prefix for the action store table names.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								jdbc-communication-store-drop-table
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Whether to drop and recreate the communication store tables at launch. The default is <code class="literal">false</code>.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								jdbc-communication-store-table-prefix
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The prefix for the communication store table names.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								jdbc-state-store-drop-table
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Whether to drop and recreate the state store tables at launch. The default is <code class="literal">false</code>.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								jdbc-state-store-table-prefix
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The prefix for the state store table names.
+							</p>
+							 </td></tr></tbody></table></div></div><h3><a id="using_the_activemq_journal_object_store"/>Using the ActiveMQ Journal Object Store</h3><p>
+				Follow the below steps to use an ActiveMQ journal object store.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Set the <code class="literal">use-journal-store</code> attribute to <code class="literal">true</code>.
+					</p><pre class="screen">/subsystem=transactions:write-attribute(name=use-journal-store,value=true)</pre></li><li class="listitem">
+						Restart the JBoss EAP server for the changes to take effect.
+					</li></ol></div></div></div></body></html>

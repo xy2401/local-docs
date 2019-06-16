@@ -1,0 +1,785 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 5. Securing the Management Interfaces with LDAP</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="securing_the_management_interfaces_with_ldap"/>Chapter 5. Securing the Management Interfaces with LDAP</h1></div></div></div><p>
+			The management interfaces can authenticate against an LDAP server (including Microsoft Active Directory). This is accomplished by using an LDAP authenticator. An LDAP authenticator operates by first establishing a connection (using an outbound LDAP connection) to the remote directory server. It then performs a search using the username which the user passed to the authentication system, to find the fully-qualified distinguished name (DN) of the LDAP record. If successful, a new connection is established, using the DN of the user as the credential, and password supplied by the user. If this second connection and authentication to the LDAP server is successful, the DN is verified to be valid and authentication has succeeded.
+		</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+				Securing the management interfaces with LDAP changes the authentication from digest to BASIC/Plain, which by default, will cause usernames and passwords to be sent unencrypted over the network. SSL/TLS can be enabled on the outbound connection to encrypt this traffic and avoid sending this information in the clear.
+			</p></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+				In cases where a legacy security realm uses an LDAP server to perform authentication, such as securing the management interfaces using LDAP, JBoss EAP will return a <code class="literal">500</code>, or internal server error, error code if that LDAP server is unreachable. This behavior differs from previous versions of JBoss EAP which returned a <code class="literal">401</code>, or unauthorized, error code under the same conditions.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="using_elytron"/>Using Elytron</h1></div></div></div><p>
+				You can secure the management interfaces using LDAP with the <code class="literal">elytron</code> subsystem in the same way as using any identity store. Information on using identity stores for security with the <code class="literal">elytron</code> subsystem can be found in the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_configure_server_security/#elytron_secure_mgmt_new_identity_store">Secure the Management Interfaces with a New Identity Store</a> section of <span class="emphasis"><em>How to Configure Server Security</em></span>. For example, to secure the management console with LDAP:
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					If the JBoss EAP server does not have permissions to read the password, such as when an Active Directory LDAP server is used, it is necessary to set <code class="literal">direct-verification</code> to <code class="literal">true</code> on the defined LDAP realm. This attribute allows verification to be directly performed on the LDAP server instead of the JBoss EAP server.
+				</p></div><div class="title"><strong>Example LDAP Identity Store</strong></div><p>
+					
+</p><pre class="screen">/subsystem=elytron/dir-context=exampleDC:add(url="ldap://127.0.0.1:10389",principal="uid=admin,ou=system",credential-reference={clear-text="secret"})
+
+/subsystem=elytron/ldap-realm=exampleLR:add(dir-context=exampleDC,identity-mapping={search-base-dn="ou=Users,dc=wildfly,dc=org",rdn-identifier="uid",user-password-mapper={from="userPassword"},attribute-mapping=[{filter-base-dn="ou=Roles,dc=wildfly,dc=org",filter="(&amp;(objectClass=groupOfNames)(member={0}))",from="cn",to="Roles"}]})
+
+/subsystem=elytron/simple-role-decoder=from-roles-attribute:add(attribute=Roles)
+
+/subsystem=elytron/security-domain=exampleLdapSD:add(realms=[{realm=exampleLR,role-decoder=from-roles-attribute}],default-realm=exampleLR,permission-mapper=default-permission-mapper)
+
+/subsystem=elytron/http-authentication-factory=example-ldap-http-auth:add(http-server-mechanism-factory=global,security-domain=exampleLdapSD,mechanism-configurations=[{mechanism-name=BASIC,mechanism-realm-configurations=[{realm-name=exampleApplicationDomain}]}])
+
+/core-service=management/management-interface=http-interface:write-attribute(name=http-authentication-factory, value=example-ldap-http-auth)
+
+reload</pre><p>
+
+				</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="using_elytron_for_two_way_ssl_tls_for_the_outbound_ldap_connection"/>Using Elytron for Two-way SSL/TLS for the Outbound LDAP Connection</h2></div></div></div><p>
+					When using LDAP to secure the management interfaces, you can configure the outbound LDAP connection to use two-way SSL/TLS. To do this, create an <code class="literal">ssl-context</code> and add it to the <code class="literal">dir-context</code> used by your <code class="literal">ldap-realm</code>. Creating a two-way SSL/TLS <code class="literal">ssl-context</code> is covered in the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_configure_server_security/#elytron_two-way_ssl_apps">Enable Two-way SSL/TLS for Applications using the Elytron Subsystem</a> section of <span class="emphasis"><em>How to Configure Server Security</em></span>.
+				</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+						Red Hat recommends that SSLv2, SSLv3, and TLSv1.0 be explicitly disabled in favor of TLSv1.1 or TLSv1.2 in all affected packages.
+					</p></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="legacy_secure_mgmt_inteface_ldap_basic_setup"/>Using Legacy Core Management Authentication</h1></div></div></div><p>
+				To use an LDAP directory server as the authentication source for the management interfaces using the legacy <code class="literal">security</code> subsystem, the following steps must be performed:
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Create an outbound connection to the LDAP server.
+					</p><p class="simpara">
+						The purpose of creating an outbound LDAP connection is to allow the security realm (and the JBoss EAP instance) to establish a connection to the LDAP server. This is similar to the case of creating a datasource for use with the <code class="literal">Database</code> login module in a security domain.
+					</p><p class="simpara">
+						The LDAP outbound connection allows the following attributes:
+					</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Required</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										url
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										yes
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The URL address of the directory server.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										search-dn
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										no
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The fully distinguished name (DN) of the user authorized to perform searches.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										search-credential
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										no
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The password of the user authorized to perform searches. The attributes supported by this element are:
+									</p>
+									 <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+												<code class="literal">store</code> - Reference to the credential store to obtain the search credential from.
+											</li><li class="listitem">
+												<code class="literal">alias</code> - The alias of the credential in the referenced store.
+											</li><li class="listitem">
+												<code class="literal">type</code> - The fully qualified class name of the credential type to obtain from the credential store.
+											</li><li class="listitem">
+												<code class="literal">clear-text</code> - Instead of referencing a credential store, this attribute can be used to specify a clear text password.
+											</li></ul></div>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										initial-context-factory
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										no
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The initial context factory to use when establishing the connection. Defaults to <code class="literal">com.sun.jndi.ldap.LdapCtxFactory</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										security-realm
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										no
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The security realm to reference to obtain a configured <code class="literal">SSLContext</code> to use when establishing the connection.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										referrals
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										no
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Specifies the behavior when encountering a referral when doing a search. Valid options are <code class="literal">IGNORE</code>, <code class="literal">FOLLOW</code>, and <code class="literal">THROW</code>.
+									</p>
+									 <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+												<code class="literal">IGNORE</code>: The default option. Ignores the referral.
+											</li><li class="listitem">
+												<code class="literal">FOLLOW</code>: When referrals are encountered during a search, the <code class="literal">DirContext</code> being used will attempt to follow that referral. This assumes the same connection settings can be used to connect to the second server and the name used in the referral is reachable.
+											</li><li class="listitem">
+												<code class="literal">THROW</code>: The <code class="literal">DirContext</code> will throw an exception, <code class="literal">LdapReferralException</code>, to indicate that a referral is required. The security realm will handle and attempt to identify an alternative connection to use for the referral.
+											</li></ul></div>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										always-send-client-cert
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										no
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										By default the server’s client certificate is not sent while verifying the users credential. If this is set to <code class="literal">true</code> it will always be sent.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										handles-referrals-for
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										no
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Specifies the referrals a connection can handle. If specifying list of URIs, they should be separated by spaces. This enables a connection with connection properties to be defined and used when different credentials are needed to follow a referral. This is useful in situations where different credentials are needed to authenticate against the second server, or for situations where the server returns a name in the referral that is not reachable from the JBoss EAP installation and an alternative address can be substituted.
+									</p>
+									 </td></tr></tbody></table></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							<code class="literal">search-dn</code> and <code class="literal">search-credential</code> are different from the username and password provided by the user. The information provided here is specifically for establishing an initial connection between the JBoss EAP instance and the LDAP server. This connection allows JBoss EAP to perform a subsequent search for the DN of the user trying to authenticate. The DN of the user, which is a result of the search, that is trying to authenticate and the password they provided are used to establish a separate second connection for completing the authentication process.
+						</p></div><p class="simpara">
+						Given the following example LDAP server, below are the management CLI commands for configuring an outbound LDAP connection:
+					</p><div class="table"><a id="idm140267039535952"/><p class="title"><strong>Table 5.1. Example LDAP Server</strong></p><div class="table-contents"><table summary="Example LDAP Server" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Value</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										url
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										127.0.0.1:389
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										search-credential
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										myPass
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										search-dn
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										cn=search,dc=acme,dc=com
+									</p>
+									 </td></tr></tbody></table></div></div><div class="title"><strong>CLI for Adding the Outbound Connection</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/ldap-connection=ldap-connection/:add(search-credential=myPass,url=ldap://127.0.0.1:389,search-dn="cn=search,dc=acme,dc=com")
+
+reload</pre><p>
+
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							This creates an unencrypted connection between the JBoss EAP instance and the LDAP server. For more details on setting up an encrypted connection using SSL/TLS, see <a class="link" href="securing_the_management_interfaces_with_ldap.html#legacy_two-way_ssl_ldap_mgmt_auth" title="Using Two-way SSL/TLS for the Outbound LDAP Connection">Using SSL/TLS for the Outbound LDAP Connection</a>.
+						</p></div></li><li class="listitem"><p class="simpara">
+						Create a new LDAP-enabled security realm.
+					</p><p class="simpara">
+						Once the outbound LDAP connection has been created, a new LDAP-enabled security realm must be created to use it.
+					</p><p class="simpara">
+						The LDAP security realm has the following configuration attributes:
+					</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										connection
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The name of the connection defined in outbound-connections to use to connect to the LDAP directory.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										base-dn
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The DN of the context to begin searching for the user.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										recursive
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Whether the search should be recursive throughout the LDAP directory tree, or only search the specified context. Defaults to <code class="literal">false</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										user-dn
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The attribute of the user that holds the DN. This is subsequently used to test authentication as the user can complete. Defaults to <code class="literal">dn</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										allow-empty-passwords
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										This attribute determines whether an empty password is accepted. The default value is <code class="literal">false</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										username-attribute
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The name of the attribute to search for the user. This filter performs a simple search where the user name entered by the user matches the specified attribute.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										advanced-filter
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The fully defined filter used to search for a user based on the supplied user ID. This attribute contains a filter query in standard LDAP syntax. The filter must contain a variable in the following format: <code class="literal">{0}</code>. This is later replaced with the user name supplied by the user. More details and <code class="literal">advanced-filter</code> examples can be found in the <a class="link" href="securing_the_management_interfaces_with_ldap.html#combining_ldap_and_rbac_for_authorization" title="Combining LDAP and RBAC for Authorization">Combining LDAP and RBAC for Authorization section</a>.
+									</p>
+									 </td></tr></tbody></table></div><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+							It is important to ensure that empty LDAP passwords are not allowed since it is a serious security concern. Unless this behavior is specifically desired in the environment, ensure empty passwords are not allowed and <span class="emphasis"><em>allow-empty-passwords</em></span> remains false.
+						</p></div><p class="simpara">
+						Below are the management CLI commands for configuring an LDAP-enabled security realm using the <code class="literal">ldap-connection</code> outbound LDAP connection.
+					</p><pre class="programlisting">/core-service=management/security-realm=ldap-security-realm:add
+
+/core-service=management/security-realm=ldap-security-realm/authentication=ldap:add(connection="ldap-connection", base-dn="cn=users,dc=acme,dc=com",username-attribute="sambaAccountName")
+
+reload</pre></li><li class="listitem"><p class="simpara">
+						Reference the new security realm in the management interface. Once a security realm has been created and is using the outbound LDAP connection, that new security realm must be referenced by the management interfaces.
+					</p><pre class="programlisting">/core-service=management/management-interface=http-interface/:write-attribute(name=security-realm,value="ldap-security-realm")</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The management CLI commands shown assume that you are running a JBoss EAP standalone server. For more details on using the management CLI for a JBoss EAP managed domain, see the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/management_cli_guide/"><span class="emphasis"><em>Management CLI Guide</em></span></a>.
+						</p></div></li></ol></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="legacy_two-way_ssl_ldap_mgmt_auth"/>Using Two-way SSL/TLS for the Outbound LDAP Connection</h2></div></div></div><p>
+					Follow these steps to create an outbound LDAP connection secured by SSL/TLS:
+				</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+						Red Hat recommends that SSLv2, SSLv3, and TLSv1.0 be explicitly disabled in favor of TLSv1.1 or TLSv1.2 in all affected packages.
+					</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Configure a security realm for the outbound LDAP connection to use.
+						</p><p class="simpara">
+							The security realm must contain a keystore configured with the key that the JBoss EAP server will use to decrypt/encrypt communications between itself and the LDAP server. This keystore will also allow the JBoss EAP instance to verify itself against the LDAP server. The security realm must also contain a truststore that contains the LDAP server’s certificate, or the certificate of the certificate authority used to sign the LDAP server’s certificate. See <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_configure_server_security/#mgmt-interface-two-way-ssl-legacy">Setting up Two-Way SSL/TLS for the Management Interfaces in the JBoss EAP <span class="emphasis"><em>How to Configure Server Security</em></span> guide</a> for instructions on configuring keystores and truststores and creating a security realm that uses them.
+						</p></li><li class="listitem"><p class="simpara">
+							Create an outbound LDAP connection with the SSL/TLS URL and security realm.
+						</p><p class="simpara">
+							Similar to the process defined in <a class="link" href="securing_the_management_interfaces_with_ldap.html#legacy_secure_mgmt_inteface_ldap_basic_setup" title="Using Legacy Core Management Authentication">Using Legacy Core Management Authentication</a>, an outbound LDAP connection should be created, but using the SSL/TLS URL for the LDAP server and the SSL/TLS security realm.
+						</p><p class="simpara">
+							Once the outbound LDAP connection and SSL/TLS security realm for the LDAP server have been created, the outbound LDAP connection needs to be updated with that information.
+						</p><div class="title"><strong>Example CLI for Adding the Outbound Connection with an SSL/TLS URL</strong></div><p>
+								
+</p><pre class="programlisting">/core-service=management/ldap-connection=ldap-connection/:add(search-credential=myPass, url=ldaps://LDAP_HOST:LDAP_PORT, search-dn="cn=search,dc=acme,dc=com")</pre><p>
+
+							</p><div class="title"><strong>Adding the security realm with the SSL/TLS certificates</strong></div><p>
+								
+</p><pre class="programlisting">/core-service=management/ldap-connection=ldap-connection:write-attribute(name=security-realm,value="CertificateRealm")
+
+reload</pre><p>
+
+							</p></li><li class="listitem"><p class="simpara">
+							Create a new security realm that uses the outbound LDAP connection for use by the management interfaces.
+						</p><p class="simpara">
+							Follow the steps <span class="emphasis"><em>Create a new LDAP-Enabled Security Realm</em></span> and <span class="emphasis"><em>Reference the new security realm in the Management Interface</em></span> from the procedure in <a class="link" href="securing_the_management_interfaces_with_ldap.html#legacy_secure_mgmt_inteface_ldap_basic_setup" title="Using Legacy Core Management Authentication">Using Legacy Core Management Authentication</a>.
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								The management CLI commands shown assume that you are running a JBoss EAP standalone server. For more details on using the management CLI for a JBoss EAP managed domain, see the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/management_cli_guide/"><span class="emphasis"><em>Management CLI Guide</em></span></a>.
+							</p></div></li></ol></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ldap_and_rbac"/>LDAP and RBAC</h1></div></div></div><p>
+				RBAC (Role-Based Access Control) is a mechanism for specifying a set of permissions (roles) for management users. This allows users to be granted different management responsibilities without giving them full, unrestricted access. For more details on RBAC, see the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/#rbac">Role-Based Access Control section of the JBoss EAP <span class="emphasis"><em>Security Architecture</em></span> guide</a>.
+			</p><p>
+				RBAC is used only for authorization, with authentication being handled separately. Since LDAP can be used for authentication as well as authorization, JBoss EAP can be configured in the following ways:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						Use RBAC for authorization only, and use LDAP, or another mechanism, only for authentication.
+					</li><li class="listitem">
+						Use RBAC combined with LDAP for making authorization decisions in the management interfaces.
+					</li></ul></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="using_ldap_and_rbac_independently"/>Using LDAP and RBAC Independently</h2></div></div></div><p>
+					JBoss EAP allows for authentication and authorization to be configured independently in security realms. This enables LDAP to be configured as an authentication mechanism and RBAC to be configured as an authorization mechanism. If configured in this manner, when a user attempts to access a management interface, they will first be authenticated using the configured LDAP server. If successful, the user’s role, and configured permissions of that role, will be determined using only RBAC, independently of any group information found in the LDAP server.
+				</p><p>
+					For more details on using just RBAC as an authorization mechanism for the management interfaces, see <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_configure_server_security/#role_based_access_control"><span class="emphasis"><em>How to Configure Server Security</em></span></a> for JBoss EAP. For more details on configuring LDAP for authentication with the management interfaces, see the <a class="link" href="securing_the_management_interfaces_with_ldap.html#legacy_secure_mgmt_inteface_ldap_basic_setup" title="Using Legacy Core Management Authentication">previous section</a>.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="combining_ldap_and_rbac_for_authorization"/>Combining LDAP and RBAC for Authorization</h2></div></div></div><p>
+					Users who have authenticated using an LDAP server or using a properties file can be members of user groups. A user group is simply an arbitrary label that can be assigned to one or more users. RBAC can be configured to use this group information to automatically assign a role to a user or exclude a user from a role.
+				</p><p>
+					An LDAP directory contains entries for user accounts and groups, cross referenced by attributes. Depending on the LDAP server configuration, a user entity can map the groups the user belongs to through <code class="literal">memberOf</code> attributes; a group entity can map which users belong to it through <code class="literal">uniqueMember</code> attributes; or a combination of the two. Once a user is successfully authenticated to the LDAP server, a group search is performed to load that user’s group information. Depending on the directory server in use, group searches can be performed using their SN, which is usually the username used in authentication, or by using the DN of the user’s entry in the directory. Group searches (<code class="literal">group-search</code>) as well as mapping between a username and a distinguished name (<code class="literal">username-to-dn</code>) are configured when setting up LDAP as an authorization mechanism in a security realm.
+				</p><p>
+					Once a user’s group membership information is determined from the LDAP server, a mapping within the RBAC configuration is used to determine what roles a user has. This mapping is configured to explicitly include or exclude groups as well as individual users.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						The authentication step of a user connecting to the server always happens first. Once the user is successfully authenticated the server loads the user’s groups. The authentication step and the authorization step each require a connection to the LDAP server. The security realm optimizes this process by reusing the authentication connection for the group loading step.
+					</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="using_group_search"/>Using group-search</h3></div></div></div><p>
+						There are two different styles that can be used when searching for group membership information: <span class="emphasis"><em>Principal to Group</em></span> and <span class="emphasis"><em>Group to Principal</em></span>. Principal to Group has the user’s entry containing references to the groups it is a member of, using the <code class="literal">memberOf</code> attribute. Group to Principal has the group’s entry contain the references to the users who are members of it, using the <code class="literal">uniqueMember</code> attribute.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							JBoss EAP supports both Principal to Group as well as Group to Principal searches, but Principal to Group is recommended over Group to Principal. If Principal to Group is used, group information can be loaded directly by reading attributes of known distinguished names without having to perform any searches. Group to Principal requires extensive searches to identify the all groups that reference a user.
+						</p></div><p>
+						Both Principal to Group and Group to Principal use <code class="literal">group-search</code> which contains the following attributes:
+					</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										group-name
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										This attribute is used to specify the form that should be used for the group name returned as the list of groups of which the user is a member. This can either be the simple form of the group name or the group’s distinguished name. If the distinguished name is required this attribute can be set to <code class="literal">DISTINGUISHED_NAME</code>. Defaults to <code class="literal">SIMPLE</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										iterative
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										This attribute is used to indicate if, after identifying the groups a user is a member of, it should also iteratively search based on the groups to identify which groups the groups are a member of. If iterative searching is enabled, it keeps going until either it reaches a group that is not a member if any other groups or a cycle is detected. Defaults to <code class="literal">false</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										group-dn-attribute
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										On an entry for a group which attribute is its distinguished name. Defaults to <code class="literal">dn</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										group-name-attribute
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										On an entry for a group which attribute is its simple name. Defaults to <code class="literal">uid</code>.
+									</p>
+									 </td></tr></tbody></table></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							Cyclic group membership is not a problem. A record of each search is kept to prevent groups that have already been searched from being searched again.
+						</p></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+							For iterative searching to work, the group entries need to look the same as user entries. The same approach used to identify the groups a user is a member of is then used to identify the groups of which the group is a member. This would not be possible if, for group to group membership, the name of the attribute used for the cross reference changes, or if the direction of the reference changes.
+						</p></div><div class="title"><strong>Principal to Group (memberOf) for Group Search</strong></div><p>
+							Consider an example where a user <code class="literal">TestUserOne</code> who is a member of <code class="literal">GroupOne</code>, and <code class="literal">GroupOne</code> is in turn a member of <code class="literal">GroupFive</code>. The group membership would be shown by the use of a <code class="literal">memberOf</code> attribute at the member level. This means, <code class="literal">TestUserOne</code> would have a <code class="literal">memberOf</code> attribute set to the <code class="literal">dn</code> of <code class="literal">GroupOne</code>. <code class="literal">GroupOne</code> in turn would have a <code class="literal">memberOf</code> attribute set to the <code class="literal">dn</code> of <code class="literal">GroupFive</code>.
+						</p><p>
+						To use this type of searching, the <code class="literal">principal-to-group</code> element is added to the <code class="literal">group-search</code> element:
+					</p><div class="title"><strong>Principal to Group, memberOf, Configuration</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/security-realm=ldap-security-realm:add
+
+batch
+
+/core-service=management/security-realm=ldap-security-realm/authorization=ldap:add(connection=ldap-connection)
+
+/core-service=management/security-realm=ldap-security-realm/authorization=ldap/group-search=principal-to-group:add(group-attribute="memberOf",iterative=true,group-dn-attribute="dn", group-name="SIMPLE",group-name-attribute="cn")
+
+run-batch</pre><p>
+
+						</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+							The above example assumes you already have <code class="literal">ldap-connection</code> defined. You also need to configure the authentication mechanism which is covered <a class="link" href="securing_the_management_interfaces_with_ldap.html#legacy_secure_mgmt_inteface_ldap_basic_setup" title="Using Legacy Core Management Authentication">earlier in this section</a>.
+						</p></div><p>
+						Notice that the <code class="literal">group-attribute</code> attribute is used with the <code class="literal">group-search=principal-to-group</code>. For reference:
+					</p><div class="table"><a id="idm140267101931184"/><p class="title"><strong>Table 5.2. principal-to-group</strong></p><div class="table-contents"><table summary="principal-to-group" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										group-attribute
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The name of the attribute on the user entry that matches the distinguished name of the group the user is a member of. Defaults to <code class="literal">memberOf</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										prefer-original-connection
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										This value is used to indicate which group information to prefer when following a referral. Each time a principal is loaded, attributes from each of their group memberships are subsequently loaded. Each time attributes are loaded, either the original connection or connection from the last referral can be used. Defaults to <code class="literal">true</code>.
+									</p>
+									 </td></tr></tbody></table></div></div><div class="title"><strong>Group to Principal, uniqueMember, Group Search</strong></div><p>
+							Consider the same example as Principal to Group where a user <code class="literal">TestUserOne</code> who is a member of <code class="literal">GroupOne</code>, and <code class="literal">GroupOne</code> is in turn a member of <code class="literal">GroupFive</code>. However, in this case the group membership would be shown by the use of the <code class="literal">uniqueMember</code> attribute set at the group level. This means that <code class="literal">GroupFive</code> would have a <code class="literal">uniqueMember</code> set to the <code class="literal">dn</code> of <code class="literal">GroupOne</code>. <code class="literal">GroupOne</code> in turn would have a <code class="literal">uniqueMember</code> set to the <code class="literal">dn</code> of <code class="literal">TestUserOne</code>.
+						</p><p>
+						To use this type of searching, the <code class="literal">group-to-principal</code> element is added to the <code class="literal">group-search</code> element:
+					</p><div class="title"><strong>Group to Principal, uniqueMember, Configuration</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/security-realm=ldap-security-realm:add
+
+batch
+
+/core-service=management/security-realm=ldap-security-realm/authorization=ldap:add(connection=ldap-connection)
+
+/core-service=management/security-realm=ldap-security-realm/authorization=ldap/group-search=group-to-principal:add(iterative=true, group-dn-attribute="dn", group-name="SIMPLE", group-name-attribute="uid", base-dn="ou=groups,dc=group-to-principal,dc=example,dc=org", principal-attribute="uniqueMember", search-by="DISTINGUISHED_NAME")
+
+run-batch</pre><p>
+
+						</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+							The above example assumes you already have <code class="literal">ldap-connection</code> defined. You also need to configure the authentication mechanism which is covered <a class="link" href="securing_the_management_interfaces_with_ldap.html#legacy_secure_mgmt_inteface_ldap_basic_setup" title="Using Legacy Core Management Authentication">earlier in this section</a>.
+						</p></div><p>
+						Notice that the <code class="literal">principal-attribute</code> attribute is used with <code class="literal">group-search=group-to-principal</code>. <code class="literal">group-to-principal</code> is used to define how searches for groups that reference the user entry will be performed, and <code class="literal">principal-attribute</code> is used to define the group entry that references the principal.
+					</p><p>
+						For reference:
+					</p><div class="table"><a id="idm140267140391680"/><p class="title"><strong>Table 5.3. group-to-principal</strong></p><div class="table-contents"><table summary="group-to-principal" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										base-dn
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The distinguished name of the context to use to begin the search.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										recursive
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Whether sub-contexts also be searched. Defaults to <code class="literal">false</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										search-by
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The form of the role name used in searches. Valid values are <code class="literal">SIMPLE</code> and <code class="literal">DISTINGUISHED_NAME</code>. Defaults to <code class="literal">DISTINGUISHED_NAME</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										prefer-original-connection
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										This value is used to indicate which group information to prefer when following a referral. Each time a principal is loaded, attributes from each of their group memberships are subsequently loaded. Each time attributes are loaded, either the original connection or connection from the last referral can be used.
+									</p>
+									 </td></tr></tbody></table></div></div><div class="table"><a id="idm140267154539936"/><p class="title"><strong>Table 5.4. membership-filter</strong></p><div class="table-contents"><table summary="membership-filter" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										principal-attribute
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The name of the attribute on the group entry that references the user entry. Defaults to <code class="literal">member</code>.
+									</p>
+									 </td></tr></tbody></table></div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="using_username_to_dn"/>Using username-to-dn</h3></div></div></div><p>
+						It is possible to define rules within the authorization section to convert a user’s simple user name to their distinguished name. The <code class="literal">username-to-dn</code> element specifies how to map the user name to the distinguished name of their entry in the LDAP directory. This element is <span class="strong"><strong>optional</strong></span> and only required when both of the following are true:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								The authentication and authorization steps are against different LDAP servers.
+							</li><li class="listitem">
+								The group search uses the distinguished name.
+							</li></ul></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							This could also be applicable in instances where the security realm supports both LDAP and Kerberos authentication and a conversion is needed for Kerberos, if LDAP authentication has been performed the DN discovered during authentication can be used.
+						</p></div><p>
+						It contains the following attributes:
+					</p><div class="table"><a id="idm140267133447936"/><p class="title"><strong>Table 5.5. username-to-dn</strong></p><div class="table-contents"><table summary="username-to-dn" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										force
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The result of a user name to distinguished name mapping search during authentication is cached and reused during the authorization query when the force attribute is set to <code class="literal">false</code>. When force is <code class="literal">true</code>, the search is performed again during authorization while loading groups. This is typically done when different servers perform authentication and authorization.
+									</p>
+									 </td></tr></tbody></table></div></div><p>
+						<code class="literal">username-to-dn</code> can be configured with one of the following:
+					</p><div class="variablelist"><dl class="variablelist"><dt><span class="term">username-is-dn</span></dt><dd><p class="simpara">
+									This specifies that the user name entered by the remote user is the user’s distinguished name.
+								</p><div class="title"><strong>username-is-dn Example</strong></div><p>
+										
+</p><pre class="screen">/core-service=management/security-realm=ldap-security-realm:add
+
+batch
+
+/core-service=management/security-realm=ldap-security-realm/authorization=ldap:add(connection=ldap-connection)
+
+/core-service=management/security-realm=ldap-security-realm/authorization=ldap/group-search=group-to-principal:add(iterative=true, group-dn-attribute="dn", group-name="SIMPLE", group-name-attribute="uid", base-dn="ou=groups,dc=group-to-principal,dc=example,dc=org", principal-attribute="uniqueMember", search-by="DISTINGUISHED_NAME")
+
+/core-service=management/security-realm=ldap-security-realm/authorization=ldap/username-to-dn=username-is-dn:add(force=false)
+
+run-batch</pre><p>
+
+									</p><p class="simpara">
+									This defines a 1:1 mapping and there is no additional configuration.
+								</p></dd><dt><span class="term">username-filter</span></dt><dd><p class="simpara">
+									A specified attribute is searched for a match against the supplied user name.
+								</p><div class="title"><strong>username-filter Example</strong></div><p>
+										
+</p><pre class="screen">/core-service=management/security-realm=ldap-security-realm:add
+
+batch
+
+/core-service=management/security-realm=ldap-security-realm/authorization=ldap:add(connection=ldap-connection)
+
+/core-service=management/security-realm=ldap-security-realm/authorization=ldap/group-search=group-to-principal:add(iterative=true, group-dn-attribute="dn", group-name="SIMPLE", group-name-attribute="uid", base-dn="ou=groups,dc=group-to-principal,dc=example,dc=org", principal-attribute="uniqueMember", search-by="DISTINGUISHED_NAME")
+
+/core-service=management/security-realm=ldap-security-realm/authorization=ldap/username-to-dn=username-filter:add(force=false, base-dn="dc=people,dc=harold,dc=example,dc=com", recursive="false", attribute="sn", user-dn-attribute="dn")
+
+run-batch</pre><p>
+
+									</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+													base-dn
+												</p>
+												 </td><td style="text-align: left" valign="top"> <p>
+													The distinguished name of the context to begin the search.
+												</p>
+												 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+													recursive
+												</p>
+												 </td><td style="text-align: left" valign="top"> <p>
+													Whether the search will extend to sub contexts. Defaults to <code class="literal">false</code>.
+												</p>
+												 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+													attribute
+												</p>
+												 </td><td style="text-align: left" valign="top"> <p>
+													The attribute of the user’s entry to try and match against the supplied user name. Defaults to <code class="literal">uid</code>.
+												</p>
+												 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+													user-dn-attribute
+												</p>
+												 </td><td style="text-align: left" valign="top"> <p>
+													The attribute to read to obtain the user’s distinguished name. Defaults to <code class="literal">dn</code>.
+												</p>
+												 </td></tr></tbody></table></div></dd><dt><span class="term">advanced-filter</span></dt><dd><p class="simpara">
+									This option uses a custom filter to locate the user’s distinguished name.
+								</p><div class="title"><strong>advanced-filter Example</strong></div><p>
+										
+</p><pre class="screen">/core-service=management/security-realm=ldap-security-realm:add
+
+batch
+
+/core-service=management/security-realm=ldap-security-realm/authorization=ldap:add(connection=ldap-connection)
+
+/core-service=management/security-realm=ldap-security-realm/authorization=ldap/group-search=group-to-principal:add(iterative=true, group-dn-attribute="dn", group-name="SIMPLE", group-name-attribute="uid", base-dn="ou=groups,dc=group-to-principal,dc=example,dc=org", principal-attribute="uniqueMember", search-by="DISTINGUISHED_NAME")
+
+/core-service=management/security-realm=ldap-security-realm/authorization=ldap/username-to-dn=advanced-filter:add(force=true, base-dn="dc=people,dc=harold,dc=example,dc=com", recursive="false", user-dn-attribute="dn",filter="sAMAccountName={0}")
+
+run-batch</pre><p>
+
+									</p><p class="simpara">
+									For the attributes that match those in the <code class="literal">username-filter</code> example, the meaning and default values are the same. There is one additional attribute:
+								</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+													filter
+												</p>
+												 </td><td style="text-align: left" valign="top"> <p>
+													Custom filter used to search for a user’s entry where the user name will be substituted in the <code class="literal">{0}</code> placeholder.
+												</p>
+												 </td></tr></tbody></table></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+										This must remain valid after the filter is defined so if any special characters are used (such as <code class="literal">&amp;</code>) ensure the proper form is used. For example <code class="literal">&amp;amp;</code> for the <code class="literal">&amp;</code> character.
+									</p></div></dd></dl></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="mapping_ldap_group_information_to_rbac_roles"/>Mapping LDAP Group Information to RBAC Roles</h3></div></div></div><p>
+						Once the connection to the LDAP server has been created and the group searching has been properly configured, a mapping needs to be created between the LDAP groups and RBAC roles. This mapping can be both inclusive as well as exclusive, and enables users to be automatically assigned one or more roles based on their group membership.
+					</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+							If RBAC is not already configured, pay close attention when doing so, especially if switching to a newly-created LDAP-enabled realm. Enabling RBAC without having users and roles properly configured could result in administrators being unable to login to the JBoss EAP management interfaces.
+						</p></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The management CLI commands shown assume that you are running a JBoss EAP standalone server. For more details on using the management CLI for a JBoss EAP managed domain, see the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/management_cli_guide/"><span class="emphasis"><em>Management CLI Guide</em></span></a>.
+						</p></div><div class="title"><strong>Ensure RBAC is Enabled and Configured</strong></div><p>
+							Before mappings between LDAP and RBAC Roles can be used, RBAC must enabled and initially configured.
+						</p><pre class="programlisting">/core-service=management/access=authorization:read-attribute(name=provider)</pre><p>
+						It should yield the following result:
+					</p><pre class="programlisting">{ "outcome" =&gt; "success", "result" =&gt; "rbac" }</pre><p>
+						For more information on enabling and configuring RBAC, see <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_configure_server_security/#enabling_role_based_access_control">Enabling Role-Based Access Control </a> in <span class="emphasis"><em>How to Configure Server Security</em></span> for JBoss EAP.
+					</p><div class="title"><strong>Verify Existing List of Roles</strong></div><p>
+							Use the <code class="literal">read-children-names</code> operation to get a complete list of the configured roles:
+						</p><pre class="programlisting">/core-service=management/access=authorization:read-children-names(child-type=role-mapping)</pre><p>
+						Which should yield a list of roles:
+					</p><pre class="programlisting">{
+  "outcome" =&gt; "success",
+  "result" =&gt;
+    [ "Administrator", "Deployer", "Maintainer", "Monitor", "Operator", "SuperUser" ]
+}</pre><p>
+						In addition, all existing mappings for a role can be checked:
+					</p><pre class="programlisting">/core-service=management/access=authorization/role-mapping=Administrator:read-resource(recursive=true)</pre><pre class="programlisting">{
+  "outcome" =&gt; "success",
+  "result" =&gt;
+  {
+    "include-all" =&gt; false,
+    "exclude" =&gt; undefined,
+    "include" =&gt; {
+      "user-theboss" =&gt; {
+        "name" =&gt; "theboss",
+        "realm" =&gt; undefined,
+        "type" =&gt; "USER"
+      },
+      "user-harold" =&gt; {
+        "name" =&gt; "harold",
+        "realm" =&gt; undefined,
+        "type" =&gt; "USER"
+      },
+      "group-SysOps" =&gt; {
+        "name" =&gt; "SysOps",
+        "realm" =&gt; undefined,
+        "type" =&gt; "GROUP"
+      }
+    }
+  }
+}</pre><div class="title"><strong>Configure a Role-Mapping entry</strong></div><p>
+							If a role does not already have a <code class="literal">Role-Mapping</code> entry, one needs to be created. For instance:
+						</p><pre class="programlisting">/core-service=management/access=authorization/role-mapping=Auditor:read-resource()</pre><pre class="programlisting">{
+  "outcome" =&gt; "failed",
+  "failure-description" =&gt; "WFLYCTL0216: Management resource '[ (\"core-service\" =&gt; \"management\"), (\"access\" =&gt; \"authorization\"), (\"role-mapping\" =&gt; \"Auditor\") ]' not found"
+}</pre><p>
+						To add a role mapping:
+					</p><pre class="programlisting">/core-service=management/access=authorization/role-mapping=Auditor:add()</pre><pre class="programlisting">{
+  "outcome" =&gt; "success"
+}</pre><p>
+						To verify:
+					</p><pre class="programlisting">/core-service=management/access=authorization/role-mapping=Auditor:read-resource()</pre><pre class="programlisting">{
+  "outcome" =&gt; "success",
+  "result" =&gt; {
+    "include-all" =&gt; false,
+    "exclude" =&gt; undefined,
+    "include" =&gt; undefined
+  }
+}</pre><div class="title"><strong>Add Groups to the Role for Inclusion and Exclusion</strong></div><p>
+							Groups can be added for inclusion or exclusion from a role.
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The exclusion mapping takes precedence or the inclusion mapping.
+						</p></div><p>
+						To add a group for inclusion:
+					</p><pre class="programlisting">/core-service=management/access=authorization/role-mapping=Auditor/include=group-GroupToInclude:add(name=GroupToInclude, type=GROUP)</pre><p>
+						To add a group for exclusion:
+					</p><pre class="programlisting">/core-service=management/access=authorization/role-mapping=Auditor/exclude=group-GroupToExclude:add(name=GroupToExclude, type=GROUP)</pre><p>
+						To check the result:
+					</p><pre class="programlisting">/core-service=management/access=authorization/role-mapping=Auditor:read-resource(recursive=true)</pre><pre class="programlisting">{
+  "outcome" =&gt; "success",
+  "result" =&gt; {
+    "include-all" =&gt; false,
+    "exclude" =&gt; {
+      "group-GroupToExclude" =&gt; {
+        "name" =&gt; "GroupToExclude",
+        "realm" =&gt; undefined,
+        "type" =&gt; "GROUP"
+      }
+    },
+    "include" =&gt; {
+      "group-GroupToInclude" =&gt; {
+        "name" =&gt; "GroupToInclude",
+        "realm" =&gt; undefined,
+        "type" =&gt; "GROUP"
+      }
+    }
+  }
+}</pre><div class="title"><strong>Removing a Group from exclusion or inclusion in an RBAC Roles Groups</strong></div><p>
+							To remove a group from inclusion:
+						</p><pre class="programlisting">/core-service=management/access=authorization/role-mapping=Auditor/include=group-GroupToInclude:remove</pre><p>
+						To remove a group from exclusion:
+					</p><pre class="programlisting">/core-service=management/access=authorization/role-mapping=Auditor/exclude=group-GroupToExclude:remove</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="enabling_caching"/>Enabling Caching</h1></div></div></div><p>
+				Security Realms also offer the ability to cache the results of LDAP queries for both authentication as well as group loading. This enables the results of different queries to be reused across multiple searches by different users in certain circumstances, for example iteratively querying the group membership information of groups. There are three different caches available, each of which are configured separately and operate independently:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						authentication
+					</li><li class="listitem">
+						group-to-principal
+					</li><li class="listitem">
+						username-to-dn
+					</li></ul></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="cache_configuration"/>Cache Configuration</h2></div></div></div><p>
+					Even though the caches are independent of one another, all three are configured in the same manner. Each cache offers the following configuration options:
+				</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+									type
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									This defines the eviction strategy that the cache will adhere to. Options are <span class="strong"><strong>by-access-time</strong></span> and <span class="strong"><strong>by-search-time</strong></span>. <span class="strong"><strong>by-access-time</strong></span> evicts items from the cache after a certain period of time has elapsed since their last access. <span class="strong"><strong>by-search-time</strong></span> evicts items based on how long they have been in the cache regardless of their last access.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									eviction-time
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									This defines the time (in seconds) used for evictions depending on the strategy.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									cache-failures
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									This is a boolean that enables/disables the caching of failed searches. This has the potential for preventing an LDAP server from being repeatedly accessed by the same failed search, but it also has the potential to fill up the cache with searches for users that do not exist. This setting is particularly important for the authentication cache.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									max-cache-size
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									This defines maximum size (number of items) of the cache, which in-turn dictates when items will begin getting evicted. Old items are evicted from the cache to make room for new authentication and searches as needed, meaning <code class="literal">max-cache-size</code> will not prevent new authentication attempts or searches from occurring.
+								</p>
+								 </td></tr></tbody></table></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="example"/>Example</h2></div></div></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						This example assumes a security realm, named <code class="literal">LDAPRealm</code>, has been created. It connects to an existing LDAP server and is configured for authentication and authorization. The commands to display the current configuration are detailed in <a class="link" href="securing_the_management_interfaces_with_ldap.html#read_current_cache_config" title="Reading the Current Cache Configuration">Reading the Current Cache Configuration</a>. More details on creating a security realm that uses LDAP can be found in <a class="link" href="securing_the_management_interfaces_with_ldap.html#legacy_secure_mgmt_inteface_ldap_basic_setup" title="Using Legacy Core Management Authentication">Using Legacy Core Management Authentication</a>.
+					</p></div><div class="title"><strong>Example Base Configuration</strong></div><p>
+						
+</p><pre class="programlisting">"core-service" : { ​
+  "management" : { ​
+    "security-realm" : { ​
+      "LDAPRealm" : { ​
+        "authentication" : {
+          "ldap" : {
+            "allow-empty-passwords" : false,
+            "base-dn" : "...", ​
+            "connection" : "MyLdapConnection", ​
+            "recursive" : false, ​
+            "user-dn" : "dn", ​
+            "username-attribute" : "uid", ​
+            "cache" : null
+          }
+        },
+        "authorization" : {
+          "ldap" : {
+            "connection" : "MyLdapConnection", ​
+            "group-search" : {
+              "group-to-principal" : { ​
+                "base-dn" : "...", ​
+                "group-dn-attribute" : "dn", ​
+                "group-name" : "SIMPLE", ​
+                "group-name-attribute" : "uid", ​
+                "iterative" : true, ​
+                "principal-attribute" : "uniqueMember", ​
+                "search-by" : "DISTINGUISHED_NAME", ​
+                "cache" : null ​
+              }
+            }, ​
+            "username-to-dn" : {
+              "username-filter" : { ​
+                "attribute" : "uid", ​
+                "base-dn" : "...", ​
+                "force" : false, ​
+                "recursive" : false, ​
+                "user-dn-attribute" : "dn", ​
+                "cache" : null ​
+                }
+              } ​
+            }
+          }, ​
+        } ​
+      } ​
+  }
+}</pre><p>
+
+					</p><p>
+					In all areas where <code class="literal">"cache" : null</code> appear, a cache may be configured:
+				</p><div class="variablelist"><dl class="variablelist"><dt><span class="term">Authentication</span></dt><dd>
+								During authentication, the user’s distinguished name is discovered using this definition and an attempt to connect to the LDAP server and verify their identity is made using these credentials.
+							</dd><dt><span class="term">A <code class="literal">group-search</code> definition</span></dt><dd>
+								There is the group search definition. In this case it is an iterative search because <code class="literal">iterative</code> is set to <code class="literal">true</code> in the sample configuration above. First, a search will be performed to find all groups the user is a direct member of. After that, a search will be performed for each of those groups to identify if they have membership to other groups. This process continues until either a cyclic reference is detected or the final groups are not members of any further groups.
+							</dd><dt><span class="term">A <code class="literal">username-to-dn</code> definition in group search</span></dt><dd>
+								Group searching relies on the availability of the user’s distinguished name. This section is not used in all situations, but it can be used as a second attempt to discover a user’s distinguished name. This can be useful, or even required, when a second form of authentication is supported, for example local authentication.
+							</dd></dl></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="read_current_cache_config"/>Reading the Current Cache Configuration</h3></div></div></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The CLI commands used in this and subsequent sections use <code class="literal">LDAPRealm</code> for the name of the security realm. This should be substituted for the name of the actual realm being configured.
+						</p></div><div class="title"><strong>CLI Command to Read the Current Cache Configuration</strong></div><p>
+							
+</p><pre class="programlisting">/core-service=management/security-realm=LDAPRealm:read-resource(recursive=true)</pre><p>
+
+						</p><div class="title"><strong>Output</strong></div><p>
+							
+</p><pre class="programlisting">{ ​
+  "outcome" =&gt; "success", ​
+  "result" =&gt; { ​
+    "map-groups-to-roles" =&gt; true, ​
+    "authentication" =&gt; {
+      "ldap" =&gt; { ​
+        "advanced-filter" =&gt; undefined, ​
+        "allow-empty-passwords" =&gt; false, ​
+        "base-dn" =&gt; "dc=example,dc=com", ​
+         "connection" =&gt; "ldapConnection", ​
+         "recursive" =&gt; true, ​
+         "user-dn" =&gt; "dn", ​
+         "username-attribute" =&gt; "uid",
+         "cache" =&gt; undefined ​
+        }
+      }, ​
+      "authorization" =&gt; {
+        "ldap" =&gt; { ​
+          "connection" =&gt; "ldapConnection", ​
+          "group-search" =&gt; {
+            "principal-to-group" =&gt; { ​
+              "group-attribute" =&gt; "description", ​
+              "group-dn-attribute" =&gt; "dn", ​
+              "group-name" =&gt; "SIMPLE", ​
+              "group-name-attribute" =&gt; "cn", ​
+              "iterative" =&gt; false, ​
+              "prefer-original-connection" =&gt; true, ​
+              "skip-missing-groups" =&gt; false, ​
+              "cache" =&gt; undefined ​
+            }
+          }, ​
+          "username-to-dn" =&gt; {
+            "username-filter" =&gt; { ​
+              "attribute" =&gt; "uid", ​
+              "base-dn" =&gt; "ou=Users,dc=jboss,dc=org", ​
+              "force" =&gt; true, ​
+              "recursive" =&gt; false, ​
+              "user-dn-attribute" =&gt; "dn", ​
+              "cache" =&gt; undefined ​
+            }
+          } ​
+        }
+      }, ​
+      "plug-in" =&gt; undefined, ​
+      "server-identity" =&gt; undefined ​
+    }
+  ​}</pre><p>
+
+						</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="enabling_a_cache"/>Enabling a Cache</h3></div></div></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The management CLI commands used in this and subsequent sections configure the cache in the authentication section of the security realm, in other words <code class="literal">authentication=ldap/</code>. Caches in the authorization section can also be configured in a similar manner by updating the path of the command.
+						</p></div><div class="title"><strong>Management CLI Command for Enabling a Cache</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/security-realm=LDAPRealm/authentication=ldap/cache=by-access-time:add(eviction-time=300, cache-failures=true, max-cache-size=100)</pre><p>
+
+						</p><p>
+						This commands adds a <code class="literal">by-access-time</code> cache for authentication with an eviction time of 300 seconds (5 minutes) and a maximum cache size of 100 items. In addition, failed searches will be cached. Alternatively, a <code class="literal">by-search-time</code> cache could also be configured:
+					</p><pre class="screen">/core-service=management/security-realm=LDAPRealm/authentication=ldap/cache=by-search-time:add(eviction-time=300, cache-failures=true, max-cache-size=100)</pre></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="inspecting_an_existing_cache"/>Inspecting an Existing Cache</h3></div></div></div><div class="title"><strong>Management CLI Command for Inspecting an Existing Cache</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/security-realm=LDAPRealm/authentication=ldap/cache=by-access-time:read-resource(include-runtime=true)
+
+{
+  "outcome" =&gt; "success",
+  "result" =&gt; {
+    "cache-failures" =&gt; true,
+    "cache-size" =&gt; 1,
+    "eviction-time" =&gt; 300,
+    "max-cache-size" =&gt; 100
+  }
+}</pre><p>
+
+						</p><p>
+						The <code class="literal">include-runtime</code> attribute adds <code class="literal">cache-size</code>, which displays the current number of items in the cache. It is <code class="literal">1</code> in the above output.
+					</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="testing_an_existing_cache_s_contents"/>Testing an Existing Cache’s Contents</h3></div></div></div><div class="title"><strong>Management CLI Command for Testing an Existing Cache’s Contents</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/security-realm=LDAPRealm/authentication=ldap/cache=by-access-time:contains(name=TestUserOne)
+
+{
+  "outcome" =&gt; "success",
+  "result" =&gt; true
+}</pre><p>
+
+						</p><p>
+						This shows that an entry for <code class="literal">TestUserOne</code> exists the in the cache.
+					</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="flushing_a_cache"/>Flushing a Cache</h3></div></div></div><p>
+						You can flushing a single item from a cache, or flush the entire cache.
+					</p><div class="title"><strong>Management CLI Command for Flushing a Single Item</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/security-realm=LDAPRealm/authentication=ldap/cache=by-access-time:flush-cache(name=TestUserOne)</pre><p>
+
+						</p><div class="title"><strong>Management CLI Command for Flushing an Entire Cache</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/security-realm=LDAPRealm/authentication=ldap/cache=by-access-time:flush-cache()</pre><p>
+
+						</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="removing_a_cache"/>Removing a Cache</h3></div></div></div><div class="title"><strong>Management CLI Command for Removing a Cache</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/security-realm=LDAPRealm/authentication=ldap/cache=by-access-time:remove()
+
+reload</pre><p>
+
+						</p></div></div></div></div></body></html>

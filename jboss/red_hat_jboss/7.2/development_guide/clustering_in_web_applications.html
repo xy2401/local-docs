@@ -1,0 +1,451 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 6. Clustering in Web Applications</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="clustering_in_web_applications"/>Chapter 6. Clustering in Web Applications</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="session_replication"/>Session Replication</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="about_http_session_replication"/>About HTTP Session Replication</h2></div></div></div><p>
+					Session replication ensures that client sessions of distributable applications are not disrupted by failovers of nodes in a cluster. Each node in the cluster shares information about ongoing sessions, and can take over sessions if a node disappears.
+				</p><p>
+					Session replication is the mechanism by which mod_cluster, mod_jk, mod_proxy, ISAPI, and NSAPI clusters provide high availability.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="enable_session_replication_in_your_application"/>Enable Session Replication in Your Application</h2></div></div></div><p>
+					To take advantage of JBoss EAP High Availability (HA) features and enable clustering of your web application, you must configure your application to be distributable. If your application is not marked as distributable, its sessions will never be distributed.
+				</p><h4><a id="make_your_application_distributable"/>Make your Application Distributable</h4><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Add the <code class="literal">&lt;distributable/&gt;</code> element inside the <code class="literal">&lt;web-app&gt;</code> tag of your application’s <code class="literal">web.xml</code> descriptor file:
+						</p><div class="title"><strong>Example: Minimum Configuration for a Distributable Application</strong></div><p>
+								
+</p><pre class="programlisting">&lt;?xml version="1.0"?&gt;
+&lt;web-app  xmlns="http://java.sun.com/xml/ns/j2ee"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://java.sun.com/xml/ns/j2ee
+                              http://java.sun.com/xml/ns/j2ee/web-app_3_0.xsd"
+          version="3.0"&gt;
+
+      &lt;distributable/&gt;
+
+&lt;/web-app&gt;</pre><p>
+
+							</p></li><li class="listitem"><p class="simpara">
+							Next, if desired, modify the default replication behavior. If you want to change any of the values affecting session replication, you can override them inside a <code class="literal">&lt;replication-config&gt;</code> element inside <code class="literal">&lt;jboss-web&gt;</code> in an application’s <code class="literal">WEB-INF/jboss-web.xml</code> file. For a given element, only include it if you want to override the defaults.
+						</p><div class="title"><strong>Example: <code class="literal">&lt;replication-config&gt;</code> Values</strong></div><p>
+								
+</p><pre class="programlisting">&lt;jboss-web xmlns="http://www.jboss.com/xml/ns/javaee"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:schemaLocation="http://www.jboss.com/xml/ns/javaee http://www.jboss.org/j2ee/schema/jboss-web_10_0.xsd"&gt;
+   &lt;replication-config&gt;
+      &lt;replication-granularity&gt;SESSION&lt;/replication-granularity&gt;
+    &lt;/replication-config&gt;
+&lt;/jboss-web&gt;</pre><p>
+
+							</p></li></ol></div><p>
+					The <code class="literal">&lt;replication-granularity&gt;</code> parameter determines the granularity of data that is replicated. It defaults to <code class="literal">SESSION</code>, but can be set to <code class="literal">ATTRIBUTE</code> to increase performance on sessions where most attributes remain unchanged.
+				</p><p>
+					Valid values for <code class="literal">&lt;replication-granularity&gt;</code> can be :
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							<code class="literal">SESSION</code>: The default value. The entire session object is replicated if any attribute is dirty. This policy is required if an object reference is shared by multiple session attributes. The shared object references are maintained on remote nodes since the entire session is serialized in one unit.
+						</li><li class="listitem">
+							<code class="literal">ATTRIBUTE</code>: This is only for dirty attributes in the session and for some session data, such as the last-accessed timestamp.
+						</li></ul></div><h4><a id="immutable_session_attributes"/>Immutable Session Attributes</h4><p>
+					For JBoss EAP 7, session replication is triggered when the session is mutated or when any mutable attribute of the session is accessed. Session attributes are assumed to be mutable unless one of the following is true:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							The value is a known immutable value:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									<code class="literal">null</code>
+								</li><li class="listitem">
+									<code class="literal">java.util.Collections.EMPTY_LIST</code>, <code class="literal">EMPTY_MAP</code>, <code class="literal">EMPTY_SET</code>
+								</li></ul></div></li><li class="listitem"><p class="simpara">
+							The value type is or implements a known immutable type:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									<code class="literal">java.lang.Boolean</code>, <code class="literal">Character</code>, <code class="literal">Byte</code>, <code class="literal">Short</code>, <code class="literal">Integer</code>, <code class="literal">Long</code>, <code class="literal">Float</code>, <code class="literal">Double</code>
+								</li><li class="listitem">
+									<code class="literal">java.lang.Class</code>, <code class="literal">Enum</code>, <code class="literal">StackTraceElement</code>, <code class="literal">String</code>
+								</li><li class="listitem">
+									<code class="literal">java.io.File</code>, <code class="literal">java.nio.file.Path</code>
+								</li><li class="listitem">
+									<code class="literal">java.math.BigDecimal</code>, <code class="literal">BigInteger</code>, <code class="literal">MathContext</code>
+								</li><li class="listitem">
+									<code class="literal">java.net.Inet4Address</code>, <code class="literal">Inet6Address</code>, <code class="literal">InetSocketAddress</code>, <code class="literal">URI</code>, <code class="literal">URL</code>
+								</li><li class="listitem">
+									<code class="literal">java.security.Permission</code>
+								</li><li class="listitem">
+									<code class="literal">java.util.Currency</code>, <code class="literal">Locale</code>, <code class="literal">TimeZone</code>, <code class="literal">UUID</code>
+								</li><li class="listitem">
+									<code class="literal">java.time.Clock</code>, <code class="literal">Duration</code>, <code class="literal">Instant</code>, <code class="literal">LocalDate</code>, <code class="literal">LocalDateTime</code>, <code class="literal">LocalTime</code>, <code class="literal">MonthDay</code>, <code class="literal">Period</code>, <code class="literal">Year</code>, <code class="literal">YearMonth</code>, <code class="literal">ZoneId</code>, <code class="literal">ZoneOffset</code>, <code class="literal">ZonedDateTime</code>
+								</li><li class="listitem">
+									<code class="literal">java.time.chrono.ChronoLocalDate</code>, <code class="literal">Chronology</code>, <code class="literal">Era</code>
+								</li><li class="listitem">
+									<code class="literal">java.time.format.DateTimeFormatter</code>, <code class="literal">DecimalStyle</code>
+								</li><li class="listitem">
+									<code class="literal">java.time.temporal.TemporalField</code>, <code class="literal">TemporalUnit</code>, <code class="literal">ValueRange</code>, <code class="literal">WeekFields</code>
+								</li><li class="listitem">
+									<code class="literal">java.time.zone.ZoneOffsetTransition</code>, <code class="literal">ZoneOffsetTransitionRule</code>, <code class="literal">ZoneRules</code>
+								</li></ul></div></li><li class="listitem"><p class="simpara">
+							The value type is annotated with:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									<code class="literal">@org.wildfly.clustering.web.annotation.Immutable</code>
+								</li><li class="listitem">
+									<code class="literal">@net.jcip.annotations.Immutable</code>
+								</li></ul></div></li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="http_session_passivation_and_activation"/>HTTP Session Passivation and Activation</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="about_http_session_passivation_and_activation"/>About HTTP Session Passivation and Activation</h2></div></div></div><p>
+					<span class="emphasis"><em>Passivation</em></span> is the process of controlling memory usage by removing relatively unused sessions from memory while storing them in persistent storage.
+				</p><p>
+					<span class="emphasis"><em>Activation</em></span> is when passivated data is retrieved from persisted storage and put back into memory.
+				</p><p>
+					Passivation occurs at different times in an HTTP session’s lifetime:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							When the container requests the creation of a new session, if the number of currently active sessions exceeds a configurable limit, the server attempts to passivate some sessions to make room for the new one.
+						</li><li class="listitem">
+							When a web application is deployed and a backup copy of sessions active on other servers is acquired by the newly deploying web application’s session manager, sessions might be passivated.
+						</li></ul></div><p>
+					A session is passivated if the number of active sessions exceeds a configurable maximum.
+				</p><p>
+					Sessions are always passivated using a Least Recently Used (LRU) algorithm.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configure_httpsession_passivation_in_your_application"/>Configure HTTP Session Passivation in Your Application</h2></div></div></div><p>
+					HTTP session passivation is configured in your application’s <code class="literal">WEB-INF/jboss-web.xml</code> and <code class="literal">META-INF/jboss-web.xml</code> file.
+				</p><div class="title"><strong>Example: <code class="literal">jboss-web.xml</code> File</strong></div><p>
+						
+</p><pre class="programlisting">&lt;jboss-web xmlns="http://www.jboss.com/xml/ns/javaee"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:schemaLocation="http://www.jboss.com/xml/ns/javaee http://www.jboss.org/j2ee/schema/jboss-web_10_0.xsd"&gt;
+
+   &lt;max-active-sessions&gt;20&lt;/max-active-sessions&gt;
+&lt;/jboss-web&gt;</pre><p>
+
+					</p><p>
+					The <code class="literal">&lt;max-active-sessions&gt;</code> element dictates the maximum number of active sessions allowed, and is used to enable session passivation. If session creation would cause the number of active sessions to exceed <code class="literal">&lt;max-active-sessions&gt;</code>, then the oldest session known to the session manager will passivate to make room for the new session.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						The total number of sessions in memory includes sessions replicated from other cluster nodes that are not being accessed on this node. Take this into account when setting <code class="literal">&lt;max-active-sessions&gt;</code>. The number of sessions replicated from other nodes also depends on whether <code class="literal">REPL</code> or <code class="literal">DIST</code> cache mode is enabled. In <code class="literal">REPL</code> cache mode, each session is replicated to each node. In <code class="literal">DIST</code> cache mode, each session is replicated only to the number of nodes specified by the <code class="literal">owners</code> parameter. See <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuration_guide/#configure_the_cache_mode">Configure the Cache Mode</a> in the JBoss EAP <span class="emphasis"><em>Configuration Guide</em></span> for information on configuring session cache modes. For example, consider an eight node cluster, where each node handles requests from 100 users. With <code class="literal">REPL</code> cache mode, each node would store 800 sessions in memory. With <code class="literal">DIST</code> cache mode enabled, and the default <code class="literal">owners</code> setting of <code class="literal">2</code>, each node stores 200 sessions in memory.
+					</p></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="public_API_for_clustering-services"/>Public API for Clustering Services</h1></div></div></div><p>
+				JBoss EAP 7 introduced a refined public clustering API for use by applications. The new services are designed to be lightweight, easily injectable, with no external dependencies.
+			</p><div class="variablelist"><dl class="variablelist"><dt><span class="term"><code class="literal">org.wildfly.clustering.group.Group</code></span></dt><dd><p class="simpara">
+							The group service provides a mechanism to view the cluster topology for a JGroups channel, and to be notified when the topology changes.
+						</p><pre class="programlisting">@Resource(lookup = "java:jboss/clustering/group/channel-name")
+private Group channelGroup;</pre></dd><dt><span class="term"><code class="literal">org.wildfly.clustering.dispatcher.CommandDispatcher</code></span></dt><dd><p class="simpara">
+							The <code class="literal">CommandDispatcherFactory</code> service provides a mechanism to create a dispatcher for executing commands on nodes in the cluster. The resulting <code class="literal">CommandDispatcher</code> is a command-pattern analog to the reflection-based <code class="literal">GroupRpcDispatcher</code> from previous JBoss EAP releases.
+						</p><pre class="programlisting">@Resource(lookup = "java:jboss/clustering/dispatcher/channel-name")
+private CommandDispatcherFactory factory;
+
+public void foo() {
+    String context = "Hello world!";
+    // Exclude node1 and node3 from the executeOnCluster
+    try (CommandDispatcher&lt;String&gt; dispatcher = this.factory.createCommandDispatcher(context)) {
+        dispatcher.executeOnGroup(new StdOutCommand(), node1, node3);
+
+    }
+}
+
+public static class StdOutCommand implements Command&lt;Void, String&gt; {
+    @Override
+    public Void execute(String context) {
+        System.out.println(context);
+        return null;
+    }
+}</pre></dd></dl></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="clustered_ha_singleton_service"/>HA Singleton Service</h1></div></div></div><p>
+				A clustered singleton service, also known as a high-availability (HA) singleton, is a service deployed on multiple nodes in a cluster. The service is provided on only one of the nodes. The node running the singleton service is usually called the <span class="emphasis"><em>master</em></span> node.
+			</p><p>
+				When the <span class="emphasis"><em>master</em></span> node either fails or shuts down, another master is selected from the remaining nodes and the service is restarted on the new master. Other than a brief interval when one master has stopped and another has yet to take over, the service is provided by one, and only one, node.
+			</p><h3><a id="ha_singleton_servicebuilder_api"/>HA Singleton ServiceBuilder API</h3><p>
+				JBoss EAP 7 introduced a new public API for building singleton services that simplifies the process significantly.
+			</p><p>
+				The <a class="link" href="https://access.redhat.com/webassets/avalon/d/red_hat_jboss_enterprise_application_platform/7.2/javadocs/org/wildfly/clustering/singleton/SingletonServiceBuilder.html"><code class="literal">SingletonServiceBuilder</code></a> implementation installs its services so they will start asynchronously, preventing deadlocking of the Modular Service Container (MSC).
+			</p><h3><a id="ha_singleton_service_election_policies"/>HA Singleton Service Election Policies</h3><p>
+				If there is a preference for which node should start the HA singleton, you can set the election policy in the <a class="link" href="https://access.redhat.com/webassets/avalon/d/red_hat_jboss_enterprise_application_platform/7.2/javadocs/org/jboss/msc/service/ServiceActivator.html"><code class="literal">ServiceActivator</code></a> class.
+			</p><p>
+				JBoss EAP provides two election policies:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						Simple election policy
+					</p><p class="simpara">
+						The simple election policy selects a master node based on the relative age. The required age is configured in the position property, which is the index in the list of available nodes, where:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								position = 0 – refers to the oldest node. This is the default.
+							</li><li class="listitem">
+								position = 1 – refers to the 2nd oldest, and so on.
+							</li></ul></div><p class="simpara">
+						Position can also be negative to indicate the youngest nodes.
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								position = -1 – refers to the youngest node.
+							</li><li class="listitem">
+								position = -2 – refers to the 2nd youngest node, and so on.
+							</li></ul></div></li><li class="listitem"><p class="simpara">
+						Random election policy
+					</p><p class="simpara">
+						The random election policy elects a random member to be the provider of a singleton service.
+					</p></li></ul></div><h3><a id="ha_singleton_service_preferences"/>HA Singleton Service Preferences</h3><p>
+				An HA singleton service election policy may optionally specify one or more preferred servers. This preferred server, when available, will be the master for all singleton applications under that policy.
+			</p><p>
+				You can define the preferences either through the node name or through the outbound socket binding name.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Node preferences always take precedence over the results of an election policy.
+				</p></div><p>
+				By default, JBoss EAP high availability configurations provide a simple election policy named <code class="literal">default</code> with no preferred server. You can set the preference by creating a custom policy and defining the preferred server.
+			</p><h3><a id="quorum"/>Quorum</h3><p>
+				A potential issue with a singleton service arises when there is a network partition. In this situation, also known as the split-brain scenario, subsets of nodes cannot communicate with each other. Each set of servers consider all servers from the other set failed and continue to work as the surviving cluster. This might result in data consistency issues.
+			</p><p>
+				JBoss EAP allows you to specify a quorum in the election policy to prevent the split-brain scenario. The quorum specifies a minimum number of nodes to be present before a singleton provider election can take place.
+			</p><p>
+				A typical deployment scenario uses a quorum of N/2 + 1, where N is the anticipated cluster size. This value can be updated at runtime, and will immediately affect any active singleton services.
+			</p><h3><a id="create_an_ha_singleton_service_application"/>Create an HA Singleton Service Application</h3><p>
+				The following is an abbreviated example of the steps required to create and deploy an application as a cluster-wide singleton service. This example demonstrates a querying service that regularly queries a singleton service to get the name of the node on which it is running.
+			</p><p>
+				To see the singleton behavior, you must deploy the application to at least two servers. It is transparent whether the singleton service is running on the same node or whether the value is obtained remotely.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Create the <code class="literal">SingletonService</code> class. The <code class="literal">getValue()</code> method, which is called by the querying service, provides information about the node on which it is running.
+					</p><pre class="programlisting">class SingletonService implements Service&lt;Node&gt; {
+    private Logger LOG = Logger.getLogger(this.getClass());
+    private InjectedValue&lt;Group&gt; group;
+
+    SingletonService(InjectedValue&lt;Group&gt; group) {
+        this.group = group;
+    }
+
+    @Override
+    public void start(StartContext context) throws StartException {
+        LOG.infof("Singleton service is starting on node '%s'.", this.group.getValue().getLocalNode());
+    }
+
+    @Override
+    public void stop(StopContext context) {
+        LOG.infof("Singleton service is stopping on node '%s'.", this.group.getValue().getLocalNode());
+    }
+
+    @Override
+    public Node getValue() throws IllegalStateException, IllegalArgumentException {
+        return this.group.getValue().getLocalNode();
+    }
+}</pre></li><li class="listitem"><p class="simpara">
+						Create the querying service. It calls the <code class="literal">getValue()</code> method of the singleton service to get the name of the node on which it is running, and then writes the result to the server log.
+					</p><pre class="programlisting">class QueryingService implements Service&lt;Void&gt; {
+
+    private Logger LOG = Logger.getLogger(this.getClass());
+    private ScheduledExecutorService executor;
+
+    @Override
+    public void start(StartContext context) throws StartException {
+        LOG.info("Querying service is starting.");
+
+        executor = Executors.newSingleThreadScheduledExecutor();
+        executor.scheduleAtFixedRate(() -&gt; {
+
+            @SuppressWarnings("unchecked")
+            ServiceController&lt;Node&gt; service = (ServiceController&lt;Node&gt;) context.getController().getServiceContainer()
+                    .getService(ServiceActivator.SINGLETON_SERVICE_NAME);
+            try {
+                Node node = service.awaitValue(5, TimeUnit.SECONDS);
+                LOG.infof("Singleton service is running on node '%s'.", node);
+            } catch (InterruptedException | TimeoutException | IllegalStateException e) {
+                LOG.warn("Failed to query singleton service.");
+            }
+
+        }, 5, 5, TimeUnit.SECONDS);
+    }
+
+    @Override
+    public void stop(StopContext context) {
+        LOG.info("Querying service is stopping.");
+
+        executor.shutdown();
+    }
+
+    @Override
+    public Void getValue() throws IllegalStateException, IllegalArgumentException {
+        return null;
+    }
+
+}</pre></li><li class="listitem"><p class="simpara">
+						Implement the <code class="literal">ServiceActivator</code> class to build and install both the singleton service and the querying service.
+					</p><pre class="programlisting">public class ServiceActivator implements org.jboss.msc.service.ServiceActivator {
+
+    private final Logger LOG = Logger.getLogger(ServiceActivator.class);
+    static final ServiceName SINGLETON_SERVICE_NAME =
+            ServiceName.parse("org.jboss.as.quickstarts.ha.singleton.service.primary-only");
+    private static final ServiceName QUERYING_SERVICE_NAME =
+            ServiceName.parse("org.jboss.as.quickstarts.ha.singleton.service.primary-only.querying");
+
+    @Override
+    public void activate(ServiceActivatorContext serviceActivatorContext) {
+        try {
+            SingletonPolicy policy = (SingletonPolicy) serviceActivatorContext
+                    .getServiceRegistry()
+                    .getRequiredService(ServiceName.parse(SingletonDefaultRequirement.SINGLETON_POLICY.getName()))
+                    .awaitValue();
+
+            InjectedValue&lt;Group&gt; group = new InjectedValue&lt;&gt;();
+
+            Service&lt;Node&gt; service = new SingletonService(group);
+
+            policy.createSingletonServiceBuilder(SINGLETON_SERVICE_NAME, service)
+                    .build(serviceActivatorContext.getServiceTarget())
+                    .addDependency(ServiceName.parse("org.wildfly.clustering.default-group"), Group.class, group)
+                    .install();
+
+            serviceActivatorContext.getServiceTarget()
+                    .addService(QUERYING_SERVICE_NAME, new QueryingService())
+                    .setInitialMode(ServiceController.Mode.ACTIVE)
+                    .install();
+
+            LOG.info("Singleton and querying services activated.");
+        } catch (InterruptedException e) {
+            throw new ServiceRegistryException(e);
+        }
+    }
+}</pre></li><li class="listitem">
+						Create a file in the <code class="literal">META-INF/services/</code> directory named <code class="literal">org.jboss.msc.service.ServiceActivator</code> that contains the name of the <code class="literal">ServiceActivator</code> class, for example, <code class="literal">org.jboss.as.quickstarts.ha.singleton.service.primary.ServiceActivator</code>.
+					</li></ol></div><p>
+				See the <code class="literal">ha-singleton-service</code> quickstart that ships with JBoss EAP for the complete working example. This quickstart also provides a second example that demonstrates a singleton service that is installed with a backup service. The backup service is running on all nodes that are not elected to be running the singleton service. Finally, this quickstart also demonstrates how to configure a few different election policies.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ha_singleton_deployments"/>HA Singleton Deployments</h1></div></div></div><p>
+				JBoss EAP 7 adds the ability to deploy a given application as a singleton deployment.
+			</p><p>
+				When deployed to a group of clustered servers, a singleton deployment will only deploy on a single node at any given time. If the node on which the deployment is active stops or fails, the deployment will automatically start on another node.
+			</p><p>
+				The policies for controlling HA singleton behavior are managed by a new <code class="literal">singleton</code> subsystem. A deployment can either specify a specific singleton policy or use the default subsystem policy. A deployment identifies itself as a singleton deployment by using a <code class="literal">META-INF/singleton-deployment.xml</code> deployment descriptor, which is most easily applied to an existing deployment as a deployment overlay. Alternatively, the requisite singleton configuration can be embedded within an existing <code class="literal">jboss-all.xml</code> file.
+			</p><h3><a id="defining_or_choosing_a_singleton_deployment"/>Defining or Choosing a Singleton Deployment</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						To define a deployment as a singleton deployment, include a <code class="literal">META-INF/singleton-deployment.xml</code> descriptor in your application archive.
+					</p><div class="title"><strong>Example: Singleton Deployment Descriptor</strong></div><p>
+							
+</p><pre class="programlisting">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;singleton-deployment xmlns="urn:jboss:singleton-deployment:1.0"/&gt;</pre><p>
+
+						</p><div class="title"><strong>Example: Singleton Deployment Descriptor with a Specific Singleton Policy</strong></div><p>
+							
+</p><pre class="programlisting">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;singleton-deployment policy="my-new-policy" xmlns="urn:jboss:singleton-deployment:1.0"/&gt;</pre><p>
+
+						</p></li><li class="listitem"><p class="simpara">
+						Alternatively, you can also add a <code class="literal">singleton-deployment</code> element to your <code class="literal">jboss-all.xml</code> descriptor file.
+					</p><div class="title"><strong>Example: Defining <code class="literal">singleton-deployment</code> in <code class="literal">jboss-all.xml</code></strong></div><p>
+							
+</p><pre class="programlisting">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;jboss xmlns="urn:jboss:1.0"&gt;
+    &lt;singleton-deployment xmlns="urn:jboss:singleton-deployment:1.0"/&gt;
+&lt;/jboss&gt;</pre><p>
+
+						</p><div class="title"><strong>Example: Defining <code class="literal">singleton-deployment</code> in <code class="literal">jboss-all.xml</code> with a Specific Singleton Policy</strong></div><p>
+							
+</p><pre class="programlisting">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;jboss xmlns="urn:jboss:1.0"&gt;
+    &lt;singleton-deployment policy="my-new-policy" xmlns="urn:jboss:singleton-deployment:1.0"/&gt;
+&lt;/jboss&gt;</pre><p>
+
+						</p></li></ul></div><h3><a id="creating_a_singleton_deployment"/>Creating a Singleton Deployment</h3><p>
+				JBoss EAP provides two election policies:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						Simple election policy
+					</p><p class="simpara">
+						The <code class="literal">simple-election-policy</code> chooses a specific member, indicated by the <code class="literal">position</code> attribute, on which a given application will be deployed. The <code class="literal">position</code> attribute determines the index of the node to be elected from a list of candidates sorted by descending age, where <code class="literal">0</code> indicates the oldest node, <code class="literal">1</code> indicates the second oldest node, <code class="literal">-1</code> indicates the youngest node, <code class="literal">-2</code> indicates the second youngest node, and so on. If the specified position exceeds the number of candidates, a modulus operation is applied.
+					</p><div class="title"><strong>Example: Create a New Singleton Policy with a <code class="literal">simple-election-policy</code> and Position Set to <code class="literal">-1</code>, Using the Management CLI</strong></div><p>
+							
+</p><pre class="screen">batch
+/subsystem=singleton/singleton-policy=my-new-policy:add(cache-container=server)
+/subsystem=singleton/singleton-policy=my-new-policy/election-
+policy=simple:add(position=-1)
+run-batch</pre><p>
+
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							To set the newly created policy <code class="literal">my-new-policy</code> as the default, run this command:
+						</p><pre class="screen">/subsystem=singleton:write-attribute(name=default, value=my-new-policy)</pre></div><div class="title"><strong>Example: Configure a <code class="literal">simple-election-policy</code> with Position Set to <code class="literal">-1</code> Using <code class="literal">standalone-ha.xml</code></strong></div><p>
+							
+</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:singleton:1.0"&gt;
+   &lt;singleton-policies default="my-new-policy"&gt;
+      &lt;singleton-policy name="my-new-policy" cache-container="server"&gt;
+         &lt;simple-election-policy position="-1"/&gt;
+      &lt;/singleton-policy&gt;
+   &lt;/singleton-policies&gt;
+&lt;/subsystem&gt;</pre><p>
+
+						</p></li><li class="listitem"><p class="simpara">
+						Random election policy
+					</p><p class="simpara">
+						The <code class="literal">random-election-policy</code> chooses a random member on which a given application will be deployed.
+					</p><div class="title"><strong>Example: Creating a New Singleton Policy with a <code class="literal">random-election-policy</code>, Using the Management CLI</strong></div><p>
+							
+</p><pre class="screen">batch
+/subsystem=singleton/singleton-policy=my-other-new-policy:add(cache-container=server)
+/subsystem=singleton/singleton-policy=my-other-new-policy/election-policy=random:add()
+run-batch</pre><p>
+
+						</p><div class="title"><strong>Example: Configure a <code class="literal">random-election-policy</code> Using <code class="literal">standalone-ha.xml</code></strong></div><p>
+							
+</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:singleton:1.0"&gt;
+   &lt;singleton-policies default="my-other-new-policy"&gt;
+      &lt;singleton-policy name="my-other-new-policy" cache-container="server"&gt;
+         &lt;random-election-policy/&gt;
+      &lt;/singleton-policy&gt;
+   &lt;/singleton-policies&gt;
+&lt;/subsystem&gt;</pre><p>
+
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The <code class="literal">default-cache</code> attribute of the <code class="literal">cache-container</code> needs to be defined before trying to add the policy. Without this, if you are using a custom cache container, you might end up getting error messages.
+						</p></div></li></ul></div><h4><a id="preferences"/>Preferences</h4><p>
+				Additionally, any singleton election policy can indicate a preference for one or more members of a cluster. Preferences can be defined either by using the node name or by using the outbound socket binding name. Node preferences always take precedent over the results of an election policy.
+			</p><div class="title"><strong>Example: Indicate Preference in the Existing Singleton Policy Using the Management CLI</strong></div><p>
+					
+</p><pre class="screen">/subsystem=singleton/singleton-policy=foo/election-policy=simple:list-add(name=name-preferences, value=nodeA)
+
+/subsystem=singleton/singleton-policy=bar/election-policy=random:list-add(name=socket-binding-preferences, value=binding1)</pre><p>
+
+				</p><div class="title"><strong>Example: Create a New Singleton Policy with a <code class="literal">simple-election-policy</code> and <code class="literal">name-preferences</code>, Using the Management CLI</strong></div><p>
+					
+</p><pre class="screen">batch
+/subsystem=singleton/singleton-policy=my-new-policy:add(cache-container=server)
+/subsystem=singleton/singleton-policy=my-new-policy/election-policy=simple:add(name-preferences=[node1, node2, node3, node4])
+run-batch</pre><p>
+
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					To set the newly created policy <code class="literal">my-new-policy</code> as the default, run this command:
+				</p><pre class="screen">/subsystem=singleton:write-attribute(name=default, value=my-new-policy)</pre></div><div class="title"><strong>Example: Configure a <code class="literal">random-election-policy</code> with <code class="literal">socket-binding-preferences</code> Using <code class="literal">standalone-ha.xml</code></strong></div><p>
+					
+</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:singleton:1.0"&gt;
+   &lt;singleton-policies default="my-other-new-policy"&gt;
+      &lt;singleton-policy name="my-other-new-policy" cache-container="server"&gt;
+         &lt;random-election-policy&gt;
+            &lt;socket-binding-preferences&gt;binding1 binding2 binding3 binding4&lt;/socket-binding-preferences&gt;
+         &lt;/random-election-policy&gt;
+      &lt;/singleton-policy&gt;
+   &lt;/singleton-policies&gt;
+&lt;/subsystem&gt;</pre><p>
+
+				</p><h4><a id="define_quorum"/>Define a Quorum</h4><p>
+				Network partitions are particularly problematic for singleton deployments, since they can trigger multiple singleton providers for the same deployment to run at the same time. To defend against this scenario, a singleton policy can define a quorum that requires a minimum number of nodes to be present before a singleton provider election can take place. A typical deployment scenario uses a quorum of N/2 + 1, where N is the anticipated cluster size. This value can be updated at runtime, and will immediately affect any singleton deployments using the respective singleton policy.
+			</p><div class="title"><strong>Example: Quorum Declaration in the <code class="literal">standalone-ha.xml</code> File</strong></div><p>
+					
+</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:singleton:1.0"&gt;
+   &lt;singleton-policies default="default"&gt;
+      &lt;singleton-policy name="default" cache-container="server" quorum="4"&gt;
+         &lt;simple-election-policy/&gt;
+      &lt;/singleton-policy&gt;
+   &lt;/singleton-policies&gt;
+&lt;/subsystem&gt;</pre><p>
+
+				</p><div class="title"><strong>Example: Quorum Declaration Using the Management CLI</strong></div><p>
+					
+</p><pre class="screen">/subsystem=singleton/singleton-policy=foo:write-attribute(name=quorum, value=3)</pre><p>
+
+				</p><p>
+				See the <code class="literal">ha-singleton-deployment</code> quickstart that ships with JBoss EAP for a complete working example of a service packaged in an application as a cluster-wide singleton using singleton deployments.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="apache_mod_cluster_manager_application"/>Apache mod_cluster-manager Application</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="about-mod_cluster-manager-application"/>About mod_cluster-manager Application</h2></div></div></div><p>
+					The mod_cluster-manager application is an administration web page, which is available on Apache HTTP Server. It is used for monitoring the connected worker nodes and performing various administration tasks, such as enabling or disabling contexts, and configuring the load-balancing properties of worker nodes in a cluster.
+				</p><h4><a id="exploring_mod_cluster_manager_application"/>Exploring mod_cluster-manager Application</h4><p>
+					The mod_cluster-manager application can be used for performing various administration tasks on worker nodes.
+				</p><p>
+					<span class="inlinemediaobject"><img src="images/topics/images/5242.png" alt="mod_cluster Administration Web Page"/></span>
+					 <span class="strong"><strong>Figure - mod_cluster Administration Web Page</strong></span>
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							[1] <span class="strong"><strong>mod_cluster/1.3.1.Final</strong></span>: The version of the mod_cluster native library.
+						</li><li class="listitem">
+							[2] <span class="strong"><strong>ajp://192.168.122.204:8099</strong></span>: The protocol used (either AJP, HTTP, or HTTPS), hostname or IP address of the worker node, and the port.
+						</li><li class="listitem">
+							[3] <span class="strong"><strong>jboss-eap-7.0-2</strong></span>: The worker node’s JVMRoute.
+						</li><li class="listitem">
+							[4] <span class="strong"><strong>Virtual Host 1</strong></span>: The virtual host(s) configured on the worker node.
+						</li><li class="listitem">
+							[5] <span class="strong"><strong>Disable</strong></span>: An administration option that can be used to disable the creation of new sessions on the particular context. However, the ongoing sessions do not get disabled and remain intact.
+						</li><li class="listitem">
+							[6] <span class="strong"><strong>Stop</strong></span>: An administration option that can be used to stop the routing of session requests to the context. The remaining sessions will fail over to another node unless the <code class="literal">sticky-session-force</code> property is set to <code class="literal">true</code>.
+						</li><li class="listitem">
+							[7] <span class="strong"><strong>Enable Contexts Disable Contexts Stop Contexts</strong></span>: The operations that can be performed on the whole node. Selecting one of these options affects all the contexts of a node in all its virtual hosts.
+						</li><li class="listitem"><p class="simpara">
+							[8] <span class="strong"><strong>Load balancing group (LBGroup)</strong></span>: The <code class="literal">load-balancing-group</code> property is set in the <code class="literal">modcluster</code> subsystem in JBoss EAP configuration to group all worker nodes into custom load balancing groups. Load balancing group (LBGroup) is an informational field that gives information about all set load balancing groups. If this field is not set, then all worker nodes are grouped into a single default load balancing group.
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								This is only an informational field and thus cannot be used to set <code class="literal">load-balancing-group</code> property. The property has to be set in <code class="literal">modcluster</code> subsystem in JBoss EAP configuration.
+							</p></div></li><li class="listitem"><p class="simpara">
+							[9] <span class="strong"><strong>Load (value)</strong></span>: The load factor on the worker node. The load factors are evaluated as below:
+						</p><pre class="screen">-load &gt; 0 : A load factor with value 1 indicates that the worker node is overloaded. A load factor of 100 denotes a free and not-loaded node.
+-load = 0 : A load factor of value 0 indicates that the worker node is in standby mode. This means that no session requests will be routed to this node until and unless the other worker nodes are unavailable.
+-load = -1 : A load factor of value -1 indicates that the worker node is in an error state.
+-load = -2 : A load factor of value -2 indicates that the worker node is undergoing CPing/CPong and is in a transition state.</pre></li></ul></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						For JBoss EAP 7.2, it is also possible to use Undertow as load balancer.
+					</p></div></div></div></div></body></html>

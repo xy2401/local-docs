@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 10. Undertow</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="undertow"/>Chapter 10. Undertow</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="introduction_undertow_handler"/>Introduction to Undertow Handler</h1></div></div></div><p>
+				Undertow is a web server designed to be used for both blocking and non-blocking tasks. It replaces JBoss Web in JBoss EAP 7. Some of its main features are:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						High Performance
+					</li><li class="listitem">
+						Embeddable
+					</li><li class="listitem">
+						Servlet 4.0
+					</li><li class="listitem">
+						Web Sockets
+					</li><li class="listitem">
+						Reverse Proxy
+					</li></ul></div><h3><a id="request_lifecycle"/>Request Lifecycle</h3><p>
+				When a client connects to the server, Undertow creates a <code class="literal">io.undertow.server.HttpServerConnection</code>. When the client sends a request, it is parsed by the Undertow parser, and then the resulting <code class="literal">io.undertow.server.HttpServerExchange</code> is passed to the root handler. When the root handler finishes, one of four things can happen:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						The exchange is completed.
+					</p><p class="simpara">
+						An exchange is considered complete if both request and response channels have been fully read or written. For requests with no content, such as GET and HEAD, the request side is automatically considered fully read. The read side is considered complete when a handler has written out the full response and has closed and fully flushed the response channel. If an exchange is already complete, then no action is taken.
+					</p></li><li class="listitem"><p class="simpara">
+						The root handler returns normally without completing the exchange.
+					</p><p class="simpara">
+						In this case the exchange is completed by calling <code class="literal">HttpServerExchange.endExchange()</code>.
+					</p></li><li class="listitem"><p class="simpara">
+						The root handler returns with an Exception.
+					</p><p class="simpara">
+						In this case a response code of <code class="literal">500</code> is set and the exchange is ended using <code class="literal">HttpServerExchange.endExchange()</code>.
+					</p></li><li class="listitem"><p class="simpara">
+						The root handler can return after <code class="literal">HttpServerExchange.dispatch()</code> has been called, or after async IO has been started.
+					</p><p class="simpara">
+						In this case the dispatched task will be submitted to the dispatch executor, or if async IO has been started on either the request or response channels, then this will be started. In both of these cases, the exchange will not be finished. It is up to your async task to finish the exchange when it is done processing.
+					</p></li></ul></div><p>
+				By far the most common use of <code class="literal">HttpServerExchange.dispatch()</code> is to move execution from an IO thread, where blocking is not allowed, into a worker thread, which does allow for blocking operations.
+			</p><div class="title"><strong>Example: Dispatching to a Worker Thread</strong></div><p>
+					
+</p><pre class="programlisting">public void handleRequest(final HttpServerExchange exchange) throws Exception {
+    if (exchange.isInIoThread()) {
+      exchange.dispatch(this);
+      return;
+    }
+    //handler code
+}</pre><p>
+
+				</p><p>
+				Because the exchange is not actually dispatched until the call stack returns, you can be sure that more than one thread is never active in an exchange at once. The exchange is not thread safe. However, it can be passed between multiple threads as long as both threads do not attempt to modify it at once.
+			</p><h3><a id="ending_the_exchange"/>Ending the Exchange</h3><p>
+				There are two ways to end an exchange, either by fully reading the request channel and calling <code class="literal">shutdownWrites()</code> on the response channel and then flushing it, or by calling <code class="literal">HttpServerExchange.endExchange()</code>. When <code class="literal">endExchange()</code> is called, Undertow will check if the content has been generated yet. If it has, then it will simply drain the request channel and close and flush the response channel. If not and there are any default response listeners registered on the exchange, then Undertow will give each of them a chance to generate a default response. This mechanism is how default error pages are generated.
+			</p><p>
+				For more information on configuring Undertow, see <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuration_guide/#configuring_the_web_server_undertow">Configuring the Web Server</a> in the JBoss EAP <span class="emphasis"><em>Configuration Guide</em></span>.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="using_existing_handlers_with_deployment"/>Using Existing Undertow Handlers with a Deployment</h1></div></div></div><p>
+				Undertow provides a default set of handlers that you can use with any application deployed to JBoss EAP.
+			</p><p>
+				To use a handler with a deployment, you need to add a <code class="literal">WEB-INF/undertow-handlers.conf</code> file.
+			</p><div class="title"><strong>Example: <code class="literal">WEB-INF/undertow-handlers.conf</code> File</strong></div><p>
+					
+</p><pre class="screen">allowed-methods(methods='GET')</pre><p>
+
+				</p><p>
+				All handlers can also take an optional predicate to apply that handler in specific cases.
+			</p><div class="title"><strong>Example: <code class="literal">WEB-INF/undertow-handlers.conf</code> File with Optional Predicate</strong></div><p>
+					
+</p><pre class="screen">path('/my-path') -&gt; allowed-methods(methods='GET')</pre><p>
+
+				</p><p>
+				The above example will only apply the <code class="literal">allowed-methods</code> handler to the path <code class="literal">/my-path</code>.
+			</p><h3><a id="undertow_handler_default_parameter"/>Undertow Handler Default Parameter</h3><p>
+				Some handlers have a default parameter, which allows you to specify the value of that parameter in the handler definition without using the name.
+			</p><div class="title"><strong>Example: <code class="literal">WEB-INF/undertow-handlers.conf</code> File Using the Default Parameter</strong></div><p>
+					
+</p><pre class="screen">path('/a') -&gt; redirect('/b')</pre><p>
+
+				</p><p>
+				You can also update the <code class="literal">WEB-INF/jboss-web.xml</code> file to include the definition of one or more handlers, but using <code class="literal">WEB-INF/undertow-handlers.conf</code> is preferred.
+			</p><div class="title"><strong>Example: <code class="literal">WEB-INF/jboss-web.xml</code> File</strong></div><p>
+					
+</p><pre class="programlisting">&lt;jboss-web&gt;
+    &lt;http-handler&gt;
+        &lt;class-name&gt;io.undertow.server.handlers.AllowedMethodsHandler&lt;/class-name&gt;
+        &lt;param&gt;
+            &lt;param-name&gt;methods&lt;/param-name&gt;
+            &lt;param-value&gt;GET&lt;/param-value&gt;
+        &lt;/param&gt;
+    &lt;/http-handler&gt;
+&lt;/jboss-web&gt;</pre><p>
+
+				</p><p>
+				A full list of the provided Undertow handlers can be found in the <a class="link" href="reference_material.html#undertow_available_handlers" title="Provided Undertow Handlers">Provided Undertow Handlers</a> reference.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="creating_custom_handler"/>Creating Custom Handlers</h1></div></div></div><p>
+				There are two ways to define custom handlers:
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						<a class="link" href="undertow.html#custom_handlers_jboss_web_xml" title="Defining Custom Handlers Using the WEB-INF/jboss-web.xml File">Using WEB-INF/jboss-web.xml file</a>
+					</li><li class="listitem">
+						<a class="link" href="undertow.html#custom_handlers_undertow_handlers_conf" title="Defining Custom Handlers in the WEB-INF/undertow-handlers.conf File">In the WEB-INF/undertow-handlers.conf</a>
+					</li></ol></div><h3><a id="custom_handlers_jboss_web_xml"/>Defining Custom Handlers Using the WEB-INF/jboss-web.xml File</h3><p>
+				A custom handler can be defined in the <code class="literal">WEB-INF/jboss-web.xml</code> file.
+			</p><div class="title"><strong>Example: Define Custom Handler in <code class="literal">WEB-INF/jboss-web.xml</code></strong></div><p>
+					
+</p><pre class="programlisting">&lt;jboss-web&gt;
+    &lt;http-handler&gt;
+        &lt;class-name&gt;org.jboss.example.MyHttpHandler&lt;/class-name&gt;
+    &lt;/http-handler&gt;
+&lt;/jboss-web&gt;</pre><p>
+
+				</p><div class="title"><strong>Example: <code class="literal">HttpHandler</code> Class</strong></div><p>
+					
+</p><pre class="programlisting">package org.jboss.example;
+
+import io.undertow.server.HttpHandler;
+import io.undertow.server.HttpServerExchange;
+
+public class MyHttpHandler implements HttpHandler {
+    private HttpHandler next;
+
+    public MyHttpHandler(HttpHandler next) {
+        this.next = next;
+    }
+
+    public void handleRequest(HttpServerExchange exchange) throws Exception {
+        // do something
+        next.handleRequest(exchange);
+    }
+}</pre><p>
+
+				</p><p>
+				Parameters can also be set for the custom handler using the <code class="literal">WEB-INF/jboss-web.xml</code> file.
+			</p><div class="title"><strong>Example: Defining Parameters in <code class="literal">WEB-INF/jboss-web.xml</code></strong></div><p>
+					
+</p><pre class="programlisting">&lt;jboss-web&gt;
+    &lt;http-handler&gt;
+        &lt;class-name&gt;org.jboss.example.MyHttpHandler&lt;/class-name&gt;
+        &lt;param&gt;
+            &lt;param-name&gt;myParam&lt;/param-name&gt;
+            &lt;param-value&gt;foobar&lt;/param-value&gt;
+        &lt;/param&gt;
+    &lt;/http-handler&gt;
+&lt;/jboss-web&gt;</pre><p>
+
+				</p><p>
+				For these parameters to work, the handler class needs to have corresponding setters.
+			</p><div class="title"><strong>Example: Defining Setter Methods in Handler</strong></div><p>
+					
+</p><pre class="programlisting">package org.jboss.example;
+
+import io.undertow.server.HttpHandler;
+import io.undertow.server.HttpServerExchange;
+
+public class MyHttpHandler implements HttpHandler {
+    private HttpHandler next;
+    private String myParam;
+
+    public MyHttpHandler(HttpHandler next) {
+        this.next = next;
+    }
+
+    public void setMyParam(String myParam) {
+        this.myParam = myParam;
+    }
+
+    public void handleRequest(HttpServerExchange exchange) throws Exception {
+        // do something, use myParam
+        next.handleRequest(exchange);
+    }
+}</pre><p>
+
+				</p><h3><a id="custom_handlers_undertow_handlers_conf"/>Defining Custom Handlers in the WEB-INF/undertow-handlers.conf File</h3><p>
+				Instead of using the <code class="literal">WEB-INF/jboss-web.xml</code> for defining the handler, it could also be defined in the <code class="literal">WEB-INF/undertow-handlers.conf</code> file.
+			</p><pre class="screen">myHttpHandler(myParam='foobar')</pre><p>
+				For the handler defined in <code class="literal">WEB-INF/undertow-handlers.conf</code> to work, two things need to be created:
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						An implementation of <code class="literal">HandlerBuilder</code>, which defines the corresponding syntax bits for <code class="literal">undertow-handlers.conf</code> and is responsible for creating the <code class="literal">HttpHandler</code>, wrapped in a <code class="literal">HandlerWrapper</code>.
+					</p><div class="title"><strong>Example: <code class="literal">HandlerBuilder</code> Class</strong></div><p>
+							
+</p><pre class="programlisting">package org.jboss.example;
+
+import io.undertow.server.HandlerWrapper;
+import io.undertow.server.HttpHandler;
+import io.undertow.server.handlers.builder.HandlerBuilder;
+
+import java.util.Collections;
+import java.util.Map;
+import java.util.Set;
+
+public class MyHandlerBuilder implements HandlerBuilder {
+    public String name() {
+        return "myHttpHandler";
+    }
+
+    public Map&lt;String, Class&lt;?&gt;&gt; parameters() {
+        return Collections.&lt;String, Class&lt;?&gt;&gt;singletonMap("myParam", String.class);
+    }
+
+    public Set&lt;String&gt; requiredParameters() {
+        return Collections.emptySet();
+
+    }
+
+    public String defaultParameter() {
+        return null;
+
+    }
+
+    public HandlerWrapper build(final Map&lt;String, Object&gt; config) {
+        return new HandlerWrapper() {
+            public HttpHandler wrap(HttpHandler handler) {
+                MyHttpHandler result = new MyHttpHandler(handler);
+                result.setMyParam((String) config.get("myParam"));
+                return result;
+            }
+        };
+    }
+}</pre><p>
+
+						</p></li><li class="listitem"><p class="simpara">
+						An entry in the file. <code class="literal">META-INF/services/io.undertow.server.handlers.builder.HandlerBuilder</code>. This file must be on the class path, for example, in <code class="literal">WEB-INF/classes</code>.
+					</p><pre class="screen">org.jboss.example.MyHandlerBuilder</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="custom_http_mechanism"/>Developing a Custom HTTP Mechanism</h1></div></div></div><p>
+				When Elytron is used to secure a web application, it is possible to implement custom HTTP authentication mechanisms that can be registered using the <code class="literal">elytron</code> subsystem. It is then also possible to override the configuration within the deployment to make use of this mechanism without requiring modifications to the deployment.
+			</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+					All custom HTTP mechanisms are required to implement the <code class="literal">HttpServerAuthenticationMechanism</code> interface.
+				</p></div><p>
+				In general, for an HTTP mechanism, the <code class="literal">evaluateRequest</code> method is called to handle the request passing in the <code class="literal">HTTPServerRequest</code> object. The mechanism processes the request and uses one of the following callback methods on the request to indicate the outcome:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<code class="literal">authenticationComplete</code> - The mechanism successfully authenticated the request.
+					</li><li class="listitem">
+						<code class="literal">authenticationFailed</code> - Authentication was attempted but failed.
+					</li><li class="listitem">
+						<code class="literal">authenticationInProgress</code> - Authentication started but an additional round trip is needed.
+					</li><li class="listitem">
+						<code class="literal">badRequest</code> - The authentication for this mechanism failed validation of the request.
+					</li><li class="listitem">
+						<code class="literal">noAuthenticationInProgress</code> - The mechanism did not attempt any stage of authentication.
+					</li></ul></div><p>
+				After creating a custom HTTP mechanism that implements the <code class="literal">HttpServerAuthenticationMechanism</code> interface, the next step is to create a factory that returns instances of this mechanism. The factory must implement the <code class="literal">HttpAuthenticationFactory</code> interface. The most important step in the factory implementation is to double check the name of the mechanism requested. It is important for the factory to return null if it cannot create the required mechanism. The mechanism factory can also take into account properties in the map passed in to decide if it can create the requested mechanism.
+			</p><p>
+				There are two different approaches that can be used to advertise the availability of a mechanism factory.
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						The first approach is to implement a <code class="literal">java.security.Provider</code> with the <code class="literal">HttpAuthenticationFactory</code> registered as an available service once for each mechanism it supports.
+					</li><li class="listitem">
+						The second approach is to use a <code class="literal">java.util.ServiceLoader</code> to discover the factory instead. To achieve this, a file named <code class="literal">org.wildfly.security.http.HttpServerAuthenticationMechanismFactory</code> should be added under <code class="literal">META-INF/services</code>. The only content required in this file is the fully qualified class name of the factory implementation.
+					</li></ul></div><p>
+				The mechanism can then be installed in the application server, as a module ready to be used:
+			</p><pre class="screen">module add --name=org.wildfly.security.examples.custom-http --resources=/path/to/custom-http-mechanism.jar --dependencies=org.wildfly.security.elytron,javax.api</pre><h3><a id="using_a_custom_http_mechanism"/>Using a Custom HTTP Mechanism</h3><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Add a custom module.
+					</p><pre class="screen">/subsystem=elytron/service-loader-http-server-mechanism-factory=custom-factory:add(module=org.wildfly.security.examples.custom-http)</pre></li><li class="listitem"><p class="simpara">
+						Add an <code class="literal">http-authentication-factory</code> to tie the mechanism factory to a <code class="literal">security-domain</code> that will be used for the authentication.
+					</p><pre class="screen">/subsystem=elytron/http-authentication-factory=custom-mechanism:add(http-server-mechanism-factory=custom-factory,security-domain=ApplicationDomain,mechanism-configurations=[{mechanism-name=custom-mechanism}])</pre></li><li class="listitem"><p class="simpara">
+						Update the <code class="literal">application-security-domain</code> resource to use the new <code class="literal">http-authentication-factory</code>.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							When an application is deployed, it by default uses the <code class="literal">other</code> security domain. Thus, you need to add a mapping to the application to map it to an Elytron HTTP authentication factory.
+						</p><pre class="screen">/subsystem=undertow/application-security-domain=other:add(http-authentication-factory=application-http-authentication)</pre></div><p class="simpara">
+						The <code class="literal">application-security-domain</code> resource can now be updated to use the new <code class="literal">http-authentication-factory</code>.
+					</p><pre class="screen">/subsystem=undertow/application-security-domain=other:write-attribute(name=http-authentication-factory,value=custom-mechanism)
+
+/subsystem=undertow/application-security-domain=other:write-attribute(name=override-deployment-config,value=true)</pre><p class="simpara">
+						Notice that the command above overrides the deployment configuration. This means that the mechanisms from the <code class="literal">http-authentication-factory</code> will be used even if the deployment was configured to use a different mechanism. It is thus possible to override the configuration within a deployment to make use of a custom mechanism, without requiring modifications to the deployment itself.
+					</p></li><li class="listitem"><p class="simpara">
+						Reload the server
+					</p><pre class="screen">reload</pre></li></ol></div></div></div></body></html>

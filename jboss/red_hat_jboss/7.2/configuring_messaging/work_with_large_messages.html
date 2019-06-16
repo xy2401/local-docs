@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 12. Working with Large Messages</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="work_with_large_messages"/>Chapter 12. Working with Large Messages</h1></div></div></div><p>
+				JBoss EAP messaging supports large messages, even when the client or server has limited amounts of memory. Large messages can be streamed as they are, or they can be compressed further for more efficient transferral. A user can send a large message by setting an <code class="literal">InputStream</code> in the body of the message. When the message is sent, JBoss EAP messaging reads this <code class="literal">InputStream</code> and transmits data to the server in fragments.
+			</p><p>
+				Neither the client nor the server stores the complete body of a large message in memory. The consumer initially receives a large message with an empty body and thereafter sets an <code class="literal">OutputStream</code> on the message to stream it in fragments to a disk file.
+			</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+					When processing large messages, the server does not handle message properties in the same way as the message body. For example a message with a property set to a string that is bigger than <code class="literal">journal-buffer-size</code> cannot be processed by the server because it overfills the journal buffer.
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="streaming_large_messages"/>Streaming Large Messages</h1></div></div></div><p>
+					If you send large messages the standard way, the heap size required to send them can be four or more times the size of the message, meaning a 1 GB message can require 4 GB in heap memory. For this reason, JBoss EAP messaging supports setting the body of messages using the <a class="link" href="https://docs.oracle.com/javase/8/docs/api/java/io/InputStream.html"><code class="literal">java.io.InputStream</code></a> and <a class="link" href="https://docs.oracle.com/javase/8/docs/api/java/io/OutputStream.html"><code class="literal">java.io.OutputStream</code></a> classes, which require much less memory. Input streams are used directly for sending messages and output streams are used for receiving messages.
+				</p><p>
+					When receiving messages, there are two ways to deal with the output stream:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							You can block while the output stream is recovered using the <code class="literal">ClientMessage.saveToOutputStream(OutputStream out)</code> method.
+						</li><li class="listitem">
+							You can use the <code class="literal">ClientMessage.setOutputstream(OutputStream out)</code> method to asynchronously write the message to the stream. This method requires that the consumer be kept alive until the message has been fully received.
+						</li></ul></div><p>
+					You can use any kind of stream you like, for example files, JDBC Blobs, or SocketInputStream, as long as it implements <code class="literal">java.io.InputStream</code> for sending messages and <code class="literal">java.io.OutputStream</code> for receiving messages.
+				</p><h3><a id="streaming_large_messages_using_the_core_api"/>Streaming Large Messages Using the Core API</h3><p>
+					The following table shows the methods available on the <a class="link" href="https://activemq.apache.org/artemis/docs/javadocs/javadoc-1.1.0/org/apache/activemq/artemis/api/core/client/ClientMessage.html"><code class="literal">ClientMessage</code></a> class that are available through JMS by using object properties.
+				</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top"><code class="literal">ClientMessage</code> Method</th><th style="text-align: left" valign="top">Description</th><th style="text-align: left" valign="top">JMS Equivalent Property</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">setBodyInputStream(InputStream)</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Set the <code class="literal">InputStream</code> used to read a message body when it is sent.
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									<code class="literal">JMS_AMQ_InputStream</code>
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">setOutputStream(OutputStream)</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Set the <code class="literal">OutputStream</code> that will receive the body of a message. This method does not block.
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									<code class="literal">JMS_AMQ_OutputStream</code>
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">saveOutputStream(OutputStream)</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Save the body of the message to the <code class="literal">OutputStream</code>. It will block until the entire content is transferred to the <code class="literal">OutputStream</code>.
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									<code class="literal">JMS_AMQ_SaveStream</code>
+								</p>
+								 </td></tr></tbody></table></div><p>
+					The following code example sets the output stream when receiving a core message.
+				</p><pre class="programlisting">ClientMessage firstMessage = consumer.receive(...);
+
+// Block until the stream is transferred
+firstMessage.saveOutputStream(firstOutputStream);
+
+ClientMessage secondMessage = consumer.receive(...);
+
+// Do not wait for the transfer to finish
+secondMessage.setOutputStream(secondOutputStream);</pre><p>
+					The following code example sets the input stream when sending a core message:
+				</p><pre class="programlisting">ClientMessage clientMessage = session.createMessage();
+clientMessage.setInputStream(dataInputStream);</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						For messages larger than 2GiB, you must use the <code class="literal">_AMQ_LARGE_SIZE</code> message property. This is because the <code class="literal">getBodySize()</code> method will return an invalid value because it is limited to the maximum integer value.
+					</p></div><h3><a id="streaming_large_messages_over_jms"/>Streaming Large Messages Over JMS</h3><p>
+					When using JMS, JBoss EAP messaging maps the core API streaming methods by setting object properties. You use the <a class="link" href="http://docs.oracle.com/javaee/7/api/javax/jms/Message.html#setObjectProperty-java.lang.String-java.lang.Object-"><code class="literal">Message.setObjectProperty(String name, Object value)</code></a> method to set the input and output streams.
+				</p><p>
+					The <code class="literal">InputStream</code> is set using the <code class="literal">JMS_AMQ_InputStream</code> property on messages being sent.
+				</p><pre class="programlisting">BytesMessage bytesMessage = session.createBytesMessage();
+FileInputStream fileInputStream = new FileInputStream(fileInput);
+BufferedInputStream bufferedInput = new BufferedInputStream(fileInputStream);
+bytesMessage.setObjectProperty("JMS_AMQ_InputStream", bufferedInput);
+someProducer.send(bytesMessage);</pre><p>
+					The <code class="literal">OutputStream</code> is set using the <code class="literal">JMS_AMQ_SaveStream</code> property on messages being received in a blocking manner.
+				</p><pre class="programlisting">BytesMessage messageReceived = (BytesMessage) messageConsumer.receive(120000);
+File outputFile = new File("huge_message_received.dat");
+FileOutputStream fileOutputStream = new FileOutputStream(outputFile);
+BufferedOutputStream bufferedOutput = new BufferedOutputStream(fileOutputStream);
+
+// This will block until the entire content is saved on disk
+messageReceived.setObjectProperty("JMS_AMQ_SaveStream", bufferedOutput);</pre><p>
+					The <code class="literal">OutputStream</code> can also be set in a non-blocking manner by using the <code class="literal">JMS_AMQ_OutputStream</code> property.
+				</p><pre class="programlisting">// This does not wait for the stream to finish. You must keep the consumer active.
+messageReceived.setObjectProperty("JMS_AMQ_OutputStream", bufferedOutput);</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						When streaming large messages using JMS, only <a class="link" href="http://docs.oracle.com/javaee/7/api/javax/jms/StreamMessage.html"><code class="literal">StreamMessage</code></a> and <a class="link" href="http://docs.oracle.com/javaee/7/api/javax/jms/BytesMessage.html"><code class="literal">BytesMessage</code></a> objects are supported.
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring_messaging_large_messages"/>Configuring Large Messages</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configure_large_message_location"/>Configure Large Message Location</h2></div></div></div><p>
+						You can read the configuration for the large messages directory by using the management CLI command below. The output is also included to highlight default configuration.
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/path=large-messages-directory:read-resource
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; {
+        "path" =&gt; "activemq/largemessages",
+        "relative-to" =&gt; "jboss.server.data.dir"
+    }
+}</pre><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+							To achieve the best performance, it is recommended to store the large messages directory on a different physical volume from the message journal or the paging directory.
+						</p></div><p>
+						The <code class="literal">large-messages-directory</code> configuration element is used to specify a location on the filesystem to store the large messages. Note that by default the path is <code class="literal">activemq/largemessages</code>. You can change the location for path by using the following management CLI command.
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/path=large-messages-directory:write-attribute(name=path,value=<span class="emphasis"><em>PATH_LOCATION</em></span>)</pre><p>
+						Also note the <code class="literal">relative-to</code> attribute in the output above. When <code class="literal">relative-to</code> is used, the value of the path attribute is treated as relative to the file path specified by <code class="literal">relative-to</code>. By default this value is the JBoss EAP property <code class="literal">jboss.server.data.dir</code>. For standalone servers, <code class="literal">jboss.server.data.dir</code> is located at <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/standalone/data</code>. For domains, each server will have its own <code class="literal">serverX/data/activemq</code> directory located under <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/domain/servers</code>. You can change the value of <code class="literal">relative-to</code> using the following management CLI command.
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/path=large-messages-directory:write-attribute(name=relative-to,value=<span class="emphasis"><em>RELATIVE_LOCATION</em></span>)</pre><h4><a id="configuring_large_message_size"/>Configuring Large Message Size</h4><p>
+						Use the management CLI to view the current configuration for large messages. Note that the this configuration is part of a <code class="literal">connection-factory</code> element. For example, to read the current configuration for the default <code class="literal">RemoteConnectionFactory</code> that is included, use the following command:
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/connection-factory=RemoteConnectionFactory:read-attribute(name=min-large-message-size)</pre><p>
+						Set the attribute using a similar syntax.
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/connection-factory=RemoteConnectionFactory:write-attribute(name=min-large-message-size,value=<span class="emphasis"><em>NEW_MIN_SIZE</em></span>)</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The value of the attribute <code class="literal">min-large-message-size</code> should be in bytes.
+						</p></div><h3><a id="configuring_large_message_compression"/>Configuring Large Message Compression</h3><p>
+						You can choose to compress large messages for fast and efficient transfer. All compression/decompression operations are handled on the client side. If the compressed message is smaller than <code class="literal">min-large-message size</code>, it is sent to the server as a regular message. Compress large messages by setting the boolean property <code class="literal">compress-large-messages</code> to <code class="literal">true</code> using the management CLI.
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/connection-factory=RemoteConnectionFactory:write-attribute(name=compress-large-messages,value=true)</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configuring_large_message_size_using_the_core_api"/>Configuring Large Message Size Using the Core API</h2></div></div></div><p>
+						If you are using the core API on the client side, you need to use the <code class="literal">setMinLargeMessageSize</code> method to specify the minimum size of large messages. The minimum size of large messages (<code class="literal">min-large-message-size</code>) is set to 100KB by default.
+					</p><pre class="programlisting">ServerLocator locator = ActiveMQClient.createServerLocatorWithoutHA(new TransportConfiguration(InVMConnectorFactory.class.getName()))
+
+locator.setMinLargeMessageSize(25 * 1024);
+
+ClientSessionFactory factory = ActiveMQClient.createClientSessionFactory();</pre></div></div></div></body></html>

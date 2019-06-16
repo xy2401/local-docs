@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 2. How to Set Up SSO for JBoss EAP with Kerberos</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="how_to_set_up_sso_for_jboss_eap_with_kerberos"/>Chapter 2. How to Set Up SSO for JBoss EAP with Kerberos</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="required_components"/>Required Components</h1></div></div></div><p>
+				You must have the following components when setting up JBoss EAP for SSO with Kerberos:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						A properly configured Kerberos environment
+					</li><li class="listitem">
+						A JBoss EAP instance
+					</li><li class="listitem">
+						A web application
+					</li></ul></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="about_jboss_negotiation_toolkit"/>About JBoss Negotiation Toolkit</h2></div></div></div><p>
+					The <a class="link" href="https://github.com/wildfly-security/jboss-negotiation/tree/master/jboss-negotiation-toolkit">JBoss Negotiation Toolkit</a> is a debugging tool to help users debug and test authentication mechanisms before introducing an application into production. It is an unsupported tool but can be very helpful, as SPNEGO can be difficult to configure for web applications.
+				</p><p>
+					You can download a prebuilt WAR file of the JBoss Negotiation Toolkit from the <a class="link" href="https://repository.jboss.org/nexus/content/groups/public/org/jboss/security/jboss-negotiation-toolkit/">JBoss Negotiation Toolkit repository</a>. You should download the version of JBoss Negotiation Toolkit that matches the version of JBoss Negotiation included in JBoss EAP. For example, if you are using JBoss EAP 7.1, which uses JBoss Negotiation <code class="literal">3.0.4.Final-redhat-1</code>, you should use <code class="literal">jboss-negotiation-toolkit-3.0.4.Final.war</code>. You can determine which version of JBoss Negotiation is being used by looking at <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/modules/system/layers/base/org/jboss/security/negotiation/main/module.xml</code>.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="kerberos_environment"/>Kerberos Environment</h1></div></div></div><p>
+				As discussed in <a class="link" href="krb_sso_intro.html#how_does_kerberos_provide_sso_jboss_eap" title="How Does Kerberos Provide SSO for JBoss EAP?">How Does Kerberos Provide SSO for JBoss EAP?</a>, Kerberos relies on a third party, the KDC, to provide authentication and authorization decisions. This also requires clients, for example browsers, and their host to be properly configured to authenticate with the KDC. This guide is primarily focused on how to configure JBoss EAP and its hosted web applications, so configuring the KDC and Kerberos domain are not in the scope of this document.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					The subsequent sections assume a KDC and Kerberos domain have already been set up and properly configured.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="differences_from_configuring_previous_versions_jboss_eap"/>Differences from Configuring Previous Versions JBoss EAP</h1></div></div></div><p>
+				There are a few noticeable differences between JBoss EAP 7.2 and earlier versions:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						The NegotiationAuthenticator valve is no longer required in the <code class="literal">jboss-web.xml</code>, but there still must be <code class="literal">&lt;security-constraint&gt;</code> and <code class="literal">&lt;login-config&gt;</code> elements defined in the <code class="literal">web.xml</code>. These are used to decide which resources are secured.
+					</li><li class="listitem">
+						The <code class="literal">auth-method</code> element in the <code class="literal">&lt;login-config&gt;</code> element is now a comma-separated list. The <span class="emphasis"><em>exact</em></span> value <code class="literal">SPNEGO</code> must be there and should appear first in that list. In cases where <code class="literal">FORM</code> authentication is desired as a fallback, the <span class="emphasis"><em>exact</em></span> value would be <code class="literal">SPNEGO,FORM</code>.
+					</li><li class="listitem">
+						The <code class="literal">jboss-deployment-structure.xml</code> file is not required when using the <code class="literal">elytron</code> subsystem.
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring_the_jboss_eap_instance"/>Configuring the JBoss EAP Instance</h1></div></div></div><p>
+				You can configure an application deployed to JBoss EAP to use either <a class="link" href="how_to_set_up_sso_for_jboss_eap_with_kerberos.html#elytron_http_auth_app" title="Configure the Elytron Subsystem"><code class="literal">elytron</code></a> or the <a class="link" href="how_to_set_up_sso_for_jboss_eap_with_kerberos.html#configure_legacy_security_subsystem" title="Configure the Legacy Security Subsystem">legacy <code class="literal">security</code></a> subsystem, but you cannot configure it to use both.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="elytron_http_auth_app"/>Configure the Elytron Subsystem</h2></div></div></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						The following steps assume you have a working KDC, Kerberos domain, and browsers configured and working.
+					</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Configure a <code class="literal">kerberos-security-factory</code>.
+						</p><pre class="screen">/subsystem=elytron/kerberos-security-factory=krbSF:add(principal="HTTP/host@REALM", path="/path/to/http.keytab", mechanism-oids=[1.2.840.113554.1.2.2, 1.3.6.1.5.5.2])</pre></li><li class="listitem"><p class="simpara">
+							Configure the system properties for Kerberos.
+						</p><p class="simpara">
+							Depending on how your environment is configured, you will need to set some of the system properties below.
+						</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">System Property</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+											java.security.krb5.kdc
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											The host name of the KDC.
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											java.security.krb5.realm
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											The name of the realm.
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											java.security.krb5.conf
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											The path to the configuration <code class="literal">krb5.conf</code> file.
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											sun.security.krb5.debug
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											If <code class="literal">true</code>, debugging mode will be enabled.
+										</p>
+										 </td></tr></tbody></table></div><p class="simpara">
+							To configure a system property in JBoss EAP using the management CLI:
+						</p><pre class="screen">/system-property=java.security.krb5.conf:add(value="/path/to/krb5.conf")</pre></li><li class="listitem"><p class="simpara">
+							Configure an Elytron security realm for assigning roles.
+						</p><p class="simpara">
+							The client’s Kerberos token will provide the principal, but you need a way to map that principal to a role for your application. There are several ways to accomplish this, but this example creates a <code class="literal">filesystem-realm</code>, adds a user to the realm that matches the principal from the Kerberos token, and assigns roles to that user.
+						</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+								<code class="literal">filesystem-realm</code> is provided as Technology Preview only. Technology Preview features are not supported with Red Hat production service level agreements (SLAs), might not be functionally complete, and Red Hat does not recommend to use them for production. These features provide early access to upcoming product features, enabling customers to test functionality and provide feedback during the development process.
+							</p><p>
+								See <a class="link" href="https://access.redhat.com/support/offerings/techpreview">Technology Preview Features Support Scope</a> on the Red Hat Customer Portal for information about the support scope for Technology Preview features.
+							</p></div><pre class="screen">/subsystem=elytron/filesystem-realm=exampleFsRealm:add(path=fs-realm-users, relative-to=jboss.server.config.dir)
+
+/subsystem=elytron/filesystem-realm=exampleFsRealm:add-identity(identity=user1@REALM)
+
+/subsystem=elytron/filesystem-realm=exampleFsRealm:add-identity-attribute(identity=user1@REALM, name=Roles, value=["Admin","Guest"])</pre></li><li class="listitem"><p class="simpara">
+							Add a <code class="literal">simple-role-decoder</code>.
+						</p><pre class="screen">/subsystem=elytron/simple-role-decoder=from-roles-attribute:add(attribute=Roles)</pre><p class="simpara">
+							This <code class="literal">simple-role-decoder</code> decodes a principal’s roles from the <code class="literal">Roles</code> attribute. You can change this value if your roles are in a different attribute.
+						</p></li><li class="listitem"><p class="simpara">
+							Configure a <code class="literal">security-domain</code>.
+						</p><pre class="screen">/subsystem=elytron/security-domain=exampleFsSD:add(realms=[{realm=exampleFsRealm, role-decoder=from-roles-attribute}], default-realm=exampleFsRealm, permission-mapper=default-permission-mapper)</pre></li><li class="listitem"><p class="simpara">
+							Configure an <code class="literal">http-authentication-factory</code> that uses the <code class="literal">kerberos-security-factory</code>.
+						</p><pre class="screen">/subsystem=elytron/http-authentication-factory=example-krb-http-auth:add(http-server-mechanism-factory=global, security-domain=exampleFsSD, mechanism-configurations=[{mechanism-name=SPNEGO, mechanism-realm-configurations=[{realm-name=exampleFsSD}], credential-security-factory=krbSF}])</pre></li><li class="listitem"><p class="simpara">
+							Configure an <code class="literal">application-security-domain</code> in the <code class="literal">undertow</code> subsystem:
+						</p><pre class="screen">/subsystem=undertow/application-security-domain=app-spnego:add(http-authentication-factory=example-krb-http-auth)</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configure_legacy_security_subsystem"/>Configure the Legacy Security Subsystem</h2></div></div></div><p>
+					JBoss EAP comes with all the components necessary to use Kerberos, using SPNEGO and JBoss Negotiation, for SSO with deployed applications, but the following configuration changes need to be made:
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						The management CLI commands shown assume that you are running a JBoss EAP standalone server. For more details on using the management CLI for a JBoss EAP managed domain, see the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/management_cli_guide/"><span class="emphasis"><em>Management CLI Guide</em></span></a>.
+					</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Configure the server identity, or host, security domain.
+						</p><p class="simpara">
+							This security domain authenticates the container itself to the KDC. It needs to use a login module which accepts a static login mechanism since a real user is not involved in this connection. The following example uses a static principal and references a keytab file which contains the credential.
+						</p><div class="title"><strong>Example: Creating a Server Identity Security Domain</strong></div><p>
+								
+</p><pre class="screen">/subsystem=security/security-domain=host:add(cache-type=default)
+
+/subsystem=security/security-domain=host/authentication=classic:add()
+
+/subsystem=security/security-domain=host/authentication=classic/login-module=Kerberos:add(code=Kerberos, flag=required, module-options=[storeKey=true, refreshKrb5Config=true, useKeyTab=true, principal=host/testserver@MY_REALM, keyTab=/home/username/service.keytab, doNotPrompt=true, debug=false])
+
+reload</pre><p>
+
+							</p><p class="simpara">
+							If using the IBM JDK, the options for Kerberos module are different. The <code class="literal">jboss.security.disable.secdomain.option</code> system property must be set to <code class="literal">true</code>. See <a class="link" href="how_to_set_up_sso_for_jboss_eap_with_kerberos.html#configure_relevant_system_properties">Configure relevant system properties</a> for more information. In addition, the login module should be configured as follows:
+						</p><div class="title"><strong>Example: IBM JDK</strong></div><p>
+								
+</p><pre class="screen">/subsystem=security/security-domain=host:add(cache-type=default)
+
+/subsystem=security/security-domain=host/authentication=classic:add()
+
+/subsystem=security/security-domain=host/authentication=classic/login-module=Kerberos:add(code=Kerberos, flag=required, module-options=[principal=host/testserver@MY_REALM, keyTab="file:///root/keytab", credsType=acceptor])
+
+reload</pre><p>
+
+							</p><p class="simpara">
+							For a complete list of options for configuring the <code class="literal">Kerberos</code> login module, see the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/login_module_reference/#kerberos_login_module"><span class="emphasis"><em>Login Module Reference</em></span></a>.
+						</p></li><li class="listitem"><p class="simpara">
+							Configure the web application security domain.
+						</p><p class="simpara">
+							The web application security domain is used to authenticate the individual user to the KDC. There needs to be at least one login module to authenticate the user. There also must be a way to search for the roles to apply to the user. This can be accomplished in many different ways, for example by adding a <code class="literal">&lt;mapping&gt;</code> that manually maps users to roles, adding a second login module for mapping users to roles, and so on.
+						</p><p class="simpara">
+							The following shows an example web application security domain.
+						</p><div class="title"><strong>Example: Creating a Server Identity Security Domain</strong></div><p>
+								
+</p><pre class="screen">/subsystem=security/security-domain=app-spnego:add(cache-type=default)
+
+/subsystem=security/security-domain=app-spnego/authentication=classic:add()
+
+/subsystem=security/security-domain=app-spnego/authentication=classic/login-module=SPNEGO:add(code=SPNEGO, flag=required, module-options=[serverSecurityDomain=host])
+
+reload</pre><p>
+
+							</p><p class="simpara">
+							For a complete list of options for configuring the <code class="literal">SPNEGO</code> login module, see the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/login_module_reference/#spnego_login_module"><span class="emphasis"><em>Login Module Reference</em></span></a>.
+						</p></li><li class="listitem"><p class="simpara">
+							Configure relevant system properties.
+						</p><p class="simpara"><a id="configure_relevant_system_properties"/>
+							JBoss EAP offers the ability to configure system properties related to connecting to Kerberos servers. Depending on the KDC, Kerberos Domain, and network configuration, the following system properties may or may not be required.
+						</p><pre class="programlisting">&lt;system-properties&gt;
+  &lt;property name="java.security.krb5.kdc" value="mykdc.mydomain"/&gt;
+  &lt;property name="java.security.krb5.realm" value="<span class="emphasis"><em>MY_REALM</em></span>"/&gt;
+  &lt;property name="java.security.krb5.conf" value="/path/to/krb5.conf"/&gt;
+  &lt;property name="jboss.security.disable.secdomain.option" value="true"/&gt;
+  &lt;property name="sun.security.krb5.debug" value="false"/&gt;
+&lt;/system-properties&gt;</pre><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Property</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+											java.security.krb5.kdc
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											The host name of the KDC.
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											java.security.krb5.realm
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											The name of the realm.
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											java.security.krb5.conf
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											The path to the configuration <code class="literal">krb5.conf</code> file.
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											jboss.security.disable.secdomain.option
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											When set to <code class="literal">true</code>, disables automatic adding of <code class="literal">jboss.security.security_domain</code> login module option to login modules declared in the security domain. Must be set to <code class="literal">true</code> when using the IBM JDK.
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											sun.security.krb5.debug
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											If <code class="literal">true</code>, debugging mode will be enabled.
+										</p>
+										 </td></tr></tbody></table></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								By default, each login module defined in a security domain has the <code class="literal">jboss.security.security_domain</code> module option added to it automatically. This option causes problems with login modules which check to make sure that only known options are defined. The IBM Kerberos login module, <code class="literal">com.ibm.security.auth.module.Krb5LoginModule</code> is one of these. This behavior of adding this module option can disabled by setting the <code class="literal">jboss.security.disable.secdomain.option</code> system property to <code class="literal">true</code> when starting JBoss EAP. This can be accomplished by configuring the <code class="literal">&lt;system-properties&gt;</code>, using the management CLI or management console, or by adding <code class="literal">-Djboss.security.disable.secdomain.option=true</code> to the startup parameters.
+							</p></div><p class="simpara">
+							For more information about configuring system properties, see the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/management_cli_guide/"><span class="emphasis"><em>Management CLI Guide</em></span></a>.
+						</p></li></ol></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring_the_web_application"/>Configuring the Web Application</h1></div></div></div><p>
+				Once the security domains have been configured, the web application must be configured to use those security domains in order to enable Kerberos authentication. Once the application changes have been made, it can be deployed to the JBoss EAP instance and begin using Kerberos for authentication.
+			</p><p>
+				The following updates must be made the application:
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Configure the <code class="literal">web.xml</code> to use the SPNEGO authentication method.
+					</p><p class="simpara">
+						The <code class="literal">web.xml</code> file should contain the following:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								A <code class="literal">&lt;security-constraint&gt;</code> with a <code class="literal">&lt;web-resource-collection&gt;</code> containing a <code class="literal">&lt;url-pattern&gt;</code> that maps to the URL pattern of the secured area. Optionally, <code class="literal">&lt;security-constraint&gt;</code> may also contain an <code class="literal">&lt;auth-constraint&gt;</code> stipulating the allowed roles.
+							</li><li class="listitem">
+								If any roles were specified in the <code class="literal">&lt;auth-constraint&gt;</code>, those roles should be defined in a <code class="literal">&lt;security-role&gt;</code>.
+							</li><li class="listitem"><p class="simpara">
+								A <code class="literal">&lt;login-config&gt;</code> containing a <code class="literal">&lt;auth-method&gt;</code> with the <span class="emphasis"><em>exact</em></span> value of <code class="literal">SPNEGO</code>.
+							</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+									The <code class="literal">&lt;auth-method&gt;</code> element expects a comma-separated list of specific values. For <code class="literal">SPNEGO</code> authentication to be properly configured, the <span class="emphasis"><em>exact</em></span> value <code class="literal">SPNEGO</code> must appear in the <code class="literal">&lt;auth-method&gt;</code> element and should appear first. Incorporating additional authentication types is discussed in <a class="link" href="additional_features.html#adding_form_login_as_fallback" title="Adding a FORM Login as a Fallback">Adding a FORM Login as a Fallback</a>.
+								</p></div><p class="simpara">
+								The <code class="literal">&lt;security-constraint&gt;</code> and <code class="literal">&lt;security-role&gt;</code> elements enable administrators to set up restricted or unrestricted areas based on URL patterns and roles. This allows resources to be secured or unsecured.
+							</p><div class="title"><strong>Example: <code class="literal">web.xml</code> File</strong></div><p>
+									
+</p><pre class="programlisting">&lt;web-app&gt;
+  &lt;display-name&gt;App1&lt;/display-name&gt;
+  &lt;description&gt;App1&lt;/description&gt;
+  &lt;!-- Define a security constraint that requires the Admin role to access resources --&gt;
+  &lt;security-constraint&gt;
+    &lt;display-name&gt;Security Constraint on Conversation&lt;/display-name&gt;
+    &lt;web-resource-collection&gt;
+      &lt;web-resource-name&gt;exampleWebApp&lt;/web-resource-name&gt;
+      &lt;url-pattern&gt;/*&lt;/url-pattern&gt;
+    &lt;/web-resource-collection&gt;
+    &lt;auth-constraint&gt;
+      &lt;role-name&gt;Admin&lt;/role-name&gt;
+    &lt;/auth-constraint&gt;
+  &lt;/security-constraint&gt;
+  &lt;!-- Define the Login Configuration for this Application --&gt;
+  &lt;login-config&gt;
+    &lt;auth-method&gt;SPNEGO&lt;/auth-method&gt;
+    &lt;realm-name&gt;SPNEGO&lt;/realm-name&gt;
+  &lt;/login-config&gt;
+  &lt;!-- Security roles referenced by this web application --&gt;
+  &lt;security-role&gt;
+    &lt;description&gt;Role required to log in to the Application&lt;/description&gt;
+    &lt;role-name&gt;Admin&lt;/role-name&gt;
+  &lt;/security-role&gt;
+&lt;/web-app&gt;</pre><p>
+
+								</p></li></ul></div></li><li class="listitem"><p class="simpara">
+						Configure <code class="literal">jboss-web.xml</code> to use the configured security domain.
+					</p><p class="simpara">
+						The <code class="literal">jboss-web.xml</code> file should have the following:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								A <code class="literal">&lt;security-domain&gt;</code> to specify which security domain to use for authentication and authorization.
+							</li><li class="listitem"><p class="simpara">
+								Optionally <code class="literal">&lt;jacc-star-role-allow&gt;</code>, which enables the use of the asterisk character in role-name element in <code class="literal">web.xml</code> to match multiple role names.
+							</p><div class="title"><strong>Example: <code class="literal">jboss-web.xml</code> File</strong></div><p>
+									
+</p><pre class="programlisting">&lt;jboss-web&gt;
+  &lt;security-domain&gt;app-spnego&lt;/security-domain&gt;
+  &lt;jacc-star-role-allow&gt;true&lt;/jacc-star-role-allow&gt;
+&lt;/jboss-web&gt;</pre><p>
+
+								</p></li></ul></div></li><li class="listitem"><p class="simpara">
+						Add the JBoss Negotiation dependencies to the deployment for the legacy <code class="literal">security</code> subsystem.
+					</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+							If you are using the <code class="literal">elytron</code> subsystem, you can skip this step.
+						</p></div><p class="simpara">
+						A web application using SPNEGO and JBoss Negotiation requires a dependency to be defined in <code class="literal">jboss-deployment-structure.xml</code> so that the JBoss Negotiation classes can be located. Since JBoss EAP provides all necessary JBoss Negotiation and related classes, the application just needs to declare them as dependencies to use them.
+					</p><div class="title"><strong>Using <code class="literal">jboss-deployment-structure.xml</code> to Declare Dependencies</strong></div><p>
+							
+</p><pre class="programlisting">&lt;jboss-deployment-structure&gt;
+  &lt;deployment&gt;
+    &lt;dependencies&gt;
+      &lt;module name="org.jboss.security.negotiation"/&gt;
+    &lt;/dependencies&gt;
+  &lt;/deployment&gt;
+&lt;/jboss-deployment-structure&gt;</pre><p>
+
+						</p><p class="simpara">
+						Alternatively, this dependency may be defined in a <code class="literal">META-INF/MANIFEST.MF</code> file instead:
+					</p><div class="title"><strong>Using <code class="literal">META-INF/MANIFEST.MF</code> to Declare Dependencies</strong></div><p>
+							
+</p><pre class="programlisting">Manifest-Version: 1.0
+Dependencies: org.jboss.security.negotiation</pre><p>
+
+						</p></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="additional_considerations_for_active_directory"/>Additional Considerations for Active Directory</h1></div></div></div><p>
+				This section describes how to configure the accounts required for SPNEGO authentication to be used when JBoss EAP is running on a Microsoft Windows server, which is a part of the Active Directory domain.
+			</p><p>
+				In this section, the host name that is used to access the server as is referred to as <code class="literal"><span class="emphasis"><em>HOST_NAME</em></span></code>, the realm is referred to as <code class="literal"><span class="emphasis"><em>REALM</em></span></code>, the domain is referred to as <code class="literal"><span class="emphasis"><em>DOMAIN</em></span></code>, and the server hosting the JBoss EAP instance is referred to as <code class="literal"><span class="emphasis"><em>MACHINE_NAME</em></span></code>. ⁠
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configuration_for_microsoft_windows_domain"/>Configuration for Microsoft Windows Domain</h2></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Clear existing service principal mappings.
+						</p><p class="simpara">
+							On a Microsoft Windows network some mappings are created automatically. Delete the automatically created mappings to map the identity of the server to the service principal for negotiation to take place correctly. The mapping enables the web browser on the client computer to trust the server and attempt SPNEGO. The client computer verifies with the domain controller for a mapping in the form of HTTP/<code class="literal"><span class="emphasis"><em>HOST_NAME</em></span></code>.
+						</p><p class="simpara">
+							The following are the steps to delete the existing mappings:
+						</p><div class="title"><strong>List the mapping registered with the domain for the computer using the command:</strong></div><p>
+								
+</p><pre class="screen">setspn -L <span class="emphasis"><em>MACHINE_NAME</em></span></pre><p>
+
+							</p><div class="title"><strong>Delete the existing mappings using the commands:</strong></div><p>
+								
+</p><pre class="screen">setspn -D HTTP/<span class="emphasis"><em>HOST_NAME</em></span> <span class="emphasis"><em>MACHINE_NAME</em></span></pre><p>
+
+							</p><pre class="screen">setspn -D host/<span class="emphasis"><em>HOST_NAME</em></span> <span class="emphasis"><em>MACHINE_NAME</em></span></pre></li><li class="listitem"><p class="simpara">
+							Create a host user account.
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								Ensure the host user name is different from the <code class="literal"><span class="emphasis"><em>MACHINE_NAME</em></span></code>.
+							</p></div><p class="simpara">
+							In the rest of the section the host user name is referred to as <code class="literal"><span class="emphasis"><em>USER_NAME</em></span></code>.
+						</p></li><li class="listitem"><p class="simpara">
+							Define the mapping between the <code class="literal"><span class="emphasis"><em>USER_NAME</em></span></code> and <code class="literal"><span class="emphasis"><em>HOST_NAME</em></span></code>.
+						</p><p class="simpara">
+							Run the following command to configure the service principal mapping:
+						</p><pre class="screen">ktpass -princ HTTP/<span class="emphasis"><em>HOST_NAME</em></span>@<span class="emphasis"><em>REALM</em></span> -pass * [-kvno 0] -mapuser <span class="emphasis"><em>DOMAIN</em></span>\<span class="emphasis"><em>USER_NAME</em></span> -out jboss.keytab -ptype KRB5_NT_PRINCIPAL -crypto all</pre><p class="simpara">
+							Enter the password for the user name, when prompted.
+						</p><p class="simpara">
+							Verify the mapping by running the following command: <code class="literal">setspn -L <span class="emphasis"><em>USER_NAME</em></span></code>.
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								If you get <code class="literal">KrbException: Specified version of key is not available</code> errors from the JRE, you might need to set the Key Version to <code class="literal">0</code> : <code class="literal">-kvno 0</code> . Note that <span class="emphasis"><em>REALM</em></span> needs to be all in uppercase, while the <span class="emphasis"><em>HOST_NAME</em></span> should be all lowercase. Also, the <span class="emphasis"><em>HOST_NAME</em></span> must be a FQDN, and must be a resolvable <code class="literal">A</code> or <code class="literal">AAAA</code> record, but not a <code class="literal">CNAME</code> record.
+							</p><p>
+								Using <code class="literal">-crypto all</code> only works on Windows Server 2008 and later. For Windows Server 2003, you must specify the exact setting.
+							</p></div></li><li class="listitem"><p class="simpara">
+							Define the principal within the security domain.
+						</p><p class="simpara">
+							The principal can be defined or updated in the <code class="literal">elytron</code> or legacy <code class="literal">security</code> subsystem to <code class="literal">HTTP/<span class="emphasis"><em>HOST_NAME</em></span>@<span class="emphasis"><em>REALM</em></span></code>.
+						</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+								If you make any modification to any user, for example changing options or their password, you must regenerate the <code class="literal">keytab</code>.
+							</p></div></li></ol></div></div></div></div></body></html>

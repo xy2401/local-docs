@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 7. Using JBoss EAP High Availability in Microsoft Azure</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="using_jboss_eap_high_availability_in_microsoft_azure"/>Chapter 7. Using JBoss EAP High Availability in Microsoft Azure</h1></div></div></div><p>
+			Microsoft Azure does not support JGroups discovery protocols that are based on UDP multicast. Although you may use other JGroups discovery protocols (such as a static configuration (<code class="literal">TCPPING</code>), a shared database (<code class="literal">JDBC_PING</code>), shared file system-based ping (<code class="literal">FILE_PING</code>), or <code class="literal">TCPGOSSIP</code>), we strongly recommend that you use the shared file discovery protocol specifically developed for Azure: <code class="literal">AZURE_PING</code>.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configure_azure_ping"/>Configuring AZURE_PING for JBoss EAP High Availability</h1></div></div></div><p>
+				This section describes configuring your JBoss EAP cluster to use the AZURE_PING JGroups discovery protocol. Ensure that you meet <a class="link" href="creating_your_microsoft_azure_environment.html#azure_vm_prereqs" title="Important">the prerequisites when creating your virtual machines</a>.
+			</p><p>
+				AZURE_PING uses a common blob container in a Microsoft Azure storage account. If you do not already have a blob container that AZURE_PING can use, create one that your virtual machines can access.
+			</p><p>
+				After creating your blob container, you will need the following information to configure AZURE_PING:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<code class="literal">storage_account_name</code>: the name of the Microsoft Azure storage account that contains your blob container.
+					</li><li class="listitem">
+						<code class="literal">storage_access_key</code>: the secret access key of the storage account.
+					</li><li class="listitem">
+						<code class="literal">container</code>: the name of the blob container to use for <code class="literal">PING</code> data.
+					</li></ul></div><p>
+				To configure JBoss EAP to use AZURE_PING as the JGroups discovery protocol, you can either <a class="link" href="using_jboss_eap_high_availability_in_microsoft_azure.html#example_config_file" title="Using the Example Configuration File">use a preconfigured example JBoss EAP configuration file</a>, or <a class="link" href="using_jboss_eap_high_availability_in_microsoft_azure.html#modify_config" title="Modifying an Existing Configuration">modify an existing configuration</a>.
+			</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+					The following instructions configure AZURE_PING using a UDP JGroups stack. If you will be configuring <a class="link" href="configuring_jboss_eap_for_microsoft_azure.html#messaging_ha" title="ActiveMQ Artemis High Availability">JBoss EAP messaging high availability in Azure</a>, you must configure AZURE_PING in a TCP JGroups stack instead.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="example_config_file"/>Using the Example Configuration File</h2></div></div></div><p>
+					JBoss EAP includes example configuration files for configuring clustering of standalone servers in Microsoft Azure. These files are located in <code class="literal">EAP_HOME/docs/examples/configs/</code> and are <code class="literal">standalone-azure-ha.xml</code> and <code class="literal">standalone-azure-full-ha.xml</code>.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						See the JBoss EAP <span class="emphasis"><em>Configuration Guide</em></span> for an <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuration_guide/#standalone_server_configuration_files">explanation of the differences</a> between the server profiles.
+					</p></div><p>
+					These sample configuration files are preconfigured for using clustering in Microsoft Azure, and all that is needed is to specify the values for your Azure storage account and blob container.
+				</p><p>
+					Copy your desired example configuration file to <code class="literal">EAP_HOME/standalone/configuration/</code>.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="modify_config"/>Modifying an Existing Configuration</h2></div></div></div><p>
+					If you are modifying an existing JBoss EAP high availability configuration, the following changes to the <code class="literal">jgroups</code> subsystem are required.
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Launch the management CLI and embed a server to make offline changes to your chosen configuration file. For example:
+						</p><pre class="screen">$ EAP_HOME/bin/jboss-cli.sh
+[disconnected /] embed-server --server-config=standalone-ha.xml</pre></li><li class="listitem"><p class="simpara">
+							By default, JGroups uses the UDP stack. If you were using another stack, change back to using the UDP stack:
+						</p><pre class="screen">[standalone@embedded /] /subsystem=jgroups/channel=ee:write-attribute(name=stack,value=udp)</pre></li><li class="listitem"><p class="simpara">
+							Execute the following batch of commands to remove the existing UDP stack and insert a new UDP stack configured for Microsoft Azure:
+						</p><pre class="screen">batch
+/subsystem=jgroups/stack=udp:remove
+/subsystem=jgroups/stack=udp:add()
+/subsystem=jgroups/stack=udp/transport=UDP:add(socket-binding=jgroups-udp,properties={ip_mcast=false})
+/subsystem=jgroups/stack=udp/protocol=azure.AZURE_PING:add(properties={storage_account_name="${jboss.jgroups.azure_ping.storage_account_name}", storage_access_key="${jboss.jgroups.azure_ping.storage_access_key}", container="${jboss.jgroups.azure_ping.container}"})
+/subsystem=jgroups/stack=udp/protocol=MERGE3:add
+/subsystem=jgroups/stack=udp/protocol=FD_SOCK:add(socket-binding=jgroups-udp-fd)
+/subsystem=jgroups/stack=udp/protocol=FD:add
+/subsystem=jgroups/stack=udp/protocol=VERIFY_SUSPECT:add
+/subsystem=jgroups/stack=udp/protocol=pbcast.NAKACK2:add(properties={use_mcast_xmit=false,use_mcast_xmit_req=false})
+/subsystem=jgroups/stack=udp/protocol=UNICAST3:add
+/subsystem=jgroups/stack=udp/protocol=pbcast.STABLE:add
+/subsystem=jgroups/stack=udp/protocol=pbcast.GMS:add
+/subsystem=jgroups/stack=udp/protocol=UFC:add
+/subsystem=jgroups/stack=udp/protocol=FRAG2:add
+run-batch</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								If you want to store the values of your Microsoft Azure storage account and blob container in your configuration file, replace the system property references in the above configuration with the values from your Azure environment. In the following command, examples for starting JBoss EAP, the system properties are used.
+							</p></div><p class="simpara">
+							The stack XML in your configuration file should look like the following:
+						</p><pre class="programlisting">&lt;stack name="udp"&gt;
+    &lt;transport type="UDP" socket-binding="jgroups-udp"&gt;
+        &lt;property name="ip_mcast"&gt;
+            false
+        &lt;/property&gt;
+    &lt;/transport&gt;
+    &lt;protocol type="azure.AZURE_PING"&gt;
+        &lt;property name="storage_account_name"&gt;
+            ${jboss.jgroups.azure_ping.storage_account_name}
+        &lt;/property&gt;
+        &lt;property name="storage_access_key"&gt;
+            ${jboss.jgroups.azure_ping.storage_access_key}
+        &lt;/property&gt;
+        &lt;property name="container"&gt;
+            ${jboss.jgroups.azure_ping.container}
+        &lt;/property&gt;
+    &lt;/protocol&gt;
+    &lt;protocol type="MERGE3"/&gt;
+    &lt;protocol type="FD_SOCK" socket-binding="jgroups-udp-fd"/&gt;
+    &lt;protocol type="FD"/&gt;
+    &lt;protocol type="VERIFY_SUSPECT"/&gt;
+    &lt;protocol type="pbcast.NAKACK2"&gt;
+        &lt;property name="use_mcast_xmit"&gt;
+            false
+        &lt;/property&gt;
+        &lt;property name="use_mcast_xmit_req"&gt;
+            false
+        &lt;/property&gt;
+    &lt;/protocol&gt;
+    &lt;protocol type="UNICAST3"/&gt;
+    &lt;protocol type="pbcast.STABLE"/&gt;
+    &lt;protocol type="pbcast.GMS"/&gt;
+    &lt;protocol type="UFC"/&gt;
+    &lt;protocol type="FRAG2"/&gt;
+&lt;/stack&gt;</pre></li><li class="listitem"><p class="simpara">
+							Stop the embedded server and exit the management CLI:
+						</p><pre class="screen">[standalone@embedded /] stop-embedded-server
+[disconnected /] exit</pre></li></ol></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="starting_jboss_eap_high_availability"/>Starting JBoss EAP High Availability</h1></div></div></div><p>
+				To start JBoss EAP using high availability in Microsoft Azure, you must:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						use a configuration file that has been <a class="link" href="using_jboss_eap_high_availability_in_microsoft_azure.html#configure_azure_ping" title="Configuring AZURE_PING for JBoss EAP High Availability">configured with the AZURE_PING discovery protocol</a> and specify the required values of your Microsoft Azure storage account and blob container.
+					</li><li class="listitem"><p class="simpara">
+						bind the <code class="literal">private</code> interface to the Microsoft Azure internal IP address that is used for clustering traffic. You can do this at startup, as shown below, or as a <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuration_guide/#configuring_interfaces">set configuration shown in the JBoss EAP <span class="emphasis"><em>Configuration Guide</em></span></a>.
+					</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+							For security reasons, you must ensure that you do not expose clustering traffic to unintended networks.
+						</p><p>
+							You can do this by restricting the endpoints to your Microsoft Azure virtual network or by creating a dedicated virtual network and dedicated virtual machine NICs for clustering traffic.
+						</p></div></li></ul></div><p>
+				Start your JBoss EAP high availability instance using the following command. If you stored your Microsoft Azure storage account and blob container values in your configuration file, you can omit the <code class="literal">-Djboss.jgroups.azure_ping</code> system property definitions.
+			</p><pre class="screen">EAP_HOME/bin/standalone.sh -b <span class="emphasis"><em>IP_ADDRESS</em></span> -bprivate <span class="emphasis"><em>IP_ADDRESS</em></span> --server-config=<span class="emphasis"><em>EAP_CONFIG_FILE</em></span>.xml -Djboss.jgroups.azure_ping.storage_account_name=<span class="emphasis"><em>STORAGE_ACCOUNT_NAME</em></span> -Djboss.jgroups.azure_ping.storage_access_key=<span class="emphasis"><em>STORAGE_ACCESS_KEY</em></span> -Djboss.jgroups.azure_ping.container=<span class="emphasis"><em>CONTAINER_NAME</em></span></pre><p>
+				For example:
+			</p><pre class="screen">EAP_HOME/bin/standalone.sh -b 172.28.0.2 -bprivate 172.28.0.2 --server-config=standalone-azure-ha.xml -Djboss.jgroups.azure_ping.storage_account_name=my_storage_account -Djboss.jgroups.azure_ping.storage_access_key=y7+2x7P68pQse9MNh58Bkk5po9OGzeJc+0IRqYcQ9Cr/Sp4xiUFJVlbY+MGXJRNx3syksikwm4tOYlFgjvoCmw== -Djboss.jgroups.azure_ping.container=my_blob_container</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					As JBoss EAP subsystems only start when needed, you must deploy a distributable application to your JBoss EAP servers to start the high availability JBoss EAP subsystems.
+				</p></div><p>
+				After you start a second JBoss EAP instance in a cluster, you should see logs similar to the following in the console log of the first server in the cluster:
+			</p><pre class="screen">INFO  [org.infinispan.remoting.transport.jgroups.JGroupsTransport] (thread-2,ee,eap-server-1) ISPN000094: Received new cluster view for channel server: [eap-server-1|1] (2) [eap-server-1, eap-server-2]</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="troubleshooting_jboss_eap_high_availability"/>Troubleshooting JBoss EAP High Availability</h1></div></div></div><p>
+				If you are having trouble getting clustering to work in Microsoft Azure, verify that you have completed all the requirements in the following list.
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						Ensure that the Microsoft Azure virtual machines hosting your JBoss EAP servers are using the same virtual network.
+					</li><li class="listitem">
+						Ensure that you have a blob container for AZURE_PING to use.
+					</li><li class="listitem">
+						Ensure that you are using a JBoss EAP configuration file with the AZURE_PING discovery protocol configured in the <code class="literal">jgroups</code> subsystem.
+					</li><li class="listitem">
+						Ensure that you are binding both the public and private interfaces to the correct Microsoft Azure IP addresses.
+					</li><li class="listitem"><p class="simpara">
+						Ensure that you have the correct values for your Microsoft Azure storage account and blob container and that you are either:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								storing them in your configuration file, or
+							</li><li class="listitem">
+								setting the correct system properties when starting JBoss EAP.
+							</li></ul></div></li><li class="listitem">
+						Ensure that you have your distributable Java application deployed to all the JBoss EAP servers in your cluster.
+					</li></ul></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="cleaning_stale_discovery_files_in_your_blob_container"/>Cleaning Stale Discovery Files in Your Blob Container</h2></div></div></div><p>
+					If a JBoss EAP cluster that uses AZURE_PING is shut down abnormally, for example, using <code class="literal">kill -9</code> to end the JBoss EAP process, some stale discovery files may be left in your blob container.
+				</p><p>
+					These files are usually cleaned up in a graceful cluster shutdown, but if left there from an abnormal shutdown, it may impact startup performance of cluster members attempting to contact nodes that are no longer online.
+				</p><p>
+					If this is a problem for you, you can set the following configuration to make the cluster coordinator remove and refresh all discovery files whenever the cluster view changes.
+				</p><pre class="screen">/subsystem=jgroups/stack=udp/protocol=azure.AZURE_PING/property=remove_all_files_on_view_change:add(value=true)</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						Alternatively, if cleaning your container on each view change is not ideal, you can reduce the number of join attempts for a node attempting to join a cluster. The default number of join attempts is <code class="literal">10</code>. For example, to set the number of join attempts to <code class="literal">3</code>:
+					</p><pre class="screen">/subsystem=jgroups/stack=udp/protocol=pbcast.GMS/property=max_join_attempts:add(value=3)</pre><p>
+						The stale discovery files will still be present, but a node attempting to join a cluster will not spend as much time attempting to contact nodes that are no longer online.
+					</p></div><p>
+					<br/><br/><br/><br/>
+				</p><p>
+					<span class="emphasis"><em><span class="right">Revised on 2019-05-02 08:51:34 UTC</span></em></span>
+				</p></div></div></div></body></html>

@@ -1,0 +1,353 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 8. Clustered Enterprise JavaBeans</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="clustered_enterprise_javabeans"/>Chapter 8. Clustered Enterprise JavaBeans</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="about_clustered_enterprise_javabeans_ejbs"/>About Clustered Enterprise JavaBeans (EJBs)</h1></div></div></div><p>
+				EJB components can be clustered for high-availability scenarios. They use different protocols than HTTP components, so they are clustered in different ways. EJB 2 and 3 stateful and stateless beans can be clustered.
+			</p><p>
+				For information on singletons, see <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/development_guide/#clustered_ha_singleton_service">HA Singleton Service</a> in the JBoss EAP <span class="emphasis"><em>Development Guide</em></span>
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ejb_client_code_simplification"/>EJB Client Code Simplification</h1></div></div></div><p>
+				You can simplify the EJB client code when invoking the EJB server-side clustered components. The following procedures outline the multiple ways to simplify the EJB client code:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<a class="link" href="invoking_session_beans.html#initial_context_lookup" title="Initial Context Lookup">Initial Context Lookup</a>
+					</li><li class="listitem">
+						<a class="link" href="invoking_session_beans.html#remote_ejb_configuration_file" title="Remote EJB Configuration File">Remote EJB Configuration File</a>
+					</li><li class="listitem">
+						<a class="link" href="clustered_enterprise_javabeans.html#automatic_transaction_stickiness_for_ejbs" title="Automatic Transaction Stickiness for EJBs">Automatic Transaction Stickiness for EJBs</a>
+					</li><li class="listitem">
+						<a class="link" href="clustered_enterprise_javabeans.html#ejb_transactions_in_a_clustered_environment" title="EJB Transactions in a Clustered Environment">EJB Transactions in a Clustered Environment</a>
+					</li></ul></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					The use of the <code class="literal">jboss-ejb-client.properties</code> file is deprecated in favor of the <code class="literal">wildfly-config.xml</code> file.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="deploying_clustered_ejbs"/>Deploying Clustered EJBs</h1></div></div></div><p>
+				Clustering support is available in the HA profiles of JBoss EAP 7.2. Starting the standalone server with HA capabilities enabled involves starting it with the <code class="literal">standalone-ha.xml</code> or <code class="literal">standalone-full-ha.xml</code> file:
+			</p><pre class="screen">$ <span class="emphasis"><em>EAP_HOME</em></span>/bin/standalone.sh --server-config=standalone-ha.xml</pre><p>
+				This will start a single instance of the server with HA capabilities.
+			</p><p>
+				To be able to see the benefits of clustering, you will need more than one instance of the server. So let us start another server with HA capabilities. That another instance of the server can either be on the same machine or on some other machine. If it is on the same machine, you will need to take care of two things:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						Pass the port offset for the second instance
+					</li><li class="listitem">
+						Make sure that each of the server instances have a unique <code class="literal">jboss.node.name</code> system property.
+					</li></ul></div><p>
+				You can do that by passing the following two system properties to the startup command:
+			</p><pre class="screen">$ <span class="emphasis"><em>EAP_HOME</em></span>/bin/standalone.sh --server-config=standalone-ha.xml -Djboss.socket.binding.port-offset=<span class="emphasis"><em>PORT_OFFSET</em></span> -Djboss.node.name=<span class="emphasis"><em>UNIQUE_NODE_NAME</em></span></pre><p>
+				Follow whichever approach you feel comfortable with for deploying the EJB deployment to this instance too.
+			</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+					Deploying the application on just one node of a standalone instance of a clustered server does not mean that it will be automatically deployed to the other clustered instance. You will have to do deploy it explicitly on the other standalone clustered instance too. Or you can start the servers in domain mode so that the deployment can be deployed to all the servers within a server group.
+				</p></div><p>
+				Now that you have deployed an application with clustered EJBs on both the instances, the EJBs are now capable of making use of the clustering features.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Starting JBoss EAP 7, if JBoss EAP is started using an HA profile, the state of your SFSBs will be replicated. You no longer need to use the <code class="literal">@Clustered</code> annotation to enable clustering behavior.
+				</p><p>
+					Disabling this behavior is achievable on a per-EJB basis by annotating your bean using <code class="literal">@Stateful(passivationCapable=false)</code>, which is new to the EJB 3.2 specification; or globally, via the <code class="literal">ejb3</code> subsystem.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="failover_for_clustered_ejbs"/>Failover for Clustered EJBs</h1></div></div></div><p>
+				Clustered EJBs have failover capability. The state of the <code class="literal">@Stateful</code> EJBs is replicated across the cluster nodes so that if one of the nodes in the cluster goes down, some other node will be able to take over the invocations.
+			</p><p>
+				Under some circumstances in a clustered environment, such as when a server in the cluster crashes, the EJB client might receive an exception instead of a response. The EJB client library will automatically retry the invocation when it is safe to do so, depending on the type of the failure that occurs. However, if a request fails and it cannot be determined conclusively to be safe to retry, then you can handle the exception as appropriate for your environment. You can, however, use custom interceptors to add additional retry behavior.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="remote_standalone_clients"/>Remote Standalone Clients</h1></div></div></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					The use of the <code class="literal">jboss-ejb-client.properties</code> file is deprecated in favor of the <code class="literal">wildfly-config.xml</code> file.
+				</p></div><p>
+				A standalone remote client can use either the JNDI approach or native JBoss EJB client APIs to communicate with the servers. The important thing to note is that when you are invoking clustered EJB deployments, you do not have to list all the servers within the cluster. This would not have been feasible due the dynamic nature of cluster node additions within a cluster.
+			</p><p>
+				The remote client has to list only one of the servers with the clustering capability. This server will act as the starting point for cluster topology communication between the client and the clustered nodes.
+			</p><p>
+				Note that you have to configure the <code class="literal">ejb</code> cluster in the <code class="literal">jboss-ejb-client.properties</code> configuration file:
+			</p><pre class="screen">remote.clusters=ejb
+remote.cluster.ejb.connect.options.org.xnio.Options.SASL_POLICY_NOANONYMOUS=false
+remote.cluster.ejb.connect.options.org.xnio.Options.SSL_ENABLED=false</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="cluster_topology_communication"/>Cluster Topology Communication</h1></div></div></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					The use of the <code class="literal">jboss-ejb-client.properties</code> file is deprecated in favor of the <code class="literal">wildfly-config.xml</code> file.
+				</p></div><p>
+				When a client connects to a server, the JBoss EJB client implementation communicates internally with the server for the cluster topology information, if the server has clustering capability. For example, assuming that server X is listed as the initial server to connect to, when the client connects to server X, the server will send back an asynchronous cluster topology message to the client. This topology message consists of the cluster name and the information of the nodes that belong to the cluster. The node information includes the node address and port number to connect to, when required. So in this example, server X will send back the cluster topology consisting of the other server Y that belongs to the cluster.
+			</p><p>
+				In case of stateful clustered EJBs, the invocation flow happens in two steps.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						Creation of a session for the stateful bean, which happens when you do a JNDI lookup for that bean.
+					</li><li class="listitem">
+						Invocation of the returned proxy.
+					</li></ol></div><p>
+				The lookup for the stateful bean, internally, triggers a synchronous session creation request from the client to the server. In this case, the session creation request goes to server X because it was configured in the <code class="literal">jboss-ejb-client.properties</code> file. Since server X is clustered, it will return a session id and send back an <span class="emphasis"><em>affinity</em></span> of that session. In case of clustered servers, the <span class="emphasis"><em>affinity</em></span> is equal to the name of the cluster to which the stateful bean belongs on the server side. For non-clustered beans, the affinity is the node name on which the session was created. This <span class="emphasis"><em>affinity</em></span> will help the EJB client to route the invocations on the proxy, as appropriate, to either a node within a cluster for clustered beans, or to a specific node for non-clustered beans. While this session creation request is going on, server X will also send back an asynchronous message that contains the cluster topology. The JBoss EJB client implementation will record this topology information and use it later for connection creation to nodes within the cluster and routing invocations to those nodes, when required.
+			</p><p>
+				To understand how failover works, consider the same example of server X being the starting point and a client application looking up a stateful bean and invoking it. During these invocations, the client side collects the cluster topology information from the server. Assuming that for some reason server X goes down and the client application subsequently invokes on the proxy. The JBoss EJB client implementation at this stage must be aware of the <span class="emphasis"><em>affinity</em></span>, and in this case it is the cluster affinity. From the cluster topology information that the client has, it knows that the cluster has two nodes, server X and server Y. When the invocation arrives, the client notices that server X is down, so it uses a selector to fetch a suitable node from the cluster nodes. When the selector returns a node from the cluster nodes, the JBoss EJB client implementation creates a connection to that node, if the connection was not already created earlier, and creates an EJB receiver out of it. Since in this example, the only other node in the cluster is server Y, the selector will return server Y as the node and the JBoss EJB client implementation will use it to create an EJB receiver out of it and use this receiver to pass on the invocation on the proxy. Effectively, the invocation has now failed over to a different node within the cluster.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="automatic_transaction_stickiness_for_ejbs"/>Automatic Transaction Stickiness for EJBs</h1></div></div></div><p>
+				A transaction object, which is looked up from the same context as the EJB proxy, targets the same host. Having an active transaction pins the invocation context to the same node, if the context is multi-host or clustered.
+			</p><p>
+				This behavior depends on whether you have outflowed your transaction or you are using a remote user transaction.
+			</p><p>
+				For an outflowed transaction, when an application is looked up on a specific node, all the invocations to that application under the same transaction attempt to target this node. The nodes that have already received the outflowed transaction will be preferred over nodes that have not received it yet.
+			</p><p>
+				For a remote user transaction, the first successful invocation will lock the transaction to the given node, and subsequent invocations under this transaction must go to the same node, otherwise an exception is thrown.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="remote_clients_on_another_instance"/>Remote Clients on Another Instance</h1></div></div></div><p>
+				This section explains how a client application deployed on a JBoss EAP instance invokes a clustered stateful bean that is deployed on another JBoss EAP instance.
+			</p><p>
+				In the following example, there are three servers involved. Servers X and Y both belong to a cluster and have clustered EJBs deployed on them. There is another server instance server C, which may or may not have clustering capability. Server C acts as a client on which there is a deployment that wants to invoke the clustered beans deployed on servers X and Y and achieve failover.
+			</p><p>
+				The configurations are done in the <code class="literal">jboss-ejb-client.xml</code> file, which points to a remote outbound connection to the other server. The configuration in the <code class="literal">jboss-ejb-client.xml</code> file is in the deployment of server C because server C is the client. The client configuration need not point to all the clustered nodes, but just to one of them. This will act as a starting point for the communication.
+			</p><p>
+				In this case, a remote outbound connection is created from server C to server X and then server X is used as the starting point for the communication. Similar to the case of remote standalone clients, when the application on server C looks up a stateful bean, a session creation request is sent to server X that returns a session id and the cluster affinity for it. Server X also sends back an asynchronous message to server C containing the cluster topology. This topology information includes the node information of server Y, because server Y belongs to the cluster along with server X. Subsequent invocations on the proxy will be routed appropriately to the nodes in the cluster. If server X goes down, as explained earlier, a different node from the cluster will be selected and the invocation will be forwarded to that node.
+			</p><p>
+				Both remote standalone clients as well as remote clients on another JBoss EAP instance act similarly in terms of failover.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="standalone_and_in_server_client_configuration"/>Standalone and In-server Client Configuration</h1></div></div></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					The use of the <code class="literal">jboss-ejb-client.properties</code> file is deprecated in favor of the <code class="literal">wildfly-config.xml</code> file.
+				</p></div><p>
+				To connect an EJB client to a clustered EJB application, you need to expand the existing configuration in standalone EJB client or in-server EJB client to include cluster connection configuration. The <code class="literal">jboss-ejb-client.properties</code> for standalone EJB client, or even <code class="literal">jboss-ejb-client.xml</code> file for a server-side application must be expanded to include a cluster configuration.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					An EJB client is any program that uses an EJB on a remote server. A client is <code class="literal">in-server</code> when the EJB client calling the remote server is itself running inside of a server. In other words, a JBoss EAP instance calling out to another JBoss EAP instance would be considered an in-server client.
+				</p></div><p>
+				This example shows the additional cluster configuration required for a standalone EJB client.
+			</p><pre class="programlisting">remote.clusters=ejb
+remote.cluster.ejb.connect.options.org.xnio.Options.SASL_POLICY_NOANONYMOUS=false
+remote.cluster.ejb.connect.options.org.xnio.Options.SSL_ENABLED=false
+remote.cluster.ejb.username=test
+remote.cluster.ejb.password=password</pre><p>
+				If an application uses the remote-outbound-connection, you need to configure the <code class="literal">jboss-ejb-client.xml</code> file and add cluster configuration as shown in the following example:
+			</p><pre class="programlisting">&lt;jboss-ejb-client xmlns:xsi="urn:jboss:ejb-client:1.2" xsi:noNamespaceSchemaLocation="jboss-ejb-client_1_2.xsd"&gt;
+  &lt;client-context&gt;
+    &lt;ejb-receivers&gt;
+      &lt;!-- this is the connection to access the app-one --&gt;
+      &lt;remoting-ejb-receiver outbound-connection-ref="remote-ejb-connection-1" /&gt;
+      &lt;!-- this is the connection to access the app-two --&gt;
+      &lt;remoting-ejb-receiver outbound-connection-ref="remote-ejb-connection-2" /&gt;
+    &lt;/ejb-receivers&gt;
+
+    &lt;!-- If an outbound connection connects to a cluster,
+             a list of members is provided after successful connection.
+         To connect to this node this cluster element must be defined. --&gt;
+
+    &lt;clusters&gt;
+      &lt;!-- cluster of remote-ejb-connection-1 --&gt;
+      &lt;cluster name="ejb" security-realm="ejb-security-realm-1" username="quickuser1"&gt;
+        &lt;connection-creation-options&gt;
+        &lt;property name="org.xnio.Options.SSL_ENABLED" value="false" /&gt;
+        &lt;property name="org.xnio.Options.SASL_POLICY_NOANONYMOUS" value="false" /&gt;
+        &lt;/connection-creation-options&gt;
+      &lt;/cluster&gt;
+    &lt;/clusters&gt;
+  &lt;/client-context&gt;
+&lt;/jboss-ejb-client&gt;</pre><p>
+				For more information about remote-outbound-connection, see <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuration_guide/#about_the_remoting_subsystem">About the Remoting Subsystem</a> in the JBoss EAP <span class="emphasis"><em>Configuration Guide</em></span>.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					For a secure connection you need to add the credentials to cluster configuration in order to avoid an authentication exception.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="implementing_a_custom_load_balancing_policy_for_ejb_calls"/>Implementing a Custom Load Balancing Policy for EJB Calls</h1></div></div></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					The use of the <code class="literal">jboss-ejb-client.properties</code> file is deprecated in favor of the <code class="literal">wildfly-config.xml</code> file.
+				</p></div><p>
+				It is possible to implement an alternate or customized load balancing policy in order to balance an application’s EJB calls across servers.
+			</p><p>
+				You can implement <code class="literal">AllClusterNodeSelector</code> for EJB calls. The node selection behavior of <code class="literal">AllClusterNodeSelector</code> is similar to default selector except that <code class="literal">AllClusterNodeSelector</code> uses all available cluster nodes even in case of a large cluster (number of nodes &gt; 20). If an unconnected cluster node is returned, it is opened automatically. The following example shows <code class="literal">AllClusterNodeSelector</code> implementation:
+			</p><pre class="programlisting">package org.jboss.as.quickstarts.ejb.clients.selector;
+
+import java.util.Arrays;
+import java.util.Random;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import org.jboss.ejb.client.ClusterNodeSelector;
+public class AllClusterNodeSelector implements ClusterNodeSelector {
+  private static final Logger LOGGER = Logger.getLogger(AllClusterNodeSelector.class.getName());
+
+  @Override
+  public String selectNode(final String clusterName, final String[] connectedNodes, final String[] availableNodes) {
+    if(LOGGER.isLoggable(Level.FINER)) {
+      LOGGER.finer("INSTANCE "+this+ " : cluster:"+clusterName+" connected:"+Arrays.deepToString(connectedNodes)+" available:"+Arrays.deepToString(availableNodes));
+    }
+
+    if (availableNodes.length == 1) {
+        return availableNodes[0];
+    }
+    final Random random = new Random();
+    final int randomSelection = random.nextInt(availableNodes.length);
+    return availableNodes[randomSelection];
+  }
+
+}</pre><p>
+				You can also implement the <code class="literal">SimpleLoadFactorNodeSelector</code> for EJB calls. Load balancing in <code class="literal">SimpleLoadFactorNodeSelector</code> happens based on a load factor. The load factor (2/3/4) is calculated based on the names of nodes (A/B/C) irrespective of the load on each node. The following example shows <code class="literal">SimpleLoadFactorNodeSelector</code> implementation:
+			</p><pre class="programlisting">package org.jboss.as.quickstarts.ejb.clients.selector;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import org.jboss.ejb.client.DeploymentNodeSelector;
+public class SimpleLoadFactorNodeSelector implements DeploymentNodeSelector {
+  private static final Logger LOGGER = Logger.getLogger(SimpleLoadFactorNodeSelector.class.getName());
+  private final Map&lt;String, List&lt;String&gt;[]&gt; nodes = new HashMap&lt;String, List&lt;String&gt;[]&gt;();
+  private final Map&lt;String, Integer&gt; cursor = new HashMap&lt;String, Integer&gt;();
+
+  private ArrayList&lt;String&gt; calculateNodes(Collection&lt;String&gt; eligibleNodes) {
+    ArrayList&lt;String&gt; nodeList = new ArrayList&lt;String&gt;();
+
+    for (String string : eligibleNodes) {
+      if(string.contains("A") || string.contains("2")) {
+        nodeList.add(string);
+        nodeList.add(string);
+      } else if(string.contains("B") || string.contains("3")) {
+        nodeList.add(string);
+        nodeList.add(string);
+        nodeList.add(string);
+      } else if(string.contains("C") || string.contains("4")) {
+        nodeList.add(string);
+        nodeList.add(string);
+        nodeList.add(string);
+        nodeList.add(string);
+      }
+    }
+    return nodeList;
+  }
+
+  @SuppressWarnings("unchecked")
+  private void checkNodeNames(String[] eligibleNodes, String key) {
+    if(!nodes.containsKey(key) || nodes.get(key)[0].size() != eligibleNodes.length || !nodes.get(key)[0].containsAll(Arrays.asList(eligibleNodes))) {
+      // must be synchronized as the client might call it concurrent
+      synchronized (nodes) {
+        if(!nodes.containsKey(key) || nodes.get(key)[0].size() != eligibleNodes.length || !nodes.get(key)[0].containsAll(Arrays.asList(eligibleNodes))) {
+          ArrayList&lt;String&gt; nodeList = new ArrayList&lt;String&gt;();
+          nodeList.addAll(Arrays.asList(eligibleNodes));
+
+          nodes.put(key, new List[] { nodeList, calculateNodes(nodeList) });
+        }
+      }
+    }
+  }
+   private synchronized String nextNode(String key) {
+    Integer c = cursor.get(key);
+    List&lt;String&gt; nodeList = nodes.get(key)[1];
+
+    if(c == null || c &gt;= nodeList.size()) {
+      c = Integer.valueOf(0);
+    }
+
+    String node = nodeList.get(c);
+    cursor.put(key, Integer.valueOf(c + 1));
+
+    return node;
+  }
+
+  @Override
+  public String selectNode(String[] eligibleNodes, String appName, String moduleName, String distinctName) {
+    if (LOGGER.isLoggable(Level.FINER)) {
+      LOGGER.finer("INSTANCE " + this + " : nodes:" + Arrays.deepToString(eligibleNodes) + " appName:" + appName + " moduleName:" + moduleName
+          + " distinctName:" + distinctName);
+    }
+
+    // if there is only one there is no sense to choice
+    if (eligibleNodes.length == 1) {
+      return eligibleNodes[0];
+    }
+    final String key = appName + "|" + moduleName + "|" + distinctName;
+
+    checkNodeNames(eligibleNodes, key);
+    return nextNode(key);
+  }
+}</pre><h3><a id="configuring_the_jboss_ejb_client_properties_file"/>Configuring the jboss-ejb-client.properties File</h3><p>
+				You need to add the property <code class="literal">remote.cluster.ejb.clusternode.selector</code> with the name of your implementation class (<code class="literal">AllClusterNodeSelector</code> or <code class="literal">SimpleLoadFactorNodeSelector</code>). The selector will see all configured servers that are available at the invocation time. The following example uses <code class="literal">AllClusterNodeSelector</code> as the cluster node selector:
+			</p><pre class="screen">remote.clusters=ejb
+remote.cluster.ejb.clusternode.selector=org.jboss.as.quickstarts.ejb.clients.selector.AllClusterNodeSelector
+remote.cluster.ejb.connect.options.org.xnio.Options.SASL_POLICY_NOANONYMOUS=false
+remote.cluster.ejb.connect.options.org.xnio.Options.SSL_ENABLED=false
+remote.cluster.ejb.username=test
+remote.cluster.ejb.password=password
+
+remote.connectionprovider.create.options.org.xnio.Options.SSL_ENABLED=false
+remote.connections=one,two
+remote.connection.one.host=localhost
+remote.connection.one.port = 8080
+remote.connection.one.connect.options.org.xnio.Options.SASL_POLICY_NOANONYMOUS=false
+remote.connection.one.username=user
+remote.connection.one.password=user123
+remote.connection.two.host=localhost
+remote.connection.two.port = 8180
+remote.connection.two.connect.options.org.xnio.Options.SASL_POLICY_NOANONYMOUS=false</pre><h3><a id="using_ejb_client_api"/>Using EJB Client API</h3><p>
+				You need to add the property <code class="literal">remote.cluster.ejb.clusternode.selector</code> to the list for the <code class="literal">PropertiesBasedEJBClientConfiguration</code> constructor. The following example uses <code class="literal">AllClusterNodeSelector</code> as the cluster node selector:
+			</p><pre class="screen">Properties p = new Properties();
+p.put("remote.clusters", "ejb");
+p.put("remote.cluster.ejb.clusternode.selector", "org.jboss.as.quickstarts.ejb.clients.selector.AllClusterNodeSelector");
+p.put("remote.cluster.ejb.connect.options.org.xnio.Options.SASL_POLICY_NOANONYMOUS", "false");
+p.put("remote.cluster.ejb.connect.options.org.xnio.Options.SSL_ENABLED", "false");
+p.put("remote.cluster.ejb.username", "test");
+p.put("remote.cluster.ejb.password", "password");
+
+p.put("remote.connectionprovider.create.options.org.xnio.Options.SSL_ENABLED", "false");
+p.put("remote.connections", "one,two");
+p.put("remote.connection.one.port", "8080");
+p.put("remote.connection.one.host", "localhost");
+p.put("remote.connection.two.port", "8180");
+p.put("remote.connection.two.host", "localhost");
+
+EJBClientConfiguration cc = new PropertiesBasedEJBClientConfiguration(p);
+ContextSelector&lt;EJBClientContext&gt; selector = new ConfigBasedEJBClientContextSelector(cc);
+EJBClientContext.setSelector(selector);
+
+p = new Properties();
+p.put(Context.URL_PKG_PREFIXES, "org.jboss.ejb.client.naming");
+InitialContext context = new InitialContext(p);</pre><h3><a id="configuring_the_jboss_ejb_client_xml_file"/>Configuring the jboss-ejb-client.xml File</h3><p>
+				To use the load balancing policy for server to server communication, package the class together with the application and configure it within the <code class="literal">jboss-ejb-client.xml</code> settings located in <code class="literal">META-INF</code> folder. The following example uses <code class="literal">AllClusterNodeSelector</code> as the cluster node selector:
+			</p><pre class="programlisting">&lt;jboss-ejb-client xmlns:xsi="urn:jboss:ejb-client:1.2" xsi:noNamespaceSchemaLocation="jboss-ejb-client_1_2.xsd"&gt;
+  &lt;client-context deployment-node-selector="org.jboss.ejb.client.DeploymentNodeSelector"&gt;
+    &lt;ejb-receivers&gt;
+      &lt;!-- This is the connection to access the application. --&gt;
+      &lt;remoting-ejb-receiver outbound-connection-ref="remote-ejb-connection-1" /&gt;
+    &lt;/ejb-receivers&gt;
+    &lt;!-- Specify the cluster configurations applicable for this client context --&gt;
+    &lt;clusters&gt;
+      &lt;!-- Configure the cluster of remote-ejb-connection-1. --&gt;
+      &lt;cluster name="ejb" security-realm="ejb-security-realm-1" username="test" cluster-node-selector="org.jboss.as.quickstarts.ejb.clients.selector.AllClusterNodeSelector"&gt;
+        &lt;connection-creation-options&gt;
+          &lt;property name="org.xnio.Options.SSL_ENABLED" value="false" /&gt;
+          &lt;property name="org.xnio.Options.SASL_POLICY_NOANONYMOUS" value="false" /&gt;
+        &lt;/connection-creation-options&gt;
+      &lt;/cluster&gt;
+    &lt;/clusters&gt;
+  &lt;/client-context&gt;
+&lt;/jboss-ejb-client&gt;</pre><p>
+				To use the above configuration with security, you will need to add <code class="literal">ejb-security-realm-1</code> to client-server configuration. The following example shows the CLI commands for adding security realm (<code class="literal">ejb-security-realm-1</code>) the value is the base64 encoded password for the user "test":
+			</p><pre class="screen">/core-service=management/security-realm=ejb-security-realm-1:add()
+/core-service=management/security-realm=ejb-security-realm-1/server-identity=secret:add(value=cXVpY2sxMjMr)</pre><p>
+				If the load balancing policy should be used for server to server communication, the class can be packaged together with the application or as a module. This class is configured in the <code class="literal">jboss-ejb-client</code> settings file located in the <code class="literal">META-INF</code> directory of the top-level EAR archive. The following example uses <code class="literal">RoundRobinNodeSelector</code> as the deployment node selector.
+			</p><pre class="programlisting">&lt;jboss-ejb-client xmlns="urn:jboss:ejb-client:1.2"&gt;
+    &lt;client-context deployment-node-selector="org.jboss.example.RoundRobinNodeSelector"&gt;
+        &lt;ejb-receivers&gt;
+            &lt;remoting-ejb-receiver outbound-connection-ref="..."/&gt;
+        &lt;/ejb-receivers&gt;
+        ...
+    &lt;/client-context&gt;
+&lt;/jboss-ejb-client&gt;</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					If you are running a standalone server, use the start option <code class="literal">-Djboss.node.name=</code> or the server configuration file <code class="literal">standalone.xml</code> to configure the server name. Ensure that the server name is unique. If you are running a managed domain, the host controller automatically validates that the names are unique.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ejb_transactions_in_a_clustered_environment"/>EJB Transactions in a Clustered Environment</h1></div></div></div><p>
+				If the client code invokes a clustered EJB, then the cluster affinity is set automatically. If you manage transactions on the client side, you can choose to <a class="link" href="clustered_enterprise_javabeans.html#ejb_transactions_target_a_specific_node" title="EJB Transactions Target a Specific Node">target a specific node in the cluster</a> or you can <a class="link" href="clustered_enterprise_javabeans.html#ejb_transactions_lazily_select_a_node" title="EJB Transactions Lazily Select a Node">allow the client to lazily select the cluster node</a> to handle transactions. This section describes both options.
+			</p><h3><a id="ejb_transactions_target_a_specific_node"/>EJB Transactions Target a Specific Node</h3><p>
+				You can target a specific node in the cluster to handle a transaction using the following procedure.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Specify the target cluster node address using the <code class="literal">PROVIDER_URL</code> property when creating the <code class="literal">InitialContext</code>.
+					</p><pre class="programlisting">props.put(Context.PROVIDER_URL, "remote+http://127.0.0.1:8080");
+...
+InitialContext ctx = new InitialContext(props);</pre></li><li class="listitem"><p class="simpara">
+						In the client, look up the <code class="literal">txn:RemoteUserTransaction</code> from the <code class="literal">InitialContext</code>.
+					</p><pre class="programlisting">UserTransaction ut = (UserTransaction)ctx.lookup("txn:RemoteUserTransaction");</pre><p class="simpara">
+						You can do a JNDI lookup for a <code class="literal">UserTransaction</code> by setting the <code class="literal">PROVIDER_URL</code> property to the URL of the server and then look up <code class="literal">txn:UserTransaction</code>, as shown in the code example below:
+					</p><pre class="programlisting">final Hashtable&lt;String, String&gt; jndiProperties = new Hashtable&lt;&gt;();
+jndiProperties.put(Context.INITIAL_CONTEXT_FACTORY, "org.wildfly.naming.client.WildFlyInitialContextFactory");
+jndiProperties.put(Context.PROVIDER_URL, "remote+http://localhost:8080");
+final Context context = new InitialContext(jndiProperties);
+
+SecuredEJBRemote reference = (SecuredEJBRemote) context.lookup("txn:UserTransaction");</pre><p class="simpara">
+						<code class="literal">UserTransaction</code> is not bound to any particular destination until an actual invocation takes place. Upon invocation, this <code class="literal">UserTransaction</code> is bound to the respective destination for the entire lifetime of the transaction.
+					</p><p class="simpara">
+						You do not need to know the node name or the destination before beginning a <code class="literal">UserTransaction</code>. The <code class="literal">org.jboss.ejb.client.EJBClient.getUserTransaction()</code> method gives you a remote <code class="literal">UserTransaction</code> that automatically selects its destination based on the first invocation. Looking up a remote <code class="literal">UserTransaction</code> from JNDI also works the same way.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The <code class="literal">org.jboss.ejb.client.EJBClient.getUserTransaction()</code> method is deprecated.
+						</p></div></li><li class="listitem">
+						When the transaction begins, all EJB invocations are then bound to that specific node for duration of the transaction, establishing server affinity.
+					</li><li class="listitem">
+						When the transaction ends, the server affinity is released, and the EJB proxies return to a general cluster affinity.
+					</li></ol></div><h3><a id="ejb_transactions_lazily_select_a_node"/>EJB Transactions Lazily Select a Node</h3><p>
+				You can allow the client to lazily select the cluster node to handle transactions during the first invocation pertaining to a transaction. This allows for load balancing of transactions across the cluster. To use this option, follow the procedure below.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						Do not specify the <code class="literal">PROVIDER_URL</code> property in the <code class="literal">InitialContext</code> used to invoke the EJBs.
+					</li><li class="listitem"><p class="simpara">
+						In the client, look up the <code class="literal">txn:RemoteUserTransaction</code> from the <code class="literal">InitialContext</code>.
+					</p><pre class="programlisting">UserTransaction ut = (UserTransaction)ctx.lookup("txn:RemoteUserTransaction");</pre></li><li class="listitem">
+						When the transaction begins, one cluster node is selected automatically, establishing server affinity, and all EJB invocations are then bound to that specific node for duration of the transaction.
+					</li><li class="listitem">
+						When the transaction ends, the server affinity is released, and the EJB proxies return to a general cluster affinity.
+					</li></ol></div></div></div></body></html>

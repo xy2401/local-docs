@@ -1,0 +1,296 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 7. Container and Client Interceptors</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="container_and_client_interceptors"/>Chapter 7. Container and Client Interceptors</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="about_container_interceptors"/>About Container Interceptors</h1></div></div></div><p>
+				Standard Java EE interceptors, as defined by the <a class="link" href="https://jcp.org/en/jsr/detail?id=345">JSR 345, Enterprise JavaBeans 3.2</a> specification, are expected to run after the container has completed security context propagation, transaction management, and other container provided invocation processing. This is a problem if the application must intercept a call before a specific container interceptor is run.
+			</p><h3><a id="positioning_of_the_container_interceptor_in_the_interceptor_chain"/>Positioning of the Container Interceptor in the Interceptor Chain</h3><p>
+				The container interceptors configured for an EJB are guaranteed to be run before the JBoss EAP provided security interceptors, transaction management interceptors, and other server provided interceptors. This allows specific application container interceptors to process or configure relevant context data before the invocation proceeds.
+			</p><h3><a id="differences_between_the_container_interceptor_and_the_java_ee_interceptor_api"/>Differences Between the Container Interceptor and the Java EE Interceptor API</h3><p>
+				Although container interceptors are modeled to be similar to Java EE interceptors, there are some differences in the semantics of the API. For example, it is illegal for container interceptors to invoke the <code class="literal">javax.interceptor.InvocationContext.getTarget()</code> method because these interceptors are invoked long before the EJB components are set up or instantiated.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="create_a_container_interceptor_class"/>Create a Container Interceptor Class</h1></div></div></div><p>
+				Container interceptor classes are simple Plain Old Java Objects (POJOs). They use the <code class="literal">@javax.annotation.AroundInvoke</code> to mark the method that is invoked during the invocation on the bean.
+			</p><p>
+				The following is an example of a container interceptor class that marks the <code class="literal">iAmAround</code> method for invocation:
+			</p><div class="title"><strong>Container Interceptor Code Example</strong></div><p>
+					
+</p><pre class="programlisting">public class ClassLevelContainerInterceptor {
+    @AroundInvoke
+    private Object iAmAround(final InvocationContext invocationContext) throws Exception {
+        return this.getClass().getName() + " " + invocationContext.proceed();
+    }
+}
+----</pre><p>
+
+				</p><p>
+				For an example of how to configure a <code class="literal">jboss-ejb3.xml</code> descriptor file to use a container interceptor class, see <a class="link" href="container_and_client_interceptors.html#configure_a_container_interceptor" title="Configure a Container Interceptor">Configure a Container Interceptor</a>.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configure_a_container_interceptor"/>Configure a Container Interceptor</h1></div></div></div><p>
+				Container interceptors use the standard Java EE interceptor libraries, meaning they use the same XSD elements that are allowed in <code class="literal">ejb-jar.xml</code> file for the 3.2 version of the ejb-jar deployment descriptor. Because they are based on the standard Java EE interceptor libraries, container interceptors may only be configured using deployment descriptors. This was done by design so applications would not require any JBoss specific annotation or other library dependencies. For more information about container interceptors, see <a class="link" href="container_and_client_interceptors.html#about_container_interceptors" title="About Container Interceptors">About Container Interceptors</a>.
+			</p><p>
+				The following procedure describes how to configure a container interceptor.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						Create a <code class="literal">jboss-ejb3.xml</code> file in the <code class="literal">META-INF/</code> directory of the EJB deployment.
+					</li><li class="listitem"><p class="simpara">
+						Configure the container interceptor elements in the descriptor file.
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+								Use the <code class="literal">urn:container-interceptors:1.0</code> namespace to specify configuration of container interceptor elements.
+							</li><li class="listitem">
+								Use the <code class="literal">&lt;container-interceptors&gt;</code> element to specify the container interceptors.
+							</li><li class="listitem"><p class="simpara">
+								Use the <code class="literal">&lt;interceptor-binding&gt;</code> elements to bind the container interceptor to the EJBs. The interceptors can be bound in any of the following ways:
+							</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+										Bind the interceptor to all the EJBs in the deployment using a wildcard (<code class="literal">*</code>).
+									</li><li class="listitem">
+										Bind the interceptor at the individual bean level using the specific EJB name.
+									</li><li class="listitem"><p class="simpara">
+										Bind the interceptor at the specific method level for the EJBs.
+									</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+											These elements are configured using the EJB 3.2 XSD in the same way it is done for Java EE interceptors.
+										</p></div></li></ul></div></li></ol></div></li><li class="listitem"><p class="simpara">
+						Review the following descriptor file for examples of the above elements.
+					</p><div class="title"><strong>Container Interceptor <code class="literal">jboss-ejb3.xml</code> File Example</strong></div><p>
+							
+</p><pre class="programlisting">&lt;jboss xmlns="http://www.jboss.com/xml/ns/javaee"
+       xmlns:jee="http://java.sun.com/xml/ns/javaee"
+       xmlns:ci ="urn:container-interceptors:1.0"&gt;
+
+    &lt;jee:assembly-descriptor&gt;
+        &lt;ci:container-interceptors&gt;
+            &lt;!-- Default interceptor --&gt;
+            &lt;jee:interceptor-binding&gt;
+                &lt;ejb-name&gt;*&lt;/ejb-name&gt;
+                &lt;interceptor-class&gt;org.jboss.as.test.integration.ejb.container.interceptor.ContainerInterceptorOne&lt;/interceptor-class&gt;
+            &lt;/jee:interceptor-binding&gt;
+            &lt;!-- Class level container-interceptor --&gt;
+            &lt;jee:interceptor-binding&gt;
+                &lt;ejb-name&gt;AnotherFlowTrackingBean&lt;/ejb-name&gt;
+                &lt;interceptor-class&gt;org.jboss.as.test.integration.ejb.container.interceptor.ClassLevelContainerInterceptor&lt;/interceptor-class&gt;
+            &lt;/jee:interceptor-binding&gt;
+            &lt;!-- Method specific container-interceptor --&gt;
+            &lt;jee:interceptor-binding&gt;
+                &lt;ejb-name&gt;AnotherFlowTrackingBean&lt;/ejb-name&gt;
+                &lt;interceptor-class&gt;org.jboss.as.test.integration.ejb.container.interceptor.MethodSpecificContainerInterceptor&lt;/interceptor-class&gt;
+                &lt;method&gt;
+                    &lt;method-name&gt;echoWithMethodSpecificContainerInterceptor&lt;/method-name&gt;
+                &lt;/method&gt;
+            &lt;/jee:interceptor-binding&gt;
+            &lt;!-- container interceptors in a specific order --&gt;
+            &lt;jee:interceptor-binding&gt;
+                &lt;ejb-name&gt;AnotherFlowTrackingBean&lt;/ejb-name&gt;
+                &lt;interceptor-order&gt;
+                    &lt;interceptor-class&gt;org.jboss.as.test.integration.ejb.container.interceptor.ClassLevelContainerInterceptor&lt;/interceptor-class&gt;
+                    &lt;interceptor-class&gt;org.jboss.as.test.integration.ejb.container.interceptor.MethodSpecificContainerInterceptor&lt;/interceptor-class&gt;
+                    &lt;interceptor-class&gt;org.jboss.as.test.integration.ejb.container.interceptor.ContainerInterceptorOne&lt;/interceptor-class&gt;
+                &lt;/interceptor-order&gt;
+                &lt;method&gt;
+                    &lt;method-name&gt;echoInSpecificOrderOfContainerInterceptors&lt;/method-name&gt;
+                &lt;/method&gt;
+            &lt;/jee:interceptor-binding&gt;
+        &lt;/ci:container-interceptors&gt;
+    &lt;/jee:assembly-descriptor&gt;
+&lt;/jboss&gt;</pre><p>
+
+						</p></li></ol></div><p>
+				The <code class="literal">allow-ejb-name-regex</code> attribute allows you to use regular expressions in interceptor bindings and maps the interceptors to all the beans that match the specified regular expression. Use the following management CLI command to enable the <code class="literal">allow-ejb-name-regex</code> attribute of the <code class="literal">ejb3</code> subsystem to <code class="literal">true</code>:
+			</p><pre class="screen">/subsystem=ejb3:write-attribute(name=allow-ejb-name-regex,value=true)</pre><p>
+				The schema for the <code class="literal">urn:container-interceptors:1.0</code> namespace is available at <a class="link" href="http://www.jboss.org/schema/jbossas/jboss-ejb-container-interceptors_1_0.xsd">http://www.jboss.org/schema/jbossas/jboss-ejb-container-interceptors_1_0.xsd</a>.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="change_the_security_context_identity"/>Change the Security Context Identity</h1></div></div></div><p>
+				By default, when you make a remote call to an EJB that is deployed to the application server, the connection to the server is authenticated and any subsequent requests that use the connection are executed using the original authenticated identity. This is true for both client-to-server and server-to-server calls. If you need to use different identities from the same client, normally you must open multiple connections to the server so that each one is authenticated as a different identity. Rather than open multiple client connections, you can give permission to the authenticated user to switch identities and execute a request on the existing connection as a different user.
+			</p><p>
+				Interceptors created and configured on the server-side are referred to as container interceptors. Interceptors created and configured on the client-side are referred to as client interceptors. To change the identity of a secured connection, you must create and configure the following three components.
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<a class="link" href="container_and_client_interceptors.html#create_and_configure_the_client_interceptor" title="Create and Configure the Client Interceptor">Client Interceptor</a>
+					</li><li class="listitem">
+						<a class="link" href="container_and_client_interceptors.html#create_and_configure_the_container_intercepter" title="Create and Configure the Container Interceptor">Container Interceptor</a>
+					</li><li class="listitem">
+						<a class="link" href="container_and_client_interceptors.html#create_the_jaas_loginmodule" title="Create the JAAS LoginModule">JAAS LoginModule</a>
+					</li></ul></div><h3><a id="create_and_configure_the_client_interceptor"/>Create and Configure the Client Interceptor</h3><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Create the client interceptor.
+					</p><p class="simpara">
+						The client interceptor must implement the <code class="literal">org.jboss.ejb.client.EJBClientInterceptor</code> interface. The interceptor must pass the requested identity through the context data map, which can be obtained by using a call to <code class="literal">EJBClientInvocationContext.getContextData()</code>. The following is an example of a client interceptor that switches identities.
+					</p><div class="title"><strong>Client Interceptor Code Example</strong></div><p>
+							
+</p><pre class="programlisting">public class ClientSecurityInterceptor implements EJBClientInterceptor {
+
+    public void handleInvocation(EJBClientInvocationContext context) throws Exception {
+        Principal currentPrincipal = SecurityActions.securityContextGetPrincipal();
+
+        if (currentPrincipal != null) {
+            Map&lt;String, Object&gt; contextData = context.getContextData();
+            contextData.put(ServerSecurityInterceptor.DELEGATED_USER_KEY, currentPrincipal.getName());
+        }
+        context.sendRequest();
+    }
+
+    public Object handleInvocationResult(EJBClientInvocationContext context) throws Exception {
+        return context.getResult();
+    }
+}</pre><p>
+
+						</p></li><li class="listitem"><p class="simpara">
+						Configure the client interceptor.
+					</p><p class="simpara">
+						An application can insert a client interceptor into the <code class="literal">EJBClientContext</code> interceptor chain programmatically or by using the service loader mechanism. For instructions to configure a client interceptor, see <a class="link" href="container_and_client_interceptors.html#use_a_client_interceptor_in_an_application" title="Use a Client Interceptor in an Application">Use a Client Interceptor in an Application</a>.
+					</p></li></ol></div><h3><a id="create_and_configure_the_container_intercepter"/>Create and Configure the Container Interceptor</h3><p>
+				Container interceptor classes are simple Plain Old Java Objects (POJOs). They use the <code class="literal">@javax.annotation.AroundInvoke</code> annotation to mark the method that should be invoked during the invocation on the bean. For more information about container interceptors, see <a class="link" href="container_and_client_interceptors.html#about_container_interceptors" title="About Container Interceptors">About Container Interceptors</a>.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Create the container interceptor.
+					</p><p class="simpara">
+						This interceptor receives the <code class="literal">InvocationContext</code> containing the identity and makes the request to switch to that new identity. The following is an abridged version of the actual code example:
+					</p><div class="title"><strong>Container Interceptor Code Example</strong></div><p>
+							
+</p><pre class="programlisting">public class ServerSecurityInterceptor {
+
+    private static final Logger logger = Logger.getLogger(ServerSecurityInterceptor.class);
+
+    static final String DELEGATED_USER_KEY = ServerSecurityInterceptor.class.getName() + ".DelegationUser";
+
+    @AroundInvoke
+    public Object aroundInvoke(final InvocationContext invocationContext) throws Exception {
+        Principal desiredUser = null;
+        UserPrincipal connectionUser = null;
+
+        Map&lt;String, Object&gt; contextData = invocationContext.getContextData();
+        if (contextData.containsKey(DELEGATED_USER_KEY)) {
+            desiredUser = new SimplePrincipal((String) contextData.get(DELEGATED_USER_KEY));
+
+            Collection&lt;Principal&gt; connectionPrincipals = SecurityActions.getConnectionPrincipals();
+
+            if (connectionPrincipals != null) {
+                for (Principal current : connectionPrincipals) {
+                    if (current instanceof UserPrincipal) {
+                        connectionUser = (UserPrincipal) current;
+                        break;
+                    }
+                }
+
+            } else {
+                throw new IllegalStateException("Delegation user requested but no user on connection found.");
+            }
+        }
+
+
+        ContextStateCache stateCache = null;
+        try {
+            if (desiredUser != null &amp;&amp; connectionUser != null
+                &amp;&amp; (desiredUser.getName().equals(connectionUser.getName()) == false)) {
+                // The final part of this check is to verify that the change does actually indicate a change in user.
+                try {
+                    // We have been requested to use an authentication token
+                    // so now we attempt the switch.
+                    stateCache = SecurityActions.pushIdentity(desiredUser, new OuterUserCredential(connectionUser));
+                } catch (Exception e) {
+                    logger.error("Failed to switch security context for user", e);
+                    // Don't propagate the exception stacktrace back to the client for security reasons
+                    throw new EJBAccessException("Unable to attempt switching of user.");
+                }
+            }
+
+            return invocationContext.proceed();
+        } finally {
+            // switch back to original context
+            if (stateCache != null) {
+                SecurityActions.popIdentity(stateCache);;
+            }
+        }
+    }</pre><p>
+
+						</p></li><li class="listitem"><p class="simpara">
+						Configure the container interceptor.
+					</p><p class="simpara">
+						For information on how to configure container interceptors, see <a class="link" href="container_and_client_interceptors.html#configure_a_container_interceptor" title="Configure a Container Interceptor">Configure a Container Interceptor</a>.
+					</p></li></ol></div><h3><a id="create_the_jaas_loginmodule"/>Create the JAAS LoginModule</h3><p>
+				The JAAS LoginModule component is responsible for verifying that the user is allowed to execute requests as the requested identity. The following abridged code example shows the methods that perform the login and validation:
+			</p><div class="title"><strong>LoginModule Code Example</strong></div><p>
+					
+</p><pre class="programlisting">    @SuppressWarnings("unchecked")
+    @Override
+    public boolean login() throws LoginException {
+        if (super.login() == true) {
+            log.debug("super.login()==true");
+            return true;
+        }
+
+        // Time to see if this is a delegation request.
+        NameCallback ncb = new NameCallback("Username:");
+        ObjectCallback ocb = new ObjectCallback("Password:");
+
+        try {
+            callbackHandler.handle(new Callback[] { ncb, ocb });
+        } catch (Exception e) {
+            if (e instanceof RuntimeException) {
+                throw (RuntimeException) e;
+            }
+            // If the CallbackHandler can not handle the required callbacks then no chance.
+            return false;
+        }
+
+        String name = ncb.getName();
+        Object credential = ocb.getCredential();
+
+        if (credential instanceof OuterUserCredential) {
+            // This credential type will only be seen for a delegation request, if not seen then the request is not for us.
+
+            if (delegationAcceptable(name, (OuterUserCredential) credential)) {
+                identity = new SimplePrincipal(name);
+                if (getUseFirstPass()) {
+                    String userName = identity.getName();
+                    if (log.isDebugEnabled())
+                        log.debug("Storing username '" + userName + "' and empty password");
+                    // Add the username and an empty password to the shared state map
+                    sharedState.put("javax.security.auth.login.name", identity);
+                    sharedState.put("javax.security.auth.login.password", "");
+                }
+                loginOk = true;
+                return true;
+            }
+        }
+        return false; // Attempted login but not successful.
+    }
+
+    // Make a trust user to decide if the user switch is acceptable.
+    protected boolean delegationAcceptable(String requestedUser, OuterUserCredential connectionUser) {
+    if (delegationMappings == null) {
+        return false;
+    }
+
+    String[] allowedMappings = loadPropertyValue(connectionUser.getName(), connectionUser.getRealm());
+    if (allowedMappings.length == 1 &amp;&amp; "*".equals(allowedMappings[0])) {
+        // A wild card mapping was found.
+        return true;
+    }
+    for (String current : allowedMappings) {
+        if (requestedUser.equals(current)) {
+            return true;
+        }
+    }
+    return false;
+}</pre><p>
+
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="use_a_client_interceptor_in_an_application"/>Use a Client Interceptor in an Application</h1></div></div></div><p>
+				An application can insert a client interceptor into the <code class="literal">EJBClientContext</code> interceptor chain either programmatically or by using the service loader mechanism.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					An <code class="literal">EJBClientInterceptor</code> can request specific data from the server side invocation context by calling <code class="literal">org.jboss.ejb.client.EJBClientInvocationContext#addReturnedContextDataKey(<span class="emphasis"><em>String key</em></span>)</code>. If the requested data is present under the provided key in the context data map, it is sent to the client.
+				</p></div><h3><a id="insert_the_interceptor_programmatically"/>Insert the Interceptor Programmatically</h3><p>
+				You must create an <code class="literal">EJBClientContext</code> with the interceptor registered.
+			</p><pre class="programlisting">EJBClientContext ctxWithInterceptors = EJBClientContext.getCurrent().withAddedInterceptors(clientInterceptor);</pre><p>
+				Once you have created the <code class="literal">EJBClientContext</code>, there are two ways to insert the interceptor:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						You can run the following code with <code class="literal">EJBClientContext</code> applied using a <code class="literal">Callable</code> operation. EJB calls performed within the <code class="literal">Callable</code> operation will apply the client-side interceptors:
+					</p><pre class="programlisting">ctxWithInterceptors.runCallable(() -&gt; {
+    // perform the calls which should use the interceptor
+})</pre></li><li class="listitem"><p class="simpara">
+						Alternatively you can mark the newly created <code class="literal">EJBClientContext</code> as the new default:
+					</p><pre class="programlisting">EJBClientContext.getContextManager().setThreadDefault(ctxWithInterceptors);</pre></li></ul></div><h3><a id="insert_the_interceptor_using_the_service_loader_mechanism"/>Insert the Interceptor Using the Service Loader Mechanism</h3><p>
+				Create a <code class="literal">META-INF/services/org.jboss.ejb.client.EJBClientInterceptor</code> file and place or package it in the class path of the client application. The rules for the file are dictated by the <a class="link" href="https://docs.oracle.com/javase/8/docs/api/java/util/ServiceLoader.html">Java ServiceLoader Mechanism</a>.
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						This file is expected to contain a separate line for each fully qualified class name of the EJB client interceptor implementation.
+					</li><li class="listitem">
+						The EJB client interceptor classes must be available in the class path.
+					</li></ul></div><p>
+				EJB client interceptors that are added using the service loader mechanism are added in the order they are found in the class path and are added to the end of the client interceptor chain.
+			</p><h3><a id="insert_interceptor_using_client_interceptor_annotation"/>Insert the Interceptor Using the ClientInterceptors Annotation</h3><p>
+				The <code class="literal">@org.jboss.ejb.client.annnotation.ClientInterceptors</code> annotation allows you to place the EJB interceptor in the client-side of the remote call:
+			</p><pre class="programlisting">import org.jboss.ejb.client.annotation.ClientInterceptors;
+@ClientInterceptors({HelloClientInterceptor.class})
+
+public interface HelloBeanRemote {
+   public String hello();
+}</pre></div></div></body></html>

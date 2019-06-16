@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 5. Remote JNDI lookup</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="remote_jndi_lookup"/>Chapter 5. Remote JNDI lookup</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="registering_objects_to_jndi"/>Registering Objects to JNDI</h1></div></div></div><p>
+				The Java Naming and Directory Interface (JNDI) is a Java API for a directory service that allows Java software clients to discover and look up objects using a name.
+			</p><p>
+				If an object registered to JNDI needs to be looked up by remote JNDI clients, for example clients that run in a separate JVM, then it must be registered under the <code class="literal">java:jboss/exported</code> context.
+			</p><p>
+				For example, if a JMS queue in the <code class="literal">messaging-activemq</code> subsystem must be exposed for remote JNDI clients, then it must be registered to JNDI using <code class="literal">java:jboss/exported/jms/queue/myTestQueue</code>. The remote JNDI client can then look it up by the name <code class="literal">jms/queue/myTestQueue</code>.
+			</p><div class="title"><strong>Example: Configuration of the Queue in <code class="literal">standalone-full(-ha).xml</code></strong></div><p>
+					
+</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+  &lt;server name="default"&gt;
+    ...
+    &lt;jms-queue name="myTestQueue" entries="java:jboss/exported/jms/queue/myTestQueue"/&gt;
+    ...
+  &lt;/server&gt;
+&lt;/subsystem&gt;</pre><p>
+
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring_remote_jndi"/>Configuring Remote JNDI</h1></div></div></div><p>
+				A remote JNDI client can connect and look up objects by name from JNDI. To use a remote JNDI client to look up objects, it must have the <code class="literal">jboss-client.jar</code> in its class path. The <code class="literal">jboss-client.jar</code> is available at <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/bin/client/jboss-client.jar</code>.
+			</p><p>
+				The following example shows how to look up the <code class="literal">myTestQueue</code> queue from JNDI in a remote JNDI client:
+			</p><div class="title"><strong>Example: Configuration for an MDB Resource Adapter</strong></div><p>
+					
+</p><pre class="programlisting">Properties properties = new Properties();
+properties.put(Context.INITIAL_CONTEXT_FACTORY, "org.wildfly.naming.client.WildFlyInitialContextFactory");
+properties.put(Context.PROVIDER_URL, "remote+http://<span class="emphasis"><em>HOST_NAME</em></span>:8080");
+context = new InitialContext(properties);
+Queue myTestQueue = (Queue) context.lookup("jms/queue/myTestQueue");</pre><p>
+
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="jndi_invocation_over_http"/>JNDI Invocation Over HTTP</h1></div></div></div><p>
+				JNDI invocation over HTTP includes two distinct parts: the client-side and the server-side implementations.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="client_side_implementation"/>Client-side Implementation</h2></div></div></div><p>
+					The client-side implementation is similar to the remote naming implementation, but based on HTTP using the Undertow HTTP client.
+				</p><p>
+					Connection management is implicit rather than direct, using a caching approach similar to the one used in the existing remote naming implementation. Connection pools are cached based on connection parameters. If they are not used in the specified timeout period, they are discarded.
+				</p><p>
+					In order to configure a remote JNDI client application to use HTTP transport, you must add the following dependency on the HTTP transport implementation:
+				</p><pre class="screen">&lt;dependency&gt;
+    &lt;groupId&gt;org.wildfly.wildfly-http-client&lt;/groupId&gt;
+    &lt;artifactId&gt;wildfly-http-naming-client&lt;/artifactId&gt;
+&lt;/dependency&gt;</pre><p>
+					To perform the HTTP invocation, you must use the <code class="literal">http</code> URL scheme and include the context name of the HTTP invoker, <code class="literal">wildfly-services</code>. For example, if you are using <code class="literal">remote+http://localhost:8080</code> as the target URL, in order to use HTTP transport, you must update this to <code class="literal">http://localhost:8080/wildfly-services</code>.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="server_side_implementation"/>Server-side Implementation</h2></div></div></div><p>
+					The server-side implementation is similar to the existing remote naming implementation but with an HTTP transport.
+				</p><p>
+					In order to configure the server, you must enable the <code class="literal">http-invoker</code> on each of the virtual hosts that you wish to use in the <code class="literal">undertow</code> subsystem. This is enabled by default in the standard configurations. If it is disabled, you can re-enable it using the following management CLI command:
+				</p><pre class="screen">/subsystem=undertow/server=default-server/host=default-host/setting=http-invoker:add(http-authentication-factory=myfactory, path="/wildfly-services")</pre><p>
+					The <code class="literal">http-invoker</code> attribute takes two parameters: a <code class="literal">path</code> that defaults to <code class="literal">/wildfly-services</code> and an <code class="literal">http-authentication-factory</code> that must be a reference to an Elytron <code class="literal">http-authentication-factory</code>.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						Any deployment that aims to use the <code class="literal">http-authentication-factory</code> must use Elytron security with the same security domain corresponding to the specified HTTP authentication factory.
+					</p></div></div></div></div></body></html>

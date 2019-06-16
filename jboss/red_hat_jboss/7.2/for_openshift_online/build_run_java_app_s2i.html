@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 2. Build and Run a Java Application on the JBoss EAP for OpenShift Image</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="build_run_java_app_s2i"/>Chapter 2. Build and Run a Java Application on the JBoss EAP for OpenShift Image</h1></div></div></div><p>
+			The following workflow demonstrates using the Source-to-Image (S2I) process to build and run a Java application on the JBoss EAP for OpenShift image.
+		</p><p>
+			As an example, the <code class="literal">kitchensink</code> quickstart is used in this procedure. It demonstrates a Java EE web-enabled database application using JSF, CDI, EJB, JPA, and Bean Validation. See the <code class="literal">kitchensink</code> quickstart that ships with JBoss EAP 7 for more information.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="prerequisites"/>Prerequisites</h1></div></div></div><p>
+				This workflow assumes that you already have an <a class="link" href="https://docs.openshift.com/online/getting_started/choose_a_plan.html">active OpenShift Online subscription</a> and that you have <a class="link" href="https://docs.openshift.com/online/getting_started/beyond_the_basics.html#btb-installing-the-openshift-cli">installed the OpenShift CLI</a>.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="prepare_for_deployment"/>Prepare OpenShift for Application Deployment</h1></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						Log in to your OpenShift instance using the <code class="literal">oc login</code> command.
+					</li><li class="listitem"><p class="simpara">
+						Create a new project in OpenShift.
+					</p><p class="simpara">
+						A project allows a group of users to organize and manage content separately from other groups. You can create a project in OpenShift using the following command.
+					</p><pre class="screen">$ oc new-project <span class="emphasis"><em>PROJECT_NAME</em></span></pre><p class="simpara">
+						For example, for the <code class="literal">kitchensink</code> quickstart, create a new project named <code class="literal">eap-demo</code> using the following command.
+					</p><pre class="screen">$ oc new-project eap-demo</pre></li><li class="listitem"><p class="simpara">
+						<span class="strong"><strong>Optional</strong></span>: Create a keystore and a secret.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							Creating a keystore and a secret is required if you are using any HTTPS-enabled features in your OpenShift project. For example, if you are using the <code class="literal">eap72-https-s2i</code> template, you must create a keystore and secret.
+						</p><p>
+							This workflow demonstration for the <code class="literal">kitchensink</code> quickstart does not use an HTTPS template, so a keystore and secret are not required.
+						</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Create a keystore.
+							</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+									The following commands generate a self-signed certificate, but for production environments Red Hat recommends that you use your own SSL certificate purchased from a verified Certificate Authority (CA) for SSL-encrypted connections (HTTPS).
+								</p></div><p class="simpara">
+								You can use the Java <code class="literal">keytool</code> command to generate a keystore using the following command.
+							</p><pre class="screen">$ keytool -genkey -keyalg RSA -alias <span class="emphasis"><em>ALIAS_NAME</em></span> -keystore <span class="emphasis"><em>KEYSTORE_FILENAME.jks</em></span> -validity 360 -keysize 2048</pre><p class="simpara">
+								For example, for the <code class="literal">kitchensink</code> quickstart, use the following command to generate a keystore.
+							</p><pre class="screen">$ keytool -genkey -keyalg RSA -alias eapdemo-selfsigned -keystore keystore.jks -validity 360 -keysize 2048</pre></li><li class="listitem"><p class="simpara">
+								Create a secret from the keystore.
+							</p><p class="simpara">
+								Create a secret from the previously created keystore using the following command.
+							</p><pre class="screen">$ oc secrets new <span class="emphasis"><em>SECRET_NAME</em></span> <span class="emphasis"><em>KEYSTORE_FILENAME.jks</em></span></pre><p class="simpara">
+								For example, for the <code class="literal">kitchensink</code> quickstart, use the following command to create a secret.
+							</p><pre class="screen">$ oc secrets new eap7-app-secret keystore.jks</pre></li></ol></div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="import_imagestreams_templates"/>Import the Latest JBoss EAP for OpenShift Image Streams and Templates</h1></div></div></div><p>
+				Use the following command to import the latest JBoss EAP for OpenShift image streams and templates into your OpenShift project’s namespace.
+			</p><pre class="screen">for resource in \
+  eap72-image-stream.json \
+  eap72-amq-persistent-s2i.json \
+  eap72-amq-s2i.json \
+  eap72-basic-s2i.json \
+  eap72-https-s2i.json \
+  eap72-mongodb-persistent-s2i.json \
+  eap72-mysql-persistent-s2i.json \
+  eap72-postgresql-persistent-s2i.json \
+  eap72-sso-s2i.json
+do
+  oc replace --force -f \
+https://raw.githubusercontent.com/jboss-container-images/jboss-eap-7-openshift-image/eap72/templates/${resource}
+done</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					The JBoss EAP image streams and templates imported using the above command are only available within that OpenShift project.
+				</p><p>
+					If you want to import the image streams and templates into a different project, add the <code class="literal">-n <span class="emphasis"><em>PROJECT_NAME</em></span></code> to the <code class="literal">oc replace</code> line of the command. For example:
+				</p><pre class="screen">...
+oc replace -n <span class="emphasis"><em>PROJECT_NAME</em></span> --force -f
+...</pre></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="deploy_eap_s2i"/>Deploy a JBoss EAP Source-to-Image (S2I) Application to OpenShift</h1></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Create a new OpenShift application using the JBoss EAP for OpenShift image and your Java application’s source code. Red Hat recommends using one of the provided JBoss EAP for OpenShift templates for S2I builds.
+					</p><p class="simpara">
+						For example, for the <code class="literal">kitchensink</code> quickstart, use the following command to use the <code class="literal">eap72-basic-s2i</code> template in the <code class="literal">eap-demo</code> project, created in <a class="link" href="build_run_java_app_s2i.html#prepare_for_deployment" title="Prepare OpenShift for Application Deployment">Prepare OpenShift for Application Deployment</a>, with the <code class="literal">kitchensink</code> source code on GitHub.
+					</p><pre class="screen">oc new-app --template=eap72-basic-s2i \<a id="CO1-1"/><span><img src="images/callouts/1.png" alt="1"/></span>
+ -p IMAGE_STREAM_NAMESPACE=eap-demo \<a id="CO1-2"/><span><img src="images/callouts/2.png" alt="2"/></span>
+ -p SOURCE_REPOSITORY_URL=https://github.com/jboss-developer/jboss-eap-quickstarts \<a id="CO1-3"/><span><img src="images/callouts/3.png" alt="3"/></span>
+ -p SOURCE_REPOSITORY_REF=openshift \<a id="CO1-4"/><span><img src="images/callouts/4.png" alt="4"/></span>
+ -p CONTEXT_DIR=kitchensink<a id="CO1-5"/><span><img src="images/callouts/5.png" alt="5"/></span></pre><div class="calloutlist"><table border="0" summary="Callout list"><tr><td valign="top" align="left"><p><a href="#CO1-1"><span><img src="images/callouts/1.png" alt="1"/></span></a> </p></td><td valign="top" align="left"><p>
+								The template to use.
+							</p></td></tr><tr><td valign="top" align="left"><p><a href="#CO1-2"><span><img src="images/callouts/2.png" alt="2"/></span></a> </p></td><td valign="top" align="left"><p>
+								The latest images streams and templates <a class="link" href="build_run_java_app_s2i.html#import_imagestreams_templates" title="Import the Latest JBoss EAP for OpenShift Image Streams and Templates">were imported into the project’s namespace</a>, so you must specify the namespace of where to find the image stream. This is usually the project’s name.
+							</p></td></tr><tr><td valign="top" align="left"><p><a href="#CO1-3"><span><img src="images/callouts/3.png" alt="3"/></span></a> </p></td><td valign="top" align="left"><p>
+								URL to the repository containing the application source code.
+							</p></td></tr><tr><td valign="top" align="left"><p><a href="#CO1-4"><span><img src="images/callouts/4.png" alt="4"/></span></a> </p></td><td valign="top" align="left"><p>
+								The Git repository reference to use for the source code. This can be a Git branch or tag reference.
+							</p></td></tr><tr><td valign="top" align="left"><p><a href="#CO1-5"><span><img src="images/callouts/5.png" alt="5"/></span></a> </p></td><td valign="top" align="left"><p>
+								The directory within the source repository to build.
+							</p></td></tr></table></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							A template can specify default values for many template parameters, and you might have to override some, or all, of the defaults. To see template information, including a list of parameters and any default values, use the command <code class="literal">oc describe template <span class="emphasis"><em>TEMPLATE_NAME</em></span></code>.
+						</p></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							You might also want to <a class="link" href="configuring_eap_openshift_image.html#configuring_eap_env_vars" title="Configuring JBoss EAP for OpenShift Using Environment Variables">configure environment variables</a> when creating your new OpenShift application.
+						</p><p>
+							For example, if you are using an HTTPS template such as <code class="literal">eap72-https-s2i</code>, you must specify the required <a class="link" href="reference_information.html#https_env_variables" title="HTTPS Environment Variables">HTTPS environment variables</a> <code class="literal">HTTPS_NAME</code>, <code class="literal">HTTPS_PASSWORD</code>, and <code class="literal">HTTPS_KEYSTORE</code> to match your keystore details.
+						</p></div></li><li class="listitem"><p class="simpara">
+						Retrieve the name of the build configuration.
+					</p><pre class="screen">$ oc get bc -o name</pre></li><li class="listitem"><p class="simpara">
+						Use the name of the build configuration from the previous step to view the Maven progress of the build.
+					</p><pre class="screen">$ oc logs -f buildconfig/<span class="emphasis"><em>BUILD_CONFIG_NAME</em></span></pre><p class="simpara">
+						For example, for the <code class="literal">kitchensink</code> quickstart, the following command shows the progress of the Maven build.
+					</p><pre class="screen">$ oc logs -f buildconfig/eap-app</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="post_deployment"/>Post Deployment Tasks</h1></div></div></div><p>
+				Depending on your application, some tasks might need to be performed after your OpenShift application has been built and deployed. This might include exposing a service so that the application is viewable from outside of OpenShift, or scaling your application to a specific number of replicas.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Get the service name of your application using the following command.
+					</p><pre class="screen">$ oc get service</pre></li><li class="listitem"><p class="simpara">
+						Expose the main service as a route so you can access your application from outside of OpenShift. For example, for the <code class="literal">kitchensink</code> quickstart, use the following command to expose the required service and port.
+					</p><pre class="screen">$ oc expose service/<span class="emphasis"><em>eap-app</em></span> --port=<span class="emphasis"><em>8080</em></span></pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							If you used a template to create the application, the route might already exist. If it does, continue on to the next step.
+						</p></div></li><li class="listitem"><p class="simpara">
+						Get the URL of the route.
+					</p><pre class="screen">$ oc get route</pre></li><li class="listitem"><p class="simpara">
+						Access the application in your web browser using the URL. The URL is the value of the <code class="literal">HOST/PORT</code> field from previous command’s output.
+					</p><p class="simpara">
+						If your application does not use the JBoss EAP root context, append the context of the application to the URL. For example, for the <code class="literal">kitchensink</code> quickstart, the URL might be <code class="literal">http://<span class="emphasis"><em>HOST_PORT_VALUE</em></span>/kitchensink/</code>.
+					</p></li><li class="listitem"><p class="simpara">
+						Optionally, you can also scale up the application instance by running the following command. This increases the number of replicas to <code class="literal">3</code>.
+					</p><pre class="screen">$ oc scale deploymentconfig <span class="emphasis"><em>DEPLOYMENTCONFIG_NAME</em></span> --replicas=3</pre><p class="simpara">
+						For example, for the <code class="literal">kitchensink</code> quickstart, use the following command to scale up the application.
+					</p><pre class="screen">$ oc scale deploymentconfig eap-app --replicas=3</pre></li></ol></div></div></div></body></html>

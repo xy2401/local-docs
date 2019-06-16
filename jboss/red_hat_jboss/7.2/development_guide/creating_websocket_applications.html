@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 14. Creating WebSocket Applications</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="creating_websocket_applications"/>Chapter 14. Creating WebSocket Applications</h1></div></div></div><p>
+			The WebSocket protocol provides two-way communication between web clients and servers. Communications between clients and the server are event-based, allowing for faster processing and smaller bandwidth compared with polling-based methods. WebSocket is available for use in web applications using a JavaScript API and by client WebSocket endpoints using the Java <a class="link" href="https://docs.oracle.com/javaee/7/api/javax/websocket/package-summary.html">Websocket API</a>.
+		</p><p>
+			A connection is first established between client and server as an HTTP connection. The client then requests a WebSocket connection using the <code class="literal">Upgrade</code> header. All communications are then full-duplex over the same TCP/IP connection, with minimal data overhead. Because each message does not include unnecessary HTTP header content, Websocket communications require smaller bandwidth. The result is a low latency communications path suited to applications, which require real-time responsiveness.
+		</p><p>
+			The JBoss EAP WebSocket implementation provides full dependency injection support for server endpoints, however, it does not provide CDI services for client endpoints.
+		</p><p>
+			A WebSocket application requires the following components and configuration changes:
+		</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+					A Java client or a WebSocket enabled HTML client. You can verify HTML client browser support at this location: <a class="link" href="http://caniuse.com/#feat=websockets">http://caniuse.com/#feat=websockets</a>
+				</li><li class="listitem">
+					A WebSocket server endpoint class.
+				</li><li class="listitem">
+					Project dependencies configured to declare a dependency on the WebSocket API.
+				</li></ul></div><h2><a id="create_the_websocket_application"/>Create the WebSocket Application</h2><p>
+			The code examples that follow are taken from the <code class="literal">websocket-hello</code> quickstart that ships with JBoss EAP. It is a simple example of a WebSocket application that opens a connection, sends a message, and closes a connection. It does not implement any other functions or include any error handling, which would be required for a real world application.
+		</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+					Create the JavaScript HTML client.
+				</p><p class="simpara">
+					The following is an example of a WebSocket client. It contains these JavaScript functions:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							<code class="literal">connect()</code>: This function creates the WebSocket connection passing the WebSocket URI. The resource location matches the resource defined in the server endpoint class. This function also intercepts and handles the WebSocket <code class="literal">onopen</code>, <code class="literal">onmessage</code>, <code class="literal">onerror</code>, and <code class="literal">onclose</code>.
+						</li><li class="listitem">
+							<code class="literal">sendMessage()</code>: This function gets the name entered in the form, creates a message, and sends it using a WebSocket.send() command.
+						</li><li class="listitem">
+							<code class="literal">disconnect()</code>: This function issues the WebSocket.close() command.
+						</li><li class="listitem">
+							<code class="literal">displayMessage()</code>: This function sets the display message on the page to the value returned by the WebSocket endpoint method.
+						</li><li class="listitem"><p class="simpara">
+							<code class="literal">displayStatus()</code>: This function displays the WebSocket connection status.
+						</p><div class="title"><strong>Example: Application <code class="literal">index.html</code> Code</strong></div><p>
+								
+</p><pre class="programlisting">&lt;html&gt;
+  &lt;head&gt;
+    &lt;title&gt;WebSocket: Say Hello&lt;/title&gt;
+    &lt;link rel="stylesheet" type="text/css" href="resources/css/hello.css" /&gt;
+    &lt;script type="text/javascript"&gt;
+      var websocket = null;
+      function connect() {
+        var wsURI = 'ws://' + window.location.host + '/websocket-hello/websocket/helloName';
+        websocket = new WebSocket(wsURI);
+        websocket.onopen = function() {
+            displayStatus('Open');
+            document.getElementById('sayHello').disabled = false;
+            displayMessage('Connection is now open. Type a name and click Say Hello to send a message.');
+        };
+        websocket.onmessage = function(event) {
+            // log the event
+            displayMessage('The response was received! ' + event.data, 'success');
+        };
+        websocket.onerror = function(event) {
+            // log the event
+            displayMessage('Error! ' + event.data, 'error');
+        };
+        websocket.onclose = function() {
+            displayStatus('Closed');
+            displayMessage('The connection was closed or timed out. Please click the Open Connection button to reconnect.');
+            document.getElementById('sayHello').disabled = true;
+        };
+      }
+      function disconnect() {
+        if (websocket !== null) {
+            websocket.close();
+            websocket = null;
+        }
+        message.setAttribute("class", "message");
+        message.value = 'WebSocket closed.';
+        // log the event
+      }
+      function sendMessage() {
+        if (websocket !== null) {
+            var content = document.getElementById('name').value;
+            websocket.send(content);
+        } else {
+            displayMessage('WebSocket connection is not established. Please click the Open Connection button.', 'error');
+        }
+      }
+      function displayMessage(data, style) {
+        var message = document.getElementById('hellomessage');
+        message.setAttribute("class", style);
+        message.value = data;
+      }
+      function displayStatus(status) {
+        var currentStatus = document.getElementById('currentstatus');
+        currentStatus.value = status;
+      }
+    &lt;/script&gt;
+  &lt;/head&gt;
+  &lt;body&gt;
+    &lt;div&gt;
+      &lt;h1&gt;Welcome to Red Hat JBoss Enterprise Application Platform!&lt;/h1&gt;
+      &lt;div&gt;This is a simple example of a WebSocket implementation.&lt;/div&gt;
+      &lt;div id="connect-container"&gt;
+        &lt;div&gt;
+          &lt;fieldset&gt;
+            &lt;legend&gt;Connect or disconnect using websocket :&lt;/legend&gt;
+            &lt;input type="button" id="connect" onclick="connect();" value="Open Connection" /&gt;
+            &lt;input type="button" id="disconnect" onclick="disconnect();" value="Close Connection" /&gt;
+          &lt;/fieldset&gt;
+        &lt;/div&gt;
+        &lt;div&gt;
+            &lt;fieldset&gt;
+              &lt;legend&gt;Type your name below, then click the `Say Hello` button :&lt;/legend&gt;
+              &lt;input id="name" type="text" size="40" style="width: 40%"/&gt;
+              &lt;input type="button" id="sayHello" onclick="sendMessage();" value="Say Hello" disabled="disabled"/&gt;
+            &lt;/fieldset&gt;
+        &lt;/div&gt;
+        &lt;div&gt;Current WebSocket Connection Status: &lt;output id="currentstatus" class="message"&gt;Closed&lt;/output&gt;&lt;/div&gt;
+        &lt;div&gt;
+          &lt;output id="hellomessage" /&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/body&gt;
+&lt;/html&gt;</pre><p>
+
+							</p></li></ul></div></li><li class="listitem"><p class="simpara">
+					Create the WebSocket server endpoint.
+				</p><p class="simpara">
+					You can create a WebSocket server endpoint using either of the following methods.
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							<code class="literal">Programmatic Endpoint</code>: The endpoint extends the Endpoint class.
+						</li><li class="listitem">
+							<code class="literal">Annotated Endpoint</code>: The endpoint class uses annotations to interact with the WebSocket events. It is simpler to code than the programmatic endpoint.
+						</li></ul></div><p class="simpara">
+					The code example below uses the annotated endpoint approach and handles the following events.
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">@ServerEndpoint</code> annotation identifies this class as a WebSocket server endpoint and specifies the path.
+						</li><li class="listitem">
+							The <code class="literal">@OnOpen</code> annotation is triggered when the WebSocket connection is opened.
+						</li><li class="listitem">
+							The <code class="literal">@OnMessage</code> annotation is triggered when a message is received.
+						</li><li class="listitem"><p class="simpara">
+							The <code class="literal">@OnClose</code> annotation is triggered when the WebSocket connection is closed.
+						</p><div class="title"><strong>Example: WebSocket Endpoint Code</strong></div><p>
+								
+</p><pre class="programlisting">package org.jboss.as.quickstarts.websocket_hello;
+
+import javax.websocket.CloseReason;
+import javax.websocket.OnClose;
+import javax.websocket.OnMessage;
+import javax.websocket.OnOpen;
+import javax.websocket.Session;
+import javax.websocket.server.ServerEndpoint;
+
+@ServerEndpoint("/websocket/helloName")
+public class HelloName {
+
+    @OnMessage
+    public String sayHello(String name) {
+        System.out.println("Say hello to '" + name + "'");
+        return ("Hello" + name);
+    }
+
+    @OnOpen
+    public void helloOnOpen(Session session) {
+        System.out.println("WebSocket opened: " + session.getId());
+    }
+
+    @OnClose
+    public void helloOnClose(CloseReason reason) {
+        System.out.println("WebSocket connection closed with CloseCode: " + reason.getCloseCode());
+    }
+}</pre><p>
+
+							</p></li></ul></div></li><li class="listitem"><p class="simpara">
+					Declare the WebSocket API dependency in your project POM file.
+				</p><p class="simpara">
+					If you use Maven, you add the following dependency to the project <code class="literal">pom.xml</code> file.
+				</p><div class="title"><strong>Example: Maven Dependency</strong></div><p>
+						
+</p><pre class="programlisting">&lt;dependency&gt;
+  &lt;groupId&gt;org.jboss.spec.javax.websocket&lt;/groupId&gt;
+  &lt;artifactId&gt;jboss-websocket-api_1.1_spec&lt;/artifactId&gt;
+  &lt;scope&gt;provided&lt;/scope&gt;
+&lt;/dependency&gt;</pre><p>
+
+					</p></li></ol></div><p>
+			The quickstarts that ship with JBoss EAP include additional WebSocket client and endpoint code examples.
+		</p></div></body></html>

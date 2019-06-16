@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 5. Advanced Tutorials</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="advanced_tutorials"/>Chapter 5. Advanced Tutorials</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="transaction_recovery_demo"/>Example Workflow: Automated Transaction Recovery Feature When Scaling Down a Cluster</h1></div></div></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+					This feature is provided as Technology Preview only. It is not supported for use in a production environment, and it might be subject to significant future changes. See <a class="link" href="https://access.redhat.com/support/offerings/techpreview">Technology Preview Features Support Scope</a> on the Red Hat Customer Portal for information about the support scope for Technology Preview features.
+				</p></div><p>
+				This tutorial demonstrates the automated transaction recovery feature of the JBoss EAP for OpenShift image when scaling down a cluster. The <a class="link" href="https://github.com/jboss-openshift/openshift-quickstarts/tree/master/jta-crash-rec-eap7"><code class="literal">jta-crash-rec-eap7</code></a> quickstart example and the <code class="literal">eap72-tx-recovery-s2i</code> application template are used here to show how XA transactions issued on the OpenShift pod, when terminated within the cluster’s scale down, are recovered by the dedicated migration pod.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					The <code class="literal">jta-crash-rec-eap7</code> quickstart uses the H2 database that is included with JBoss EAP. It is a lightweight, relational example datasource that is used for examples only. It is not robust or scalable, is not supported, and should not be used in a production environment.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="prepare_for_deployment-1"/>Prepare for Deployment</h2></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							Log in to your OpenShift instance using the <code class="literal">oc login</code> command.
+						</li><li class="listitem"><p class="simpara">
+							Create a new project.
+						</p><pre class="screen">$ oc new-project eap-tx-demo</pre></li><li class="listitem"><p class="simpara">
+							Add the view role to the <code class="literal">default</code> service account, which will be used to run the underlying pods. This enables the service account to view all the resources in the <code class="literal">eap-tx-demo</code> namespace, which is necessary for managing the cluster.
+						</p><pre class="screen">$ oc policy add-role-to-user view system:serviceaccount:$(oc project -q):default</pre></li><li class="listitem"><p class="simpara">
+							For automated transaction recovery to work, the JBoss EAP application must use a <code class="literal">ReadWriteMany</code> <a class="link" href="https://docs.openshift.com/container-platform/latest/architecture/additional_concepts/storage.html#persistent-volumes">persistent volume</a>.
+						</p><p class="simpara">
+							Provision the persistent volume expected by the <code class="literal">eap72-tx-recovery-s2i</code> application template to hold the data for the <code class="literal">${APPLICATION_NAME}-eap-claim</code> <a class="link" href="https://docs.openshift.com/container-platform/latest/architecture/additional_concepts/storage.html#persistent-volume-claims">persistent volume claim</a>.
+						</p><p class="simpara">
+							This example uses a persistent volume object provisioned using the NFS method with the following definition:
+						</p><pre class="screen">$ cat txpv.yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: txpv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    path: /mnt/mountpoint
+    server: 192.168.100.175</pre><p class="simpara">
+							Update the <code class="literal">path</code> and <code class="literal">server</code> fields in the above definition for your environment, and provision the persistent volume with the following command:
+						</p><pre class="screen">$ oc create -f txpv.yaml
+persistentvolume "txpv" created</pre><pre class="screen">$ oc get pv
+NAME      CAPACITY   ACCESSMODES   RECLAIMPOLICY   STATUS      CLAIM     STORAGECLASS   REASON    AGE
+txpv      1Gi        RWX           Retain         Available                                      26s</pre><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+								When using the NFS method to provision persistent volume objects for the <code class="literal">eap72-tx-recovery-s2i</code> application template, ensure the mount point is exported with sufficient permissions. On the host from which the mount point is exported, perform the following:
+							</p><pre class="screen"># chmod -R 777 /mnt/mountpoint</pre><pre class="screen"># cat /etc/exports
+/mnt/mountpoint *(rw,sync,anonuid=185,anongid=185)</pre><pre class="screen"># exportfs -va
+exporting *:/mnt/mountpoint</pre><pre class="screen"># setsebool -P virt_use_nfs 1</pre><p>
+								Replace <code class="literal">/mnt/mountpoint</code> path above as appropriate for your environment.
+							</p></div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="deployment"/>Deployment</h2></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Deploy the <a class="link" href="https://github.com/jboss-openshift/openshift-quickstarts/tree/master/jta-crash-rec-eap7"><code class="literal">jta-crash-rec-eap7</code></a> quickstart using the <code class="literal">eap72-tx-recovery-s2i</code> application template. Specify the following:
+						</p><pre class="screen">$ oc new-app --template=eap72-tx-recovery-s2i \
+-p SOURCE_REPOSITORY_URL=https://github.com/jboss-openshift/openshift-quickstarts \
+-p SOURCE_REPOSITORY_REF=master \
+-p CONTEXT_DIR=jta-crash-rec-eap7 \
+-e CUSTOM_INSTALL_DIRECTORIES=extensions/* \
+--name=eap-app
+--&gt; Deploying template "openshift/eap72-tx-recovery-s2i" to project eap-tx-demo
+
+     JBoss EAP 7.0 (tx recovery)
+     ---------
+     An example EAP 7 application. For more information about using this template, see https://github.com/jboss-openshift/application-templates.
+
+     A new EAP 7 based application has been created in your project.
+
+     * With parameters:
+        * Application Name=eap-app
+        * Custom http Route Hostname=
+        * Git Repository URL=https://github.com/jboss-openshift/openshift-quickstarts
+        * Git Reference=master
+        * Context Directory=jta-crash-rec-eap7
+        * Queues=
+        * Topics=
+        * A-MQ cluster password=nyneOXUm # generated
+        * Github Webhook Secret=PUW8Tmov # generated
+        * Generic Webhook Secret=o7uD7qrG # generated
+        * ImageStream Namespace=openshift
+        * JGroups Cluster Password=MoR1Jthf # generated
+        * Deploy Exploded Archives=false
+        * Maven mirror URL=
+        * ARTIFACT_DIR=
+        * MEMORY_LIMIT=1Gi
+        * EAP Volume Size=1Gi
+        * Split the data directory?=true
+
+--&gt; Creating resources ...
+    service "eap-app" created
+    service "eap-app-ping" created
+    route "eap-app" created
+    imagestream "eap-app" created
+    buildconfig "eap-app" created
+    deploymentconfig "eap-app" created
+    deploymentconfig "eap-app-migration" created
+    persistentvolumeclaim "eap-app-eap-claim" created
+--&gt; Success
+    Build scheduled, use 'oc logs -f bc/eap-app' to track its progress.
+    Run 'oc status' to view your app.</pre></li><li class="listitem">
+							Wait for the build to finish. You can see the status of the build using the <code class="literal">oc logs -f bc/eap-app</code> command.
+						</li><li class="listitem"><p class="simpara">
+							Modify the <code class="literal">eap-app</code> deployment configuration with the definition of <code class="literal">JAVA_OPTS_APPEND</code> and <code class="literal">JBOSS_MODULES_SYSTEM_PKGS_APPEND</code> environment variables.
+						</p><pre class="screen">$ oc get dc
+NAME                REVISION   DESIRED   CURRENT   TRIGGERED BY
+eap-app             1          1         1         config,image(eap-app:latest)
+eap-app-migration   1          1         1         config,image(eap-app:latest)</pre><pre class="screen">$ oc set env dc/eap-app \
+-e JBOSS_MODULES_SYSTEM_PKGS_APPEND="org.jboss.byteman" \
+-e JAVA_OPTS_APPEND="-javaagent:/tmp/src/extensions/byteman/byteman.jar=script:/tmp/src/src/main/scripts/xa.btm"
+deploymentconfig "eap-app" updated</pre><p class="simpara">
+							This setting will notify the <a class="link" href="http://byteman.jboss.org/index.html">Byteman</a> tracing and monitoring tool to modify the XA transactions processing in the following way:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									The first transaction is always allowed to succeed.
+								</li><li class="listitem">
+									When an XA resource executes phase 2 of the second transaction, the JVM process of the particular pod is halted.
+								</li></ul></div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="using_the_jta_crash_recovery_application"/>Using the JTA Crash Recovery Application</h2></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							List running pods in the current namespace:
+						</p><pre class="screen">$ oc get pods | grep Running
+NAME                        READY     STATUS      RESTARTS   AGE
+eap-app-2-r00gm             1/1       Running     0          1m
+eap-app-migration-1-lvfdt   1/1       Running     0          2m</pre></li><li class="listitem"><p class="simpara">
+							Issue a new XA transaction.
+						</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+									Launch the application by opening a browser and navigating to <a class="link" href="http://eap-app-eap-tx-demo.openshift.example.com/jboss-jta-crash-rec">http://eap-app-eap-tx-demo.openshift.example.com/jboss-jta-crash-rec</a>.
+								</li><li class="listitem">
+									Enter <code class="literal">Mercedes</code> into the <span class="strong"><strong>Key</strong></span> field, and <code class="literal">Benz</code> into the <span class="strong"><strong>Value</strong></span> field. Click the <span class="strong"><strong>Submit</strong></span> button.
+								</li><li class="listitem">
+									Wait for a moment, then click the <span class="strong"><strong>Refresh Table</strong></span> link.
+								</li><li class="listitem"><p class="simpara">
+									Notice how the table row containing the <code class="literal">Mercedes</code> entry is updated with <code class="literal">updated via JMS.</code> If it has not yet updated, click the <span class="strong"><strong>Refresh Table</strong></span> link couple of times. Alternatively, you can inspect the log of the <code class="literal">eap-app-2-r00gm</code> pod to verify the transaction was handled properly:
+								</p><pre class="screen">$ oc logs eap-app-2-r00gm | grep 'updated'
+INFO  [org.jboss.as.quickstarts.xa.DbUpdaterMDB] (Thread-0 (ActiveMQ-client-global-threads-1566836606)) JTA Crash Record Quickstart: key value pair updated via JMS.</pre></li></ol></div></li><li class="listitem"><p class="simpara">
+							Issue a second XA transaction using your browser at <a class="link" href="http://eap-app-eap-tx-demo.openshift.example.com/jboss-jta-crash-rec">http://eap-app-eap-tx-demo.openshift.example.com/jboss-jta-crash-rec</a>.
+						</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+									Enter <code class="literal">Land</code> into the <span class="strong"><strong>Key</strong></span> field, and <code class="literal">Rover</code> into the <span class="strong"><strong>Value</strong></span> field. Click the <span class="strong"><strong>Submit</strong></span> button.
+								</li><li class="listitem">
+									Wait for a moment, then click the <span class="strong"><strong>Refresh Table</strong></span> link.
+								</li><li class="listitem">
+									Notice how the <code class="literal">Land Rover</code> entry was added without the <code class="literal">updated via …​</code> suffix.
+								</li></ol></div></li><li class="listitem"><p class="simpara">
+							Scale the cluster down.
+						</p><pre class="screen">$ oc scale --replicas=0 dc/eap-app
+deploymentconfig "eap-app" scaled</pre><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									Notice how the <code class="literal">eap-app-2-r00gm</code> pod was scheduled for termination.
+								</p><pre class="screen">$ oc get pods
+NAME                        READY     STATUS        RESTARTS   AGE
+eap-app-1-build             0/1       Completed     0          4m
+eap-app-2-r00gm             1/1       Terminating   0          2m
+eap-app-migration-1-lvfdt   1/1       Running       0          3m</pre></li></ol></div></li><li class="listitem"><p class="simpara">
+							Watch the log of the migration pod and notice how transaction recovery is performed. Wait for the recovery to finish:
+						</p><pre class="screen">$ oc logs -f eap-app-migration-1-lvfdt
+Finished Migration Check cycle, pausing for 30 seconds before resuming
+...
+Finished, recovery terminated successfully
+Migration terminated with status 0 (T)
+Releasing lock: (/opt/eap/standalone/partitioned_data/split-1)
+Finished Migration Check cycle, pausing for 30 seconds before resuming
+...</pre></li><li class="listitem"><p class="simpara">
+							Scale the cluster back up.
+						</p><pre class="screen">$ oc scale --replicas=1 dc/eap-app
+deploymentconfig "eap-app" scaled</pre></li><li class="listitem">
+							Using the browser navigate back to <a class="link" href="http://eap-app-eap-tx-demo.openshift.example.com/jboss-jta-crash-rec">http://eap-app-eap-tx-demo.openshift.example.com/jboss-jta-crash-rec</a>.
+						</li><li class="listitem"><p class="simpara">
+							Notice the table contains entries for both transactions. It looks similar to the following output:
+						</p><div class="table"><a id="idm140478909126544"/><p class="title"><strong>Table 5.1. Example: Database Table Contents</strong></p><div class="table-contents"><table summary="Example: Database Table Contents" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Database Table Contents</th><th style="text-align: left" valign="top"> </th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+											Key
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											Value
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											Mercedes
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											Benz updated via JMS.
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											Land
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											Rover updated via JMS.
+										</p>
+										 </td></tr></tbody></table></div></div><p class="simpara">
+							The content in the above table indicates that, although the cluster was scaled down before the second XA transaction had chance to finish, the migration pod performed the transaction recovery and the transaction was successfully completed.
+						</p></li></ol></div></div></div></div></body></html>

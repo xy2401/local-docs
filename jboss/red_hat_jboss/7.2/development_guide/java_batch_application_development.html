@@ -1,0 +1,324 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 17. Java Batch Application Development</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="java_batch_application_development"/>Chapter 17. Java Batch Application Development</h1></div></div></div><p>
+			Beginning with JBoss EAP 7, JBoss EAP supports Java batch applications as defined by <a class="link" href="https://www.jcp.org/en/jsr/detail?id=352">JSR-352</a>. The <code class="literal">batch-jberet</code> subsystem in JBoss EAP facilitates batch configuration and monitoring.
+		</p><p>
+			To configure your application to use batch processing on JBoss EAP, you must specify the <a class="link" href="java_batch_application_development.html#batch_required_dependencies" title="Required Batch Dependencies">required dependencies</a>. Additional JBoss EAP features for batch processing include <a class="link" href="java_batch_application_development.html#batch_jsl_inheritance" title="Job Specification Language (JSL) Inheritance">Job Specification Language (JSL) inheritance</a>, and <a class="link" href="java_batch_application_development.html#batch_property_injections" title="Batch Property Injections">batch property injections</a>.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="batch_required_dependencies"/>Required Batch Dependencies</h1></div></div></div><p>
+				To deploy your batch application to JBoss EAP, some additional dependencies that are required for batch processing need to be declared in your application’s <code class="literal">pom.xml</code>. An example of these required dependencies is shown below. Most of the dependencies have the scope set to <code class="literal">provided</code>, as they are already included in JBoss EAP.
+			</p><div class="title"><strong>Example: <code class="literal">pom.xml</code> Batch Dependencies</strong></div><p>
+					
+</p><pre class="programlisting">&lt;dependencies&gt;
+    &lt;dependency&gt;
+        &lt;groupId&gt;org.jboss.spec.javax.batch&lt;/groupId&gt;
+        &lt;artifactId&gt;jboss-batch-api_1.0_spec&lt;/artifactId&gt;
+        &lt;scope&gt;provided&lt;/scope&gt;
+    &lt;/dependency&gt;
+
+    &lt;dependency&gt;
+        &lt;groupId&gt;javax.enterprise&lt;/groupId&gt;
+        &lt;artifactId&gt;cdi-api&lt;/artifactId&gt;
+        &lt;scope&gt;provided&lt;/scope&gt;
+    &lt;/dependency&gt;
+
+    &lt;dependency&gt;
+        &lt;groupId&gt;org.jboss.spec.javax.annotation&lt;/groupId&gt;
+        &lt;artifactId&gt;jboss-annotations-api_1.2_spec&lt;/artifactId&gt;
+        &lt;scope&gt;provided&lt;/scope&gt;
+    &lt;/dependency&gt;
+
+    &lt;!-- Include your application's other dependencies. --&gt;
+    ...
+&lt;/dependencies&gt;</pre><p>
+
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="batch_jsl_inheritance"/>Job Specification Language (JSL) Inheritance</h1></div></div></div><p>
+				A feature of the JBoss EAP <code class="literal">batch-jberet</code> subsystem is the ability to use Job Specification Language (JSL) inheritance to abstract out some common parts of your job definition. Although JSL inheritance is not included in the JSR-352 1.0 specification, the JBoss EAP <code class="literal">batch-jberet</code> subsystem implements JSL inheritance based on the JSL Inheritance v1 draft.
+			</p><h3><a id="inherit_step_and_flow_within_the_same_job_xml_file"/>Inherit Step and Flow Within the Same Job XML File</h3><p>
+				Parent elements, for example step and flow, are marked with the attribute <code class="literal">abstract="true"</code> to exclude them from direct execution. Child elements contain a <code class="literal">parent</code> attribute, which points to the parent element.
+			</p><pre class="programlisting">&lt;job id="inheritance" xmlns="http://xmlns.jcp.org/xml/ns/javaee" version="1.0"&gt;
+    &lt;!-- abstract step and flow --&gt;
+    &lt;step id="step0" abstract="true"&gt;
+        &lt;batchlet ref="batchlet0"/&gt;
+    &lt;/step&gt;
+
+    &lt;flow id="flow0" abstract="true"&gt;
+        &lt;step id="flow0.step1" parent="step0"/&gt;
+    &lt;/flow&gt;
+
+    &lt;!-- concrete step and flow --&gt;
+    &lt;step id="step1" parent="step0" next="flow1"/&gt;
+
+    &lt;flow id="flow1" parent="flow0"/&gt;
+&lt;/job&gt;</pre><h3><a id="inherit_a_step_from_a_different_job_xml_file"/>Inherit a Step from a Different Job XML File</h3><p>
+				Child elements, for example step and job, contain:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						A <code class="literal">jsl-name</code> attribute, which specifies the job XML file name, without the <code class="literal">.xml</code> extension, containing the parent element.
+					</li><li class="listitem">
+						A <code class="literal">parent</code> attribute, which points to the parent element in the job XML file specified by <code class="literal">jsl-name</code>.
+					</li></ul></div><p>
+				Parent elements are marked with the attribute <code class="literal">abstract="true"</code> to exclude them from direct execution.
+			</p><div class="title"><strong>Example: <code class="literal">chunk-child.xml</code></strong></div><p>
+					
+</p><pre class="programlisting">&lt;job id="chunk-child" xmlns="http://xmlns.jcp.org/xml/ns/javaee" version="1.0"&gt;
+    &lt;step id="chunk-child-step" parent="chunk-parent-step" jsl-name="chunk-parent"&gt;
+    &lt;/step&gt;
+&lt;/job&gt;</pre><p>
+
+				</p><div class="title"><strong>Example: <code class="literal">chunk-parent.xml</code></strong></div><p>
+					
+</p><pre class="programlisting">&lt;job id="chunk-parent" &gt;
+    &lt;step id="chunk-parent-step" abstract="true"&gt;
+        &lt;chunk checkpoint-policy="item" skip-limit="5" retry-limit="5"&gt;
+            &lt;reader ref="R1"&gt;&lt;/reader&gt;
+            &lt;processor ref="P1"&gt;&lt;/processor&gt;
+            &lt;writer ref="W1"&gt;&lt;/writer&gt;
+
+            &lt;checkpoint-algorithm ref="parent"&gt;
+                &lt;properties&gt;
+                    &lt;property name="parent" value="parent"&gt;&lt;/property&gt;
+                &lt;/properties&gt;
+            &lt;/checkpoint-algorithm&gt;
+            &lt;skippable-exception-classes&gt;
+                &lt;include class="java.lang.Exception"&gt;&lt;/include&gt;
+                &lt;exclude class="java.io.IOException"&gt;&lt;/exclude&gt;
+            &lt;/skippable-exception-classes&gt;
+            &lt;retryable-exception-classes&gt;
+                &lt;include class="java.lang.Exception"&gt;&lt;/include&gt;
+                &lt;exclude class="java.io.IOException"&gt;&lt;/exclude&gt;
+            &lt;/retryable-exception-classes&gt;
+            &lt;no-rollback-exception-classes&gt;
+                &lt;include class="java.lang.Exception"&gt;&lt;/include&gt;
+                &lt;exclude class="java.io.IOException"&gt;&lt;/exclude&gt;
+            &lt;/no-rollback-exception-classes&gt;
+        &lt;/chunk&gt;
+    &lt;/step&gt;
+&lt;/job&gt;</pre><p>
+
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="batch_property_injections"/>Batch Property Injections</h1></div></div></div><p>
+				A feature of the JBoss EAP <code class="literal">batch-jberet</code> subsystem is the ability to have properties defined in the job XML file injected into fields in the batch artifact class. Properties defined in the job XML file can be injected into fields using the <code class="literal">@Inject</code> and <code class="literal">@BatchProperty</code> annotations.
+			</p><p>
+				The injection field can be any of the following Java types:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<code class="literal">java.lang.String</code>
+					</li><li class="listitem">
+						<code class="literal">java.lang.StringBuilder</code>
+					</li><li class="listitem">
+						<code class="literal">java.lang.StringBuffer</code>
+					</li><li class="listitem"><p class="simpara">
+						any primitive type, and its wrapper type:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								<code class="literal">boolean</code>, <code class="literal">Boolean</code>
+							</li><li class="listitem">
+								<code class="literal">int</code>, <code class="literal">Integer</code>
+							</li><li class="listitem">
+								<code class="literal">double</code>, <code class="literal">Double</code>
+							</li><li class="listitem">
+								<code class="literal">long</code>, <code class="literal">Long</code>
+							</li><li class="listitem">
+								<code class="literal">char</code>, <code class="literal">Character</code>
+							</li><li class="listitem">
+								<code class="literal">float</code>, <code class="literal">Float</code>
+							</li><li class="listitem">
+								<code class="literal">short</code>, <code class="literal">Short</code>
+							</li><li class="listitem">
+								<code class="literal">byte</code>, <code class="literal">Byte</code>
+							</li></ul></div></li><li class="listitem">
+						<code class="literal">java.math.BigInteger</code>
+					</li><li class="listitem">
+						<code class="literal">java.math.BigDecimal</code>
+					</li><li class="listitem">
+						<code class="literal">java.net.URL</code>
+					</li><li class="listitem">
+						<code class="literal">java.net.URI</code>
+					</li><li class="listitem">
+						<code class="literal">java.io.File</code>
+					</li><li class="listitem">
+						<code class="literal">java.util.jar.JarFile</code>
+					</li><li class="listitem">
+						<code class="literal">java.util.Date</code>
+					</li><li class="listitem">
+						<code class="literal">java.lang.Class</code>
+					</li><li class="listitem">
+						<code class="literal">java.net.Inet4Address</code>
+					</li><li class="listitem">
+						<code class="literal">java.net.Inet6Address</code>
+					</li><li class="listitem">
+						<code class="literal">java.util.List</code>, <code class="literal">List&lt;?&gt;</code>, <code class="literal">List&lt;String&gt;</code>
+					</li><li class="listitem">
+						<code class="literal">java.util.Set</code>, <code class="literal">Set&lt;?&gt;</code>, <code class="literal">Set&lt;String&gt;</code>
+					</li><li class="listitem">
+						<code class="literal">java.util.Map</code>, <code class="literal">Map&lt;?, ?&gt;</code>, <code class="literal">Map&lt;String, String&gt;</code>, <code class="literal">Map&lt;String, ?&gt;</code>
+					</li><li class="listitem">
+						<code class="literal">java.util.logging.Logger</code>
+					</li><li class="listitem">
+						<code class="literal">java.util.regex.Pattern</code>
+					</li><li class="listitem">
+						<code class="literal">javax.management.ObjectName</code>
+					</li></ul></div><p>
+				The following array types are also supported:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<code class="literal">java.lang.String[]</code>
+					</li><li class="listitem"><p class="simpara">
+						any primitive type, and its wrapper type:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								<code class="literal">boolean[]</code>, <code class="literal">Boolean[]</code>
+							</li><li class="listitem">
+								<code class="literal">int[]</code>, <code class="literal">Integer[]</code>
+							</li><li class="listitem">
+								<code class="literal">double[]</code>, <code class="literal">Double[]</code>
+							</li><li class="listitem">
+								<code class="literal">long[]</code>, <code class="literal">Long[]</code>
+							</li><li class="listitem">
+								<code class="literal">char[]</code>, <code class="literal">Character[]</code>
+							</li><li class="listitem">
+								<code class="literal">float[]</code>, <code class="literal">Float[]</code>
+							</li><li class="listitem">
+								<code class="literal">short[]</code>, <code class="literal">Short[]</code>
+							</li><li class="listitem">
+								<code class="literal">byte[]</code>, <code class="literal">Byte[]</code>
+							</li></ul></div></li><li class="listitem">
+						<code class="literal">java.math.BigInteger[]</code>
+					</li><li class="listitem">
+						<code class="literal">java.math.BigDecimal[]</code>
+					</li><li class="listitem">
+						<code class="literal">java.net.URL[]</code>
+					</li><li class="listitem">
+						<code class="literal">java.net.URI[]</code>
+					</li><li class="listitem">
+						<code class="literal">java.io.File[]</code>
+					</li><li class="listitem">
+						<code class="literal">java.util.jar.JarFile[]</code>
+					</li><li class="listitem">
+						<code class="literal">java.util.zip.ZipFile[]</code>
+					</li><li class="listitem">
+						<code class="literal">java.util.Date[]</code>
+					</li><li class="listitem">
+						<code class="literal">java.lang.Class[]</code>
+					</li></ul></div><p>
+				Shown below are a few examples of using batch property injections:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<a class="link" href="java_batch_application_development.html#batch_injection_number" title="Injecting a Number into a Batchlet Class as Various Types">Injecting a Number into a Batchlet Class as Various Types</a>
+					</li><li class="listitem">
+						<a class="link" href="java_batch_application_development.html#batch_injection_array" title="Injecting a Number Sequence into a Batchlet Class as Various Arrays">Injecting a Number Sequence into a Batchlet Class as Various Arrays</a>
+					</li><li class="listitem">
+						<a class="link" href="java_batch_application_development.html#batch_injection_class" title="Injecting a Class Property into a Batchlet Class">Injecting a Class Property into a Batchlet Class</a>
+					</li><li class="listitem">
+						<a class="link" href="java_batch_application_development.html#batch_injection_default" title="Assigning a Default Value to a Field Annotated for Property Injection">Assigning a Default Value to a Field Annotated for Property Injection</a>
+					</li></ul></div><h3><a id="batch_injection_number"/>Injecting a Number into a Batchlet Class as Various Types</h3><div class="title"><strong>Example: Job XML File</strong></div><p>
+					
+</p><pre class="programlisting">&lt;batchlet ref="myBatchlet"&gt;
+    &lt;properties&gt;
+        &lt;property name="number" value="10"/&gt;
+    &lt;/properties&gt;
+&lt;/batchlet&gt;</pre><p>
+
+				</p><div class="title"><strong>Example: Artifact Class</strong></div><p>
+					
+</p><pre class="programlisting">@Named
+public class MyBatchlet extends AbstractBatchlet {
+    @Inject
+    @BatchProperty
+    int number;  // Field name is the same as batch property name.
+
+    @Inject
+    @BatchProperty (name = "number")  // Use the name attribute to locate the batch property.
+    long asLong;  // Inject it as a specific data type.
+
+    @Inject
+    @BatchProperty (name = "number")
+    Double asDouble;
+
+    @Inject
+    @BatchProperty (name = "number")
+    private String asString;
+
+    @Inject
+    @BatchProperty (name = "number")
+    BigInteger asBigInteger;
+
+    @Inject
+    @BatchProperty (name = "number")
+    BigDecimal asBigDecimal;
+}</pre><p>
+
+				</p><h3><a id="batch_injection_array"/>Injecting a Number Sequence into a Batchlet Class as Various Arrays</h3><div class="title"><strong>Example: Job XML File</strong></div><p>
+					
+</p><pre class="programlisting">&lt;batchlet ref="myBatchlet"&gt;
+    &lt;properties&gt;
+        &lt;property name="weekDays" value="1,2,3,4,5,6,7"/&gt;
+    &lt;/properties&gt;
+&lt;/batchlet&gt;</pre><p>
+
+				</p><div class="title"><strong>Example: Artifact Class</strong></div><p>
+					
+</p><pre class="programlisting">@Named
+public class MyBatchlet extends AbstractBatchlet {
+    @Inject
+    @BatchProperty
+    int[] weekDays;  // Array name is the same as batch property name.
+
+    @Inject
+    @BatchProperty (name = "weekDays")  // Use the name attribute to locate the batch property.
+    Integer[] asIntegers;  // Inject it as a specific array type.
+
+    @Inject
+    @BatchProperty (name = "weekDays")
+    String[] asStrings;
+
+    @Inject
+    @BatchProperty (name = "weekDays")
+    byte[] asBytes;
+
+    @Inject
+    @BatchProperty (name = "weekDays")
+    BigInteger[] asBigIntegers;
+
+    @Inject
+    @BatchProperty (name = "weekDays")
+    BigDecimal[] asBigDecimals;
+
+    @Inject
+    @BatchProperty (name = "weekDays")
+    List asList;
+
+    @Inject
+    @BatchProperty (name = "weekDays")
+    List&lt;String&gt; asListString;
+
+    @Inject
+    @BatchProperty (name = "weekDays")
+    Set asSet;
+
+    @Inject
+    @BatchProperty (name = "weekDays")
+    Set&lt;String&gt; asSetString;
+}</pre><p>
+
+				</p><h3><a id="batch_injection_class"/>Injecting a Class Property into a Batchlet Class</h3><div class="title"><strong>Example: Job XML File</strong></div><p>
+					
+</p><pre class="programlisting">&lt;batchlet ref="myBatchlet"&gt;
+    &lt;properties&gt;
+        &lt;property name="myClass" value="org.jberet.support.io.Person"/&gt;
+    &lt;/properties&gt;
+&lt;/batchlet&gt;</pre><p>
+
+				</p><div class="title"><strong>Example: Artifact Class</strong></div><p>
+					
+</p><pre class="programlisting">@Named
+public class MyBatchlet extends AbstractBatchlet {
+    @Inject
+    @BatchProperty
+    private Class myClass;
+}</pre><p>
+
+				</p><h3><a id="batch_injection_default"/>Assigning a Default Value to a Field Annotated for Property Injection</h3><p>
+				You can assign a default value to a field in an artifact Java class in the case where the target batch property is not defined in the job XML file. If the target property is resolved to a valid value, it is injected into that field; otherwise, no value is injected and the default field value is used.
+			</p><div class="title"><strong>Example: Artifact Class</strong></div><p>
+					
+</p><pre class="programlisting">/**
+ Comment character. If commentChar batch property is not specified in job XML file, use the default value '#'.
+ */
+@Inject
+@BatchProperty
+private char commentChar = '#';</pre><p>
+
+				</p></div></div></body></html>

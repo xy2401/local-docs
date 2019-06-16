@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 24. Thread Management</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="server-side_thread_management"/>Chapter 24. Thread Management</h1></div></div></div><p>
+				Each JBoss EAP messaging server maintains a single thread pool for general use, and scheduled thread pool for scheduled use. A Java scheduled thread pool cannot be configured to use a standard thread pool, otherwise we could use a single thread pool for both scheduled and non scheduled activity.
+			</p><p>
+				Note that JBoss EAP uses the new, non-blocking NIO. By default, JBoss EAP messaging uses a number of threads equal to three times the number of cores, or hyper-threads, as reported by <code class="literal">.getRuntime().availableProcessors()</code> for processing incoming packets. To override this value, set the number of threads by specifying the <code class="literal">nio-remoting-threads</code> parameter in the transport configuration. See <a class="link" href="acceptors_and_connectors.html" title="Chapter 8. Configuring the Messaging Transports">Configuring the Messaging Transports</a> for more information.
+			</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="server_scheduled_thread_pool"/>Server Scheduled Thread Pool</h1></div></div></div><p>
+					The server scheduled thread pool is used for most activities on the server side that require running periodically or with delays. It maps internally to a java.util.concurrent.ScheduledThreadPoolExecutor instance.
+				</p><p>
+					The maximum number of thread used by this pool is configured using the <code class="literal">scheduled-thread-pool-max-size</code> parameter. The default value is 5 threads. A small number of threads is usually sufficient for this pool. To change this value for the default JBoss EAP messaging server, use the following management CLI command:
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default:write-attribute(name=scheduled-thread-pool-max-size,value=10)</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="general_purpose_server_thread_pool"/>Server General Purpose Thread Pool</h1></div></div></div><p>
+					The general purpose thread pool is used for most asynchronous actions on the server side. It maps internally to a <code class="literal">java.util.concurrent.ThreadPoolExecutor</code> instance.
+				</p><p>
+					The maximum number of threads used by this pool is configured using the <code class="literal">thread-pool-max-size</code> attribute.
+				</p><p>
+					If <code class="literal">thread-pool-max-size</code> is set to <code class="literal">-1</code>, the thread pool has no upper bound and new threads are created on demand if there are not enough threads available to fulfill a request. If activity later subsides, then threads are timed out and closed.
+				</p><p>
+					If <code class="literal">thread-pool-max-size</code> is set to a positive integer greater than zero, the thread pool is bounded. If requests come in and there are no free threads available in the pool, requests will block until a thread becomes available. It is recommended that a bounded thread pool be used with caution since it can lead to deadlock situations if the upper bound is configured too low.
+				</p><p>
+					The default value for <code class="literal">thread-pool-max-size</code> is <code class="literal">30</code>. To set a new value for the default JBoss EAP messaging server, use the following management CLI command.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default:write-attribute(name=thread-pool-max-size,value=40)</pre><p>
+					See the <a class="link" href="https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ThreadPoolExecutor.html"><code class="literal">ThreadPoolExecutor</code> Javadoc</a> for more information on unbounded (cached), and bounded (fixed) thread pools.
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="expiry_reaper_thread"/>Expiry Reaper Thread</h1></div></div></div><p>
+					A single thread is also used on the server side to scan for expired messages in queues. We cannot use either of the thread pools for this since this thread needs to run at its own configurable priority.
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="asynchronous_io"/>Asynchronous IO</h1></div></div></div><p>
+					Asynchronous IO has a thread pool for receiving and dispatching events out of the native layer. It is on a thread dump with the prefix <code class="literal">ArtemisMQ-AIO-poller-pool</code>. JBoss EAP messaging uses one thread per opened file on the journal (there is usually one).
+				</p><p>
+					There is also a single thread used to invoke writes on libaio. It is done to avoid context switching on libaio that would cause performance issues. This thread is found on a thread dump with the prefix <code class="literal">ArtemisMQ-AIO-writer-pool</code>.
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="client-side_thread_management"/>Client Thread Management</h1></div></div></div><p>
+					JBoss EAP includes a client thread pool used for creating client connections. This pool is separate from the static pools mentioned earlier in this chapter and is used by JBoss EAP when it behaves like a client. For example, client thread pool clients are created as cluster connections with other nodes in the same cluster, or when the Artemis resource adapter connects to a remote Apache ActiveMQ Artemis messaging server integrated in a remote instance of JBoss EAP. There is a pool for scheduled client threads as well.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						With the release of JBoss EAP 7.1, client threads now timeout after 60 seconds of no activity.
+					</p></div><h3><a id="setting_client_thread_pool_size_using_the_management_cli"/>Setting Client Thread Pool Size Using the Management CLI</h3><p>
+					Use the management CLI to configure the size of both the client thread pool and the client scheduled thread pool. Pool sizes set using the management CLI will have precedence over the sizings set using system properties.
+				</p><p>
+					The command below sets the client thread pool.
+				</p><pre class="screen">/subsystem=messaging-activemq:write-attribute(name=global-client-thread-pool-max-size,value=<span class="emphasis"><em>POOL_SIZE</em></span>)</pre><p>
+					There is no default value defined for this attribute. If the attribute is not defined, the maximum size of the pool is determined to be eight (8) times the number of CPU core processors.
+				</p><p>
+					To review the current settings, use the following command.
+				</p><pre class="screen">/subsystem=messaging-activemq:read-attribute(name=global-client-thread-pool-max-size)</pre><p>
+					The client scheduled thread pool size is set using the following command.
+				</p><pre class="screen">/subsystem=messaging-activemq:write-attribute(name=global-client-scheduled-thread-pool-max-size,value=<span class="emphasis"><em>POOL_SIZE</em></span>)</pre><p>
+					The following will display the current pool size for the client scheduled thread pool. The default value is <code class="literal">5</code>.
+				</p><pre class="screen">/subsystem=messaging-activemq:read-attribute(name=global-client-scheduled-thread-pool-max-size)</pre><h3><a id="setting_client_thread_pool_size_using_system_properties"/>Setting Client Thread Pool Size Using System Properties</h3><p>
+					The following system properties can be used to set the size of the client’s global and global scheduled thread pools respectively:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							<code class="literal">activemq.artemis.client.global.thread.pool.max.size</code>
+						</li><li class="listitem">
+							<code class="literal">activemq.artemis.client.global.scheduled.thread.pool.core.size</code>
+						</li></ul></div><p>
+					The system properties can then be referenced in XML configuration, as in the example below.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						Pool sizes set using the management CLI will have precedence over sizes set by system properties.
+					</p></div><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+  &lt;global-client thread-pool-max-size="${activemq.artemis.client.global.thread.pool.max.size}"
+    scheduled-thread-pool-max-size="${activemq.artemis.client.global.scheduled.thread.pool.core.size}" /&gt;
+  &lt;server ...&gt;
+  &lt;/server&gt;
+  ...
+&lt;/subsystem&gt;</pre><h3><a id="configuring_a_client_to_use_its_own_thread_pool"/>Configuring a Client to Use Its Own Thread Pool</h3><p>
+					A client can configure each of its <code class="literal">ClientSessionFactory</code> instances to not use the pool provided by JBoss EAP, but instead to use its own client thread pool. Any sessions created from that <code class="literal">ClientSessionFactory</code> will use the newly created pool.
+				</p><p>
+					To configure a <code class="literal">ClientSessionFactory</code> instance to use its own pools, invoke the appropriate setter methods immediately after you created the factory. For example:
+				</p><pre class="programlisting">ServerLocator locator = ActiveMQClient.createServerLocatorWithoutHA(transportConfiguration);
+locator.setUseGlobalPools(true);
+locator.setThreadPoolMaxSize(-1);
+locator.setScheduledThreadPoolMaxSize(10);
+ClientSessionFactory myFactory = locator.createSessionFactory();</pre><p>
+					If you are using the JMS API, you can set the same parameters on the <code class="literal">ClientSessionFactory</code>. For example:
+				</p><pre class="programlisting">ActiveMQConnectionFactory myConnectionFactory = ActiveMQJMSClient.createConnectionFactory(url, "ConnectionFactoryName");
+myConnectionFactory.setUseGlobalPools(false);
+myConnectionFactory.setScheduledThreadPoolMaxSize(10);
+myConnectionFactory.setThreadPoolMaxSize(-1);</pre><p>
+					If you are using JNDI to instantiate <code class="literal">ActiveMQConnectionFactory</code> instances, you can also set these parameters using the management CLI, as in the examples given below for a standalone instance of JBoss EAP.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/connection-factory=myConnectionFactory:write-attribute(name=use-global-pools,value=false)
+
+/subsystem=messaging-activemq/server=default/connection-factory=myConnectionFactory:write-attribute(name=scheduled-thread-pool-max-size,value=10)
+
+/subsystem=messaging-activemq/server=default/connection-factory=myConnectionFactory:write-attribute(name=thread-pool-max-size,value=1)</pre><p>
+					Note that the management CLI will remind you that a reload of the instance is required after you execute each of the above commands.
+				</p></div></div></body></html>

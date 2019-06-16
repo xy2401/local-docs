@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 23. Diverts</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="diverts"/>Chapter 23. Diverts</h1></div></div></div><p>
+				Diverts are objects configured in JBoss EAP messaging that help in diverting messages from one address to another. Diverts can be classified into the following types:
+			</p><div class="variablelist"><dl class="variablelist"><dt><span class="term">Exclusive</span></dt><dd>
+							A message is only diverted to a new address and never sent to the old address.
+						</dd><dt><span class="term">Non-exclusive</span></dt><dd>
+							A message is sent the old address, and a copy of it is also sent to the new address. Non-exclusive diverts can be used for splitting the flow of messages.
+						</dd></dl></div><p>
+				A divert will only divert a message to an address on the same server. If you want to divert to an address on a different server, a common pattern would be to divert to a local store-and-forward queue, then set up a bridge that consumes from that queue and forwards to an address on a different server.
+			</p><p>
+				Diverts are therefore a very sophisticated concept. When combined with bridges, diverts can be used to create interesting and complex routings. The set of diverts on a server can be thought of as a type of routing table for messages. Combining diverts with bridges allows you to create a distributed network of reliable routing connections between multiple geographically distributed servers, creating your global messaging mesh. See <a class="link" href="configuring_core_bridges.html" title="Chapter 28. Configuring Core Bridges">Configuring Core Bridges</a> for more information on how to use bridges.
+			</p><p>
+				Diverts can be configured to apply a <code class="literal">Transformer</code> and an optional message filter. An optional message filter helps to divert only messages which match the specified filter. For more information on filters see <a class="link" href="filter_expressions_message_selectors.html" title="Chapter 15. Filter Expressions and Message Selectors">Filter Expressions and Message Selectors</a>.
+			</p><p>
+				A transformer is used for transforming messages to another form. When a transformer is specified, all diverted messages are transformed by the <code class="literal">Transformer</code>. All transformers must implement the <code class="literal">org.apache.activemq.artemis.core.server.cluster.Transformer</code> interface:
+			</p><pre class="programlisting">package org.apache.activemq.artemis.core.server.cluster;
+import org.apache.activemq.artemis.core.server.ServerMessage;
+
+public interface Transformer {
+   ServerMessage transform(ServerMessage message);
+}</pre><p>
+				To enable JBoss EAP messaging to instantiate an instance of your transformer implementation, you must include it in a JBoss EAP module, and then add the module as an exported dependency to the <code class="literal">org.apache.activemq.artemis</code> module. See <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuration_guide/#create_a_custom_module">Create a Custom Module</a> in the JBoss EAP <span class="emphasis"><em>Configuration Guide</em></span> for information on how to create a custom module. To add a dependency to the <code class="literal">org.apache.activemq.artemis</code> module, open the file <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/modules/system/layers/base/org/apache/activemq/artemis/main/module.xml</code> in a text editor and add your <code class="literal">&lt;module&gt;</code> to the list of <code class="literal">&lt;dependencies&gt;</code> as in the following example.
+			</p><pre class="programlisting">&lt;module xmlns="urn:jboss:module:1.3" name="org.apache.activemq.artemis"&gt;
+    &lt;resources&gt;
+      ...
+    &lt;/resources&gt;
+    &lt;dependencies&gt;
+      ...
+      &lt;module name="<span class="emphasis"><em>YOUR_MODULE_NAME</em></span>" export="true"/&gt;
+    &lt;/dependencies&gt;
+&lt;/module&gt;</pre><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="exclusive_diverts"/>Exclusive diverts</h1></div></div></div><p>
+					Below is in an example of an exclusive divert as it might appear in configuration:
+				</p><pre class="programlisting">&lt;divert
+  name="prices-divert"
+  address="jms.topic.priceUpdates"
+  forwarding-address="jms.queue.priceForwarding"
+  filter="office='New York'"
+  transformer-class-name="org.apache.activemq.artemis.jms.example.AddForwardingTimeTransformer"
+  exclusive="true"/&gt;</pre><p>
+					In this example, a divert called <code class="literal">prices-divert</code> is configured that will divert any messages sent to the address <code class="literal">jms.topic.priceUpdates</code>, which maps to any messages sent to a JMS topic called <code class="literal">priceUpdates</code>, to another local address <code class="literal">jms.queue.priceForwarding</code>, corresponding to a local JMS queue called <code class="literal">priceForwarding</code>
+				</p><p>
+					We also specify a message filter string so that only messages with the message property <code class="literal">office</code> with a value of <code class="literal">New York</code> will be diverted. All other messages will continue to be routed to the normal address. The filter string is optional, if not specified then all messages will be considered matched.
+				</p><p>
+					Note that a transformer class is specified. In this example the transformer simply adds a header that records the time the divert happened.
+				</p><p>
+					This example is actually diverting messages to a local store and forward queue, which is configured with a bridge that forwards the message to an address on another server. See <a class="link" href="configuring_core_bridges.html" title="Chapter 28. Configuring Core Bridges">Configuring Core Bridges</a> for more details.
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="non_exclusive_diverts"/>Non-exclusive diverts</h1></div></div></div><p>
+					Below is an example of a non-exclusive divert. Non exclusive diverts can be configured in the same way as exclusive diverts with an optional filter and transformer.
+				</p><pre class="programlisting">&lt;divert
+  name="order-divert"
+  address="jms.queue.orders"
+  forwarding-address="jms.topic.spytopic"
+  exclusive="false"/&gt;</pre><p>
+					The above divert takes a copy of every message sent to the address <code class="literal">jms.queue.orders</code>, which maps to a JMS queue called <code class="literal">orders</code>, and sends it to a local address called <code class="literal">jms.topic.SpyTopic</code>, corresponding to a JMS topic called <code class="literal">SpyTopic</code>.
+				</p><h2><a id="creating_diverts"/>Creating diverts</h2><p>
+					Use the management CLI to create the type of divert you want:
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/divert=my-divert:add(divert-address=news.in,forwarding-address=news.forward)</pre><p>
+					Non-exclusive diverts are created by default. To create an exclusive divert use the <code class="literal">exclusive</code> attribute:
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/divert=my-exclusive-divert:add(divert-address=news.in,forwarding-address=news.forward,exclusive=true)</pre><p>
+					The below table captures a divert’s attributes and their description. You can have the management CLI display this information using the following command:
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/divert=*:read-resource-description()</pre><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+									divert-address
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Address to divert from. Required.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									exclusive
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Whether the divert is exclusive, meaning that the message is diverted to the new address, and does not go to the old address at all. The default is false.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									filter
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									An optional filter string. If specified then only messages which match the filter expression will be diverted.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									forwarding-address
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Address to divert to. Required.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									routing-name
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Routing name of the divert.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									transformer-class-name
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									The name of a class used to transform the message’s body or properties before it is diverted.
+								</p>
+								 </td></tr></tbody></table></div></div></div></body></html>

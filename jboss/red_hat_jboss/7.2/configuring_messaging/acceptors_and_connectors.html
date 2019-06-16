@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 8. Configuring the Messaging Transports</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="acceptors_and_connectors"/>Chapter 8. Configuring the Messaging Transports</h1></div></div></div><p>
+				This section describes the concepts critical to understanding JBoss EAP messaging transports, specifically connectors and acceptors. Acceptors are used on the server to define how it can accept connections, while connectors are used by the client to define how it connects to a server. Each concept is discussed in turn and then a practical example shows how clients can make connections to a JBoss EAP messaging server, using JNDI or the Core API.
+			</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="acceptor_and_connector_types"/>Acceptor and Connector Types</h1></div></div></div><p>
+					There are three main types of acceptor and connector defined in the configuration of JBoss EAP.
+				</p><p>
+					<code class="literal">in-vm</code>: In-vm is short for Intra Virtual Machine. Use this connector type when both the client and the server are running in the same JVM, for example, Message Driven Beans (MDBs) running in the same instance of JBoss EAP.
+				</p><p>
+					<code class="literal">http</code>: Used when client and server are running in different JVMs. Uses the <code class="literal">undertow</code> subsystem’s default port of <code class="literal">8080</code> and is thus able to multiplex messaging communications over HTTP. Red Hat recommends using the <code class="literal">http</code> connector when the client and server are running in different JVMs due to considerations such as port management, especially in a cloud environment.
+				</p><p>
+					<code class="literal">remote</code>: Remote transports are Netty-based components used for native TCP communication when the client and server are running in different JVMs. An alternative to <code class="literal">http</code> when it cannot be used.
+				</p><p>
+					A client must use a connector that is compatible with one of the server’s acceptors. For example, only an <code class="literal">in-vm-connector</code> can connect to an <code class="literal">in-vm-acceptor</code>, and only a <code class="literal">http-connector</code> can connect to an <code class="literal">http-acceptor</code>, and so on.
+				</p><p>
+					You can have the management CLI list the attributes for a given acceptor or connector type using the <code class="literal">read-children-attributes</code> operation. For example, to see the attributes of all the <code class="literal">http-connectors</code> for the default messaging server you would enter:
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default:read-children-resources(child-type=http-connector,include-runtime=true)</pre><p>
+					The attributes of all the <code class="literal">http-acceptors</code> are read using a similar command:
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default:read-children-resources(child-type=http-acceptor,include-runtime=true)</pre><p>
+					The other acceptor and connector types follow the same syntax. Just provide <code class="literal">child-type</code> with the acceptor or connector type, for example, <code class="literal">remote-connector</code> or <code class="literal">in-vm-acceptor</code>.
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="acceptors"/>Acceptors</h1></div></div></div><p>
+					An acceptor defines which types of connection are accepted by the JBoss EAP integrated messaging server. You can define any number of acceptors per server. The sample configuration below is modified from the default <code class="literal">full-ha</code> configuration profile and provides an example of each acceptor type.
+				</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+  &lt;server name="default"&gt;
+    ...
+    &lt;http-acceptor name="http-acceptor" http-listener="default"/&gt;
+    &lt;remote-acceptor name="legacy-messaging-acceptor" socket-binding="legacy-messaging"/&gt;
+    &lt;in-vm-acceptor name="in-vm" server-id="0"/&gt;
+    ...
+  &lt;/server&gt;
+&lt;/subsystem&gt;</pre><p>
+					In the above configuration, the <code class="literal">http-acceptor</code> is using Undertow’s default <code class="literal">http-listener</code> which listens on JBoss EAP’s default http port, 8080. The <code class="literal">http-listener</code> is defined in the <code class="literal">undertow</code> subsystem:
+				</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:undertow:7.0"&gt;
+  ...
+  &lt;server name="default-server"&gt;
+    &lt;http-listener name="default" redirect-socket="https" socket-binding="http"/&gt;
+    ...
+  &lt;/server&gt;
+  ...
+&lt;/subsystem&gt;</pre><p>
+					Also note how the <code class="literal">remote-acceptor</code> above uses the <code class="literal">socket-binding</code> named <code class="literal">legacy-messaging</code>, which is defined later in the configuration as part of the server’s default <code class="literal">socket-binding-group</code>.
+				</p><pre class="programlisting">&lt;server xmlns="urn:jboss:domain:8.0"&gt;
+  ...
+  &lt;socket-binding-group name="standard-sockets" default-interface="public" port-offset="${jboss.socket.binding.port-offset:0}"&gt;
+      ...
+      &lt;socket-binding name="legacy-messaging" port="5445"/&gt;
+      ...
+  &lt;/socket-binding-group&gt;
+&lt;/server&gt;</pre><p>
+					In this example, the <code class="literal">legacy-messaging</code> <code class="literal">socket-binding</code> binds JBoss EAP to port <code class="literal">5445</code>, and the <code class="literal">remote-acceptor</code> above claims the port on behalf of the <code class="literal">messaging-activemq</code> subsystem for use by legacy clients.
+				</p><p>
+					Lastly, the <code class="literal">in-vm-acceptor</code> uses a unique value for the <code class="literal">server-id</code> attribute so that this server instance can be distinguished from other servers that might be running in the same JVM.
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="connectors"/>Connectors</h1></div></div></div><p>
+					A connector defines how to connect to an integrated JBoss EAP messaging server, and is used by a client to make connections.
+				</p><p>
+					You might wonder why connectors are defined on the server when they are actually used by the client. The reasons for this include:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							In some instances, the server might act as a client when it connects to another server. For example, one server might act as a bridge to another, or it might want to participate in a cluster. In such cases, the server needs to know how to connect to other servers, and that is defined by connectors.
+						</li><li class="listitem">
+							A server can provide connectors using a <code class="literal">ConnectionFactory</code> which is looked up by clients using JNDI, so creating connection to the server is simpler.
+						</li></ul></div><p>
+					You can define any number of connectors per server. The sample configuration below is based on the <code class="literal">full-ha</code> configuration profile and includes connectors of each type.
+				</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+  &lt;server name="default"&gt;
+    ...
+    &lt;http-connector name="http-connector" endpoint="http-acceptor" socket-binding="http" server-name="messaging-server-1"/&gt;
+    &lt;remote-connector name="legacy-remoting-connector" socket-binding="legacy-remoting"/&gt;
+    &lt;in-vm-connector name="in-vm" server-id="0"/&gt;
+    ...
+  &lt;/server&gt;
+&lt;/subsystem&gt;</pre><p>
+					Like the <code class="literal">http-acceptor</code> from the <code class="literal">full-ha</code> profile, the <code class="literal">http-connector</code> uses the default <code class="literal">http-listener</code> defined by the <code class="literal">undertow</code> subsystem. The <code class="literal">endpoint</code> attribute declares which <code class="literal">http-acceptor</code> to connect to. In this case, the connector will connect to the default <code class="literal">http-acceptor</code>.
+				</p><p>
+					JBoss EAP 7.1 introduced a new <code class="literal">server-name</code> attribute for the <code class="literal">http-connector</code>. This new attribute is optional, but it is required to be able to connect to the correct <code class="literal">http-acceptor</code> on a remote server that is running more than one ActiveMQ Artemis instance. If this attribute is not defined, the value is resolved at runtime to be the name of the parent ActiveMQ Artemis server in which the connector is defined.
+				</p><p>
+					Also, note that the <code class="literal">remote-connector</code> references the same <code class="literal">socket-binding</code> as its <code class="literal">remote-acceptor</code> counterpart. Lastly, the <code class="literal">in-vm-connector</code> uses the same value for <code class="literal">server-id</code> as the <code class="literal">in-vm-acceptor</code> since they both run inside the same server instance.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						If the bind address for the public interface is set to <code class="literal">0.0.0.0</code>, you will see the following warning in the log when you start the JBoss EAP server:
+					</p><pre class="screen">AMQ121005: Invalid "host" value "0.0.0.0" detected for "connector" connector. Switching to &lt;HOST_NAME&gt;. If this new address is incorrect please manually configure the connector to use the proper one.</pre><p>
+						This is because a remote connector cannot connect to a server using the <code class="literal">0.0.0.0</code> address and the <code class="literal">messaging-activemq</code> subsystem tries to replace it with the server’s host name. The administrator should configure the remote connector to use a different interface address for the socket binding.
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring_acceptors_and_connectors"/>Configuring Acceptors and Connectors</h1></div></div></div><p>
+					There are a number of configuration options for connectors and acceptors. They appear in the configuration as child <code class="literal">&lt;param&gt;</code> elements. Each <code class="literal">&lt;param&gt;</code> element includes a <code class="literal">name</code> and <code class="literal">value</code> attribute pair that is understood and used by the default Netty-based factory class responsible for instantiating a connector or acceptor.
+				</p><p>
+					In the management CLI, each remote connector or acceptor element includes an internal map of the parameter name and value pairs. For example, to add a new <code class="literal">param</code> to a <code class="literal">remote-connector</code> named <code class="literal">myRemote</code> use the following command:
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/remote-connector=myRemote:map-put(name=params,key=foo,value=bar)</pre><p>
+					Retrieve parameter values using a similar syntax.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/remote-connector=myRemote:map-get(name=params,key=foo)
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; "bar"
+}</pre><p>
+					You can also include parameters when you create an acceptor or connector, as in the example below.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/remote-connector=myRemote:add(socket-binding=mysocket,params={foo=bar,foo2=bar2})</pre><div class="table"><a id="idm139716444167168"/><p class="title"><strong>Table 8.1. Transport Configuration Properties</strong></p><div class="table-contents"><table summary="Transport Configuration Properties" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Property</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+									batch-delay
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Before writing packets to the transport, the messaging server can be configured to batch up writes for a maximum of <code class="literal">batch-delay</code> in milliseconds. This increases the overall throughput for very small messages by increasing average latency for message transfer. The default is 0.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									direct-deliver
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									When a message arrives on the server and is delivered to waiting consumers, by default, the delivery is done on the same thread on which the message arrived. This gives good latency in environments with relatively small messages and a small number of consumers but reduces the throughput and latency. For highest throughput you can set this property as <code class="literal">false</code>. The default is <code class="literal">true</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									http-upgrade-enabled
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Used by an <code class="literal">http-connector</code> to specify that it is using HTTP upgrade and therefore is multiplexing messaging traffic over HTTP. This property is set automatically by JBoss EAP to <code class="literal">true</code> when the <code class="literal">http-connector</code> is created and does not require an administrator.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									http-upgrade-endpoint
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Specifies the <code class="literal">http-acceptor</code> on the server-side to which the <code class="literal">http-connector</code> will connect. The connector will be multiplexed over HTTP and needs this info to find the relevant <code class="literal">http-acceptor</code> after the HTTP upgrade. This property is set automatically by JBoss EAP when the <code class="literal">http-connector</code> is created and does not require an administrator.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									local-address
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									For a http or a remote connector, this is used to specify the local address which the client will use when connecting to the remote address. If a local address is not specified then the connector will use any available local address.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									local-port
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									For a http or a remote connector, this is used to specify which local port the client will use when connecting to the remote address. If the local-port default is used (0) then the connector will let the system pick up an ephemeral port. Valid port values are <code class="literal">0</code> to <code class="literal">65535</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									nio-remoting-threads
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									If configured to use NIO, the messaging will by default use a number of threads equal to three times the number of cores (or hyper-threads) as reported by <code class="literal">Runtime.getRuntime().availableProcessors()</code> for processing incoming packets. To override this value, you can set a custom value for the number of threads. The default is <code class="literal">-1</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									tcp-no-delay
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									If this is <code class="literal">true</code> then Nagle’s algorithm will be enabled. This algorithm helps improve the efficiency of TCP/IP networks by reducing the number of packets sent over a network. The default is <code class="literal">true</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									tcp-send-buffer-size
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									This parameter determines the size of the TCP send buffer in bytes. The default is <code class="literal">32768</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									tcp-receive-buffer-size
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									This parameter determines the size of the TCP receive buffer in bytes. The default is <code class="literal">32768</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									use-nio-global-worker-pool
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									This parameter will ensure all JMS connections share a single pool of Java threads, rather than each connection having its own pool. This serves to avoid exhausting the maximum number of processes on the operating system. The default is <code class="literal">true</code>.
+								</p>
+								 </td></tr></tbody></table></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="connecting_to_messaging_server"/>Connecting to a Server</h1></div></div></div><p>
+					If you want to connect a client to a server, you have to have a proper connector. There are two ways to do that. You could use a ConnectionFactory which is configured on the server and can be obtained via JNDI lookup. Alternatively, you could use the ActiveMQ Artemis core API and configure the whole <code class="literal">ConnectionFactory</code> on the client side.
+				</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="jms_connection_factories"/>JMS Connection Factories</h2></div></div></div><p>
+						Clients can use JNDI to look up ConnectionFactory objects which provide connections to the server. Connection Factories can expose each of the three types of connector:
+					</p><p>
+						A <code class="literal">connection-factory</code> referencing a <code class="literal">remote-connector</code> can be used by a remote client to send messages to or receive messages from the server (assuming the connection-factory has an appropriately exported entry). A <code class="literal">remote-connector</code> is associated with a <code class="literal">socket-binding</code> that tells the client using the <code class="literal">connection-factory</code> where to connect.
+					</p><p>
+						A <code class="literal">connection-factory</code> referencing an <code class="literal">in-vm-connector</code> is suitable to be used by a local client to either send messages to or receive messages from a local server. An <code class="literal">in-vm-connector</code> is associated with a <code class="literal">server-id</code> which tells the client using the <code class="literal">connection-factory</code> where to connect, since multiple messaging servers can run in a single JVM.
+					</p><p>
+						A <code class="literal">connection-factory</code> referencing a <code class="literal">http-connector</code> is suitable to be used by a remote client to send messages to or receive messages from the server by connecting to its HTTP port before upgrading to the messaging protocol. A <code class="literal">http-connector</code> is associated with the <code class="literal">socket-binding</code> that represents the HTTP socket, which by default is named <code class="literal">http</code>.
+					</p><p>
+						Since JMS 2.0, a default JMS connection factory is accessible to Java EE applications under the JNDI name <code class="literal">java:comp/DefaultJMSConnectionFactory</code>. The <code class="literal">messaging-activemq</code> subsystem defines a <code class="literal">pooled-connection-factory</code> that is used to provide this default connection factory.
+					</p><p>
+						Below are the default connectors and connection factories that are included in the <code class="literal">full</code> configuration profile for JBoss EAP:
+					</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+  &lt;server name="default"&gt;
+    [...]
+    &lt;http-connector name="http-connector" socket-binding="http" endpoint="http-acceptor" /&gt;
+    &lt;http-connector name="http-connector-throughput" socket-binding="http" endpoint="http-acceptor-throughput"&gt;
+      &lt;param name="batch-delay" value="50"/&gt;
+    &lt;/http-connector&gt;
+    &lt;in-vm-connector name="in-vm" server-id="0"/&gt;
+    [...]
+    &lt;connection-factory name="InVmConnectionFactory" connectors="in-vm" entries="java:/ConnectionFactory" /&gt;
+    &lt;pooled-connection-factory name="activemq-ra" transaction="xa" connectors="in-vm" entries="java:/JmsXA java:jboss/DefaultJMSConnectionFactory"/&gt;
+    [...]
+    &lt;/server&gt;
+&lt;/subsystem&gt;</pre><p>
+						The <code class="literal">entries</code> attribute of a factory specifies the JNDI names under which the factory will be exposed. Only JNDI names bound in the <code class="literal">java:jboss/exported</code> namespace are available to remote clients. If a <code class="literal">connection-factory</code> has an entry bound in the <code class="literal">java:jboss/exported</code> namespace a remote client would look-up the <code class="literal">connection-factory</code> using the text after <code class="literal">java:jboss/exported</code>. For example, the <code class="literal">RemoteConnectionFactory</code> is bound by default to <code class="literal">java:jboss/exported/jms/RemoteConnectionFactory</code> which means a remote client would look-up this connection-factory using <code class="literal">jms/RemoteConnectionFactory</code>. A <code class="literal">pooled-connection-factory</code> should not have any entry bound in the <code class="literal">java:jboss/exported</code> namespace because a <code class="literal">pooled-connection-factory</code> is not suitable for remote clients.
+					</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="connecting_to_the_server_using_jndi"/>Connecting to the Server Using JNDI</h2></div></div></div><p>
+						If the client resides within the same JVM as the server, it can use the <code class="literal">in-vm</code> connector provided by the <code class="literal">InVmConnectionFactory</code>. Here is how the <code class="literal">InvmConnectionFactory</code> is typically configured, as found for example in <code class="literal">standalone-full.xml</code>.
+					</p><pre class="programlisting">&lt;connection-factory
+  name="InVmConnectionFactory"
+  entries="java:/ConnectionFactory"
+  connectors="in-vm" /&gt;</pre><p>
+						Note the value of the <code class="literal">entries</code> attribute. Clients using the <code class="literal">InVmConnectionFactory</code> should drop the leading <code class="literal">java:/</code> during lookup, as in the following example:
+					</p><pre class="programlisting">InitialContext ctx = new InitialContext();
+ConnectionFactory cf = (ConnectionFactory)ctx.lookup("ConnectionFactory");
+Connection connection = cf.createConnection();</pre><p>
+						Remote clients use the <code class="literal">RemoteConnectionFactory</code>, which is usually configured as below:
+					</p><pre class="programlisting">&lt;connection-factory
+  name="RemoteConnectionFactory"
+  scheduled-thread-pool-max-size="10"
+  entries="java:jboss/exported/jms/RemoteConnectionFactory"
+  connectors="http-connector"/&gt;</pre><p>
+						Remote clients should ignore the leading <code class="literal">java:jboss/exported/</code> of the value for <code class="literal">entries</code>, following the example of the code snippet below:
+					</p><pre class="programlisting">final Properties env = new Properties();
+env.put(Context.INITIAL_CONTEXT_FACTORY, "org.wildfly.naming.client.WildFlyInitialContextFactory");
+env.put(Context.PROVIDER_URL, "http-remoting://remotehost:8080");
+InitialContext remotingCtx = new InitialContext(env);
+ConnectionFactory cf = (ConnectionFactory) remotingCtx.lookup("jms/RemoteConnectionFactory");</pre><p>
+						Note the value for the <code class="literal">PROVIDER_URL</code> property and how the client is using the JBoss EAP http-remoting protocol. Note also how the client is using the <code class="literal">org.wildfly.naming.client.WildFlyInitialContextFactory</code>, which implies the client has this class and its encompassing client JAR somewhere in the classpath. For maven projects, this can be achieved by including the following dependency:
+					</p><pre class="programlisting">&lt;dependencies&gt;
+  &lt;dependency&gt;
+    &lt;groupId&gt;org.wildfly&lt;/groupId&gt;
+    &lt;artifactId&gt;wildfly-jms-client-bom&lt;/artifactId&gt;
+    &lt;type&gt;pom&lt;/type&gt;
+  &lt;/dependency&gt;
+&lt;/dependencies&gt;</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="connecting_to_the_server_using_the_core_api"/>Connecting to the Server Using the Core API</h2></div></div></div><p>
+						You can use the Core API to make client connections without needing a JNDI lookup. Clients using the Core API require a client JAR in their classpath, just as JNDI-based clients.
+					</p><h4><a id="serverlocator"/>ServerLocator</h4><p>
+						Clients use <code class="literal">ServerLocator</code> instances to create <code class="literal">ClientSessionFactory</code> instances. As their name implies, <code class="literal">ServerLocator</code> instances are used to locate servers and create connections to them.
+					</p><p>
+						In JMS terms think of a <code class="literal">ServerLocator</code> in the same way you would a JMS Connection Factory.
+					</p><p>
+						<code class="literal">ServerLocator</code> instances are created using the <code class="literal">ActiveMQClient</code> factory class.
+					</p><pre class="programlisting">ServerLocator locator = ActiveMQClient.createServerLocatorWithoutHA(new TransportConfiguration(InVMConnectorFactory.class.getName()));</pre><h4><a id="clientsessionfactory"/>ClientSessionFactory</h4><p>
+						Clients use a <code class="literal">ClientSessionFactory</code> to create <code class="literal">ClientSession</code> instances, which are basically connections to a server. In JMS terms think of them as JMS connections.
+					</p><p>
+						<code class="literal">ClientSessionFactory</code> instances are created using the <code class="literal">ServerLocator</code> class.
+					</p><pre class="programlisting">ClientSessionFactory factory =  locator.createClientSessionFactory();</pre><h4><a id="clientsession"/>ClientSession</h4><p>
+						A client uses a <code class="literal">ClientSession</code> for consuming and producing messages and for grouping them in transactions. <code class="literal">ClientSession</code> instances can support both transactional and non transactional semantics and also provide an XAResource interface so messaging operations can be performed as part of a JTA transaction.
+					</p><p>
+						<code class="literal">ClientSession</code> instances group <code class="literal">ClientConsumers</code> and <code class="literal">ClientProducers</code>.
+					</p><pre class="programlisting">ClientSession session = factory.createSession();</pre><p>
+						The simple example below highlights some of what was just discussed:
+					</p><pre class="programlisting">ServerLocator locator = ActiveMQClient.createServerLocatorWithoutHA(
+  new TransportConfiguration( InVMConnectorFactory.class.getName()));
+
+// In this simple example, we just use one session for both
+// producing and consuming
+ClientSessionFactory factory =  locator.createClientSessionFactory();
+ClientSession session = factory.createSession();
+
+// A producer is associated with an address ...
+ClientProducer producer = session.createProducer("example");
+ClientMessage message = session.createMessage(true);
+message.getBodyBuffer().writeString("Hello");
+
+// We need a queue attached to the address ...
+session.createQueue("example", "example", true);
+
+// And a consumer attached to the queue ...
+ClientConsumer consumer = session.createConsumer("example");
+
+// Once we have a queue, we can send the message ...
+producer.send(message);
+
+// We need to start the session before we can -receive- messages ...
+session.start();
+ClientMessage msgReceived = consumer.receive();
+
+System.out.println("message = " + msgReceived.getBodyBuffer().readString());
+
+session.close();</pre></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="using_messaging_behind_a_load_balancer"/>Using Messaging Behind a Load Balancer</h1></div></div></div><p>
+					To use messaging behind a load balancer, you must use connection-level load balancing. You can achieve this in JBoss EAP by configuring a static Undertow HTTP load balancer. The steps to accomplish this are similar to those documented in the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuration_guide/##configure_undertow_static_load_balancer">Configure Undertow as a Static Load Balancer</a> section of the JBoss EAP <span class="emphasis"><em>Configuration Guide</em></span>, with the following differences:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							You must <a class="link" href="acceptors_and_connectors.html#configure_the_http_load_balancer" title="Configure the HTTP Load Balancer">configure the load balancer</a> using HTTP or HTTPS instead of AJP.
+						</li><li class="listitem">
+							You need to <a class="link" href="acceptors_and_connectors.html#disable_messaging_cluster_for_http_load_balancing" title="Disable the Messaging Cluster for HTTP Load Balancing">disable the messaging cluster</a> on the back-end server.
+						</li><li class="listitem">
+							If you are doing JNDI lookups behind a load balancer, you must also <a class="link" href="acceptors_and_connectors.html#configure_the_backend_messaging_workers" title="Configure the Back-end Messaging Workers">configure the back-end messaging workers</a>.
+						</li><li class="listitem">
+							Finally, be aware of the <a class="link" href="acceptors_and_connectors.html#limitations_of_this_configuration" title="Limitations of the HTTP Load Balancer for Messaging">limitations of the HTTP load balancer for messaging</a>.
+						</li></ul></div><h3><a id="configure_the_http_load_balancer"/>Configure the HTTP Load Balancer</h3><p>
+					The following example shows how to configure a JBoss EAP instance to be a static HTTP load balancer. The JBoss EAP instance is located at <code class="literal">load_balance.example.com</code> and will load balance between two additional servers: <code class="literal">server1.example.com</code> and <code class="literal">server2.example.com</code>. The load balancer will reverse-proxy to the back-end servers and will use the HTTP protocol.
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Add a reverse proxy handler.
+						</p><pre class="screen">/subsystem=undertow/configuration=handler/reverse-proxy=my-handler:add</pre></li><li class="listitem"><p class="simpara">
+							Define the outbound socket bindings for each remote host.
+						</p><pre class="screen">/socket-binding-group=standard-sockets/remote-destination-outbound-socket-binding=remote-host1/:add(host=server1.example.com, port=8080)
+
+/socket-binding-group=standard-sockets/remote-destination-outbound-socket-binding=remote-host2/:add(host=server2.example.com, port=8080)</pre></li><li class="listitem"><p class="simpara">
+							Add each remote host to the reverse proxy handler.
+						</p><pre class="screen">/subsystem=undertow/configuration=handler/reverse-proxy=my-handler/host=host1:add(outbound-socket-binding=remote-host1, scheme=http, instance-id=myroute, path=/)
+
+/subsystem=undertow/configuration=handler/reverse-proxy=my-handler/host=host2:add(outbound-socket-binding=remote-host2, scheme=http, instance-id=myroute, path=/)</pre></li><li class="listitem"><p class="simpara">
+							Add the reverse proxy location.
+						</p><pre class="screen">/subsystem=undertow/server=default-server/host=default-host/location=\/app:add(handler=my-handler)</pre></li></ol></div><h3><a id="disable_messaging_cluster_for_http_load_balancing"/>Disable the Messaging Cluster for HTTP Load Balancing</h3><p>
+					Disable the messaging cluster by removing the cluster connection.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/cluster-connection=my-cluster:remove</pre><h3><a id="configure_the_backend_messaging_workers"/>Configure the Back-end Messaging Workers</h3><p>
+					You must configure back-end messaging workers only if you plan to do JNDI lookups behind the load balancer.
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Create a new outbound socket binding that points to the load-balancing server.
+						</p><pre class="screen">/socket-binding-group=standard-sockets/remote-destination-outbound-socket-binding=balancer-binding:add(host=load_balance.example.com,port=8080)</pre></li><li class="listitem"><p class="simpara">
+							Create an HTTP connector that references the load-balancing server socket binding.
+						</p><pre class="screen">/subsystem=messaging-activemq/server=default/http-connector=balancer-connector:add(socket-binding=balancer-binding, endpoint=http-acceptor)</pre></li><li class="listitem"><p class="simpara">
+							Add the HTTP connector to the connection factory used by the client.
+						</p><pre class="screen">/subsystem=messaging-activemq/server=default/connection-factory=RemoteConnectionFactory:write-attribute(name=connectors,value=[balancer-connector])</pre></li></ol></div><h3><a id="limitations_of_this_configuration"/>Limitations of the HTTP Load Balancer for Messaging</h3><h4><a id="no_support_for_messaging_clusters_behind_the_load_balancer"/>No Support for Messaging Clusters Behind the Load Balancer</h4><p>
+					The only supported configuration is one load balancer and one back-end worker server. A messaging cluster behind a load balancer is <span class="emphasis"><em>not</em></span> supported.
+				</p><p>
+					When a client connects to a server in a cluster, it receives the topology of the cluster. This means that clients are able to connect directly to worker servers without going through the load balancer. In the situation where back-end servers are not visible, for example, if they are on a private network behind the load balancer, the client connections will fail.
+				</p><p>
+					Note that without a cluster there is no message redistribution, which means messaging does not work as expected unless there is only one server behind the load balancer.
+				</p><h4><a id="lack_of_support_for_other_load_balancers"/>Lack of Support for Other Load Balancers</h4><p>
+					The only supported load balancer is Undertow <a class="link" href="acceptors_and_connectors.html#configure_the_http_load_balancer" title="Configure the HTTP Load Balancer">configured as a static Undertow HTTP load balancer</a>. High availability is not supported in this topology behind this load balancer.
+				</p></div></div></body></html>

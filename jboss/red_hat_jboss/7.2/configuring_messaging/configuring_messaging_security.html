@@ -1,0 +1,337 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 7. Configuring Security</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="configuring_messaging_security"/>Chapter 7. Configuring Security</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="securing-remote-connections-jms-server"/>Securing Remote Connections</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="using_the_legacy_security_subsystem"/>Using the Legacy Security Subsystem</h2></div></div></div><p>
+						You can use the legacy <code class="literal">security</code> subsystem in JBoss EAP to secure the <code class="literal">messaging-activemq</code> subsystem. The legacy <code class="literal">security</code> subsystem uses legacy security realms and domains. See the JBoss EAP <span class="emphasis"><em>Security Architecture</em></span> guide for more information on <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/#security_realms">security realms</a> and <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/#security_domains">security domains</a>. The <code class="literal">messaging-activemq</code> subsystem is pre-configured to use the security realm named <code class="literal">ApplicationRealm</code> and the security domain named <code class="literal">other</code>.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The legacy <code class="literal">security</code> subsystem approach is the default configuration from JBoss EAP 7.0.
+						</p></div><p>
+						The <code class="literal">ApplicationRealm</code> is defined near the top of the configuration file.
+					</p><pre class="programlisting">&lt;management&gt;
+  &lt;security-realms&gt;
+      ...
+       &lt;security-realm name="ApplicationRealm"&gt;
+          &lt;authentication&gt;
+              &lt;local default-user="$local" allowed-users="*" skip-group-loading="true"/&gt;
+              &lt;properties
+                path="application-users.properties"
+                relative-to="jboss.server.config.dir" /&gt;
+          &lt;/authentication&gt;
+          &lt;authorization&gt;
+              &lt;properties
+                path="application-roles.properties"
+                relative-to="jboss.server.config.dir" /&gt;
+          &lt;/authorization&gt;
+       &lt;/security-realm&gt;
+  &lt;/security-realms&gt;
+  ...
+&lt;/management&gt;</pre><p>
+						As its name implies, <code class="literal">ApplicationRealm</code> is the default security realm for all application-focused subsystems in JBoss EAP such as the <code class="literal">messaging-activemq</code>, <code class="literal">undertow</code>, and <code class="literal">ejb3</code> subsystems. <code class="literal">ApplicationRealm</code> uses the local filesystem to store usernames and hashed passwords. For convenience JBoss EAP includes a script that you can use to add users to the <code class="literal">ApplicationRealm</code>. See <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_configure_server_security/#default_user_configuration">Default User Configuration</a> in the JBoss EAP <span class="emphasis"><em>How To Configure Server Security</em></span> guide for details.
+					</p><p>
+						The <code class="literal">other</code> security domain is the default security domain for the application-related subsystems like <code class="literal">messaging-activemq</code>. It is not explicitly declared in the configuration; however, you can confirm which security domain is used by the <code class="literal">messaging-activemq</code> subsystem with the following management CLI command:
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default:read-attribute(name=security-domain)
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; "other"
+}</pre><p>
+						You can also update which security domain is used:
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default:write-attribute(name=security-domain, value=mySecurityDomain)</pre><p>
+						The JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_configure_server_security/"><span class="emphasis"><em>How To Configure Server Security</em></span></a> guide has more information on how to create new security realms and domains. For now, it is worth noting how the <code class="literal">other</code> domain appears in the configuration:
+					</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:security:2.0"&gt;
+     &lt;security-domains&gt;
+         &lt;security-domain name="other" cache-type="default"&gt;
+             &lt;authentication&gt;
+                 &lt;login-module code="Remoting" flag="optional"&gt;
+                     &lt;module-option name="password-stacking" value="useFirstPass"/&gt;
+                 &lt;/login-module&gt;
+                 &lt;login-module code="RealmDirect" flag="required"&gt;
+                     &lt;module-option name="password-stacking" value="useFirstPass"/&gt;
+                 &lt;/login-module&gt;
+             &lt;/authentication&gt;
+         &lt;/security-domain&gt;
+         ...
+     &lt;security-domains&gt;
+ &lt;/subsystem&gt;</pre><p>
+						The 'other' domain uses two login-modules as its means of authentication. The first module, <code class="literal">Remoting</code>, authenticates remote EJB invocations, while the <code class="literal">RealmDirect</code> module uses the information store defined in a given realm to authenticate users. In this case the default realm <code class="literal">ApplicationRealm</code> is used, since no realm is declared. Each module has its <code class="literal">password-stacking</code> option set to <code class="literal">useFirstPass</code>, which tells the login-module to store the principal name and password of the authenticated user. See the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/login_module_reference/"><span class="emphasis"><em>Login Module Reference</em></span></a> for more details on the login modules and their options.
+					</p><p>
+						Role-based access is configured at the address level, see <a class="link" href="configuring_messaging_security.html#role_based_security_for_address" title="Role-Based Security for Addresses">Role Based Security for Addresses</a>.
+					</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="using_the_elytron_subsystem"/>Using the Elytron Subsystem</h2></div></div></div><p>
+						You can also use the <code class="literal">elytron</code> subsystem to secure the <code class="literal">messaging-activemq</code> subsystem. You can find more information on using the <code class="literal">elytron</code> subsystem and creating and Elytron security domains in the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_configure_identity_management/.xml#elytron_secure_apps">Elytron Subsystem</a> section of <span class="emphasis"><em>How to Configure Identity Management</em></span> guide.
+					</p><p>
+						To use an Elytron security domain:
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Undefine the legacy security domain.
+							</p><pre class="screen">/subsystem=messaging-activemq/server=default:undefine-attribute(name=security-domain)</pre></li><li class="listitem"><p class="simpara">
+								Set an Elytron security domain.
+							</p><pre class="screen">/subsystem=messaging-activemq/server=default:write-attribute(name=elytron-domain, value=myElytronSecurityDomain)
+
+reload</pre></li></ol></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="setting_an_elytron_security_domain_using_the_management_console"/>Setting an Elytron Security Domain Using the Management Console</h3></div></div></div><p>
+							To set an Elytron security domain using the management console:
+						</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+									Access the management console. For more information, see <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuration_guide/#management_console_overview">Management Console</a> in the JBoss EAP Configuration Guide.
+								</li><li class="listitem">
+									Navigate to <span class="strong"><strong>Configuration</strong></span> → <span class="strong"><strong>Subsystems</strong></span> → <span class="strong"><strong>Messaging (ActiveMQ)</strong></span> → <span class="strong"><strong>Server</strong></span> → <span class="strong"><strong>default</strong></span> and click <span class="strong"><strong>View</strong></span>.
+								</li><li class="listitem">
+									Navigate to the <span class="strong"><strong>Security</strong></span> tab and click <span class="strong"><strong>Edit</strong></span>.
+								</li><li class="listitem">
+									Add or edit the value of <span class="strong"><strong>Elytron Domain</strong></span>.
+								</li><li class="listitem">
+									Click <span class="strong"><strong>Save</strong></span> to save the changes.
+								</li><li class="listitem">
+									Reload the server for the changes to take effect.
+								</li></ol></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								You can only define either <code class="literal">security-domain</code> or <code class="literal">elytron-domain</code>, but you cannot have both defined at the same time. If neither is defined, JBoss EAP will use the <code class="literal">security-domain</code> default value of <code class="literal">other</code>, which maps to the <code class="literal">other</code> legacy security domain.
+							</p></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="securing_the_transport"/>Securing the Transport</h2></div></div></div><p>
+						The default <code class="literal">http-connector</code> that comes bundled with JBoss EAP messaging is not secured by default. You can secure the message transport and enable web traffic for SSL/TLS by following the instructions to <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_configure_server_security/#configure_one_way_and_two_way_ssl_tls_for_application">configure one-way and two-way SSL/TLS for applications</a> in <span class="emphasis"><em>How to Configure Server Security</em></span> for JBoss EAP.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The above approach to secure a message transport also works for securing the <code class="literal">http-acceptor</code>.
+						</p></div><p>
+						When you configure the transport as described above, you must perform the following additional steps.
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								By default, all HTTP acceptors are configured to use the default <code class="literal">http-listener</code>, which listens on the HTTP port. You must configure HTTP acceptors to use the <code class="literal">https-listener</code>, which listens on the HTTPS port.
+							</li><li class="listitem">
+								The <code class="literal">socket-binding</code> element for all HTTP connectors must be updated to use <code class="literal">https</code> instead of <code class="literal">http</code>.
+							</li><li class="listitem">
+								Each <code class="literal">http-connector</code> that communicates through SSL/TLS must set the <code class="literal">ssl-enabled</code> parameter to <code class="literal">true</code>.
+							</li><li class="listitem">
+								If an HTTP connector is used to connect to another server, you must configure the related parameters such as <code class="literal">trust-store</code> and <code class="literal">key-store</code>. Securing the <code class="literal">http-connector</code> requires that you configure the same parameters as you do with a <code class="literal">remote-connector</code>, which is documented in <a class="link" href="configuring_messaging_security.html#securing_a_remote_connector" title="Securing a Remote Connector">Securing a Remote Connector</a>.
+							</li></ul></div><p>
+						See <a class="link" href="acceptors_and_connectors.html" title="Chapter 8. Configuring the Messaging Transports">Configuring the Messaging Transports</a> for information about the configuring acceptors and connectors for messaging transports.
+					</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="securing_a_remote_connector"/>Securing a Remote Connector</h2></div></div></div><p>
+						If you are not using the default <code class="literal">http-connector</code> and have instead created your own <code class="literal">remote-connector</code> and <code class="literal">remote-acceptor</code> for TCP communications, you can configure each for SSL/TLS by using the properties in the table below. The properties appear in the configuration as part of the child <code class="literal">&lt;param&gt;</code> elements of the acceptor or connector.
+					</p><p>
+						Typically, a server owns its private SSL/TLS key and shares its public key with clients. In this scenario, the server defines the <code class="literal">key-store-path</code> and <code class="literal">key-store-password</code> parameters in a <code class="literal">remote-acceptor</code>. Since each client can have its truststore located at a different location, and be encrypted by a different password, specifying the <code class="literal">trust-store-path</code> and <code class="literal">trust-store-password</code> properties on the <code class="literal">remote-connector</code> is not recommended. Instead, configure these parameters on the client side using the system properties <code class="literal">javax.net.ssl.trustStore</code> and <code class="literal">javax.net.ssl.trustStorePassword</code>. The only parameter which you need to configure for a <code class="literal">remote-connector</code> is <code class="literal">ssl-enabled=true</code>. However, if the server uses <code class="literal">remote-connector</code> to connect to another server, it makes sense in this case to set the <code class="literal">trust-store-path</code> and <code class="literal">trust-store-password</code> parameters of the <code class="literal">remote-connector</code>.
+					</p><p>
+						In the above use case, the <code class="literal">remote-acceptor</code> would be created using the following management CLI command:
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/remote-acceptor=mySslAcceptor:add(socket-binding=netty,params={ssl-enabled=true, key-store-path=<span class="emphasis"><em>PATH/TO</em></span>/server.jks, key-store-password=${VAULT::server-key::key-store-password::sharedKey}})</pre><p>
+						To create the <code class="literal">remote-connector</code> from the above use case, use the following management CLI command:
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/remote-connector=mySslConnector:add(socket-binding=netty,params={ssl-enabled=true})</pre><p>
+						The management CLI also allows you to add a parameter to an already existing <code class="literal">remote-acceptor</code> or <code class="literal">remote-connector</code> as well:
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/remote-connector=myOtherSslConnector:map-put(name=params,key=ssl-enabled,value=true)</pre><p>
+						Note that the <code class="literal">remote-acceptor</code> and <code class="literal">remote-connector</code> both reference a <code class="literal">socket-binding</code> to declare the port to be used for communication. See the <a class="link" href="getting_started.html#intro_messaging_config" title="Overview of the Messaging Subsystem Configuration">Overview of the Messaging Subsystem Configuration</a> for more information on socket bindings and their relationship to acceptors and connectors.
+					</p><div class="table"><a id="idm139716508664432"/><p class="title"><strong>Table 7.1. SSL/TLS-related Configuration Properties for the <code class="literal">NettyConnectorFactory</code></strong></p><div class="table-contents"><table summary="SSL/TLS-related Configuration Properties for the NettyConnectorFactory" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Property</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										enabled-cipher-suites
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Can be used to configure an acceptor or connector. This is a comma separated list of cipher suites used for SSL/TLS communication. The default value is null which means the JVM’s default will be used.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										enabled-protocols
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Can be used to configure an acceptor or connector. This is a comma separated list of protocols used for SSL/TLS communication. The default value is null which means the JVM’s default will be used.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										key-store-password
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										When used on an acceptor, this is the password for the server-side keystore. <br/> <br/> When used on a connector, this is the password for the client-side keystore. This is only relevant for a connector if you are using two-way SSL/TLS. Although this value can be configured on the server, it is downloaded and used by the client. <br/> <br/> If the client needs to use a different password from that set on the server, it can override the server-side setting by either using the standard <code class="literal">javax.net.ssl.keyStorePassword</code> system property. Use the <code class="literal">org.apache.activemq.ssl.keyStorePassword</code> property if another component on the client is already making use of the standard system property.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										key-store-path
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										When used on an acceptor, this is the path to the SSL/TLS keystore on the server which holds the server’s certificates. Use for certificates either self-signed or signed by an authority. <br/> <br/> When used on a connector, this is the path to the client-side SSL/TLS keystore which holds the client certificates. This is only relevant for a connector if you are using two-way SSL/TLS. <br/> <br/> Although this value is configured on the server, it is downloaded and used by the client. If the client needs to use a different path from that set on the server, it can override the server-side setting by using the standard <code class="literal">javax.net.ssl.keyStore</code> system property. Use the <code class="literal">org.apache.activemq.ssl.keyStore</code> system property if another component on the client is already making use of the standard property.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										key-store-provider
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Defines the format of the file in which keys are stored, PKCS11 or PKCS12 for example. The accepted values are JDK specific.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										needs-client-auth
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										This property is only for an acceptor. It tells a client connecting to this acceptor that two-way SSL/TLS is required. Valid values are <code class="literal">true</code> or <code class="literal">false</code>. Default is <code class="literal">false</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										ssl-enabled
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Must be <code class="literal">true</code> to enable SSL/TLS. Default is <code class="literal">false</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										trust-store-password
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										When used on an acceptor, this is the password for the server-side truststore. This is only relevant for an acceptor if you are using two-way SSL/TLS. <br/><br/> When used on a connector, this is the password for the client-side truststore. Although this value can be configured on the server, it is downloaded and used by the client. <br/><br/> If the client needs to use a different password from that set on the server, it can override the server-side setting by using either the standard <code class="literal">javax.net.ssl.trustStorePassword</code> system property. Use the <code class="literal">org.apache.activemq.ssl.trustStorePassword</code> system property if another component on the client is already making use of the standard property.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										trust-store-path
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										When used on an acceptor, this is the path to the server-side SSL/TLS keystore that holds the keys of all the clients that the server trusts. This is only relevant for an acceptor if you are using two-way SSL/TLS. <br/><br/> When used on a connector, this is the path to the client-side SSL/TLS keystore which holds the public keys of all the servers that the client trusts. Although this value can be configured on the server, it is downloaded and used by the client. <br/><br/> If the client needs to use a different path from that set on the server, it can override the server-side setting by using either the standard <code class="literal">javax.net.ssl.trustStore</code> system property. Use the <code class="literal">org.apache.activemq.ssl.trustStore</code> system property if another component on the client is already making use of the standard system property.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										trust-store-provider
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Defines the format of the file in which keys are stored, PKCS11 or PKCS12 for example. The accepted values are JDK specific.
+									</p>
+									 </td></tr></tbody></table></div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="securing-destinations-jms-server"/>Securing Destinations</h1></div></div></div><p>
+					In addition to securing remote connections into the messaging server, you can also configure security around specific destinations. This is done by adding a security constraint using the <code class="literal">security-setting</code> configuration element. JBoss EAP messaging comes with a <code class="literal">security-setting</code> configured by default, as shown in the output from the following management CLI command:
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default:read-resource(recursive=true)
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; {
+        ....
+        "security-setting" =&gt; {"#" =&gt; {"role" =&gt; {"guest" =&gt; {
+            "consume" =&gt; true,
+            "create-durable-queue" =&gt; false,
+            "create-non-durable-queue" =&gt; true,
+            "delete-durable-queue" =&gt; false,
+            "delete-non-durable-queue" =&gt; true,
+            "manage" =&gt; false,
+            "send" =&gt; true
+        }}}}
+    }
+}</pre><p>
+					The <code class="literal">security-setting</code> option makes use of wildcards in the <code class="literal">name</code> field to handle which destinations to apply the security constraint. The value of a single <code class="literal">#</code> will match any address. For more information on using wildcards in security constraints, see <a class="link" href="configuring_messaging_security.html#role_based_security_for_address" title="Role-Based Security for Addresses">Role Based Security for Addresses</a>.
+				</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="role_based_security_for_address"/>Role-Based Security for Addresses</h2></div></div></div><p>
+						JBoss EAP messaging contains a flexible role-based security model for applying security to queues, based on their addresses.
+					</p><p>
+						The core JBoss EAP messaging server consists mainly of sets of queues bound to addresses. When a message is sent to an address, the server first looks up the set of queues that are bound to that address and then routes the message to the bound queues.
+					</p><p>
+						JBoss EAP messaging has a set of permissions that can be applied against queues based on their address. An exact string match on the address can be used or a wildcard match can be used using the wildcard characters <code class="literal">#</code> and <code class="literal">*</code>. See <a class="link" href="configure_address_settings.html" title="Chapter 6. Address Settings">Address Settings</a> for more information on how to use the wildcard syntax.
+					</p><p>
+						You can create multiple roles for each <code class="literal">security-setting</code>, and there are 7 permission settings that can be applied to a role. Below is the complete list of the permissions available:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								<code class="literal">create-durable-queue</code> allows the role to create a durable queue under matching addresses.
+							</li><li class="listitem">
+								<code class="literal">delete-durable-queue</code> allows the role to delete a durable queue under matching addresses.
+							</li><li class="listitem">
+								<code class="literal">create-non-durable-queue</code> allows the role to create a non-durable queue under matching addresses.
+							</li><li class="listitem">
+								<code class="literal">delete-non-durable-queue</code> allows the role to delete a non-durable queue under matching addresses.
+							</li><li class="listitem">
+								<code class="literal">send</code> allows the role to send a message to matching addresses.
+							</li><li class="listitem">
+								<code class="literal">consume</code> allows the role to consume a message from a queue bound to matching addresses.
+							</li><li class="listitem">
+								<code class="literal">manage</code> allows the role to invoke management operations by sending management messages to the management address.
+							</li></ul></div><h4><a id="configuring_role_based_security"/>Configuring Role-Based Security</h4><p>
+						To start using role-based security for a <code class="literal">security-setting</code>, you first must create one. As an example, a <code class="literal">security-setting</code> of <code class="literal">news.europe.#</code> is created below. It would apply to any destination starting with <code class="literal">news.europe.</code>, such as <code class="literal">news.europe.fr</code> or <code class="literal">news.europe.tech.uk</code>.
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/security-setting=news.europe.#:add()
+{"outcome" =&gt; "success"}</pre><p>
+						Next, you add a role to the <code class="literal">security-setting</code> you created and declare permissions for it. In the example below, the <code class="literal">dev</code> role is created and given permissions to consume from, and send to, queues, as well as to create and delete non-durable queues. Because the default is <code class="literal">false</code>, you have to tell JBoss EAP only about the permissions you want to switch on.
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/security-setting=news.europe.#/role=dev:add(consume=true,delete-non-durable-queue=true,create-non-durable-queue=true,send=true)
+{"outcome" =&gt; "success"}</pre><p>
+						To further illustrate the use of permissions, the example below creates an <code class="literal">admin</code> role and allows it to send management messages by switching on the <code class="literal">manage</code> permission. The permissions for creating and deleting durable queues are switched on as well:
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/security-setting=news.europe.#/role=admin:add(manage=true,create-durable-queue=true,delete-durable-queue=true)
+{"outcome" =&gt; "success"}</pre><p>
+						To confirm the configuration of a <code class="literal">security-setting</code>, use the management CLI. Remember to use the <code class="literal">recursive=true</code> option to get the full display of permissions:
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default:read-children-resources(child-type=security-setting,recursive=true)
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; {
+        "#" =&gt; {"role" =&gt; {"guest" =&gt; {
+            "consume" =&gt; true,
+            "create-durable-queue" =&gt; false,
+            "create-non-durable-queue" =&gt; true,
+            "delete-durable-queue" =&gt; false,
+            "delete-non-durable-queue" =&gt; true,
+            "manage" =&gt; false,
+            "send" =&gt; true
+        }}},
+        "news.europe.#" =&gt; {"role" =&gt; {
+            "dev" =&gt; {
+                "consume" =&gt; true,
+                "create-durable-queue" =&gt; false,
+                "create-non-durable-queue" =&gt; true,
+                "delete-durable-queue" =&gt; false,
+                "delete-non-durable-queue" =&gt; true,
+                "manage" =&gt; false,
+                "send" =&gt; true
+            },
+            "admin" =&gt; {
+                "consume" =&gt; false,
+                "create-durable-queue" =&gt; true,
+                "create-non-durable-queue" =&gt; false,
+                "delete-durable-queue" =&gt; true,
+                "delete-non-durable-queue" =&gt; false,
+                "manage" =&gt; true,
+                "send" =&gt; false
+            }
+        }}
+    }</pre><p>
+						Above, the permissions for addresses that start with string <code class="literal">news.europe.</code> are displayed in full by the management CLI. To summarize, only users who have the <code class="literal">admin</code> role can create or delete durable queues, while only users with the <code class="literal">dev</code> role can create or delete non-durable queues. Furthermore, users with the <code class="literal">dev</code> role can send or consume messages, but <code class="literal">admin</code> users cannot. They can, however, send management messages since their <code class="literal">manage</code> permission is set to <code class="literal">true</code>.
+					</p><p>
+						In cases where more than one match applies to a set of addresses the more specific match takes precedence. For example, the address <code class="literal">news.europe.tech.uk.#</code> is more specific than <code class="literal">news.europe.tech.#</code>. Because permissions are not inherited, you can effectively deny permissions in more specific <code class="literal">security-setting</code> blocks by simply not specifying them. Otherwise it would not be possible to deny permissions in sub-groups of addresses.
+					</p><p>
+						The mapping between a user and what roles they have is handled by the security manager. JBoss EAP ships with a user manager that reads user credentials from a file on disk, and can also plug into JAAS or JBoss EAP security.
+					</p><p>
+						For more information on configuring the security manager, see the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/"><span class="emphasis"><em>Security Architecture</em></span></a> guide.
+					</p><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="granting_unauthenticated_clients_the_guest_role_using_the_legacy_security_subsystem"/>Granting Unauthenticated Clients the guest Role Using the Legacy Security Subsystem</h3></div></div></div><p>
+							If you want JBoss EAP to automatically grant unauthenticated clients the <code class="literal">guest</code> role make the following two changes:
+						</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									Add a new <code class="literal">module-option</code> to the <code class="literal">other</code> security domain. The new option, <code class="literal">unauthenticatedIdentity</code>, will tell JBoss EAP to grant <code class="literal">guest</code> access to unauthenticated clients. The recommended way to do this is by using the management CLI:
+								</p><pre class="screen">/subsystem=security/security-domain=other/authentication=classic/login-module=RealmDirect:map-put(name=module-options,key=unauthenticatedIdentity,value=guest)
+{
+   "outcome" =&gt; "success",
+   "response-headers" =&gt; {
+       "operation-requires-reload" =&gt; true,
+       "process-state" =&gt; "reload-required"
+   }
+}</pre><p class="simpara">
+									Note that the server requires a reload after issuing the command. You can confirm the new option by using the following management CLI command:
+								</p><pre class="screen">/subsystem=security/security-domain=other/authentication=classic/login-module=RealmDirect:read-resource()
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; {
+        "code" =&gt; "RealmDirect",
+        "flag" =&gt; "required",
+        "module" =&gt; undefined,
+        "module-options" =&gt; {
+            "password-stacking" =&gt; "useFirstPass",
+            "unauthenticatedIdentity" =&gt; "guest"
+        }
+    }
+}</pre><p class="simpara">
+									Also, your server configuration file should look something like this after the command executes:
+								</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:security:2.0"&gt;
+  &lt;security-domains&gt;
+    &lt;security-domain name="other" cache-type="default"&gt;
+       &lt;authentication&gt;
+         ...
+         &lt;login-module code="RealmDirect" flag="required"&gt;
+            ...
+            &lt;module-option name="unauthenticatedIdentity" value="guest"/&gt;
+            ...
+         &lt;/login-module&gt;
+         ...
+       &lt;/authentication&gt;
+    &lt;/security-domain&gt;
+  ...
+  &lt;/security-domains&gt;
+&lt;/subsystem&gt;</pre></li><li class="listitem"><p class="simpara">
+									Uncomment the following line in the file <code class="literal">application-roles.properties</code> by deleting the <code class="literal">#</code> character. The file is located in <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/standalone/configuration/</code> or <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/domain/configuration/</code>, depending on whether you are using standalone servers or a domain controller respectively.
+								</p><pre class="screen">#guest=guest</pre></li></ol></div><p>
+							Remote clients should now be able to access the server without needing to authenticate. They will be given the permissions associated with the <code class="literal">guest</code> role.
+						</p></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="controlling_jms_objectmessage_deserialization"/>Controlling JMS ObjectMessage Deserialization</h1></div></div></div><p>
+					Because an <code class="literal">ObjectMessage</code> can contain potentially dangerous objects, ActiveMQ Artemis provides a simple class filtering mechanism to control which packages and classes are to be trusted and which are not. You can add objects whose classes are from trusted packages to a white list to indicate they can be deserialized without a problem. You can add objects whose classes are from untrusted packages to a black list to prevent them from being deserialized.
+				</p><p>
+					ActiveMQ Artemis filters objects for deserialization as follows.
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							If both the white list and the black list are empty, which is the default, any serializable object is allowed to be deserialized.
+						</li><li class="listitem">
+							If an object’s class or package matches one of the entries in the black list, it is not allowed to be deserialized.
+						</li><li class="listitem">
+							If an object’s class or package matches an entry in the white list, is is allowed to be deserialized.
+						</li><li class="listitem">
+							If an object’s class or package matches an entry in both the black list and the white list, the one in black list takes precedence, meaning it is not allowed to be deserialized.
+						</li><li class="listitem">
+							If an object’s class or package matches neither the black list nor the white list, the object deserialization is denied, unless the white list is empty, meaning there is no white list specified.
+						</li></ul></div><p>
+					An object is considered a match if its full name exactly matches one of the entries in the list, if its package matches one of the entries in the list, or if it is a subpackage of one of the entries in the list.
+				</p><p>
+					You can specify which objects can be deserialized on a <code class="literal">connection-factory</code> and on a <code class="literal">pooled-connection-factory</code> using the <code class="literal">deserialization-white-list</code> and <code class="literal">deserialization-black-list</code> attributes. The <code class="literal">deserialization-white-list</code> attribute is used to define the list of classes or packages that are allowed to be deserialized. The <code class="literal">deserialization-black-list</code> attribute is used to define the list of classes or packages that are not allowed to be deserialized.
+				</p><p>
+					The following commands create a black list for the <code class="literal">RemoteConnectionFactory</code> connection factory and a white list for the <code class="literal">activemq-ra</code> pooled connection factory for the default server.
+				</p><pre class="programlisting">/subsystem=messaging-activemq/server=default/connection-factory=RemoteConnectionFactory:write-attribute(name=deserialization-black-list,value=[my.untrusted.package,another.untrusted.package])
+/subsystem=messaging-activemq/server=default/pooled-connection-factory=activemq-ra:write-attribute(name=deserialization-white-list,value=[my.trusted.package])</pre><p>
+					These commands generate the following configuration in the <code class="literal">messaging-activemq</code> subsystem.
+				</p><pre class="programlisting">&lt;connection-factory name="RemoteConnectionFactory" entries="java:jboss/exported/jms/RemoteConnectionFactory" connectors="http-connector" ha="true" block-on-acknowledge="true" reconnect-attempts="-1" deserialization-black-list="my.untrusted.package another.untrusted.package"/&gt;
+&lt;pooled-connection-factory name="activemq-ra" entries="java:/JmsXA java:jboss/DefaultJMSConnectionFactory" connectors="in-vm" deserialization-white-list="my.trusted.package" transaction="xa"/&gt;</pre><p>
+					For information about connection factories and pooled connection factories, see <a class="link" href="configuring_messaging_connection_factories.html" title="Chapter 9. Configuring Connection Factories">Configuring Connection Factories</a> in this guide.
+				</p><p>
+					You can also specify which objects can be deserialized in an MDB by configuring the activation properties. The <code class="literal">deserializationWhiteList</code> property is used to define the list of classes or packages that are allowed to be deserialized. The <code class="literal">deserializationBlackList</code> property is used to define the list of classes or packages that are not allowed to be deserialized. For more information about activation properties, see <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/developing_ejb_applications/#configuring_mdbs_using_deployment_descriptor">Configuring MDBs Using a Deployment Descriptor</a> in <span class="emphasis"><em>Developing EJB Applications</em></span> for JBoss EAP.
+				</p></div></div></body></html>

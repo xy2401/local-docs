@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 11. Configuring Paging</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="configuring_paging"/>Chapter 11. Configuring Paging</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="about_paging"/>About Paging</h1></div></div></div><p>
+					JBoss EAP messaging supports many message queues with each queue containing millions of messages. The JBoss EAP messaging server runs with limited memory thereby making it difficult to store all message queues in memory at one time.
+				</p><p>
+					Paging is a mechanism used by the JBoss EAP messaging server to transparently page messages in and out of memory on an as-needed basis in order to accommodate large message queues in a limited memory.
+				</p><p>
+					JBoss EAP messaging starts paging messages to disk, when the size of messages in memory for a particular address exceeds the maximum configured message size.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						JBoss EAP messaging paging is enabled by default.
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="page_files"/>Page Files</h1></div></div></div><p>
+					There is an individual folder for each address on the file system which stores messages in multiple files. These files which store the messages are called page files. Each file contains messages up to the maximum configured message size set by the <code class="literal">page-size-bytes</code> attribute.
+				</p><p>
+					The system navigates the page files as needed and removes the page files as soon as all messages in the page were received by client.
+				</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+						For performance reasons, JBoss EAP messaging does not scan paged messages. Therefore, you should disable paging on a queue that is configured to group messages or to provide a last value. Also, message prioritization and message selectors will not behave as expected for queues that have paging enabled. You must disable paging for these features to work as expected
+					</p><p>
+						For example, if a consumer has a message selector to read messages from a queue, only the messages in memory that match the selector are delivered to the consumer. When the consumer acknowledges delivery of these messages, new messages are de-paged and loaded into memory. There may be messages that match a consumer’s selector on disk in page files but JBoss EAP messaging does not load them into memory until another consumer reads the messages in memory and provides free space. If the free space is not available, the consumer employing a selector may not receive any new messages.
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuration_of_paging_folder"/>Configuring the Paging Directory</h1></div></div></div><p>
+					You can read the configuration for the paging directory by using the management CLI command below. In this example, the output displays the default configuration.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/path=paging-directory:read-resource
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; {
+        "path" =&gt; "activemq/paging",
+        "relative-to" =&gt; "jboss.server.data.dir"
+    }
+}</pre><p>
+					The <code class="literal">paging-directory</code> configuration element specifies the location on the file system to store the page files. JBoss EAP creates one folder for each paging address in this paging directory and the page files are stored within these folders. By default, this path is <code class="literal">activemq/paging/</code>. You can change the path location by using the following management CLI command.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/path=paging-directory:write-attribute(name=path,value=<span class="emphasis"><em>PATH_LOCATION</em></span>)</pre><p>
+					Also note the <code class="literal">relative-to</code> attribute in the example output above. When <code class="literal">relative-to</code> is specified, the value of the <code class="literal">path</code> attribute is treated as relative to the file path specified by the <code class="literal">relative-to</code> attribute. By default, this value is the JBoss EAP <code class="literal">jboss.server.data.dir</code> property. For standalone servers, <code class="literal">jboss.server.data.dir</code> is located at <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/standalone/data/</code>. For managed domains, each server will have its own <code class="literal">serverX/data/activemq/</code> directory located under <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/domain/servers/</code>. You can change the value of <code class="literal">relative-to</code> using the following management CLI command.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/path=paging-directory:write-attribute(name=relative-to,value=<span class="emphasis"><em>RELATIVE_LOCATION</em></span>)</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="paging_mode"/>Configuring Paging Mode</h1></div></div></div><p>
+					When messages delivered to an address exceed the configured size, that address goes into <span class="emphasis"><em>paging mode</em></span>.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						Paging is done individually per address. If you configure a <code class="literal">max-size-bytes</code> for an address, it means each matching address will have a maximum size that you specified. However it does not mean that the total overall size of all matching addresses is limited to <code class="literal">max-size-bytes</code>.
+					</p></div><p>
+					Even with <code class="literal">page</code> mode, the server may crash due to an out-of-memory error. JBoss EAP messaging keeps a reference to each page file on the disk. In a situation with millions of page files, JBoss EAP messaging can face memory exhaustion. To minimize this risk, it is important to set the attribute <code class="literal">page-size-bytes</code> to a suitable value. You must configure the memory for your JBoss EAP messaging server to be greater than two times the number of destinations times the <code class="literal">max-size-bytes</code>, otherwise an out-of-memory error can occur.
+				</p><p>
+					You can read the current maximum size in bytes (<code class="literal">max-size-bytes</code>) for an address by using the following management CLI command.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/address-setting=<span class="emphasis"><em>ADDRESS_SETTING</em></span>:read-attribute(name=max-size-bytes)</pre><p>
+					You can configure the maximum size in bytes (<code class="literal">max-size-bytes</code>) for an address by using the following management CLI command.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/address-setting=<span class="emphasis"><em>ADDRESS_SETTING</em></span>:write-attribute(name=max-size-bytes,value=<span class="emphasis"><em>MAX_SIZE</em></span>)</pre><p>
+					Use a similar syntax when reading or writing the values for the other paging-related attributes of an address setting. The table below lists each attribute, along with a description and a default value.
+				</p><p>
+					The following table describes the parameters on the address settings:
+				</p><div class="table"><a id="idm139716515218816"/><p class="title"><strong>Table 11.1. Paging Configuration for Address Settings</strong></p><div class="table-contents"><table summary="Paging Configuration for Address Settings" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Element</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+									address-full-policy
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									This value of this attribute is used for paging decisions. The valid valid values are listed below.
+								</p>
+								 <div class="variablelist"><dl class="variablelist"><dt><span class="term"><code class="literal">PAGE</code></span></dt><dd>
+												Enables paging and page messages beyond the set limit to disk.
+											</dd><dt><span class="term"><code class="literal">DROP</code></span></dt><dd>
+												Silently drops messages that exceed the set limit.
+											</dd><dt><span class="term"><code class="literal">FAIL</code></span></dt><dd>
+												Drops messages and sends an exception to client message producers.
+											</dd><dt><span class="term"><code class="literal">BLOCK</code></span></dt><dd>
+												Blocks client message producers when they send messages beyond the set limit.
+											</dd></dl></div>
+								 <p>
+									The default is <code class="literal">PAGE</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									max-size-bytes
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									This is used to specify the maximum memory size the address can have before entering into paging mode. The default is <code class="literal">10485760</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									page-max-cache-size
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									The system will keep page files up to <code class="literal">page-max-cache-size</code> in memory to optimize Input/Output during paging navigation. The default is <code class="literal">5</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									page-size-bytes
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									This is used to specify the size of each page file used on the paging system. The default is <code class="literal">2097152</code>.
+								</p>
+								 </td></tr></tbody></table></div></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						By default, all addresses are configured to page messages after an address reaches <code class="literal">max-size-bytes</code>. If you do not want to page messages when the maximum size is reached, you can configure an address to drop messages, drop messages with an exception on client side, or block producers from sending further messages by setting the <code class="literal">address-full-policy</code> to <code class="literal">DROP</code>, <code class="literal">FAIL</code> and <code class="literal">BLOCK</code> respectively.
+					</p><p>
+						Be aware that if you change the <code class="literal">address-full-policy</code> from <code class="literal">PAGE</code> to <code class="literal">BLOCK</code> after any destination has started to page messages, consumers will no longer be able to consume paged messages.
+					</p></div><p>
+					<span class="strong"><strong>Addresses with Multiple Queues</strong></span>
+				</p><p>
+					When a message is routed to an address that has multiple queues bound to it, there is only a single copy of the message in memory. Each queue only handles a reference to this original copy of the message, so the memory is freed up only when all the queues referencing the original message, have delivered the message.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						A single lazy queue/subscription can reduce the Input/Output performance of the entire address as all the queues will have messages being sent through an extra storage on the paging system.
+					</p></div></div></div></body></html>

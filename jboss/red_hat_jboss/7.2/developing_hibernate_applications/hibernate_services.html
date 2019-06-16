@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 5. Hibernate Services</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="hibernate_services"/>Chapter 5. Hibernate Services</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="about_hibernate_services"/>About Hibernate Services</h1></div></div></div><p>
+				Services are classes that provide Hibernate with pluggable implementations of various types of functionality. Specifically they are implementations of certain service contract interfaces. The interface is known as the service role; the implementation class is known as the service implementation. Generally speaking, users can plug in alternate implementations of all standard service roles (overriding); they can also define additional services beyond the base set of service roles (extending).
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="about_service_contracts"/>About Service Contracts</h1></div></div></div><p>
+				The basic requirement for a service is to implement the marker interface org.hibernate.service.Service. Hibernate uses this internally for some basic type safety.
+			</p><p>
+				Optionally, the service can also implement the org.hibernate.service.spi.Startable and org.hibernate.service.spi.Stoppable interfaces to receive notifications of being started and stopped. Another optional service contract is org.hibernate.service.spi.Manageable which marks the service as manageable in JMX provided the JMX integration is enabled.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="types_of_service_dependencies"/>Types of Service Dependencies</h1></div></div></div><p>
+				Services are allowed to declare dependencies on other services using either of the following approaches:
+			</p><div class="variablelist"><dl class="variablelist"><dt><span class="term">@org.hibernate.service.spi.InjectService</span></dt><dd><p class="simpara">
+							Any method on the service implementation class accepting a single parameter and annotated with <code class="literal">@InjectService</code> is considered requesting injection of another service.
+						</p><p class="simpara">
+							By default the type of the method parameter is expected to be the service role to be injected. If the parameter type is different than the service role, the <code class="literal">serviceRole</code> attribute of the <code class="literal">InjectService</code> should be used to explicitly name the role.
+						</p><p class="simpara">
+							By default injected services are considered required, that is the startup will fail if a named dependent service is missing. If the service to be injected is optional, the required attribute of the <code class="literal">InjectService</code> should be declared as <code class="literal">false</code>. The default is <code class="literal">true</code>.
+						</p></dd><dt><span class="term">org.hibernate.service.spi.ServiceRegistryAwareService</span></dt><dd><p class="simpara">
+							The second approach is a pull approach where the service implements the optional service interface <code class="literal">org.hibernate.service.spi.ServiceRegistryAwareService</code> which declares a single <code class="literal">injectServices</code> method.
+						</p><p class="simpara">
+							During startup, Hibernate will inject the <code class="literal">org.hibernate.service.ServiceRegistry</code> itself into services which implement this interface. The service can then use the <code class="literal">ServiceRegistry</code> reference to locate any additional services it needs.
+						</p></dd></dl></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="the_service_registry"/>The Service Registry</h2></div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="about_the_serviceRegistry"/>About the ServiceRegistry</h3></div></div></div><p>
+						The central service API, aside from the services themselves, is the org.hibernate.service.ServiceRegistry interface. The main purpose of a service registry is to hold, manage and provide access to services.
+					</p><p>
+						Service registries are hierarchical. Services in one registry can depend on and utilize services in that same registry as well as any parent registries.
+					</p><p>
+						Use org.hibernate.service.ServiceRegistryBuilder to build a org.hibernate.service.ServiceRegistry instance.
+					</p><div class="title"><strong>Example Using ServiceRegistryBuilder to Create a ServiceRegistry</strong></div><p>
+							
+</p><pre class="programlisting">ServiceRegistryBuilder registryBuilder =
+    new ServiceRegistryBuilder( bootstrapServiceRegistry );
+    ServiceRegistry serviceRegistry = registryBuilder.buildServiceRegistry();</pre><p>
+
+						</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="custom_services"/>Custom Services</h2></div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="about_custom_services"/>About Custom Services</h3></div></div></div><p>
+						Once a <code class="literal">org.hibernate.service.ServiceRegistry</code> is built it is considered immutable; the services themselves might accept reconfiguration, but immutability here means adding or replacing services. So another role provided by the <code class="literal">org.hibernate.service.ServiceRegistryBuilder</code> is to allow tweaking of the services that will be contained in the <code class="literal">org.hibernate.service.ServiceRegistry</code> generated from it.
+					</p><p>
+						There are two means to tell a <code class="literal">org.hibernate.service.ServiceRegistryBuilder</code> about custom services.
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								Implement a <code class="literal">org.hibernate.service.spi.BasicServiceInitiator</code> class to control on-demand construction of the service class and add it to the <code class="literal">org.hibernate.service.ServiceRegistryBuilder</code> using its <code class="literal">addInitiator</code> method.
+							</li><li class="listitem">
+								Just instantiate the service class and add it to the <code class="literal">org.hibernate.service.ServiceRegistryBuilder</code> using its <code class="literal">addService</code> method.
+							</li></ul></div><p>
+						Either approach is valid for extending a registry, such as adding new service roles, and overriding services, such as replacing service implementations.
+					</p><div class="title"><strong>Example: Use ServiceRegistryBuilder to Replace an Existing Service with a Custom Service</strong></div><p>
+							
+</p><pre class="programlisting">ServiceRegistryBuilder registryBuilder =
+    new ServiceRegistryBuilder(bootstrapServiceRegistry);
+registryBuilder.addService(JdbcServices.class, new MyCustomJdbcService());
+ServiceRegistry serviceRegistry = registryBuilder.buildServiceRegistry();
+
+public class MyCustomJdbcService implements JdbcServices{
+
+   @Override
+   public ConnectionProvider getConnectionProvider() {
+       return null;
+   }
+
+   @Override
+   public Dialect getDialect() {
+       return null;
+   }
+
+   @Override
+   public SqlStatementLogger getSqlStatementLogger() {
+       return null;
+   }
+
+   @Override
+   public SqlExceptionHelper getSqlExceptionHelper() {
+       return null;
+   }
+
+   @Override
+   public ExtractedDatabaseMetaData getExtractedMetaDataSupport() {
+       return null;
+   }
+
+   @Override
+   public LobCreator getLobCreator(LobCreationContext lobCreationContext) {
+       return null;
+   }
+
+   @Override
+   public ResultSetWrapper getResultSetWrapper() {
+       return null;
+   }
+}</pre><p>
+
+						</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="the_boot_strap_registry"/>The Boot-Strap Registry</h2></div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="about_the_boot-strap_registry"/>About the Boot-strap Registry</h3></div></div></div><p>
+						The boot-strap registry holds services that absolutely have to be available for most things to work. The main service here is the <code class="literal">ClassLoaderService</code> which is a perfect example. Even resolving configuration files needs access to class loading services i.e. resource look ups. This is the root registry, no parent, in normal use.
+					</p><p>
+						Instances of boot-strap registries are built using the <code class="literal">org.hibernate.service.BootstrapServiceRegistryBuilder</code> class.
+					</p><h4><a id="using_bootstrapserviceregistrybuilder"/>Using BootstrapServiceRegistryBuilder</h4><div class="title"><strong>Example: Using BootstrapServiceRegistryBuilder</strong></div><p>
+							
+</p><pre class="programlisting">BootstrapServiceRegistry bootstrapServiceRegistry =
+    new BootstrapServiceRegistryBuilder()
+    // pass in org.hibernate.integrator.spi.Integrator instances which are not
+    // auto-discovered (for whatever reason) but which should be included
+    .with(anExplicitIntegrator)
+    // pass in a class loader that Hibernate should use to load application classes
+    .with(anExplicitClassLoaderForApplicationClasses)
+    // pass in a class loader that Hibernate should use to load resources
+    .with(anExplicitClassLoaderForResources)
+    // see BootstrapServiceRegistryBuilder for rest of available methods
+    ...
+    // finally, build the bootstrap registry with all the above options
+    .build();</pre><p>
+
+						</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="bootstarpregistry_services"/>BootstrapRegistry Services</h3></div></div></div><div class="variablelist"><dl class="variablelist"><dt><span class="term"><code class="literal">org.hibernate.service.classloading.spi.ClassLoaderService</code></span></dt><dd><p class="simpara">
+									Hibernate needs to interact with class loaders. However, the manner in which Hibernate, or any library, should interact with class loaders varies based on the runtime environment that is hosting the application. Application servers, OSGi containers, and other modular class loading systems impose very specific class loading requirements. This service provides Hibernate an abstraction from this environmental complexity. And just as importantly, it does so in a single-swappable-component manner.
+								</p><p class="simpara">
+									In terms of interacting with a class loader, Hibernate needs the following capabilities:
+								</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											the ability to locate application classes
+										</li><li class="listitem">
+											the ability to locate integration classes
+										</li><li class="listitem">
+											the ability to locate resources, such as properties files and XML files
+										</li><li class="listitem"><p class="simpara">
+											the ability to load <code class="literal">java.util.ServiceLoader</code>
+										</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+												Currently, the ability to load application classes and the ability to load integration classes are combined into a single <span class="strong"><strong>load class</strong></span> capability on the service. That may change in a later release.
+											</p></div></li></ul></div></dd><dt><span class="term"><code class="literal">org.hibernate.integrator.spi.IntegratorService</code></span></dt><dd><p class="simpara">
+									Applications, add-ons and other modules need to integrate with Hibernate. The previous approach required a component, usually an application, to coordinate the registration of each individual module. This registration was conducted on behalf of each module’s integrator.
+								</p><p class="simpara">
+									This service focuses on the discovery aspect. It leverages the standard Java <code class="literal">java.util.ServiceLoader</code> capability provided by the <code class="literal">org.hibernate.service.classloading.spi.ClassLoaderService</code> in order to discover implementations of the <code class="literal">org.hibernate.integrator.spi.Integrator</code> contract.
+								</p><p class="simpara">
+									Integrators would simply define a file named <code class="literal">/META-INF/services/org.hibernate.integrator.spi.Integrator</code> and make it available on the class path.
+								</p><p class="simpara">
+									This file is used by the <code class="literal">java.util.ServiceLoader</code> mechanism. It lists, one per line, the fully qualified names of classes which implement the <code class="literal">org.hibernate.integrator.spi.Integrator</code> interface.
+								</p></dd></dl></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sessionFactory_registry"/>SessionFactory Registry</h2></div></div></div><p>
+					While it is best practice to treat instances of all the registry types as targeting a given <code class="literal">org.hibernate.SessionFactory</code>, the instances of services in this group explicitly belong to a single <code class="literal">org.hibernate.SessionFactory</code>.
+				</p><p>
+					The difference is a matter of timing in when they need to be initiated. Generally they need access to the <code class="literal">org.hibernate.SessionFactory</code> to be initiated. This special registry is <code class="literal">org.hibernate.service.spi.SessionFactoryServiceRegistry</code>.
+				</p><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="sessionFactory_services"/>SessionFactory Services</h3></div></div></div><p>
+						<code class="literal">org.hibernate.event.service.spi.EventListenerRegistry</code>
+					</p><div class="variablelist"><dl class="variablelist"><dt><span class="term">Description</span></dt><dd>
+									Service for managing event listeners.
+								</dd><dt><span class="term">Initiator</span></dt><dd>
+									<code class="literal">org.hibernate.event.service.internal.EventListenerServiceInitiator</code>
+								</dd><dt><span class="term">Implementations</span></dt><dd>
+									<code class="literal">org.hibernate.event.service.internal.EventListenerRegistryImpl</code>
+								</dd></dl></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="integrators"/>Integrators</h2></div></div></div><p>
+					The <code class="literal">org.hibernate.integrator.spi.Integrator</code> is intended to provide a simple means for allowing developers to hook into the process of building a functioning <code class="literal">SessionFactory</code>. The <code class="literal">org.hibernate.integrator.spi.Integrator</code> interface defines two methods of interest:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							<code class="literal">integrate</code> allows us to hook into the building process
+						</li><li class="listitem">
+							<code class="literal">disintegrate</code> allows us to hook into a <code class="literal">SessionFactory</code> shutting down.
+						</li></ul></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						There is a third method defined in <code class="literal">org.hibernate.integrator.spi.Integrator</code>, an overloaded form of integrate, accepting a <code class="literal">org.hibernate.metamodel.source.MetadataImplementor</code> instead of <code class="literal">org.hibernate.cfg.Configuration</code>.
+					</p><p>
+						In addition to the discovery approach provided by the <code class="literal">IntegratorService</code>, applications can manually register Integrator implementations when building the <code class="literal">BootstrapServiceRegistry</code>.
+					</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="integrator_use-cases"/>Integrator Use Cases</h3></div></div></div><p>
+						The main use cases for an <code class="literal">org.hibernate.integrator.spi.Integrator</code> are registering event listeners and providing services, see <a class="link" href="http://docs.jboss.org/hibernate/orm/5.2/javadocs/org/hibernate/integrator/spi/ServiceContributingIntegrator.html"><code class="literal">org.hibernate.integrator.spi.ServiceContributingIntegrator</code></a>.
+					</p><div class="title"><strong>Example: Registering Event Listeners</strong></div><p>
+							
+</p><pre class="programlisting">public class MyIntegrator implements org.hibernate.integrator.spi.Integrator {
+
+    public void integrate(
+            Configuration configuration,
+            SessionFactoryImplementor sessionFactory,
+            SessionFactoryServiceRegistry serviceRegistry) {
+        // As you might expect, an EventListenerRegistry is the thing with which event listeners are registered  It is a
+        // service so we look it up using the service registry
+        final EventListenerRegistry eventListenerRegistry = serviceRegistry.getService(EventListenerRegistry.class);
+
+        // If you wish to have custom determination and handling of "duplicate" listeners, you would have to add an
+        // implementation of the org.hibernate.event.service.spi.DuplicationStrategy contract like this
+        eventListenerRegistry.addDuplicationStrategy(myDuplicationStrategy);
+
+        // EventListenerRegistry defines 3 ways to register listeners:
+        //     1) This form overrides any existing registrations with
+        eventListenerRegistry.setListeners(EventType.AUTO_FLUSH, myCompleteSetOfListeners);
+        //     2) This form adds the specified listener(s) to the beginning of the listener chain
+        eventListenerRegistry.prependListeners(EventType.AUTO_FLUSH, myListenersToBeCalledFirst);
+        //     3) This form adds the specified listener(s) to the end of the listener chain
+        eventListenerRegistry.appendListeners(EventType.AUTO_FLUSH, myListenersToBeCalledLast);
+    }
+}</pre><p>
+
+						</p></div></div></div></div></body></html>

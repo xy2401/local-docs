@@ -1,0 +1,310 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 5. Invoking Session Beans</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="invoking_session_beans"/>Chapter 5. Invoking Session Beans</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="about_ejb_client_contexts"/>About EJB Client Contexts</h1></div></div></div><p>
+				JBoss EAP introduced the EJB client API for managing remote EJB invocations. The JBoss EJB client API uses the EJBClientContext, which may be associated with and be used by one or more threads concurrently. This means an EJBClientContext can potentially contain any number of EJB receivers. An EJB receiver is a component that knows how to communicate with a server that is capable of handling the EJB invocation. Typically, EJB remote applications can be classified into the following:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						A remote client, which runs as a standalone Java application.
+					</li><li class="listitem">
+						A remote client, which runs within another JBoss EAP instance.
+					</li></ul></div><p>
+				Depending on the type of remote client, from an EJB client API point of view, there can potentially be more than one EJBClientContext within a JVM.
+			</p><p>
+				While standalone applications typically have a single EJBClientContext that may be backed by any number of EJB receivers, this isn’t mandatory. If a standalone application has more than one EJBClientContext, an EJB client context selector is responsible for returning the appropriate context.
+			</p><p>
+				In case of remote clients that run within another JBoss EAP instance, each deployed application will have a corresponding EJB client context. Whenever that application invokes another EJB, the corresponding EJB client context is used to find the correct EJB receiver, which then handles the invocation.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="using_ejb_client"/>Using Remote EJB Clients</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="initial_context_lookup"/>Initial Context Lookup</h2></div></div></div><p>
+					You can pass the remote server’s address using the <code class="literal">PROVIDER_URL</code> property when creating an initial context:
+				</p><pre class="programlisting">public class Client {
+    public static void main(String[] args)
+            throws NamingException, PrivilegedActionException, InterruptedException {
+        InitialContext ctx = new InitialContext(getCtxProperties());
+        String lookupName = "ejb:/server/HelloBean!ejb.HelloBeanRemote";
+        HelloBeanRemote bean = (HelloBeanRemote)ctx.lookup(lookupName);
+        System.out.println(bean.hello());
+        ctx.close();
+    }
+    public static Properties getCtxProperties() {
+        Properties props = new Properties();
+        props.put(Context.INITIAL_CONTEXT_FACTORY, WildFlyInitialContextFactory.class.getName());
+        props.put(Context.PROVIDER_URL, "remote+http://127.0.0.1:8080");
+        props.put(Context.SECURITY_PRINCIPAL, "joe");
+        props.put(Context.SECURITY_CREDENTIALS, "joeIsAwesome2013!");
+        return props;
+    }
+}</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						The Initial context factory to be used for the lookup is <code class="literal">org.wildfly.naming.client.WildFlyInitialContextFactory</code>.
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="remote_ejb_configuration_file"/>Remote EJB Configuration File</h2></div></div></div><p>
+					JBoss EAP features the Elytron security framework. The <code class="literal">wildfly-config.xml</code> file, which is present in the <code class="literal">META-INF/</code> directory of the client application’s class path, allows a wide range of authentication and authorization options for the Elytron security framework and EJB client configuration.
+				</p><pre class="programlisting">&lt;configuration&gt;
+   &lt;authentication-client xmlns="urn:elytron:client:1.2"&gt;
+      &lt;authentication-rules&gt;
+         &lt;rule use-configuration="default" /&gt;
+      &lt;/authentication-rules&gt;
+      &lt;authentication-configurations&gt;
+         &lt;configuration name="default"&gt;
+            &lt;sasl-mechanism-selector selector="DIGEST-MD5" /&gt;
+            &lt;set-user-name name="admin" /&gt;
+            &lt;credentials&gt;
+               &lt;clear-password password="password123!" /&gt;
+            &lt;/credentials&gt;
+         &lt;/configuration&gt;
+      &lt;/authentication-configurations&gt;
+   &lt;/authentication-client&gt;
+   &lt;jboss-ejb-client xmlns="urn:jboss:wildfly-client-ejb:3.0"&gt;
+      &lt;connections&gt;
+         &lt;connection uri="remote+http://127.0.0.1:8080" /&gt;
+      &lt;/connections&gt;
+   &lt;/jboss-ejb-client&gt;
+&lt;/configuration&gt;</pre><p>
+					As an alternative to embedding the <code class="literal">PROVIDER_URL</code>, <code class="literal">SECURITY_PRINCIPAL</code> and <code class="literal">SECURITY_CREDENTIALS</code> parameters in the initial context, you can use the <code class="literal">&lt;connection-uri&gt;</code> and <code class="literal">&lt;authentication-client&gt;</code> elements in the <code class="literal">wildfly-config.xml</code> file to configure the connection URI and the security settings, respectively.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="client_transaction_annotation"/>The ClientTransaction Annotation</h2></div></div></div><p>
+					The <code class="literal">@org.jboss.ejb.client.annotation.ClientTransaction</code> annotation handles transaction propagation from an EJB client. You can mandate the propagation to fail if the client has no transaction, or prevent the transaction propagation even if the client has one active. You can use the constants of the <code class="literal">org.jboss.ejb.client.annotation.ClientTransactionPolicy</code> interface to control the policy of the <code class="literal">ClientTransaction</code> annotation. The following are the constants of the <code class="literal">org.jboss.ejb.client.annotation.ClientTransactionPolicy</code> interface:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							MANDATORY: Fail with exception when there is no client-side transaction context; propagate the client-side transaction context when it is present.
+						</li><li class="listitem">
+							NEVER: Invoke without propagating any transaction context; if a client-side transaction context is present, an exception is thrown.
+						</li><li class="listitem">
+							NOT_SUPPORTED: Invoke without propagating any transaction context whether or not a client-side transaction context is present.
+						</li><li class="listitem">
+							SUPPORTS: Invoke without a transaction if there is no client-side transaction context; propagate the client-side transaction context if it is present.
+						</li></ul></div><p>
+					If no annotation is present, the default policy is <code class="literal">org.jboss.ejb.client.annotation.ClientTransactionPolicy#SUPPORTS</code>, which means that the transaction is propagated if it is present, but the propagation does not fail, regardless of whether a transaction is present or not.
+				</p><pre class="programlisting">@ClientTransaction(ClientTransactionPolicy.MANDATORY)
+@Remote
+public interface RemoteCalculator  {
+   public void callRemoteEjb() { }
+}
+@Stateless
+@Remote(RemoteCalculator.class)
+public class CalculatorBean implements RemoteCalculator {
+
+   @Override
+   public void callRemoteEjb()  {   }
+}</pre><p>
+					The annotation allows the remote interface provider to tell the remote interface consumer whether transactions are needed for a method.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="remote_ejb_data_compression"/>Remote EJB Data Compression</h1></div></div></div><p>
+				Previous versions of JBoss EAP included a feature where the message stream that contained the EJB protocol message could be compressed. This feature has been included in JBoss EAP 6.3 and later.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Compression currently can only be specified by annotations on the EJB interface which should be on the client and server side. There is not currently an XML equivalent to specify compression hints.
+				</p></div><p>
+				Data compression hints can be specified via the JBoss annotation <code class="literal">org.jboss.ejb.client.annotation.CompressionHint</code>. The hint values specify whether to compress the request, response or request and response. Adding <code class="literal">@CompressionHint</code> defaults to <code class="literal">compressResponse=true</code> and <code class="literal">compressRequest=true</code>.
+			</p><p>
+				The annotation can be specified at the interface level to apply to all methods in the EJB’s interface such as:
+			</p><pre class="programlisting">import org.jboss.ejb.client.annotation.CompressionHint;
+
+@CompressionHint(compressResponse = false)
+public interface ClassLevelRequestCompressionRemoteView {
+    String echo(String msg);
+}</pre><p>
+				Or the annotation can be applied to specific methods in the EJB’s interface such as:
+			</p><pre class="programlisting">import org.jboss.ejb.client.annotation.CompressionHint;
+
+public interface CompressableDataRemoteView {
+
+    @CompressionHint(compressResponse = false, compressionLevel = Deflater.BEST_COMPRESSION)
+    String echoWithRequestCompress(String msg);
+
+    @CompressionHint(compressRequest = false)
+    String echoWithResponseCompress(String msg);
+
+    @CompressionHint
+    String echoWithRequestAndResponseCompress(String msg);
+
+    String echoWithNoCompress(String msg);
+}</pre><p>
+				The <code class="literal">compressionLevel</code> setting shown above can have the following values:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						BEST_COMPRESSION
+					</li><li class="listitem">
+						BEST_SPEED
+					</li><li class="listitem">
+						DEFAULT_COMPRESSION
+					</li><li class="listitem">
+						NO_COMPRESSION
+					</li></ul></div><p>
+				The <code class="literal">compressionLevel</code> setting defaults to <code class="literal">Deflater.DEFAULT_COMPRESSION</code>.
+			</p><p>
+				Class level annotation with method level overrides:
+			</p><pre class="programlisting">@CompressionHint
+public interface MethodOverrideDataCompressionRemoteView {
+
+    @CompressionHint(compressRequest = false)
+    String echoWithResponseCompress(final String msg);
+
+    @CompressionHint(compressResponse = false)
+    String echoWithRequestCompress(final String msg);
+
+    String echoWithNoExplicitDataCompressionHintOnMethod(String msg);
+}</pre><p>
+				On the client side ensure the <code class="literal">org.jboss.ejb.client.view.annotation.scan.enabled</code> system property is set to <code class="literal">true</code>. This property tells JBoss EJB Client to scan for annotations.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ejb_client_remoting_interoperability"/>EJB Client Remoting Interoperability</h1></div></div></div><p>
+				The default remote connection port is <code class="literal">8080</code>. The <code class="literal">jboss-ejb-client</code> properties file looks like this:
+			</p><pre class="screen">remote.connectionprovider.create.options.org.xnio.Options.SSL_ENABLED=false
+remote.connections=default
+remote.connection.default.host=localhost
+remote.connection.default.port=8080
+remote.connection.default.connect.options.org.xnio.Options.SASL_POLICY_NOANONYMOUS=false</pre><h3><a id="default_connector"/>Default Connector</h3><p>
+				The default connector is <code class="literal">http-remoting</code>.
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						If a client application uses the EJB client library from JBoss EAP 6 and wants to connect to a JBoss EAP 7 server, the server must be configured to expose a remoting connector on a port other than <code class="literal">8080</code>. The client must then connect using that newly configured connector.
+					</li><li class="listitem"><p class="simpara">
+						A client application that uses the EJB client library from JBoss EAP 7 and wants to connect to a JBoss EAP 6 server must be aware that the server instance does not use the <code class="literal">http-remoting</code> connector and instead uses a <code class="literal">remoting</code> connector. This is achieved by defining a new client-side connection property.
+					</p><pre class="screen">remote.connection.default.protocol=remote</pre></li></ul></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					EJB remote calls are supported for JBoss EAP 7 with JBoss EAP 6 only.
+				</p></div><p>
+				Besides EJB client remoting interoperability, you can connect to legacy clients using the following options:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuration_guide/#configure_the_orb_for_jts_transactions">Configure the ORB for JTS Transactions</a> in the JBoss EAP <span class="emphasis"><em>Configuration Guide</em></span>.
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configure_iiop_for_remote_ejb_calls"/>Configure IIOP for Remote EJB Calls</h1></div></div></div><p>
+				JBoss EAP supports CORBA/IIOP-based access to EJBs deployed on JBoss EAP.
+			</p><p>
+				The <code class="literal">&lt;iiop&gt;</code> element is used to enable IIOP, CORBA, invocation of EJBs. The presence of this element means that the <code class="literal">iiop-openjdk</code> subsystem is installed. The <code class="literal">&lt;iiop&gt;</code> element includes the following two attributes:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<code class="literal">enable-by-default</code>: If this is <code class="literal">true</code>, then all the EJBs with EJB 2.x home interfaces are exposed through IIOP. Otherwise they must be explicitly enabled through <code class="literal">jboss-ejb3.xml</code>.
+					</li><li class="listitem">
+						<code class="literal">use-qualified-name</code>: If this is <code class="literal">true</code>, then the EJBs are bound to the CORBA naming context with a binding name that contains the application and modules name of the deployment, such as <code class="literal">myear/myejbjar/MyBean</code>. If this is <code class="literal">false</code>, then the default binding name is simply the bean name.
+					</li></ul></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Even though a <code class="literal">RemoteHome</code> interface is not normally required for EJB 3 remote calls, it is required for any EJB 3 bean that is exposed using IIOP. You must then enable IIOP using the <code class="literal">jboss-ejb3.xml</code> file, or by enabling IIOP for all EJBs in the <code class="literal">standalone-full.xml</code> configuration file.
+				</p></div><h3><a id="enabling_iiop"/>Enabling IIOP</h3><p>
+				To enable IIOP you must have the IIOP OpenJDK ORB subsystem installed, and the <code class="literal">&lt;iiop/&gt;</code> element present in the <code class="literal">ejb3</code> subsystem configuration. The <code class="literal">standalone-full.xml</code> configuration that comes with the distribution has both of these enabled.
+			</p><p>
+				IIOP is configured in the <code class="literal">iiop-openjdk</code> subsystem of the server configuration file.
+			</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:iiop-openjdk:2.1"&gt;</pre><p>
+				Use the following management CLI command to access and update the <code class="literal">iiop-openjdk</code> subsystem.
+			</p><pre class="screen">/subsystem=iiop-openjdk</pre><p>
+				The IIOP element takes two attributes that control the default behavior of the server.
+			</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:ejb3:5.0"&gt;
+  ...
+  &lt;iiop enable-by-default="false" use-qualified-name="false"/&gt;
+  ...
+&lt;/subsystem&gt;</pre><p>
+				The following management CLI command adds the <code class="literal">&lt;iiop&gt;</code> element under the <code class="literal">ejb3</code> subsystem:
+			</p><pre class="screen">/subsystem=ejb3/service=iiop:add(enable-by-default=false, use-qualified-name=false)</pre><h3><a id="create_an_ejb_that_communicates_using_iiop"/>Create an EJB That Communicates Using IIOP</h3><p>
+				The following example demonstrates how to make a remote IIOP call from the client:
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Create an EJB 2 bean on the server:
+					</p><pre class="programlisting">@Remote(IIOPRemote.class)
+@RemoteHome(IIOPBeanHome.class)
+@Stateless
+public class IIOPBean {
+    public String sayHello() throws RemoteException {
+         return "hello";
+    }
+}</pre></li><li class="listitem"><p class="simpara">
+						Create a home implementation, which has a mandatory method <code class="literal">create()</code>. This method is called by the client to obtain proxy of remote interface to invoke business methods:
+					</p><pre class="programlisting">public interface IIOPBeanHome extends EJBHome {
+    public IIOPRemote create() throws RemoteException;
+}</pre></li><li class="listitem"><p class="simpara">
+						Create a remote interface for remote connection to the EJB:
+					</p><pre class="programlisting">public interface IIOPRemote extends EJBObject {
+    String sayHello() throws RemoteException;
+}</pre></li><li class="listitem"><p class="simpara">
+						Introduce the bean for remote call by creating a descriptor file <code class="literal">jboss-ejb3.xml</code> in <code class="literal">META-INF</code>:
+					</p><pre class="programlisting">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;jboss:ejb-jar xmlns:jboss="http://www.jboss.com/xml/ns/javaee"
+               xmlns="http://java.sun.com/xml/ns/javaee"
+               xmlns:iiop="urn:iiop"
+               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xsi:schemaLocation="http://www.jboss.com/xml/ns/javaee http://www.jboss.org/j2ee/schema/jboss-ejb3-2_0.xsd
+                  http://java.sun.com/xml/ns/javaee http://www.jboss.org/j2ee/schema/jboss-ejb3-spec-2_0.xsd
+                  urn:iiop jboss-ejb-iiop_1_0.xsd"
+               version="3.1"
+               impl-version="2.0"&gt;
+    &lt;assembly-descriptor&gt;
+        &lt;iiop:iiop&gt;
+            &lt;ejb-name&gt;*&lt;/ejb-name&gt;
+        &lt;/iiop:iiop&gt;
+    &lt;/assembly-descriptor&gt;
+&lt;/jboss:ejb-jar&gt;</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The packed beans along with the descriptor in the JAR file is now ready to be deployed to the JBoss EAP container.
+						</p></div></li><li class="listitem"><p class="simpara">
+						Create a context at the client side:
+					</p><pre class="programlisting">System.setProperty("com.sun.CORBA.ORBUseDynamicStub", "true");
+final Properties props = new Properties();
+props.put(Context.PROVIDER_URL, "corbaloc::localhost:3528/JBoss/Naming/root");
+props.setProperty(Context.URL_PKG_PREFIXES, "org.jboss.iiop.naming:org.jboss.naming.client");
+props.put(Context.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.cosnaming.CNCtxFactory");
+props.put(Context.OBJECT_FACTORIES, "org.jboss.tm.iiop.client.IIOPClientUserTransactionObjectFactory");</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The client will need to have the <code class="literal">wildfly iiop openjdk</code> library added to its class path. The client might also need to add the <code class="literal">org.wildfly:wildfly-iiop-openjdk</code> artifact as Maven dependency.
+						</p></div></li><li class="listitem"><p class="simpara">
+						Use the context lookup to narrow the reference to the <code class="literal">IIOPBeanHome</code> home interface. Then call the home interface <code class="literal">create()</code> method to access the remote interface, which allows you to call its methods:
+					</p><pre class="programlisting">try {
+    Context context = new InitialContext(props);
+
+    final Object iiopObj = context.lookup(IIOPBean.class.getSimpleName());
+    final IIOPBeanHome beanHome = (IIOPBeanHome) PortableRemoteObject.narrow(iiopObj, IIOPBeanHome.class);
+    final IIOPRemote bean = beanHome.create();
+
+    System.out.println("Bean saying: " + bean.sayHello());
+} catch (Exception e) {
+    e.printStackTrace();
+}</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configure_ejb_client_address"/>Configure the EJB Client Address</h1></div></div></div><p>
+				You can determine the EJB client address using the <code class="literal">SessionContext</code> interface, as shown in the example below.
+			</p><pre class="programlisting">public class HelloBean implements HelloBeanRemote {
+    @Resource
+    SessionContext ctx;
+    private Long counter;
+    public HelloBean() {
+    }
+    @PostConstruct
+    public void init() {
+        counter = 0L;
+    }
+    @Override
+    @RolesAllowed("users")
+    public String hello() {
+        final String message = "method hello() invoked by user " + ctx.getCallerPrincipal().getName()
+                + ", source addr = " +  ctx.getContextData().get("jboss.source-address").toString();
+        System.out.println(message);
+        return message;
+    }
+}</pre><h3><a id="standalone_client_configuration"/>Standalone Client Configuration</h3><p>
+				You can configure the <code class="literal">outbound-bind-addresses</code> element within the <code class="literal">worker</code> element having namespace <code class="literal">urn:xnio:3.5</code> in the <code class="literal">wildfly-client.xml</code> file. The <code class="literal">bind-address</code> sub-element takes the attributes <code class="literal">match</code>, <code class="literal">bind-address</code>, <code class="literal">bind-port</code>, as defined below.
+			</p><p>
+				The following is an example of the standalone client configuration using the <code class="literal">wildfly-client.xml</code> file.
+			</p><pre class="programlisting">&lt;configuration&gt;
+    &lt;worker xmlns="urn:xnio:3.5"&gt;
+        &lt;worker-name value="default"/&gt;
+        &lt;outbound-bind-addresses&gt;
+            &lt;bind-address bind-address=<span class="emphasis"><em>IP_ADDRESS_TO_BIND_TO</em></span> bind-port=<span class="emphasis"><em>OPTIONAL_SOURCE_PORT_NUMBER</em></span> match=<span class="emphasis"><em>CIDR_BLOCK</em></span> /&gt;
+        &lt;/outbound-bind-addresses&gt;
+    &lt;/worker&gt;
+&lt;/configuration&gt;</pre><p>
+				The <code class="literal">outbound-bind-address</code> requires the following attributes:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<code class="literal">match</code> is a Classless Inter-Domain Routing (CIDR) block, such as <code class="literal">10.0.0.0/8</code>, <code class="literal">ff00::\8</code>, <code class="literal">0.0.0.0/0</code>, <code class="literal">::/0</code>.
+					</li><li class="listitem">
+						<code class="literal">bind-address</code> specifies the IP address to bind to when the destination address matches the CIDR block specified in the <code class="literal">match</code> parameter. It should be the same address family as the CIDR block.
+					</li><li class="listitem"><p class="simpara">
+						<code class="literal">bind-port</code> is an optional source port number that defaults to <code class="literal">0</code>.
+					</p><p class="simpara">
+						If no matching expression exists, then the outbound socket is not explicitly bound.
+					</p></li></ul></div><h3><a id="container_based_configuration"/>Container-based Configuration</h3><p>
+				Container-based configuration of the EJB client address is similar to the standalone client configuration defined in the <code class="literal">wildfly-client.xml</code> file.
+			</p><p>
+				The example below configures the <code class="literal">outbound-bind-address</code> on the default <code class="literal">worker</code> element of the <code class="literal">io</code> subsystem, which the <code class="literal">ejb3</code> subsystem uses by default.
+			</p><pre class="screen">/subsystem=io/worker=default/outbound-bind-address=<span class="emphasis"><em>SPECIFY_OUTBOUND_BIND_ADDRESS</em></span>:add(bind-address=<span class="emphasis"><em>IP_ADDRESS_TO_BIND_TO</em></span>, bind-port=<span class="emphasis"><em>OPTIONAL_SOURCE_PORT_NUMBER</em></span>, match=<span class="emphasis"><em>CIDR_BLOCK</em></span>)</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ejb_invocation_over_http"/>EJB Invocation Over HTTP</h1></div></div></div><p>
+				EJB invocation over HTTP includes two distinct parts: the client-side and the server-side implementations.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="client_side_implementation"/>Client-side Implementation</h2></div></div></div><p>
+					The client-side implementation consists of an <code class="literal">EJBReceiver</code> that uses the Undertow HTTP client to invoke the server. Connection management is handled automatically using a connection pool.
+				</p><p>
+					In order to configure an EJB client application to use HTTP transport, you must add the following dependency on the HTTP transport implementation:
+				</p><pre class="programlisting">&lt;dependency&gt;
+    &lt;groupId&gt;org.wildfly.wildfly-http-client&lt;/groupId&gt;
+    &lt;artifactId&gt;wildfly-http-ejb-client&lt;/artifactId&gt;
+&lt;/dependency&gt;</pre><p>
+					To perform the HTTP invocation, you must use the <code class="literal">http</code> URL scheme and include the context name of the HTTP invoker, <code class="literal">wildfly-services</code>. For example, if you are using <code class="literal">remote+http://localhost:8080</code> as the target URL, in order to use the HTTP transport, you must update this to <code class="literal">http://localhost:8080/wildfly-services</code>.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="server_side_implementation"/>Server-side Implementation</h2></div></div></div><p>
+					The server-side implementation consists of a service that handles the incoming HTTP requests, unmarshals them and passes the result to the internal EJB invocation code.
+				</p><p>
+					In order to configure the server, the <code class="literal">http-invoker</code> must be enabled on each of the virtual hosts that you wish to use in the <code class="literal">undertow</code> subsystem. This is enabled by default in the standard configurations. If it is disabled, it can be re-enabled using the following management CLI command:
+				</p><pre class="screen">/subsystem=undertow/server=default-server/host=default-host/setting=http-invoker:add(http-authentication-factory=myfactory, path="wildfly-services")</pre><p>
+					<code class="literal">http-invoker</code> has two attributes: a <code class="literal">path</code> that defaults to <code class="literal">wildfly-services</code>, and one of the following:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							An <code class="literal">http-authentication-factory</code> that must be a reference to an Elytron <code class="literal">http-authentication-factory</code>, as shown in the above command.
+						</li><li class="listitem">
+							A legacy <code class="literal">security-realm</code>.
+						</li></ul></div><p>
+					Note that the above two attributes are mutually exclusive: you cannot specify both an <code class="literal">http-authentication-factory</code> and a <code class="literal">security-realm</code> at the same time.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						Any deployment that aims to use the <code class="literal">http-authentication-factory</code> must use Elytron security with the same security domain corresponding to the specified HTTP authentication factory.
+					</p></div></div></div></div></body></html>

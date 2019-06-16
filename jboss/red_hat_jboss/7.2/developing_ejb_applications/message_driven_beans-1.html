@@ -1,0 +1,683 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 4. Message-Driven Beans</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="message_driven_beans-1"/>Chapter 4. Message-Driven Beans</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="message_driven_beans"/>Message-Driven Beans</h1></div></div></div><p>
+				Message-driven Beans (MDBs) provide an event driven model for application development. The methods of MDBs are not injected into or invoked from client code but are triggered by the receipt of messages from a messaging service such as a Java Messaging Service (JMS) server. The Java EE specification requires that JMS is supported but other messaging systems can be supported as well.
+			</p><p>
+				MDBs are a special kind of stateless session beans. They implement a method called <code class="literal">onMessage(Message message)</code>. This method is triggered when a JMS destination on which the MDB is listening receives a message. That is, MDBs are triggered by the receipt of messages from a JMS provider, unlike the stateless session beans where methods are usually called by EJB clients.
+			</p><p>
+				MDB processes messages asynchronously. By default each MDB can have up to 16 sessions, where each session processes a message. There are no message order guarantees. In order to achieve message ordering, it is necessary to limit the session pool for the MDB to <code class="literal">1</code>.
+			</p><div class="title"><strong>Example: Management CLI Commands to Set Session Pool to <code class="literal">1</code>:</strong></div><p>
+					
+</p><pre class="screen">/subsystem=ejb3/strict-max-bean-instance-pool=mdb-strict-max-pool:write-attribute(name=derive-size,value=undefined)
+
+/subsystem=ejb3/strict-max-bean-instance-pool=mdb-strict-max-pool:write-attribute(name=max-pool-size,value=1)
+
+reload</pre><p>
+
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="mdbs_controlled_delivery"/>Message-Driven Beans Controlled Delivery</h1></div></div></div><p>
+				JBoss EAP provides three attributes that control active reception of messages on a specific MDB:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<a class="link" href="message_driven_beans-1.html#configure_delivery_active" title="Delivery Active">Delivery Active</a>
+					</li><li class="listitem">
+						<a class="link" href="message_driven_beans-1.html#delivery_groups" title="Delivery Groups">Delivery Groups</a>
+					</li><li class="listitem">
+						<a class="link" href="message_driven_beans-1.html#clustered_singleton_mdbs" title="Clustered Singleton MDBs">Clustered Singleton MDBs</a>
+					</li></ul></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configure_delivery_active"/>Delivery Active</h2></div></div></div><p>
+					The delivery active configuration of the message-driven beans (MDB) indicates whether the MDB is receiving messages or not. If an MDB is not receiving messages, then the messages will be saved in the queue or topic according to the topic or queue rules.
+				</p><p>
+					You can configure the <code class="literal">active</code> attribute of the <code class="literal">delivery-group</code> using XML or annotations, and you can change its value after deployment using the management CLI. By default, the <code class="literal">active</code> attribute is activated and delivery of messages occurs as soon as the MDB is deployed.
+				</p><h4><a id="configuring_delivery_active_in_the_jboss_ejb3_xml_file"/>Configuring Delivery Active in the jboss-ejb3.xml File</h4><p>
+					In the <code class="literal">jboss-ejb3.xml</code> file, set the value of <code class="literal">active</code> to <code class="literal">false</code> to indicate that the MDB will not be receiving messages as soon as it is deployed:
+				</p><pre class="programlisting">&lt;?xml version="1.1" encoding="UTF-8"?&gt;
+&lt;jboss:ejb-jar xmlns:jboss="http://www.jboss.com/xml/ns/javaee"
+    xmlns="http://java.sun.com/xml/ns/javaee"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:d="urn:delivery-active:1.1"
+    xsi:schemaLocation="http://www.jboss.com/xml/ns/javaee http://www.jboss.org/j2ee/schema/jboss-ejb3-2_0.xsd http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/ejb-jar_3_1.xsd"
+    version="3.1"
+    impl-version="2.0"&gt;
+    &lt;assembly-descriptor&gt;
+        &lt;d:delivery&gt;
+            &lt;ejb-name&gt;HelloWorldQueueMDB&lt;/ejb-name&gt;
+            &lt;d:active&gt;false&lt;/d:active&gt;
+        &lt;/d:delivery&gt;
+    &lt;/assembly-descriptor&gt;
+&lt;/jboss:ejb-jar&gt;</pre><p>
+					If you want to apply the active value to all MDBs in your application, you can use a wildcard <code class="literal">*</code> in place of the <code class="literal">ejb-name</code>.
+				</p><h4><a id="configuring_delivery_active_using_annotations"/>Configuring Delivery Active Using Annotations</h4><p>
+					You can also use the <code class="literal">org.jboss.ejb3.annotation.DeliveryActive</code> annotation. For example:
+				</p><pre class="programlisting">@MessageDriven(name = "HelloWorldMDB", activationConfig = {
+ @ActivationConfigProperty(propertyName = "destinationType", propertyValue = "javax.jms.Queue"),
+ @ActivationConfigProperty(propertyName = "destination", propertyValue = "queue/HELLOWORLDMDBQueue"),
+ @ActivationConfigProperty(propertyName = "acknowledgeMode", propertyValue = "Auto-acknowledge") })
+@DeliveryActive(false)
+
+public class HelloWorldMDB implements MessageListener {
+    public void onMessage(Message rcvMessage) {
+      // ...
+    }
+}</pre><p>
+					If you use Maven to build your project, make sure you add the following dependency to the <code class="literal">pom.xml</code> file of your project:
+				</p><pre class="programlisting">&lt;dependency&gt;
+    &lt;groupId&gt;org.jboss.ejb3&lt;/groupId&gt;
+    &lt;artifactId&gt;jboss-ejb3-ext-api&lt;/artifactId&gt;
+    &lt;version&gt;2.2.0.Final&lt;/version&gt;
+&lt;/dependency&gt;</pre><h4><a id="configuring_delivery_active_using_the_management_cli"/>Configuring Delivery Active Using the Management CLI</h4><p>
+					You can configure the <code class="literal">active</code> attribute of the <code class="literal">delivery-group</code> after deployment using the management CLI. These management operations dynamically change the value of the <code class="literal">active</code> attribute, enabling or disabling delivery for the MDB. This method of changing the delivery active value does not persist if you restart the server. At runtime, connect to the instance you want to manage, then enter the path of the MDB for which you want to manage the delivery. For example:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							Navigate to the instance you want to manage:
+						</p><pre class="screen">cd deployment=helloworld-mdb.war/subsystem=ejb3/message-driven-bean=HelloWorldQueueMDB</pre></li><li class="listitem"><p class="simpara">
+							To stop the delivery to the MDB:
+						</p><pre class="screen">:stop-delivery</pre></li><li class="listitem"><p class="simpara">
+							To start the delivery to the MDB:
+						</p><pre class="screen">:start-delivery</pre></li></ul></div><h4><a id="view_the_mdb_delivery_active_status"/>View the MDB Delivery Active Status</h4><p>
+					You can view the current delivery active status of any MDB using the management console:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							Select the <span class="strong"><strong>Runtime</strong></span> tab and select the appropriate server.
+						</li><li class="listitem">
+							Click <span class="strong"><strong>EJB</strong></span> and select the child resource, for example <code class="literal">HelloWorldQueueMDB</code>.
+						</li></ol></div><div class="title"><strong>Result</strong></div><p>
+						You see the status as <code class="literal">Delivery Active: true</code> or <code class="literal">Delivery Active: false</code>.
+					</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="delivery_groups"/>Delivery Groups</h2></div></div></div><p>
+					Delivery groups provide a way to manage the <code class="literal">delivery-active</code> state for a group of MDBs. Every MDB belonging to a delivery group has delivery active if and only if that group is active, and has delivery inactive whenever the group is not active.
+				</p><p>
+					You can add a delivery group to the <code class="literal">ejb3</code> subsystem using either the XML configuration or the management CLI.
+				</p><h4><a id="configuring_delivery_group_in_the_jboss_ejb3_xml_file"/>Configuring Delivery Group in the jboss-ejb3.xml File</h4><pre class="programlisting">&lt;delivery&gt;
+  &lt;ejb-name&gt;MdbName&lt;ejb-name&gt;
+  &lt;delivery-group&gt;passive&lt;/delivery-group&gt;
+&lt;/delivery&gt;</pre><p>
+					On the server side, <code class="literal">delivery-groups</code> can be enabled by having their <code class="literal">active</code> attribute set to <code class="literal">true</code>, or disabled by having their <code class="literal">active</code> attribute set to <code class="literal">false</code>, as shown in the example below:
+				</p><pre class="programlisting">&lt;delivery-groups&gt;
+  &lt;delivery-group name="group" active="true"/&gt;
+&lt;/delivery-groups&gt;</pre><h4><a id="configuring_delivery_group_using_the_management_cli"/>Configuring Delivery Group Using the Management CLI</h4><p>
+					The state of <code class="literal">delivery-groups</code> can be updated using the management CLI. For example:
+				</p><pre class="screen">/subsystem=ejb3/mdb-delivery-group=group:add
+/subsystem=ejb3/mdb-delivery-group=group:remove
+/subsystem=ejb3/mdb-delivery-group=group:write-attribute(name=active,value=true)</pre><p>
+					When you set the delivery active in the <code class="literal">jboss-ejb3.xml</code> file or using the annotation, it persists on server restart. However, when you use the management CLI to stop or start the delivery, it does not persist on server restart.
+				</p><h4><a id="configuring_delivery_group_using_annotations"/>Configuring Delivery Group Using Annotations</h4><p>
+					You can use the <code class="literal">org.jboss.ejb3.annotation.DeliveryGroup</code> annotation on each MDB class belonging to a group:
+				</p><pre class="programlisting">@MessageDriven(name = "HelloWorldQueueMDB", activationConfig = {
+ @ActivationConfigProperty(propertyName = "destinationType", propertyValue = "javax.jms.Queue"),
+ @ActivationConfigProperty(propertyName = "destination", propertyValue = "queue/HELLOWORLDMDBQueue"),
+ @ActivationConfigProperty(propertyName = "acknowledgeMode", propertyValue = "Auto-acknowledge") })
+
+@DeliveryGroup(“group2”)
+
+public class HelloWorldMDB implements MessageListener {
+    ...
+}</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="clustered_singleton_mdbs"/>Clustered Singleton MDBs</h2></div></div></div><p>
+					When an MDB is identified as a clustered singleton and is deployed in a cluster, only one node is active. This node can consume messages serially. When the server node fails, the active node from the clustered singleton MDBs starts consuming the messages.
+				</p><h3><a id="identify_an_mdb_as_a_clustered_singleton"/>Identify an MDB as a Clustered Singleton</h3><p>
+					You can use one of the following procedures to identify an MDB as a clustered singleton.
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							Use the clustered-singleton XML element as shown in the example below:
+						</p><pre class="programlisting">&lt;jboss:ejb-jar xmlns:jboss="http://www.jboss.com/xml/ns/javaee"
+xmlns="http://java.sun.com/xml/ns/javaee"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns:c="urn:clustering:1.1"
+xmlns:d="urn:delivery:1.1"
+xsi:schemaLocation="http://www.jboss.com/xml/ns/javaee http://www.jboss.org/j2ee/schema/jboss-ejb3-2_0.xsd http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/ejb-jar_3_1.xsd"
+version="3.1"
+impl-version="2.0"&gt;
+    &lt;c:clustering&gt;
+        &lt;ejb-name&gt;HelloWorldQueueMDB&lt;/ejb-name&gt;
+        &lt;c:clustered-singleton&gt;true&lt;/c:clustered-singleton&gt;
+    &lt;/c:clustering&gt;
+&lt;/jboss:ejb-jar&gt;</pre></li><li class="listitem">
+							In your MDB class, use the <code class="literal">@org.jboss.ejb3.annotation.ClusteredSingleton</code>. This procedure requires no extra configuration at the server. You need to run the service in a clustered environment.
+						</li></ul></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						You have to activate the <code class="literal">delivery-group</code> in the entire cluster, specifically, in all nodes of the cluster, because you do not know which node of the cluster is chosen to be the <code class="literal">singleton master</code>. If the server chooses a node to be <code class="literal">singleton master</code>, and that node does not have the required <code class="literal">delivery-group</code> activated, no node in the cluster receives the messages.
+					</p></div><p>
+					The <code class="literal">messaging-clustering-singleton</code> quickstart, which ships with JBoss EAP, demonstrates the use of clustering with integrated Apache ActiveMQ Artemis. It uses the same source code as the <code class="literal">helloworld-mdb</code> quickstart, with a difference only in the configuration to run it as a clustered singleton. There are two JMS resources contained in this quickstart:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							A queue named <code class="literal">HELLOWORLDMDBQueue</code> bound in the JNDI as <code class="literal">java:/queue/HELLOWORLDMDBQueue</code>
+						</li><li class="listitem">
+							A topic named <code class="literal">HELLOWORLDMDBTopic</code> bound in the JNDI as <code class="literal">java:/topic/HELLOWORLDMDBTopic</code>
+						</li></ul></div><p>
+					Both contain a singleton configuration as specified in the <code class="literal">jboss-ejb3.xml</code> file:
+				</p><pre class="programlisting">&lt;c:clustering&gt;
+    &lt;ejb-name&gt;*&lt;/ejb-name&gt;
+    &lt;c:clustered-singleton&gt;true&lt;/c:clustered-singleton&gt;
+&lt;/c:clustering&gt;</pre><p>
+					The wildcard asterisk <code class="literal">*</code> in the <code class="literal">&lt;ejb-name&gt;</code> element indicates that all the MDBs contained in the application will be clustered singleton. As a result, only one node in the cluster will have those MDBs active at a specific time. If this active node shuts down, another node in the cluster will become the active node with the MDBs, which then becomes the singleton provider.
+				</p><p>
+					You can also find a configuration for the delivery group in the <code class="literal">jboss-ejb3.xml</code> file:
+				</p><pre class="programlisting">&lt;d:delivery&gt;
+    &lt;ejb-name&gt;HelloWorldTopicMDB&lt;/ejb-name&gt;
+    &lt;d:group&gt;my-mdb-delivery-group&lt;/d:group&gt;
+&lt;/d:delivery&gt;</pre><p>
+					In this case, only one of the MDBs, <code class="literal">HelloWorldTopicMDB</code>, is associated with a delivery group. All the delivery groups used by an MDB must be configured in the <code class="literal">ejb3</code> subsystem configuration. The delivery group can be enabled or disabled. If the delivery group is disabled in a cluster node, all the MDBs belonging to that delivery group become inactive in the respective cluster node. When using the delivery groups in a non-clustered environment, the MDB is active whenever the delivery group is enabled.
+				</p><p>
+					If a delivery group is used in conjunction with the singleton provider, the MDB can be active in the singleton provider node only if that node has the delivery group enabled. Otherwise, the MDB will be inactive in that node, and all the other nodes of the cluster.
+				</p><p>
+					See the <code class="literal">README.html</code> file included with this quickstart for detailed instructions about how to configure the server for messaging clustering and to review the code examples.
+				</p><p>
+					For information on how to download and use the JBoss EAP quickstarts, see the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/getting_started_guide/#using_the_quickstart_examples">Using the Quickstart Examples</a> section in the JBoss EAP <span class="emphasis"><em>Getting Started Guide</em></span>.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="create_a_jms_based_message_driven_bean_in_red_hat_jboss_developer_studio"/>Create a JMS-based Message-Driven Bean in Red Hat Developer Studio</h1></div></div></div><p>
+				This procedure shows how to add a JMS-based message-driven bean to a project in Red Hat Developer Studio. This procedure creates an EJB 3.x message-driven bean that uses annotations.
+			</p><h3><a id="prerequisites_6"/>Prerequisites</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						You must have an existing project open in Red Hat Developer Studio.
+					</li><li class="listitem">
+						You must know the name and type of the JMS destination that the bean will be listening to.
+					</li><li class="listitem">
+						Support for Java Messaging Service (JMS) must be enabled in the JBoss EAP configuration to which this bean will be deployed.
+					</li></ul></div><h3><a id="add_a_jms_based_message_driven_bean_in_red_hat_developer_studio"/>Add a JMS-based Message-driven Bean in Red Hat Developer Studio</h3><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Open the <span class="strong"><strong>Create EJB 3.x Message-Driven Bean</strong></span> wizard.
+					</p><p class="simpara">
+						Go to <span class="strong"><strong>File → New → Other</strong></span>. Select <span class="strong"><strong>EJB/Message-Driven Bean (EJB 3.x)</strong></span> and click the <span class="strong"><strong>Next</strong></span> button.
+					</p><div class="figure"><a id="idm140362807925056"/><p class="title"><strong>Figure 4.1. Create EJB 3.x Message-Driven Bean Wizard</strong></p><div class="figure-contents"><div class="mediaobject"><img src="images/topics/images/111.png" alt="Create EJB 3.x Message-Driven Bean Wizard"/></div></div></div></li><li class="listitem"><p class="simpara">
+						Specify class file destination details.
+					</p><p class="simpara">
+						There are three sets of details to specify for the bean class here: project, Java class, and message destination.
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+								<span class="strong"><strong>Project:</strong></span>
+							</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+										If multiple projects exist in the workspace, ensure that the correct one is selected in the <span class="strong"><strong>Project</strong></span> menu.
+									</li><li class="listitem">
+										The folder where the source file for the new bean will be created is <code class="literal">ejbModule</code> under the selected project’s directory. Only change this if you have a specific requirement.
+									</li></ul></div></li><li class="listitem"><p class="simpara">
+								<span class="strong"><strong>Java Class:</strong></span>
+							</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+										The required fields are: <span class="strong"><strong>Java package</strong></span> and <span class="strong"><strong>Class name</strong></span>.
+									</li><li class="listitem">
+										It is not necessary to supply a superclass unless the business logic of your application requires it.
+									</li></ul></div></li><li class="listitem"><p class="simpara">
+								<span class="strong"><strong>Message Destination:</strong></span>
+							</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+										These are the details you must supply for a JMS-based message-driven bean:
+									</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+												<span class="strong"><strong>Destination name</strong></span>, which is the queue or topic name that contains the messages that the bean will respond to.
+											</li><li class="listitem">
+												By default the <span class="strong"><strong>JMS</strong></span> checkbox is selected. Do not change this.
+											</li><li class="listitem"><p class="simpara">
+												Set <span class="strong"><strong>Destination type</strong></span> to <span class="strong"><strong>Queue</strong></span> or <span class="strong"><strong>Topic</strong></span> as required.
+											</p><p class="simpara">
+												Click the <span class="strong"><strong>Next</strong></span> button.
+											</p></li></ul></div></li></ul></div></li></ul></div></li><li class="listitem"><p class="simpara">
+						Enter message-driven bean specific information.
+					</p><p class="simpara">
+						The default values here are suitable for a JMS-based message-driven bean using container-managed transactions.
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								Change the <span class="strong"><strong>Transaction type</strong></span> to Bean if the Bean will use Bean-managed transactions.
+							</li><li class="listitem">
+								Change the <span class="strong"><strong>Bean name</strong></span> if a different bean name than the class name is required.
+							</li><li class="listitem">
+								The <span class="strong"><strong>JMS Message Listener</strong></span> interface will already be listed. You do not need to add or remove any interfaces unless they are specific to your application’s business logic.
+							</li><li class="listitem"><p class="simpara">
+								Leave the checkboxes for creating method stubs selected.
+							</p><p class="simpara">
+								Click the <span class="strong"><strong>Finish</strong></span> button.
+							</p></li></ul></div></li></ol></div><div class="title"><strong>Result</strong></div><p>
+					The message-driven bean is created with stub methods for the default constructor and the <code class="literal">onMessage()</code> method. A Red Hat Developer Studio editor window opens with the corresponding file.
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="specifying_a_resource_adapter_in_jboss_ejb3_xml_for_an_mdb"/>Specifying a Resource Adapter in <code class="literal">jboss-ejb3.xml</code> for an MDB</h1></div></div></div><p>
+				In the <code class="literal">jboss-ejb3.xml</code> deployment descriptor you can specify a resource adapter for an MDB to use.
+			</p><p>
+				To specify a resource adapter in <code class="literal">jboss-ejb3.xml</code> for an MDB, use the following example.
+			</p><div class="title"><strong>Example: jboss-ejb3.xml Configuration for an MDB Resource Adapter</strong></div><p>
+					
+</p><pre class="programlisting">&lt;jboss xmlns="http://www.jboss.com/xml/ns/javaee"
+  xmlns:jee="http://java.sun.com/xml/ns/javaee"
+  xmlns:mdb="urn:resource-adapter-binding"&gt;
+  &lt;jee:assembly-descriptor&gt;
+    &lt;mdb:resource-adapter-binding&gt;
+      &lt;jee:ejb-name&gt;MyMDB&lt;/jee:ejb-name&gt;
+      &lt;mdb:resource-adapter-name&gt;MyResourceAdapter.rar&lt;/mdb:resource-adapter-name&gt;
+    &lt;/mdb:resource-adapter-binding&gt;
+  &lt;/jee:assembly-descriptor&gt;
+&lt;/jboss&gt;</pre><p>
+
+				</p><p>
+				For a resource adapter located in an EAR, you must use the following syntax for <code class="literal">&lt;mdb:resource-adapter-name&gt;</code>:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						For a resource adapter that is in another EAR:
+					</p><pre class="programlisting">&lt;mdb:resource-adapter-name&gt;OtherDeployment.ear#MyResourceAdapter.rar&lt;/mdb:resource-adapter-name&gt;</pre></li><li class="listitem"><p class="simpara">
+						For a resource adapter that is in the same EAR as the MDB, you can omit the EAR name:
+					</p><pre class="programlisting">&lt;mdb:resource-adapter-name&gt;#MyResourceAdapter.rar&lt;/mdb:resource-adapter-name&gt;</pre></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="using_resource_definition_annotations_in_mdbs"/>Using Resource Definition Annotations in MDBs Deployed to a Cluster</h1></div></div></div><p>
+				If you use the <code class="literal">@JMSConnectionFactoryDefinition</code> and <code class="literal">@JMSDestinationDefinition</code> annotations to create a connection factory and destination for message-driven beans, be aware that the objects are only created on the server where the MDB is deployed. They are not created on all nodes in a cluster unless the MDB is also deployed to all nodes in the cluster. Because objects configured by these annotations are only created on the server where the MDB is deployed, this affects remote JCA topologies where an MDB reads messages from a remote server and then sends them to a remote server.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="enable_ejb_and_mdb_property_substitution_in_an_application"/>Enable EJB and MDB Property Substitution in an Application</h1></div></div></div><p>
+				Red Hat JBoss Enterprise Application Platform allows you to enable property substitution in EJBs and MDBs using the <code class="literal">@ActivationConfigProperty</code> and <code class="literal">@Resource</code> annotations. Property substitution requires the following configuration and code changes.
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						You must <a class="link" href="message_driven_beans-1.html#configure_the_server_to_enable_property_substitution" title="Configure the Server to Enable Property Substitution">enable property substitution</a> in the JBoss EAP server configuration file.
+					</li><li class="listitem">
+						You must <a class="link" href="message_driven_beans-1.html#define_the_system_properties_for_the_mdb" title="Define the System Properties">define the system properties</a> in the server configuration file or pass them as arguments when you start the JBoss EAP server.
+					</li><li class="listitem">
+						You must <a class="link" href="message_driven_beans-1.html#modify_the_application_code_to_use_the_system_property_substitutions" title="Modify the Application Code to Use the System Property Substitutions">modify the application code</a> to use the substitution variables.
+					</li></ul></div><p>
+				The following examples demonstrate how to modify the <code class="literal">helloworld-mdb</code> quickstart that ships with JBoss EAP to use property substitution. See the <code class="literal">helloworld-mdb-propertysubstitution</code> quickstart for the completed working example.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configure_the_server_to_enable_property_substitution"/>Configure the Server to Enable Property Substitution</h2></div></div></div><p>
+					To enable property substitution in the JBoss EAP server, you must set the <code class="literal">annotation-property-replacement</code> attribute in the <code class="literal">ee</code> subsystem of the server configuration to <code class="literal">true</code>.
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Back up the server configuration file.
+						</p><p class="simpara">
+							The <code class="literal">helloworld-mdb-propertysubstitution</code> quickstart example requires the full profile for a standalone server, so this is the <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/standalone/configuration/standalone-full.xml</code> file. If you are running your server in a managed domain, this is the <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/domain/configuration/domain.xml</code> file.
+						</p></li><li class="listitem"><p class="simpara">
+							Navigate to the JBoss EAP install directory and start the server with the full profile.
+						</p><pre class="screen">$ <span class="emphasis"><em>EAP_HOME</em></span>/bin/standalone.sh -c standalone-full.xml</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								For Windows Server, use the <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>\bin\standalone.bat</code> script.
+							</p></div></li><li class="listitem"><p class="simpara">
+							Launch the management CLI.
+						</p><pre class="screen">$ <span class="emphasis"><em>EAP_HOME</em></span>/bin/jboss-cli.sh --connect</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								For Windows Server, use the <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>\bin\jboss-cli.bat</code> script.
+							</p></div></li><li class="listitem"><p class="simpara">
+							Type the following command to enable annotation property substitution.
+						</p><pre class="screen">/subsystem=ee:write-attribute(name=annotation-property-replacement,value=true)</pre><p class="simpara">
+							You should see the following result.
+						</p><pre class="screen">{"outcome" =&gt; "success"}</pre></li><li class="listitem"><p class="simpara">
+							Review the changes to the JBoss EAP server configuration file. The <code class="literal">ee</code> subsystem should now contain the following XML.
+						</p><div class="title"><strong>Example <code class="literal">ee</code> Subsystem Configuration</strong></div><p>
+								
+</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:ee:4.0"&gt;
+  ...
+  &lt;annotation-property-replacement&gt;true&lt;/annotation-property-replacement&gt;
+  ...
+&lt;/subsystem&gt;</pre><p>
+
+							</p></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="define_the_system_properties_for_the_mdb"/>Define the System Properties</h2></div></div></div><p>
+					You can specify the system properties in the server configuration file or you can pass them as command line arguments when you start the JBoss EAP server. System properties defined in the server configuration file take precedence over those passed on the command line when you start the server.
+				</p><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="define_the_system_properties_in_the_server_configuration"/>Define the System Properties in the Server Configuration</h3></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+								Launch the management CLI.
+							</li><li class="listitem"><p class="simpara">
+								Use the following command syntax to configure a system property in the JBoss EAP server.
+							</p><div class="title"><strong>Syntax to Add a System Property</strong></div><p>
+									
+</p><pre class="screen">/system-property=<span class="emphasis"><em>PROPERTY_NAME</em></span>:add(value=<span class="emphasis"><em>PROPERTY_VALUE</em></span>)</pre><p>
+
+								</p><p class="simpara">
+								The following system properties are configured for the <code class="literal">helloworld-mdb-propertysubstitution</code> quickstart.
+							</p><div class="title"><strong>Example Commands to Add System Properties</strong></div><p>
+									
+</p><pre class="screen">/system-property=property.helloworldmdb.queue:add(value=java:/queue/HELLOWORLDMDBPropQueue)
+/system-property=property.helloworldmdb.topic:add(value=java:/topic/HELLOWORLDMDBPropTopic)
+/system-property=property.connection.factory:add(value=java:/ConnectionFactory)</pre><p>
+
+								</p></li><li class="listitem"><p class="simpara">
+								Review the changes to the JBoss EAP server configuration file. The following system properties should now appear in the after the <code class="literal">&lt;extensions&gt;</code>.
+							</p><div class="title"><strong>Example System Properties Configuration</strong></div><p>
+									
+</p><pre class="programlisting">&lt;system-properties&gt;
+    &lt;property name="property.helloworldmdb.queue" value="java:/queue/HELLOWORLDMDBPropQueue"/&gt;
+    &lt;property name="property.helloworldmdb.topic" value="java:/topic/HELLOWORLDMDBPropTopic"/&gt;
+    &lt;property name="property.connection.factory" value="java:/ConnectionFactory"/&gt;
+&lt;/system-properties&gt;</pre><p>
+
+								</p></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="pass_the_system_properties_as_arguments_on_server_start"/>Pass the System Properties as Arguments on Server Start</h3></div></div></div><p>
+						If you prefer, you can instead pass the arguments on the command line when you start the JBoss EAP server in the form of <code class="literal">-D<span class="emphasis"><em>PROPERTY_NAME</em></span>=<span class="emphasis"><em>PROPERTY_VALUE</em></span></code>. The following is an example of how to pass the arguments for the system properties defined in the previous section.
+					</p><div class="title"><strong>Example Server Start Command Passing System Properties</strong></div><p>
+							
+</p><pre class="screen">$ <span class="emphasis"><em>EAP_HOME</em></span>/bin/standalone.sh -c standalone-full.xml  -Dproperty.helloworldmdb.queue=java:/queue/HELLOWORLDMDBPropQueue  -Dproperty.helloworldmdb.topic=java:/topic/HELLOWORLDMDBPropTopic  -Dproperty.connection.factory=java:/ConnectionFactory</pre><p>
+
+						</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="modify_the_application_code_to_use_the_system_property_substitutions"/>Modify the Application Code to Use the System Property Substitutions</h2></div></div></div><p>
+					Replace the hard-coded <code class="literal">@ActivationConfigProperty</code> and <code class="literal">@Resource</code> annotation values with substitutions for the newly defined system properties. The following are examples of how to change the <code class="literal">helloworld-mdb</code> quickstart to use the newly defined system property substitutions.
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Change the <code class="literal">@ActivationConfigProperty</code> <code class="literal">destination</code> property value in the <code class="literal">HelloWorldQueueMDB</code> class to use the substitution for the system property. The <code class="literal">@MessageDriven</code> annotation should now look like this:
+						</p><div class="title"><strong>HelloWorldQueueMDB Code Example</strong></div><p>
+								
+</p><pre class="programlisting">@MessageDriven(name = "HelloWorldQueueMDB", activationConfig = {
+    @ActivationConfigProperty(propertyName = "destinationLookup", propertyValue = "${property.helloworldmdb.queue}"),
+    @ActivationConfigProperty(propertyName = "destinationType", propertyValue = "javax.jms.Queue"),
+    @ActivationConfigProperty(propertyName = "acknowledgeMode", propertyValue = "Auto-acknowledge") })</pre><p>
+
+							</p></li><li class="listitem"><p class="simpara">
+							Change the <code class="literal">@ActivationConfigProperty</code> <code class="literal">destination</code> property value in the <code class="literal">HelloWorldTopicMDB</code> class to use the substitution for the system property. The <code class="literal">@MessageDriven</code> annotation should now look like this:
+						</p><div class="title"><strong>HelloWorldTopicMDB Code Example</strong></div><p>
+								
+</p><pre class="programlisting">@MessageDriven(name = "HelloWorldQTopicMDB", activationConfig = {
+    @ActivationConfigProperty(propertyName = "destinationLookup", propertyValue = "${property.helloworldmdb.topic}"),
+    @ActivationConfigProperty(propertyName = "destinationType", propertyValue = "javax.jms.Topic"),
+    @ActivationConfigProperty(propertyName = "acknowledgeMode", propertyValue = "Auto-acknowledge") })</pre><p>
+
+							</p></li><li class="listitem"><p class="simpara">
+							Change the <code class="literal">@Resource</code> annotations in the <code class="literal">HelloWorldMDBServletClient</code> class to use the system property substitutions. The code should now look like this:
+						</p><div class="title"><strong>HelloWorldMDBServletClient Code Example</strong></div><p>
+								
+</p><pre class="programlisting">/**
+ * Definition of the two JMS destinations used by the quickstart
+ * (one queue and one topic).
+ */
+ @JMSDestinationDefinitions(
+     value = {
+         @JMSDestinationDefinition(
+             name = "java:/${property.helloworldmdb.queue}",
+             interfaceName = "javax.jms.Queue",
+             destinationName = "HelloWorldMDBQueue"
+         ),
+         @JMSDestinationDefinition(
+             name = "java:/${property.helloworldmdb.topic}",
+             interfaceName = "javax.jms.Topic",
+             destinationName = "HelloWorldMDBTopic"
+         )
+     })
+/**
+ * &lt;p&gt;
+ * A simple servlet 3 as client that sends several messages to a queue or a topic.
+ * &lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * The servlet is registered and mapped to /HelloWorldMDBServletClient using the {@linkplain WebServlet
+ * @HttpServlet}.
+ * &lt;/p&gt;
+ *
+ * @author Serge Pagop (spagop@redhat.com)
+ *
+ */
+@WebServlet("/HelloWorldMDBServletClient")
+public class HelloWorldMDBServletClient extends HttpServlet {
+
+    private static final long serialVersionUID = -8314035702649252239L;
+
+    private static final int MSG_COUNT = 5;
+
+    @Inject
+    private JMSContext context;
+
+    @Resource(lookup = "${property.helloworldmdb.queue}")
+    private Queue queue;
+
+    @Resource(lookup = "${property.helloworldmdb.topic}")
+    private Topic topic;
+
+  &lt;!-- Remainder of code can be found in the `helloworld-mdb-propertysubstitution` quickstart. --&gt;</pre><p>
+
+							</p></li><li class="listitem"><p class="simpara">
+							Modify the <code class="literal">activemq-jms.xml</code> file to use the system property substitution values.
+						</p><div class="title"><strong>Example .activemq-jms.xml File</strong></div><p>
+								
+</p><pre class="programlisting">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;messaging-deployment xmlns="urn:jboss:messaging-activemq-deployment:1.0"&gt;
+    &lt;server&gt;
+         &lt;jms-destinations&gt;
+            &lt;jms-queue name="HELLOWORLDMDBQueue"&gt;
+                &lt;entry name="${property.helloworldmdb.queue}"/&gt;
+            &lt;/jms-queue&gt;
+            &lt;jms-topic name="HELLOWORLDMDBTopic"&gt;
+                &lt;entry name="${property.helloworldmdb.topic}"/&gt;
+            &lt;/jms-topic&gt;
+        &lt;/jms-destinations&gt;
+    &lt;/server&gt;
+&lt;/messaging-deployment&gt;</pre><p>
+
+							</p></li><li class="listitem">
+							Deploy the application. The application now uses the values specified by the system properties for the <code class="literal">@Resource</code> and <code class="literal">@ActivationConfigProperty</code> property values.
+						</li></ol></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="activation_configuration_properties"/>Activation Configuration Properties</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configuring_mdbs_using_annotations"/>Configuring MDBs Using Annotations</h2></div></div></div><p>
+					You can configure activation properties by using the <code class="literal">@MessageDriven</code> element and sub-elements which correspond to the <code class="literal">@ActivationConfigProperty</code> annotation. <code class="literal">@ActivationConfigProperty</code> is an array of activation configuration properties for MDBs. The <code class="literal">@ActivationConfigProperty</code> annotation specification is as follows:
+				</p><pre class="programlisting">@Target(value={})
+@Retention(value=RUNTIME)
+public @interface ActivationConfigProperty
+{
+	String propertyName();
+	String propertyValue();
+}</pre><div class="title"><strong>Example showing <code class="literal">@ActivationConfigProperty</code></strong></div><p>
+						
+</p><pre class="programlisting">@MessageDriven(name="MyMDBName",
+activationConfig =
+{
+    @ActivationConfigProperty(propertyName="destinationLookup",propertyValue="queueA"),
+    @ActivationConfigProperty(propertyName = "destinationType",propertyValue = "javax.jms.Queue"),
+    @ActivationConfigProperty(propertyName = "acknowledgeMode", propertyValue = "Auto-acknowledge"),
+})</pre><p>
+
+					</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configuring_mdbs_using_deployment_descriptor"/>Configuring MDBs Using a Deployment Descriptor</h2></div></div></div><p>
+					The <code class="literal">&lt;message-driven&gt;</code> element in the <code class="literal">ejb-jar.xml</code> defines the bean as an MDB. The <code class="literal">&lt;activation-config&gt;</code> and elements contain the MDB configuration via the <code class="literal">activation-config-property</code> elements.
+				</p><div class="title"><strong>Example <code class="literal">ejb-jar.xml</code></strong></div><p>
+						
+</p><pre class="programlisting">&lt;?xml version="1.1" encoding="UTF-8"?&gt;
+&lt;jboss:ejb-jar xmlns:jboss="http://www.jboss.com/xml/ns/javaee"
+               xmlns="http://java.sun.com/xml/ns/javaee"
+               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xsi:schemaLocation="http://www.jboss.com/xml/ns/javaee http://www.jboss.org/j2ee/schema/jboss-ejb3-2_0.xsd http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/ejb-jar_3_1.xsd"
+               version="3.1"&gt;
+    &lt;enterprise-beans&gt;
+        &lt;message-driven&gt;
+            &lt;ejb-name&gt;MyMDBName&lt;/ejb-name&gt;
+            &lt;ejb-class&gt;org.jboss.tutorial.mdb_deployment_descriptor.bean.MyMDBName&lt;/ejb-class&gt;
+            &lt;activation-config&gt;
+                &lt;activation-config-property&gt;
+                    &lt;activation-config-property-name&gt;destinationLookup&lt;/activation-config-property-name&gt;
+                    &lt;activation-config-property-value&gt;queueA&lt;/activation-config-property-value&gt;
+                &lt;/activation-config-property&gt;
+                &lt;activation-config-property&gt;
+                    &lt;activation-config-property-name&gt;destinationType&lt;/activation-config-property-name&gt;
+                    &lt;activation-config-property-value&gt;javax.jms.Queue&lt;/activation-config-property-value&gt;
+                &lt;/activation-config-property&gt;
+                &lt;activation-config-property&gt;
+                    &lt;activation-config-property-name&gt;acknowledgeMode&lt;/activation-config-property-name&gt;
+                    &lt;activation-config-property-value&gt;Auto-acknowledge&lt;/activation-config-property-value&gt;
+                &lt;/activation-config-property&gt;
+            &lt;/activation-config&gt;
+        &lt;/message-driven&gt;
+    &lt;enterprise-beans&gt;
+&lt;/jboss:ejb-jar&gt;</pre><p>
+
+					</p><div class="table"><a id="idm140362810248176"/><p class="title"><strong>Table 4.1. Activation Configuration Properties Defined by JMS Specifications</strong></p><div class="table-contents"><table summary="Activation Configuration Properties Defined by JMS Specifications" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Name</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">destinationLookup</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									The JNDI name of the queue or topic. This is a mandatory value.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">connectionFactoryLookup</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									The lookup name of an administratively defined <code class="literal">javax.jms.ConnectionFactory</code>, <code class="literal">javax.jms.QueueConnectionFactory</code> or <code class="literal">javax.jms.TopicConnectionFactory</code> object that will be used to connect to the JMS provider from which the endpoint would receive messages.
+								</p>
+								 <p>
+									If not defined explicitly, pooled connection factory with name <code class="literal">activemq-ra</code> is used.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">destinationType</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									The type of destination valid values are <code class="literal">javax.jms.Queue</code> or <code class="literal">javax.jms.Topic</code>. This is a mandatory value.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">messageSelector</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									The value for a <code class="literal">messageSelector</code> property is a string which is used to select a subset of the available messages. Its syntax is based on a subset of the SQL 92 conditional expression syntax and is described in detail in JMS specification. Specifying a value for the <code class="literal">messageSelector</code> property on the <code class="literal">ActivationSpec</code> JavaBean is optional.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">acknowledgeMode</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									The type of acknowledgement when not using transacted JMS. Valid values are <code class="literal">Auto-acknowledge</code> or <code class="literal">Dups-ok-acknowledge</code>. This is not a mandatory value.
+								</p>
+								 <p>
+									The default value is <code class="literal">Auto-acknowledge</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">clientID</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									The client ID of the connection. This is not a mandatory value.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">subscriptionDurability</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Whether topic subscriptions are durable. Valid values are <code class="literal">Durable</code> or <code class="literal">NonDurable</code>. This is not a mandatory value.
+								</p>
+								 <p>
+									The default value is <code class="literal">NonDurable</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">subscriptionName</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									The subscription name of the topic subscription. This is not a mandatory value.
+								</p>
+								 </td></tr></tbody></table></div></div><div class="table"><a id="idm140362825752224"/><p class="title"><strong>Table 4.2. Activation Configuration Properties Defined by JBoss EAP</strong></p><div class="table-contents"><table summary="Activation Configuration Properties Defined by JBoss EAP" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Name</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">destination</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Using this property with <code class="literal">useJNDI=true</code> has the same meaning as <code class="literal">destinationLookup</code>. Using it with <code class="literal">useJNDI=false</code>, the destination is not looked up, but it is instantiated. You can use this property instead of <code class="literal">destinationLookup</code>. This is not a mandatory value.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">shareSubscriptions</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Whether the connection is configured to share subscriptions.
+								</p>
+								 <p>
+									The default value is <code class="literal">False</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">user</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									The user for the JMS connection. This is not a mandatory value.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">password</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									The password for the JMS connection. This is not a mandatory value.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">maxSession</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									The maximum number of concurrent sessions to use. This is not a mandatory value.
+								</p>
+								 <p>
+									The default value is <code class="literal">15</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">transactionTimeout</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									The transaction timeout for the session in milliseconds. This is not a mandatory value.
+								</p>
+								 <p>
+									If not specified or 0, the property is ignored and the <code class="literal">transactionTimeout</code> is not overridden and the default <code class="literal">transactionTimeout</code> defined in the Transaction Manager is used.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">useJNDI</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Whether or not use JNDI to look up the destination.
+								</p>
+								 <p>
+									The default value is <code class="literal">True</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">jndiParams</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									The JNDI parameters to use in the connection. Parameters are defined as <code class="literal">name=value</code> pairs separated by <code class="literal">;</code>
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">localTx</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Use local transaction instead of XA.
+								</p>
+								 <p>
+									The default value is <code class="literal">False</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">setupAttempts</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Number of attempts to setup a JMS connection. It is possible that the MDB is deployed before the JMS resources are available. In that case, the resource adapter will try to set up several times until the resources are available. This applies only to inbound connections.
+								</p>
+								 <p>
+									The default value is <code class="literal">-1</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">setupInterval</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Interval in milliseconds between consecutive attempts to setup a JMS connection. This applies only to inbound connections.
+								</p>
+								 <p>
+									The default value is <code class="literal">2000</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">rebalanceConnections</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Whether rebalancing of inbound connections is enabled or not. This parameter allows for rebalancing of all inbound connections when the underlying cluster topology changes.
+								</p>
+								 <p>
+									There is no rebalancing for outbound connections.
+								</p>
+								 <p>
+									The default value is <code class="literal">False</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">deserializationWhiteList</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									A comma-separated list of entries for the white list, which is the list of trusted classes and packages. This property is used by the JMS resource adapter to allow objects in the list to be deserialized.
+								</p>
+								 <p>
+									For more information, see <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuring_messaging/#controlling_jms_objectmessage_deserialization">Controlling JMS ObjectMessage Deserialization</a> in <span class="emphasis"><em>Configuring Messaging</em></span> for JBoss EAP.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									<code class="literal">deserializationBlackList</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									A comma-separated list of entries for the black list, which is the list of untrusted classes and packages. This property is used by the JMS resource adapter to prevent objects in the list from being deserialized.
+								</p>
+								 <p>
+									For more information, see <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuring_messaging/#controlling_jms_objectmessage_deserialization">Controlling JMS ObjectMessage Deserialization</a> in <span class="emphasis"><em>Configuring Messaging</em></span> for JBoss EAP.
+								</p>
+								 </td></tr></tbody></table></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="some_example_use_cases_for_MDB"/>Some Example Use Cases for Configuring MDBs</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							Use case for an MDB receiving a message
+						</p><p class="simpara">
+							For a basic scenario when MDB receives a message, see the <code class="literal">helloworld-mdb</code> quickstart that is shipped with JBoss EAP.
+						</p></li><li class="listitem"><p class="simpara">
+							Use case for an MDB sending a message
+						</p><p class="simpara">
+							After processing the message you may need to inform other business systems or reply to the message. In this case, you can send the message from MDB as shown in the snippet below:
+						</p><pre class="programlisting">package org.jboss.as.quickstarts.mdb;
+
+import javax.annotation.Resource;
+import javax.ejb.ActivationConfigProperty;
+import javax.ejb.MessageDriven;
+import javax.inject.Inject;
+import javax.jms.JMSContext;
+import javax.jms.JMSException;
+import javax.jms.Message;
+import javax.jms.MessageListener;
+import javax.jms.Queue;
+
+@MessageDriven(name = "MyMDB", activationConfig = {
+    @ActivationConfigProperty(propertyName = "destinationLookup", propertyValue = "queue/MyMDBRequest"),
+    @ActivationConfigProperty(propertyName = "destinationType", propertyValue = "javax.jms.Queue"),
+    @ActivationConfigProperty(propertyName = "acknowledgeMode", propertyValue = "Auto-acknowledge") })
+public class MyMDB implements MessageListener {
+
+    @Inject
+    private JMSContext jmsContext;
+
+    @Resource(lookup = "java:/queue/ResponseDefault")
+    private Queue defaultDestination;
+
+    /**
+     * @see MessageListener#onMessage(Message)
+     */
+    public void onMessage(Message rcvMessage) {
+        try {
+            Message response = jmsContext.createTextMessage("Response for message " + rcvMessage.getJMSMessageID());
+            if (rcvMessage.getJMSReplyTo() != null) {
+                jmsContext.createProducer().send(rcvMessage.getJMSReplyTo(), response);
+            } else {
+                jmsContext.createProducer().send(defaultDestination, response);
+            }
+        } catch (JMSException e) {
+            throw new RuntimeException(e);
+        }
+    }
+}</pre><p class="simpara">
+							In the example above, after the MDB receives the message, it replies to either the destination specified in <code class="literal">JMSReplyTo</code> or the destination which is bound to the JNDI name <code class="literal">java:/queue/ResponseDefault</code>.
+						</p></li><li class="listitem"><p class="simpara">
+							Use case for an MDB configuring rebalancing of inbound connection
+						</p><pre class="programlisting">@MessageDriven(name="MyMDBName",
+    activationConfig =
+    {
+        @ActivationConfigProperty(propertyName = "destinationType",propertyValue = "javax.jms.Queue"),
+        @ActivationConfigProperty(propertyName = "destinationLookup", propertyValue = "queueA"),
+        @ActivationConfigProperty(propertyName = "rebalanceConnections", propertyValue = "true")
+    }
+)</pre></li></ul></div></div></div></div></body></html>

@@ -1,0 +1,608 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 30. High Availability</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="messaging-ha"/>Chapter 30. High Availability</h1></div></div></div><p>
+				High availability is the ability for the system to continue functioning after failure of one or more of the servers.
+			</p><p>
+				A part of high availability is failover which is the ability for client connections to migrate from one server to another in event of server failure so client applications can continue to operate.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Only persistent message data will survive failover. Any non persistent message data will not be available after failover.
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="live_backup_pairs"/>Live / Backup Pairs</h1></div></div></div><p>
+					JBoss EAP 7 messaging allows servers to be linked together as live - backup pairs where each live server has a backup. Live servers receive messages from clients, while a backup server is not operational until failover occurs. A backup server can be owned by only one live server, and it will remain in passive mode, waiting to take over the live server’s work.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						There is a one-to-one relation between a live server and a backup server. A live server can have only <span class="emphasis"><em>one</em></span> backup server, and a backup server can be owned by only <span class="emphasis"><em>one</em></span> live server.
+					</p></div><p>
+					When a live server crashes or is brought down in the correct mode, the backup server currently in passive mode will become the new live server. If the new live server is configured to allow automatic failback, it will detect the old live server coming back up and automatically stop, allowing the old live server to start receiving messages again.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						If you deploy just one pair of live / backup servers, you cannot effectively use a load balancer in front of the pair because the backup instance is not actively processing messages. Moreover, services such as JNDI and the Undertow web server are not active on the backup server either. For these reasons, deploying JEE applications to an instance of JBoss EAP being used as a backup messaging server is not supported.
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ha_policies"/>HA Policies</h1></div></div></div><p>
+					JBoss EAP messaging supports two different strategies for backing up a server: replication and shared store. Use the <code class="literal">ha-policy</code> attribute of the <code class="literal">server</code> configuration element to assign the policy of your choice to the given server. There are four valid values for <code class="literal">ha-policy</code>:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							<code class="literal">replication-master</code>
+						</li><li class="listitem">
+							<code class="literal">replication-slave</code>
+						</li><li class="listitem">
+							<code class="literal">shared-store-master</code>
+						</li><li class="listitem">
+							<code class="literal">shared-store-slave</code>
+						</li></ul></div><p>
+					As you can see, the value specifies whether the server uses a <a class="link" href="messaging-ha.html#data_replication" title="Data Replication">data replication</a> or a <a class="link" href="messaging-ha.html#shared_store" title="Shared Store">shared store</a> ha policy, and whether it takes the role of master or slave.
+				</p><p>
+					Use the management CLI to add an <code class="literal">ha-policy</code> to the server of your choice.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						The examples below assume you are running JBoss EAP using the <code class="literal">standalone-full-ha</code> configuration profile.
+					</p></div><pre class="screen">/subsystem=messaging-activemq/server=<span class="emphasis"><em>SERVER</em></span>/ha-policy=<span class="emphasis"><em>POLICY</em></span>:add</pre><p>
+					For example, use the following command to add the <code class="literal">replication-master</code> policy to the <code class="literal">default</code> server.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/ha-policy=replication-master:add</pre><p>
+					The <code class="literal">replication-master</code> policy is configured with the default values. Values to override the default configuration can be included when you add the policy. The management CLI command to read the current configuration uses the following basic syntax.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=<span class="emphasis"><em>SERVER</em></span>/ha-policy=<span class="emphasis"><em>POLICY</em></span>:read-resource</pre><p>
+					For example, use the following command to read the current configuration for the <code class="literal">replication-master</code> policy that was added above to the <code class="literal">default</code> server. The output is also is also included to highlight the default configuration.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/ha-policy=replication-master:read-resource
+
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; {
+        "check-for-live-server" =&gt; true,
+        "cluster-name" =&gt; undefined,
+        "group-name" =&gt; undefined,
+        "initial-replication-sync-timeout" =&gt; 30000L
+    }
+}</pre><p>
+					See <a class="link" href="messaging-ha.html#data_replication" title="Data Replication">Data Replication</a> and <a class="link" href="messaging-ha.html#shared_store" title="Shared Store">Shared Store</a> for details on the configuration options available for each policy.
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="data_replication"/>Data Replication</h1></div></div></div><p>
+					When using replication, the live and the backup server pairs do not share the same data directories, all data synchronization is done over the network. Therefore all (persistent) data received by the live server will be duplicated to the backup.
+				</p><p>
+					If the live server is cleanly shut down, the backup server will activate and clients will failover to backup. This behavior is pre-determined and is therefore not configurable when using data replication.
+				</p><p>
+					The backup server will first need to synchronize all existing data from the live server before replacing it. Unlike shared storage, therefore, a replicating backup will not be fully operational immediately after startup. The time it will take for the synchronization to happen depends on the amount of data to be synchronized and the network speed. Also note that clients are blocked for the duration of <code class="literal">initial-replication-sync-timeout</code> when the backup is started. After this timeout elapses, clients will be unblocked, even if synchronization is not completed.
+				</p><p>
+					After a successful failover, the backup’s journal will start holding newer data than the data on the live server. You can configure the original live server to perform a failback and become the live server once restarted. A failback will synchronize data between the backup and the live server before the live server comes back online.
+				</p><p>
+					In cases were both servers are shut down, the administrator will have to determine which server’s journal has the latest data. If the backup journal has the latest data, copy that journal to the live server. Otherwise, whenever it activates again, the backup will replicate the stale journal data from the live server and will delete its own journal data. If the live server’s data is the latest, no action is needed and the servers can be started normally.
+				</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						Due to higher latencies and a potentially unreliable network between data centers, the configuration and use of replicated journals for high availability between data centers is neither recommended nor supported.
+					</p></div><p>
+					The replicating live and backup pair must be part of a cluster, and it is the <code class="literal">cluster-connection</code> configuration element that defines how a backup server will find its live pair. See <a class="link" href="clusters_overview.html#cluster_connections" title="Configuring the Cluster Connection">Configuring Cluster Connections</a> for details on how to configure a cluster connection. When configuring a <code class="literal">cluster-connection</code>, keep in mind the following:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							Both the live and backup server must be part of the same cluster. Notice that even a simple live/backup replicating pair will require a cluster configuration.
+						</li><li class="listitem">
+							Their cluster user and password must match.
+						</li></ul></div><p>
+					Specify a pair of live / backup servers by configuring the <code class="literal">group-name</code> attribute in either the master or the slave element. A backup server will only connect to a live server that shares the same <code class="literal">group-name</code>.
+				</p><p>
+					As a simple example of using a <code class="literal">group-name</code>, suppose you have 2 live servers and 2 backup servers. Because each live server needs to pair with its own backup, you would assign names like so:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							live1 and backup1 will both have a <code class="literal">group-name</code> of <code class="literal">pair1</code>.
+						</li><li class="listitem">
+							live2 and backup2 will both have a <code class="literal">group-name</code> of <code class="literal">pair2</code>.
+						</li></ul></div><p>
+					In the above example, server <code class="literal">backup1</code> with will search for the live server with the same <code class="literal">group-name</code>, <code class="literal">pair1</code>, which in this case is the server <code class="literal">live1</code>.
+				</p><p>
+					Much like in the shared store case, when the live server stops or crashes, its replicating, paired backup will become active and take over its duties. Specifically, the paired backup will become active when it loses connection to its live server. This can be problematic because this can also happen because of a temporary network problem. In order to address this issue, the paired backup will try to determine whether it still can connect to the other servers in the cluster. If it can connect to more than half the servers, it will become active. If it loses communication to its live server plus more than half the other servers in the cluster, the paired backup will wait and try reconnecting with the live server. This reduces the risk of a "split brain" situation where both the backup and live servers are processing messages without the other knowing it.
+				</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						This is an important distinction from a shared store backup, where the backup will activate and start to serve client requests if it does not find a live server and the file lock on the journal was released. Note also that in replication the backup server does not know whether any data it might have is up to date, so it really cannot decide to activate automatically. To activate a replicating backup server using the data it has, the administrator must change its configuration to make it a live server by changing slave to master.
+					</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configuring_data_replication"/>Configuring Data Replication</h2></div></div></div><p>
+						Below are two examples showing the basic configuration for both a live and a backup server residing in the cluster named <code class="literal">my-cluster</code> and in the backup group named <code class="literal">group1</code>.
+					</p><p>
+						The steps below use the management CLI to provide a basic configuration for both a live and a backup server residing in the cluster named <code class="literal">my-cluster</code> and in the backup group named <code class="literal">group1</code>.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The examples below assume you are running JBoss EAP using the <code class="literal">standalone-full-ha</code> configuration profile.
+						</p></div><div class="orderedlist"><p class="title"><strong>Management CLI Commands to Configure a Live Server for Data Replication</strong></p><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Add the <code class="literal">ha-policy</code> to the Live Server
+							</p><pre class="screen">/subsystem=messaging-activemq/server=default/ha-policy=replication-master:add(check-for-live-server=true,cluster-name=my-cluster,group-name=group1)</pre><p class="simpara">
+								The <code class="literal">check-for-live-server</code> attribute tells the live server to check to make sure that no other server has its given id within the cluster. The default value for this attribute was <code class="literal">false</code> in JBoss EAP 7.0. In JBoss EAP 7.1 and later, the default value is <code class="literal">true</code>.
+							</p></li><li class="listitem"><p class="simpara">
+								Add the <code class="literal">ha-policy</code> to the Backup Server
+							</p><pre class="screen">/subsystem=messaging-activemq/server=default/ha-policy=replication-slave:add(cluster-name=my-cluster,group-name=group1)</pre></li><li class="listitem"><p class="simpara">
+								Confirm a shared <code class="literal">cluster-connection</code> exists.
+							</p><p class="simpara">
+								Proper communication between the live and backup servers requires a <code class="literal">cluster-connection</code>. Use the following management CLI command to confirm that the same <code class="literal">cluster-connection</code> is configured on both the live and backup servers. The example uses the default <code class="literal">cluster-connection</code> found in the <code class="literal">standalone-full-ha</code> configuration profile, which should be sufficient for most use cases. See <a class="link" href="clusters_overview.html#cluster_connections" title="Configuring the Cluster Connection">Configuring Cluster Connections</a> for details on how to configure a cluster connection.
+							</p><p class="simpara">
+								Use the following management CLI command to confirm that both the live and backup server are using the same cluster-connection.
+							</p><pre class="screen">/subsystem=messaging-activemq/server=default/cluster-connection=my-cluster:read-resource</pre><p class="simpara">
+								If the <code class="literal">cluster-connection</code> exists, the output will provide the current configuration. Otherwise an error message will be displayed.
+							</p></li></ol></div><p>
+						See <a class="link" href="messaging-ha.html#replication_configuration" title="All Replication Configuration">All Replication Configuration</a> for details on all configuration attributes.
+					</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="replication_configuration"/>All Replication Configuration</h2></div></div></div><p>
+						You can use the management CLI to add configuration to a policy after it has been added. The commands to do so follow the basic syntax below.
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/ha-policy=<span class="emphasis"><em>POLICY</em></span>:write-attribute(name=<span class="emphasis"><em>ATTRIBUTE</em></span>,value=<span class="emphasis"><em>VALUE</em></span>)</pre><p>
+						For example, to set the value of the <code class="literal">restart-backup</code> attribute to <code class="literal">true</code>, use the following command.
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/ha-policy=replication-slave:write-attribute(name=restart-backup,value=true)</pre><p>
+						The following tables provide the HA configuration attributes for the <code class="literal">replication-master</code> node and <code class="literal">replication-slave</code> configuration elements.
+					</p><div class="table"><a id="idm139716448955440"/><p class="title"><strong>Table 30.1. Attributes for <code class="literal">replication-master</code></strong></p><div class="table-contents"><table summary="Attributes for replication-master" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										check-for-live-server
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Set to <code class="literal">true</code> to tell this server to check the cluster for another server using the same server ID when starting up. The default value for JBoss EAP 7.0 is <code class="literal">false</code>. The default value for JBoss EAP 7.1 and later is <code class="literal">true</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										cluster-name
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Name of the cluster used for replication.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										group-name
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										If set, backup servers will only pair with live servers with the matching <code class="literal">group-name</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										initial-replication-sync-timeout
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										How long to wait in milliseconds until the initiation replication is synchronized. Default is <code class="literal">30000</code>.
+									</p>
+									 </td></tr></tbody></table></div></div><div class="table"><a id="idm139716448929664"/><p class="title"><strong>Table 30.2. Attributes for <code class="literal">replication-slave</code></strong></p><div class="table-contents"><table summary="Attributes for replication-slave" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										allow-failback
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Whether this server will automatically stop when another places a request to take over its place. A typical use case is when live server requests to resume active processing after a restart or failure recovery. A backup server with <code class="literal">allow-failback</code> set to <code class="literal">true</code> would yield to the live server once it rejoined the cluster and requested to resume processing. Default is <code class="literal">true</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										cluster-name
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Name of the cluster used for replication.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										group-name
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										If set, backup servers will pair only with live servers with the matching <code class="literal">group-name</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										initial-replication-sync-timeout
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										How long to wait in milliseconds until the initiation replication is synchronized. Default is <code class="literal">30000</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										max-saved-replicated-journal-size
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Specifies how many times a replicated backup server can restart after moving its files on start. After reaching the maximum, the server will stop permanently after if fails back. Default is <code class="literal">2</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										restart-backup
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Set to <code class="literal">true</code> to tell this backup server to restart once it has been stopped because of failback. Default is <code class="literal">true</code>.
+									</p>
+									 </td></tr></tbody></table></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="preventing-cluster-connection-timeouts"/>Preventing Cluster Connection Timeouts</h2></div></div></div><p>
+						Each live and backup pair uses a <code class="literal">cluster-connection</code> to communicate. The <code class="literal">call-timeout</code> attribute of a <code class="literal">cluster-connection</code> sets the amount of a time a server will wait for a response after making a call to another server on the cluster. The default value for <code class="literal">call-timeout</code> is 30 seconds, which is sufficient for most use cases. However, there are situations where the backup server might be unable to process replication packets coming from the live server. This may happen, for example, when the initial pre-creation of journal files takes too much time, due to slow disk operations or to a large value for <code class="literal">journal-min-files</code>. If timeouts like this occur you will see a line in your logs similar to the one below.
+					</p><pre class="screen">AMQ222207: The backup server is not responding promptly introducing latency beyond the limit. Replication server being disconnected now.</pre><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+							If a line like the one above appears in your logs that means that the replication process has stopped. You must restart the backup server to reinitiate replication.
+						</p></div><p>
+						To prevent cluster connection timeouts, consider the following options:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								Increase the <code class="literal">call-timeout</code> of the <code class="literal">cluster-connection</code>. See <a class="link" href="clusters_overview.html#cluster_connections" title="Configuring the Cluster Connection">Configuring Cluster Connections</a> for more information.
+							</li><li class="listitem">
+								Decrease the value of <code class="literal">journal-min-files</code>. See <a class="link" href="configuring_persistence.html" title="Chapter 10. Configuring Persistence">Configuring Persistence</a> for more information.
+							</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="removing_old_journal_directories"/>Removing Old Journal Directories</h2></div></div></div><p>
+						A backup server will move its journals to a new location when it starts to synchronize with a live server. By default the journal directories are located in <code class="literal">data/activemq</code> directory under <code class="literal">EAP_HOME/standalone</code>. For domains, each server will have its own <code class="literal">serverX/data/activemq</code> directory located under <code class="literal">EAP_HOME/domain/servers</code>. The directories are named <code class="literal">bindings</code>, <code class="literal">journal</code>, <code class="literal">largemessages</code> and <code class="literal">paging</code>. See <a class="link" href="configuring_persistence.html#about_persistence_in_messaging" title="About Persistence in JBoss EAP 7 Messaging">Configuring Persistence</a> and <a class="link" href="configuring_paging.html#about_paging" title="About Paging">Configuring Paging</a> for more information about these directories.
+					</p><p>
+						Once moved, the new directories are renamed <code class="literal">oldreplica.X</code>, where <code class="literal">X</code> is a digit suffix. If another synchronization starts due to a new failover then the suffix for the "moved" directories will be increased by 1. For example, on the first synchronization the journal directories will be moved to <code class="literal">oldreplica.1</code>, on the second, <code class="literal">oldreplica.2</code>, and so on. The original directories will store the data synchronized from the live server.
+					</p><p>
+						By default a backup server is configured to manage two occurrences of failing over and failing back. After that a cleanup process triggers that removes the <code class="literal">oldreplica.X</code> directories. You can change the number of failover occurrences that trigger the cleanup process using the <code class="literal">max-saved-replicated-journal-size</code> attribute on the backup server.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							Live servers will have <code class="literal">max-saved-replicated-journal-size</code> set to <code class="literal">2</code>. This value cannot be changed
+						</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="updating_dedicated_live_and_backup_servers"/>Updating Dedicated Live and Backup Servers</h2></div></div></div><p>
+						If the live and backup servers are deployed in a dedicated topology, where each server is running in its own instance of JBoss EAP, follow the steps below to ensure a smooth update and restart of the cluster.
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+								Cleanly shut down the backup servers.
+							</li><li class="listitem">
+								Cleanly shut down the live servers.
+							</li><li class="listitem">
+								Update the configuration of the live and backup servers.
+							</li><li class="listitem">
+								Start the live servers.
+							</li><li class="listitem">
+								Start the backup servers.
+							</li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="split_brain"/>Limitations of Data Replication: Split Brain Processing</h2></div></div></div><p>
+						A "split brain" situation occurs when both a live server and its backup are active at the same time. Both servers can serve clients and process messages without the other knowing it. In this situation there is no longer any message replication between the live and backup servers. A split situation can happen if there is network failure between the two servers.
+					</p><p>
+						For example, if the connection between a live server and a network router is broken, the backup server will lose the connection to the live server. However, because the backup can still can connect to more than half the servers in the cluster, it becomes active. Recall that a backup will also activate if there is just one live-backup pair and the backup server loses connectivity to the live server. When both servers are active within the cluster, two undesired situations can happen:
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+								Remote clients fail over to the backup server, but local clients such as MDBs will use the live server. Both nodes will have completely different journals, resulting in split brain processing.
+							</li><li class="listitem">
+								The broken connection to the live server is fixed after remote clients have already failed over to the backup server. Any new clients will be connected to the live server while old clients continue to use the backup, which also results in a split brain scenario.
+							</li></ol></div><p>
+						Customers should implement a reliable network between each pair of live and backup servers to reduce the risk of split brain processing when using data replication. For example, use duplicated Network Interface Cards and other network redundancies.
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="shared_store"/>Shared Store</h1></div></div></div><p>
+					This style of high availability differs from data replication in that it requires a shared file system which is accessible by both the live and backup node. This means that the server pairs use the same location for their <a class="link" href="configuring_paging.html#configuration_of_paging_folder" title="Configuring the Paging Directory">paging</a>, <a class="link" href="configuring_persistence.html#configue-message-journal" title="Configuring the Message Journal Location">message journal</a>, <a class="link" href="configuring_persistence.html#configure-bindings-journal" title="Configuring the Bindings and JMS Journals">bindings journal</a>, and <a class="link" href="work_with_large_messages.html#configuring_messaging_large_messages" title="Configuring Large Messages">large messages</a> in their configuration.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						Using a shared store is not supported on Windows. It is supported on Red Hat Enterprise Linux when using Red Hat versions of GFS2 or NFSv4. In addition, GFS2 is supported only with an ASYNCIO journal type, while NFSv4 is supported with both ASYNCIO and NIO journal types.
+					</p></div><p>
+					Also, each participating server in the pair, live and backup, will need to have a <code class="literal">cluster-connection</code> defined, even if not part of a cluster, because the <code class="literal">cluster-connection</code> defines how the backup server announces its presence to its live server and any other nodes. See <a class="link" href="clusters_overview.html#cluster_connections" title="Configuring the Cluster Connection">Configuring Cluster Connections</a> for details on how this is done.
+				</p><p>
+					When failover occurs and a backup server takes over, it will need to load the persistent storage from the shared file system before clients can connect to it. This style of high availability differs from data replication in that it requires a shared file system which is accessible by both the live and backup pair. Typically this will be some kind of high performance Storage Area Network, or SAN. Red Hat does not recommend using Network Attached Storage, known as a NAS, for your storage solution.
+				</p><p>
+					The advantage of shared store high availability is that no replication occurs between the live and backup nodes, this means it does not suffer any performance penalties due to the overhead of replication during normal operation.
+				</p><p>
+					The disadvantage of shared store replication is that when the backup server activates it needs to load the journal from the shared store which can take some time depending on the amount of data in the store. Also, it requires a shared storage solution supported by JBoss EAP.
+				</p><p>
+					If you require the highest performance during normal operation, Red Hat recommends having access to a highly performant SAN and accept the slightly slower failover costs. Exact costs will depend on the amount of data.
+				</p><div class="informalfigure"><div class="mediaobject"><img src="images/topics/images/ha-shared-store.png" alt="ha shared store"/></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configuring_a_shared_store"/>Configuring a Shared Store</h2></div></div></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The examples below assume you are running JBoss EAP using the <code class="literal">standalone-full-ha</code> configuration profile.
+						</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Add the <code class="literal">ha-policy</code> to the Live Server.
+							</p><pre class="screen">/subsystem=messaging-activemq/server=default/ha-policy=shared-store-master:add</pre></li><li class="listitem"><p class="simpara">
+								Add the <code class="literal">ha-policy</code> to the Backup Server.
+							</p><pre class="screen">/subsystem=messaging-activemq/server=default/ha-policy=shared-store-slave:add</pre></li><li class="listitem"><p class="simpara">
+								Confirm a shared <code class="literal">cluster-connection</code> exists.
+							</p><p class="simpara">
+								Proper communication between the live and backup servers requires a <code class="literal">cluster-connection</code>. Use the following management CLI command to confirm that the same <code class="literal">cluster-connection</code> is configured on both the live and backup servers. The example uses the default <code class="literal">cluster-connection</code> found in the <code class="literal">standalone-full-ha</code> configuration profile, which should be sufficient for most use cases. See <a class="link" href="clusters_overview.html#cluster_connections" title="Configuring the Cluster Connection">Configuring Cluster Connections</a> for details on how to configure a cluster connection.
+							</p><pre class="screen">/subsystem=messaging-activemq/server=default/cluster-connection=my-cluster:read-resource</pre><p class="simpara">
+								If the <code class="literal">cluster-connection</code> exists, the output will provide the current configuration. Otherwise an error message will be displayed.
+							</p></li></ol></div><p>
+						See <a class="link" href="messaging-ha.html#shared_store_configuration" title="All Shared Store Configuration">All Shared Store Configuration</a> for details on all configuration attributes for shared store policies.
+					</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="shared_store_configuration"/>All Shared Store Configuration</h2></div></div></div><p>
+						Use the management CLI to add configuration to a policy after it has been added. The commands to do so follow the basic syntax below.
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/ha-policy=<span class="emphasis"><em>POLICY</em></span>:write-attribute(name=<span class="emphasis"><em>ATTRIBUTE</em></span>,value=<span class="emphasis"><em>VALUE</em></span>)</pre><p>
+						For example, to set the value of the <code class="literal">restart-backup</code> attribute to <code class="literal">true</code>, use the following command.
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/ha-policy=shared-store-slave:write-attribute(name=restart-backup,value=true)</pre><div class="table"><a id="idm139716541647120"/><p class="title"><strong>Table 30.3. Attributes of the <code class="literal">shared-store-master</code> Configuration Element</strong></p><div class="table-contents"><table summary="Attributes of the shared-store-master Configuration Element" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										failover-on-server-shutdown
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Set to <code class="literal">true</code> to tell this server to failover when it is normally shut down. Default is <code class="literal">false</code>.
+									</p>
+									 </td></tr></tbody></table></div></div><div class="table"><a id="idm139716541633840"/><p class="title"><strong>Table 30.4. Attributes of the <code class="literal">shared-store-slave</code> Configuration Element</strong></p><div class="table-contents"><table summary="Attributes of the shared-store-slave Configuration Element" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										allow-failback
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Set to <code class="literal">true</code> to tell this server to automatically stop when another places a request to take over its place. The use case is when a regular server stops and its backup takes over its duties, later the main server restarts and requests the server (the former backup) to stop operating. Default is <code class="literal">true</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										failover-on-server-shutdown
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Set to <code class="literal">true</code> to tell this server to failover when it is normally shut down. Default is <code class="literal">false</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										restart-backup
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Set to <code class="literal">true</code> to tell this server to restart once it has been stopped because of failback or scaling down. Default is <code class="literal">true</code>.
+									</p>
+									 </td></tr></tbody></table></div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="failing_back_to_a_live_server"/>Failing Back to a Live Server</h1></div></div></div><p>
+					After a live server has failed and a backup taken has taken over its duties, you may want to restart the live server and have clients fail back to it.
+				</p><p>
+					In case of a shared store, simply restart the original live server and kill the new live server by killing the process itself. Alternatively, you can set <code class="literal">allow-fail-back</code> to <code class="literal">true</code> on the slave which will force it to automatically stop once the master is back online. The management CLI command to set <code class="literal">allow-fail-back</code> looks like the following:
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/ha-policy=shared-store-slave:write-attribute(name=allow-fail-back,value=true)</pre><p>
+					In replication HA mode you need make sure the <code class="literal">check-for-live-server</code> attribute is set to <code class="literal">true</code> in the master configuration. Starting with JBoss EAP 7.1, this is the default value.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/ha-policy=replication-master:write-attribute(name=check-for-live-server,value=true)</pre><p>
+					If set to <code class="literal">true</code>, a live server will search the cluster during startup for another server using its nodeID. If it finds one, it will contact this server and try to "fail-back". Since this is a remote replication scenario, the original live server will have to synchronize its data with the backup running with its ID. Once they are in sync, it will request the backup server to shut down so it can take over active processing. This behavior allows the original live server to determine whether there was a fail-over, and if so whether the server that took its duties is still running or not.
+				</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+						Be aware that if you restart a live server after the failover to backup has occurred, then the <code class="literal">check-for-live-server</code> attribute must be set to <code class="literal">true</code>. If not, then the live server will start at once without checking that its backup server is running. This results in a situation in which the live and backup are running at the same time, causing the delivery of duplicate messages to all newly connected clients.
+					</p></div><p>
+					For shared stores, it is also possible to cause failover to occur on normal server shut down, to enable this set <code class="literal">failover-on-server-shutdown</code> to <code class="literal">true</code> in the HA configuration on either the master or slave like so:
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/ha-policy=shared-store-slave:write-attribute(name=failover-on-server-shutdown,value=true)</pre><p>
+					You can also force the running backup server to shut down when the original live server comes back up, allowing the original live server to take over automatically, by setting <code class="literal">allow-failback</code> to <code class="literal">true</code>.
+				</p><pre class="screen">/subsystem=messaging-activemq/server=default/ha-policy=shared-store-slave:write-attribute(name=allow-failback,value=true)</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="colocated_backup_servers"/>Colocated Backup Servers</h1></div></div></div><p>
+					JBoss EAP also makes it possible to colocate backup messaging servers in the same JVM as another live server. Take for example a simple two node cluster of standalone servers where each live server colocates the backup for the other. You can use either a shared store or a replicated HA policy when colocating servers in this way. There are two important things to remember when configuring messaging servers for colocation.
+				</p><p>
+					First, each <code class="literal">server</code> element in the configuration will need its own <code class="literal">remote-connector</code> and <code class="literal">remote-acceptor</code> or <code class="literal">http-connector</code> and <code class="literal">http-acceptor</code>. For example, a live server with a <code class="literal">remote-acceptor</code> can be configured to listen on port <code class="literal">5445</code>, while a <code class="literal">remote-acceptor</code> from a colocated backup uses port <code class="literal">5446</code>. The ports are defined in <code class="literal">socket-binding</code> elements that must be added to the default <code class="literal">socket-binding-group</code>. In the case of <code class="literal">http-acceptors</code>, the live and colocated backup can share the same <code class="literal">http-listener</code>. Cluster-related configuration elements in each <code class="literal">server</code> configuration will use the <code class="literal">remote-connector</code> or <code class="literal">http-connector</code> used by the server. The relevant configuration is included in each of the examples that follow.
+				</p><p>
+					Second, remember to properly configure paths for journal related directories. For example, in a shared store colocated topology, both the live server and its backup, colocated on another live server, must be configured to share directory locations for the <a class="link" href="configuring_persistence.html#configure-bindings-journal" title="Configuring the Bindings and JMS Journals">binding</a> and <a class="link" href="configuring_persistence.html#configue-message-journal" title="Configuring the Message Journal Location">message</a> journals, for <a class="link" href="work_with_large_messages.html#configuring_messaging_large_messages" title="Configuring Large Messages">large messages</a>, and for <a class="link" href="configuring_paging.html#configuration_of_paging_folder" title="Configuring the Paging Directory">paging</a>.
+				</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="colocated_shared_store"/>Configuring Manual Creation of a Colocated HA Topology</h2></div></div></div><p>
+						The example management CLI commands used in the steps below illustrate how to configure a simple two node cluster employing a colocated topology. The example configures a two node colocated cluster. A live server and a backup server will live on each node. The colocated backup on <span class="emphasis"><em>node one</em></span> is paired with the live server colocated on <span class="emphasis"><em>node two</em></span>, and the backup server on <span class="emphasis"><em>node two</em></span> is be paired with the live server on <span class="emphasis"><em>node one</em></span>. Examples are included for both a shared store and a data replication HA policy.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The examples below assume you are running JBoss EAP using the <code class="literal">full-ha</code> configuration profile.
+						</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Modify the default server on each instance to use an HA policy. The default server on each node will become the live server. The instructions you follow depend on whether you have configured a shared store policy or a data replication policy.
+							</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+										<span class="emphasis"><em>Instructions for a shared store policy:</em></span> Use the following management CLI command to add the preferred HA policy.
+									</p><pre class="screen">/subsystem=messaging-activemq/server=default/ha-policy=shared-store-master:add</pre></li><li class="listitem"><p class="simpara">
+										<span class="emphasis"><em>Instructions for a data replication policy:</em></span> The default server on each node should be configured with a unique <code class="literal">group-name</code>. In the following example, the first command is executed on <span class="emphasis"><em>node one</em></span>, and the second on <span class="emphasis"><em>node two</em></span>.
+									</p><pre class="screen">/subsystem=messaging-activemq/server=default/ha-policy=replication-master:add(cluster-name=my-cluster,group-name=group1,check-for-live-server=true)
+
+/subsystem=messaging-activemq/server=default/ha-policy=replication-master:add(cluster-name=my-cluster,group-name=group2,check-for-live-server=true)</pre></li></ul></div></li><li class="listitem"><p class="simpara">
+								Colocate a new backup server with each live server.
+							</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+										Add a new server to each instance of JBoss EAP to colocate with the default live server. The new server will backup the default server on the other node. Use the following management CLI command to create a new server named <code class="literal">backup</code>.
+									</p><pre class="screen">/subsystem=messaging-activemq/server=backup:add</pre></li><li class="listitem"><p class="simpara">
+										Next, configure the new server to use the preferred HA policy. The instructions you follow depend on whether you have configured a shared store policy or a data replication policy.
+									</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+												<span class="emphasis"><em>Instructions for a shared store policy:</em></span> Use the following management CLI command to add the HA policy:
+											</p><pre class="screen">/subsystem=messaging-activemq/server=backup/ha-policy=shared-store-slave:add</pre></li><li class="listitem"><p class="simpara">
+												<span class="emphasis"><em>Instructions for a data replication policy:</em></span> Configure the backup servers to use the <code class="literal">group-name</code> of the live server on the other node. In the following example, the first command is executed on <span class="emphasis"><em>node one</em></span>, and the second command is executed on <span class="emphasis"><em>node two</em></span>.
+											</p><pre class="screen">/subsystem=messaging-activemq/server=backup/ha-policy=replication-slave:add(cluster-name=my-cluster,group-name=group2)
+
+/subsystem=messaging-activemq/server=backup/ha-policy=replication-slave:add(cluster-name=my-cluster,group-name=group1)</pre></li></ul></div></li></ol></div></li><li class="listitem"><p class="simpara">
+								Configure the directory locations for all servers.
+							</p><p class="simpara">
+								Once the servers are configured for HA, you must configure the locations for the <a class="link" href="configuring_persistence.html#configure-bindings-journal" title="Configuring the Bindings and JMS Journals">binding</a> journal, <a class="link" href="configuring_persistence.html#configue-message-journal" title="Configuring the Message Journal Location">message</a> journal, and <a class="link" href="work_with_large_messages.html#configuring_messaging_large_messages" title="Configuring Large Messages">large messages</a> directory. If you plan to use paging, you must also configure the <a class="link" href="configuring_paging.html#configuration_of_paging_folder" title="Configuring the Paging Directory">paging</a> directory. The instructions you follow depend on whether you have configured a shared store policy or a data replication policy.
+							</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+										<span class="emphasis"><em>Instructions for a shared store policy:</em></span> The <code class="literal">path</code> values for the live server on <span class="emphasis"><em>node one</em></span> should point to the same location on a supported file system as the backup server on <span class="emphasis"><em>node two</em></span>. The same is true for the live server on <span class="emphasis"><em>node two</em></span> and its backup on <span class="emphasis"><em>node one</em></span>.
+									</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+												Use the following management CLI commands to configure the directory locations for <span class="emphasis"><em>node one</em></span>:
+											</p><pre class="screen">/subsystem=messaging-activemq/server=default/path=bindings-directory:write-attribute(name=path,value=<span class="emphasis"><em>/PATH/TO</em></span>/shared/bindings-A)
+
+/subsystem=messaging-activemq/server=default/path=journal-directory:write-attribute(name=path,value=<span class="emphasis"><em>/PATH/TO</em></span>/shared/journal-A)
+
+/subsystem=messaging-activemq/server=default/path=large-messages-directory:write-attribute(name=path,value=<span class="emphasis"><em>/PATH/TO</em></span>/shared/largemessages-A)
+
+/subsystem=messaging-activemq/server=default/path=paging-directory:write-attribute(name=path,value=<span class="emphasis"><em>/PATH/TO</em></span>/shared/paging-A)
+
+/subsystem=messaging-activemq/server=backup/path=bindings-directory:write-attribute(name=path,value=<span class="emphasis"><em>/PATH/TO</em></span>/shared/bindings-B)
+
+/subsystem=messaging-activemq/server=backup/path=journal-directory:write-attribute(name=path,value=<span class="emphasis"><em>/PATH/TO</em></span>/shared/journal-B)
+
+/subsystem=messaging-activemq/server=backup/path=large-messages-directory:write-attribute(name=path,value=<span class="emphasis"><em>/PATH/TO</em></span>/shared/largemessages-B)
+
+/subsystem=messaging-activemq/server=backup/path=paging-directory:write-attribute(name=path,value=<span class="emphasis"><em>/PATH/TO</em></span>/shared/paging-B)</pre></li><li class="listitem"><p class="simpara">
+												Use the following management CLI commands to configure the directory locations for <span class="emphasis"><em>node two</em></span>:
+											</p><pre class="screen">/subsystem=messaging-activemq/server=default/path=bindings-directory:write-attribute(name=path,value=<span class="emphasis"><em>/PATH/TO</em></span>/shared/bindings-B)
+
+/subsystem=messaging-activemq/server=default/path=journal-directory:write-attribute(name=path,value=<span class="emphasis"><em>/PATH/TO</em></span>/shared/journal-B)
+
+/subsystem=messaging-activemq/server=default/path=large-messages-directory:write-attribute(name=path,value=<span class="emphasis"><em>/PATH/TO</em></span>/shared/largemessages-B)
+
+/subsystem=messaging-activemq/server=default/path=paging-directory:write-attribute(name=path,value=<span class="emphasis"><em>/PATH/TO</em></span>/shared/paging-B)
+
+/subsystem=messaging-activemq/server=backup/path=bindings-directory:write-attribute(name=path,value=<span class="emphasis"><em>/PATH/TO</em></span>/shared/bindings-A)
+
+/subsystem=messaging-activemq/server=backup/path=journal-directory:write-attribute(name=path,value=<span class="emphasis"><em>/PATH/TO</em></span>/shared/journal-A)
+
+/subsystem=messaging-activemq/server=backup/path=large-messages-directory:write-attribute(name=path,value=<span class="emphasis"><em>/PATH/TO</em></span>/shared/largemessages-A)
+
+/subsystem=messaging-activemq/server=backup/path=paging-directory:write-attribute(name=path,value=<span class="emphasis"><em>/PATH/TO</em></span>/shared/paging-A)</pre></li></ol></div></li><li class="listitem"><p class="simpara">
+										<span class="emphasis"><em>Instructions for a data replication policy:</em></span> Each server uses its own directories and does not share them with any other server. In the example commands below, each value for a <code class="literal">path</code> location is assumed to be a unique location on a file system. There is no need to change the directory locations for the live servers since they will use the default locations. However, the backup servers still must be configured with unique locations.
+									</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+												Use the following management CLI commands to configure the directory locations for <span class="emphasis"><em>node one</em></span>:
+											</p><pre class="screen">/subsystem=messaging-activemq/server=backup/path=bindings-directory:write-attribute(name=path,value=activemq/bindings-B)
+
+/subsystem=messaging-activemq/server=backup/path=journal-directory:write-attribute(name=path,value=activemq/journal-B)
+
+/subsystem=messaging-activemq/server=backup/path=large-messages-directory:write-attribute(name=path,value=activemq/largemessages-B)
+
+/subsystem=messaging-activemq/server=backup/path=paging-directory:write-attribute(name=path,value=activemq/paging-B)</pre></li><li class="listitem"><p class="simpara">
+												Use the following management CLI commands to configure the directory locations for <span class="emphasis"><em>node two</em></span>:
+											</p><pre class="screen">/subsystem=messaging-activemq/server=backup/path=bindings-directory:write-attribute(name=path,value=activemq/bindings-B)
+
+/subsystem=messaging-activemq/server=backup/path=journal-directory:write-attribute(name=path,value=activemq/journal-B)
+
+/subsystem=messaging-activemq/server=backup/path=large-messages-directory:write-attribute(name=path,value=activemq/largemessages-B)
+
+/subsystem=messaging-activemq/server=backup/path=paging-directory:write-attribute(name=path,value=activemq/paging-B)</pre></li></ol></div></li></ul></div></li><li class="listitem"><p class="simpara">
+								Add a new acceptor and connector to the backup servers.
+							</p><p class="simpara">
+								Each backup server must be configured with an <code class="literal">http-connector</code> and an <code class="literal">http-acceptor</code> that uses the default <code class="literal">http-listener</code>. This allows a server to receive and send communications over the HTTP port. The following example adds an <code class="literal">http-acceptor</code> and an <code class="literal">http-connector</code> to the backup server.
+							</p><pre class="screen">/subsystem=messaging-activemq/server=backup/http-acceptor=http-acceptor:add(http-listener=default)
+
+/subsystem=messaging-activemq/server=backup/http-connector=http-connector:add(endpoint=http-acceptor,socket-binding=http)</pre></li><li class="listitem"><p class="simpara">
+								Configure the <code class="literal">cluster-connection</code> for the backup servers.
+							</p><p class="simpara">
+								Each messaging server needs a <code class="literal">cluster-connection</code>, a <code class="literal">broadcast-group</code>, and a <code class="literal">discovery-group</code> for proper communication. Use the following management CLI commands to configure these elements.
+							</p><pre class="screen">/subsystem=messaging-activemq/server=backup/broadcast-group=bg-group1:add(connectors=[http-connector],jgroups-cluster=activemq-cluster)
+
+/subsystem=messaging-activemq/server=backup/discovery-group=dg-group1:add(jgroups-cluster=activemq-cluster)
+
+/subsystem=messaging-activemq/server=backup/cluster-connection=my-cluster:add(connector-name=http-connector,cluster-connection-address=jms,discovery-group=dg-group1)</pre></li></ol></div><p>
+						The colocated server configuration is now completed.
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="failover_modes"/>Failover Modes</h1></div></div></div><p>
+					JBoss EAP messaging defines two types of client failover:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							Automatic client failover
+						</li><li class="listitem">
+							Application-level client failover
+						</li></ul></div><p>
+					JBoss EAP messaging also provides 100% transparent automatic reattachment of connections to the same server (e.g. in case of transient network problems). This is similar to failover, except it is reconnecting to the same server and is discussed in <a class="link" href="messaging-ha.html#messaging_client_reconnect" title="Client Reconnection and Session Reattachment">Client Reconnection and Session Reattachment</a>.
+				</p><p>
+					During failover, if the client has consumers on any non persistent or temporary queues, those queues will be automatically recreated during failover on the backup node, since the backup node will not have any knowledge of non persistent queues.
+				</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="messaging_auto_client_failover"/>Automatic Client Failover</h2></div></div></div><p>
+						JBoss EAP messaging clients can be configured to receive knowledge of all live and backup servers, so that in the event of a connection failure at the client - live server connection, the client will detect the failure and reconnect to the backup server. The backup server will then automatically recreate any sessions and consumers that existed on each connection before failover, thus saving the user from having to hand-code manual reconnection logic.
+					</p><p>
+						A JBoss EAP messaging client detects connection failure when it has not received packets from the server within the time given by <code class="literal">client-failure-check-period</code> as explained in <a class="link" href="messaging-ha.html#messaging_detect_dead_conns" title="Detecting Dead Connections">Detecting Dead Connections</a>.
+					</p><p>
+						If the client does not receive data in the allotted time, it will assume the connection has failed and attempt failover. If the socket is closed by the operating system, the server process might be killed rather than the server hardware itself crashing for example, the client will failover straight away.
+					</p><p>
+						JBoss EAP messaging clients can be configured to discover the list of live-backup server pairs in a number of different ways. They can be configured with explicit endpoints, for example, but the most common way is for the client to receive information about the cluster topology when it first connects to the cluster. See <a class="link" href="clusters_overview.html#server_discovery" title="Server Discovery">Server Discovery</a> for more information.
+					</p><p>
+						The default HA configuration includes a <code class="literal">cluster-connection</code> that uses the recommended <code class="literal">http-connector</code> for cluster communication. This is the same <code class="literal">http-connector</code> that remote clients use when making connections to the server using the default <code class="literal">RemoteConnectionFactory</code>. While it is not recommended, you can use a different connector. If you use your own connector, make sure it is included as part of the configuration for both the <code class="literal">connection-factory</code> to be used by the remote client and the <code class="literal">cluster-connection</code> used by the cluster nodes. See <a class="link" href="acceptors_and_connectors.html" title="Chapter 8. Configuring the Messaging Transports">Configuring the Messaging Transports</a> and <a class="link" href="clusters_overview.html#cluster_connections" title="Configuring the Cluster Connection">Cluster Connections</a> for more information on connectors and cluster connections.
+					</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+							The <code class="literal">connector</code> defined in the <code class="literal">connection-factory</code> to be used by a JMS client must be the same one defined in the <code class="literal">cluster-connection</code> used by the cluster. Otherwise, the client will not be able to update its topology of the underlying live/backup pairs and therefore will not know the location of the backup server.
+						</p></div><p>
+						Use CLI commands to review the configuration for both the <code class="literal">connection-factory</code> and the <code class="literal">cluster-connection</code>. For example, to read the current configuration for the <code class="literal">connection-factory</code> named <code class="literal">RemoteConnectionFactory</code> use the following command.
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/connection-factory=RemoteConnectionFactory:read-resource</pre><p>
+						Likewise, the command below reads the configuration for the <code class="literal">cluster-connection</code> named <code class="literal">my-cluster</code>.
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/cluster-connection=my-cluster:read-resource</pre><p>
+						To enable automatic client failover, the client must be configured to allow non-zero reconnection attempts. See <a class="link" href="messaging-ha.html#messaging_client_reconnect" title="Client Reconnection and Session Reattachment">Client Reconnection and Session Reattachment</a> for more information. By default, failover will occur only after at least one connection has been made to the live server. In other words, failover will not occur if the client fails to make an initial connection to the live server. If it does fail its initial attempt, a client would simply retry connecting to the live server according to the <code class="literal">reconnect-attempts</code> property and fail after the configured number of attempts.
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/connection-factory=RemoteConnectionFactory:write-attribute(name=reconnect-attempts,value=&lt;NEW_VALUE&gt;)</pre><p>
+						An exception to this rule is the case where there is only one pair of live - backup servers, and no other live server, and a remote MDB is connected to the live server when it is cleanly shut down. If the MDB has configured <code class="literal">@ActivationConfigProperty(propertyName = "rebalanceConnections", propertyValue = "true")</code>, it tries to rebalance its connection to another live server and will not failover to the backup.
+					</p><h4><a id="failing_over_on_the_initial_connection"/>Failing Over on the Initial Connection</h4><p>
+						Since the client does not learn about the full topology until after the first connection is made, there is a window of time where it does not know about the backup. If a failure happens at this point the client can only try reconnecting to the original live server. To configure how many attempts the client will make you can set the property <code class="literal">initialConnectAttempts</code> on the <code class="literal">ClientSessionFactoryImpl</code> or <code class="literal">ActiveMQConnectionFactory</code>.
+					</p><p>
+						Alternatively in the server configuration, you can set the <code class="literal">initial-connect-attempts</code> attribute of the connection factory used by the client. The default for this is <code class="literal">0</code>, that is, try only once. Once the number of attempts has been made, an exception will be thrown.
+					</p><pre class="screen">/subsystem=messaging-activemq/server=default/connection-factory=RemoteConnectionFactory:write-attribute(name=initial-connect-attempts,value=&lt;NEW_VALUE&gt;)</pre><h4><a id="about_server_replication"/>About Server Replication</h4><p>
+						JBoss EAP messaging does not replicate full server state between live and backup servers. When the new session is automatically recreated on the backup, it won’t have any knowledge of the messages already sent or acknowledged during that session. Any in-flight sends or acknowledgements at the time of failover may also be lost.
+					</p><p>
+						By replicating full server state, JBoss EAP messaging could theoretically provide a 100% transparent seamless failover, avoiding any lost messages or acknowledgements. However, doing so comes at a great cost: replicating the full server state, including the queues and session. This would require replication of the entire server state machine. That is, every operation on the live server would have to replicated on the replica servers in the exact same global order to ensure a consistent replica state. This is extremely hard to do in a performant and scalable way, especially considering that multiple threads are changing the live server state concurrently.
+					</p><p>
+						It is possible to provide full state machine replication using techniques such as virtual synchrony, but this does not scale well and effectively serializes all operations to a single thread, dramatically reducing concurrency. Other techniques for multi-threaded active replication exist such as replicating lock states or replicating thread scheduling, but this is very hard to achieve at a Java level.
+					</p><p>
+						Consequently, it was not worth reducing performance and concurrency for the sake of 100% transparent failover. Even without 100% transparent failover, it is simple to guarantee once and only once delivery, even in the case of failure, by using a combination of duplicate detection and retrying of transactions. However this is not 100% transparent to the client code.
+					</p><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="blocking_calls_failover"/>Handling Blocking Calls During Failover</h3></div></div></div><p>
+							If the client code is in a blocking call to the server, i.e. it is waiting for a response to continue its execution, during a failover, the new session will not have any knowledge of the call that was in progress. The blocked call might otherwise hang forever, waiting for a response that will never come.
+						</p><p>
+							To prevent this, JBoss EAP messaging will unblock any blocking calls that were in progress at the time of failover by making them throw a <code class="literal">javax.jms.JMSException</code>, if using JMS, or an <code class="literal">ActiveMQException</code> with error code <code class="literal">ActiveMQException.UNBLOCKED</code> if using the core API. It is up to the client code to catch this exception and retry any operations if desired.
+						</p><p>
+							If the method being unblocked is a call to commit(), or prepare(), then the transaction will be automatically rolled back and JBoss EAP messaging will throw a <code class="literal">javax.jms.TransactionRolledBackException</code>, if using JMS, or a <code class="literal">ActiveMQException</code> with error code <code class="literal">ActiveMQException.TRANSACTION_ROLLED_BACK</code> if using the core API.
+						</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="handling_failover_with_transactions"/>Handling Failover With Transactions</h3></div></div></div><p>
+							If the session is transactional and messages have already been sent or acknowledged in the current transaction, then the server cannot be sure whether messages or acknowledgements were lost during the failover.
+						</p><p>
+							Consequently the transaction will be marked as rollback-only, and any subsequent attempt to commit it will throw a <code class="literal">javax.jms.TransactionRolledBackException</code>,if using JMS. or a <code class="literal">ActiveMQException</code> with error code <code class="literal">ActiveMQException.TRANSACTION_ROLLED_BACK</code> if using the core API.
+						</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+								The caveat to this rule is when XA is used either via JMS or through the core API. If a two phase commit is used and <code class="literal">prepare()</code> has already been called then rolling back could cause a <code class="literal">HeuristicMixedException</code>. Because of this the commit will throw a <code class="literal">XAException.XA_RETRY</code> exception. This informs the Transaction Manager that it should retry the commit at some later point in time, a side effect of this is that any non persistent messages will be lost. To avoid this from happening, be sure to use persistent messages when using XA. With acknowledgements this is not an issue since they are flushed to the server before <code class="literal">prepare()</code> gets called.
+							</p></div><p>
+							It is up to the user to catch the exception and perform any client side local rollback code as necessary. There is no need to manually rollback the session since it is already rolled back. The user can then just retry the transactional operations again on the same session.
+						</p><p>
+							If failover occurs when a commit call is being executed, the server, as previously described, will unblock the call to prevent a hang, since no response will come back. In this case it is not easy for the client to determine whether the transaction commit was actually processed on the live server before failure occurred.
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								If XA is being used either via JMS or through the core API then an <code class="literal">XAException.XA_RETRY</code> is thrown. This is to inform Transaction Managers that a retry should occur at some point. At some later point in time the Transaction Manager will retry the commit. If the original commit has not occurred, it will still exist and be committed. If it does not exist, then it is assumed to have been committed, although the transaction manager may log a warning.
+							</p></div><p>
+							To remedy this, the client can enable duplicate detection in the transaction, and retry the transaction operations again after the call is unblocked. See <a class="link" href="about_duplicate_message_detection.html" title="Chapter 25. Configuring Duplicate Message Detection">Duplicate Message Detection</a> for information on how detection is configured on the server. If the transaction had indeed been committed on the live server successfully before failover, duplicate detection will ensure that any durable messages resent in the transaction will be ignored on the server to prevent them getting sent more than once when the transaction is retried.
+						</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="getting_notified_of_connection_failures"/>Getting Notified of Connection Failure</h3></div></div></div><p>
+							JMS provides a standard mechanism for sending asynchronously notifications of a connection failure: <code class="literal">java.jms.ExceptionListener</code>. Please consult the <a class="link" href="http://docs.oracle.com/javaee/7/api/javax/jms/ExceptionListener.html">JMS javadoc</a> for more information on this class. The core API also provides a similar feature in the form of the class <code class="literal">org.apache.activemq.artemis.core.client.SessionFailureListener</code>.
+						</p><p>
+							Any <code class="literal">ExceptionListener</code> or <code class="literal">SessionFailureListener</code> instance will always be called by JBoss EAP in case of a connection failure, whether the connection was successfully failed over, reconnected, or reattached. However, you can find out if the reconnect or reattach has happened by inspecting the value for the <code class="literal">failedOver</code> flag passed into <code class="literal">connectionFailed()</code> on <code class="literal">SessionfailureListener</code> or the error code on the <code class="literal">javax.jms.JMSException</code> which will be one of the following:
+						</p><p>
+							JMSException error codes
+						</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Error code</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+											FAILOVER
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											Failover has occurred and we have successfully reattached or reconnected.
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											DISCONNECT
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											No failover has occurred and we are disconnected.
+										</p>
+										 </td></tr></tbody></table></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="application_level_failover"/>Application-Level Failover</h2></div></div></div><p>
+						In some cases you may not want automatic client failover, and prefer to handle any connection failure yourself, and code your own manually reconnection logic in your own failure handler. We define this as application-level failover, since the failover is handled at the user application level.
+					</p><p>
+						To implement application-level failover if you’re using JMS set an <code class="literal">ExceptionListener</code> class on the JMS connection. The <code class="literal">ExceptionListener</code> will be called by JBoss EAP messaging in the event that connection failure is detected. In your <code class="literal">ExceptionListener</code>, you would close your old JMS connections, potentially look up new connection factory instances from JNDI and creating new connections.
+					</p><p>
+						If you are using the core API, then the procedure is very similar: you would set a <code class="literal">FailureListener</code> on the core <code class="literal">ClientSession</code> instances.
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="messaging_detect_dead_conns"/>Detecting Dead Connections</h1></div></div></div><p>
+					This section discusses connection time to live (TTL) and explains how JBoss EAP messaging handles crashed clients and clients that have exited without cleanly closing their resources.
+				</p><h3><a id="cleaning_up_dead_connection_resources_on_the_server"/>Cleaning up Dead Connection Resources on the Server</h3><p>
+					Before a JBoss EAP client application exits, it should close its resources in a controlled manner, using a <code class="literal">finally</code> block.
+				</p><p>
+					Below is an example of a core client appropriately closing its session and session factory in a <code class="literal">finally</code> block:
+				</p><pre class="programlisting">ServerLocator locator = null;
+ClientSessionFactory sf = null;
+ClientSession session = null;
+
+try {
+   locator = ActiveMQClient.createServerLocatorWithoutHA(..);
+
+   sf = locator.createClientSessionFactory();;
+
+   session = sf.createSession(...);
+
+   ... do some stuff with the session...
+}
+finally {
+   if (session != null) {
+      session.close();
+   }
+
+   if (sf != null) {
+      sf.close();
+   }
+
+   if(locator != null) {
+      locator.close();
+   }
+}</pre><p>
+					And here is an example of a well behaved JMS client application:
+				</p><pre class="programlisting">Connection jmsConnection = null;
+
+try {
+   ConnectionFactory jmsConnectionFactory = ActiveMQJMSClient.createConnectionFactoryWithoutHA(...);
+
+   jmsConnection = jmsConnectionFactory.createConnection();
+
+   ... do some stuff with the connection...
+}
+finally {
+   if (connection != null) {
+      connection.close();
+   }
+}</pre><p>
+					Unfortunately sometimes clients crash and do not have a chance to clean up their resources. If this occurs, it can leave server side resources hanging on the server. If these resources are not removed they would cause a resource leak on the server, and over time this likely would result in the server running out of memory or other resources.
+				</p><p>
+					When looking to clean up dead client resources, it is important to be aware of the fact that sometimes the network between the client and the server can fail and then come back, allowing the client to reconnect. Because JBoss EAP supports client reconnection, it is important that it not clean up "dead" server side resources too soon, or clients will be prevented any client from reconnecting and regaining their old sessions on the server.
+				</p><p>
+					JBoss EAP makes all of this configurable. For each <code class="literal">ClientSessionFactory</code> configured, a Time-To-Live, or TTL, property can be used to set how long the server will keep a connection alive in milliseconds in the absence of any data from the client. The client will automatically send "ping" packets periodically to prevent the server from closing its connection. If the server does not receive any packets on a connection for the length of the TTL time, it will automatically close all the sessions on the server that relate to that connection.
+				</p><p>
+					If you are using JMS, the connection TTL is defined by the <code class="literal">ConnectionTTL</code> attribute on a <code class="literal">ActiveMQConnectionFactory</code> instance, or if you are deploying JMS connection factory instances direct into JNDI on the server side, you can specify it in the xml config, using the parameter <code class="literal">connectionTtl</code>.
+				</p><p>
+					The default value for <code class="literal">ConnectionTTL</code> on an network-based connection, such as an <code class="literal">http-connector</code>, is <code class="literal">60000</code>, i.e. 1 minute. The default value for connection TTL on a internal connection, e.g. an <code class="literal">in-vm</code> connection, is <code class="literal">-1</code>. A value of <code class="literal">-1</code> for <code class="literal">ConnectionTTL</code> means the server will never time out the connection on the server side.
+				</p><p>
+					If you do not want clients to specify their own connection TTL, you can set a global value on the server side. This can be done by specifying the <code class="literal">connection-ttl-override</code> attribute in the server configuration. The default value for <code class="literal">connection-ttl-override</code> is <code class="literal">-1</code> which means "do not override", i.e. let clients use their own values.
+				</p><h3><a id="closing_core_sessions_or_jms_connections"/>Closing Core Sessions or JMS Connections</h3><p>
+					It is important that all core client sessions and JMS connections are always closed explicitly in a <code class="literal">finally</code> block when you are finished using them.
+				</p><p>
+					If you fail to do so, JBoss EAP will detect this at garbage collection time. It will then close the connection and log a warning similar to the following:
+				</p><pre class="screen">[Finalizer] 20:14:43,244 WARNING [org.apache.activemq.artemis.core.client.impl.DelegatingSession]  I'm closing a ClientSession you left open. Please make sure you close all ClientSessions explicitly before let
+ting them go out of scope!
+[Finalizer] 20:14:43,244 WARNING [org.apache.activemq.artemis.core.client.impl.DelegatingSession]  The session you didn't close was created here:
+java.lang.Exception
+   at org.apache.activemq.artemis.core.client.impl.DelegatingSession.&lt;init&gt;(DelegatingSession.java:83)
+   at org.acme.yourproject.YourClass (YourClass.java:666)</pre><p>
+					Note that if you are using JMS the warning will involve a JMS connection, not a client session. Also, the log will tell you the exact line of code where the unclosed JMS connection or core client session was instantiated. This will enable you to pinpoint the error in your code and correct it appropriately.
+				</p><h3><a id="detecting_failure_from_the_client_side"/>Detecting Failure from the Client Side</h3><p>
+					As long as the client is receiving data from the server it will consider the connection to be alive. If the client does not receive any packets for <code class="literal">client-failure-check-period</code> milliseconds, it will consider the connection failed and will either initiate failover, or call any <code class="literal">FailureListener</code> instances, or <code class="literal">ExceptionListener</code> instances if you are using JMS, depending on how the client has been configured.
+				</p><p>
+					If you are using JMS the behavior is defined by the <code class="literal">ClientFailureCheckPeriod</code> attribute on a <code class="literal">ActiveMQConnectionFactory</code> instance.
+				</p><p>
+					The default value for client failure check period on a network connection, for example an HTTP connection, is <code class="literal">30000</code>, or 30 seconds. The default value for client failure check period on an in-vm connection, is <code class="literal">-1</code>. A value of <code class="literal">-1</code> means the client will never fail the connection on the client side if no data is received from the server. Whatever the type of connection, the check period is typically much lower than the value for connection TTL on the server so that clients can reconnect in case of transitory failure.
+				</p><h3><a id="configuring_asynchronous_connection_execution"/>Configuring Asynchronous Connection Execution</h3><p>
+					Most packets received on the server side are executed on the <code class="literal">remoting</code> thread. These packets represent short-running operations and are always executed on the <code class="literal">remoting</code> thread for performance reasons.
+				</p><p>
+					However, by default some kinds of packets are executed using a thread from a thread pool so that the <code class="literal">remoting</code> thread is not tied up for too long. Please note that processing operations asynchronously on another thread adds a little more latency. These packets are:
+				</p><pre class="programlisting">org.apache.activemq.artemis.core.protocol.core.impl.wireformat.RollbackMessage
+
+org.apache.activemq.artemis.core.protocol.core.impl.wireformat.SessionCloseMessage
+
+org.apache.activemq.artemis.core.protocol.core.impl.wireformat.SessionCommitMessage
+
+org.apache.activemq.artemis.core.protocol.core.impl.wireformat.SessionXACommitMessage
+
+org.apache.activemq.artemis.core.protocol.core.impl.wireformat.SessionXAPrepareMessage
+
+org.apache.activemq.artemis.core.protocol.core.impl.wireformat.SessionXARollbackMessage</pre><p>
+					To disable asynchronous connection execution, set the parameter <code class="literal">async-connection-execution-enabled</code> to <code class="literal">false</code>. The default value is <code class="literal">true</code>.
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="messaging_client_reconnect"/>Client Reconnection and Session Reattachment</h1></div></div></div><p>
+					JBoss EAP messaging clients can be configured to automatically reconnect or reattach to the server in the event that a failure is detected in the connection between the client and the server.
+				</p><h3><a id="transparent_session_reattachment"/>Transparent Session Reattachment</h3><p>
+					If the failure was due to some transient cause such as a temporary network outage, and the target server was not restarted, the sessions will still exist on the server, assuming the client has not been disconnected for more than the value of <code class="literal">connection-ttl</code>. See <a class="link" href="messaging-ha.html#messaging_detect_dead_conns" title="Detecting Dead Connections">Detecting Dead Connections</a>.
+				</p><p>
+					In this scenario, JBoss EAP will automatically reattach the client sessions to the server sessions when the re-connection is made. This is done 100% transparently and the client can continue exactly as if nothing had happened.
+				</p><p>
+					As JBoss EAP messaging clients send commands to their servers they store each sent command in an in-memory buffer. When a connection fails and the client subsequently attempts to reattach to the same server, as part of the reattachment protocol, the server gives the client the id of the last command it successfully received.
+				</p><p>
+					If the client has sent more commands than were received before failover it can replay any sent commands from its buffer so that the client and server can reconcile their states.
+				</p><p>
+					The size in bytes of this buffer is set by the <code class="literal">confirmationWindowSize</code> property. When the server has received <code class="literal">confirmationWindowSize</code> bytes of commands and processed them it will send back a command confirmation to the client, and the client can then free up space in the buffer.
+				</p><p>
+					If you are using the JMS service on the server to load your JMS connection factory instances into JNDI, then this property can be configured in the server configuration, by setting the <code class="literal">confirmation-window-size</code> attribute of the chosen <code class="literal">connection-factory</code>. If you are using JMS but not using JNDI then you can set these values directly on the <code class="literal">ActiveMQConnectionFactory</code> instance using the appropriate setter method, <code class="literal">setConfirmationWindowSize</code>. If you are using the core API, the <code class="literal">ServerLocator</code> instance has a <code class="literal">setConfirmationWindowSize</code> method exposed as well.
+				</p><p>
+					Setting <code class="literal">confirmationWindowSize</code> to <code class="literal">-1</code>, which is also the default, disables any buffering and prevents any reattachment from occurring, forcing a reconnect instead.
+				</p><h3><a id="session_reconnection"/>Session Reconnection</h3><p>
+					Alternatively, the server might have actually been restarted after crashing or it might have been stopped. In such a case any sessions will no longer exist on the server and it will not be possible to 100% transparently reattach to them.
+				</p><p>
+					In this case, JBoss EAP will automatically reconnect the connection and recreate any sessions and consumers on the server corresponding to the sessions and consumers on the client. This process is exactly the same as what happens when failing over to a backup server.
+				</p><p>
+					Client reconnection is also used internally by components such as core bridges to allow them to reconnect to their target servers.
+				</p><p>
+					See the section on <a class="link" href="messaging-ha.html#messaging_auto_client_failover" title="Automatic Client Failover">Automatic Client Failover</a> to get a full understanding of how transacted and non-transacted sessions are reconnected during a reconnect and what you need to do to maintain once and only once delivery guarantees.
+				</p><h3><a id="configuring_reconnection_attributes"/>Configuring Reconnection Attributes</h3><p>
+					Client reconnection is configured by setting the following properties:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							retryInterval. This optional parameter sets the period in milliseconds between subsequent reconnection attempts, if the connection to the target server has failed. The default value is <code class="literal">2000</code> milliseconds.
+						</li><li class="listitem"><p class="simpara">
+							retryIntervalMultiplier. This optional parameter sets a multiplier to apply to the time since the last retry to compute the time to the next retry. This allows you to implement an exponential backoff between retry attempts.
+						</p><p class="simpara">
+							For example, if you set <code class="literal">retryInterval</code> to <code class="literal">1000</code> ms and set retryIntervalMultiplier to <code class="literal">2.0</code>, then, if the first reconnect attempt fails, the client will wait <code class="literal">1000</code> ms then <code class="literal">2000</code> ms then <code class="literal">4000</code> ms between subsequent reconnection attempts.
+						</p><p class="simpara">
+							The default value is <code class="literal">1.0</code> meaning each reconnect attempt is spaced at equal intervals.
+						</p></li><li class="listitem">
+							maxRetryInterval. This optional parameter sets the maximum retry interval that will be used. When setting <code class="literal">retryIntervalMultiplier</code> it would otherwise be possible that subsequent retries exponentially increase to ridiculously large values. By setting this parameter you can set an upper limit on that value. The default value is <code class="literal">2000</code> milliseconds.
+						</li><li class="listitem">
+							reconnectAttempts. This optional parameter sets the total number of reconnect attempts to make before giving up and shutting down. A value of <code class="literal">-1</code> signifies an unlimited number of attempts. The default value is <code class="literal">0</code>.
+						</li></ul></div><p>
+					If you are using JMS and JNDI on the client to look up your JMS connection factory instances then you can specify these parameters in the JNDI context environment. For example, your <code class="literal">jndi.properties</code> file might look like the following.
+				</p><pre class="screen">java.naming.factory.initial = ActiveMQInitialContextFactory
+connection.ConnectionFactory=tcp://localhost:8080?retryInterval=1000&amp;retryIntervalMultiplier=1.5&amp;maxRetryInterval=60000&amp;reconnectAttempts=1000</pre><p>
+					If you are using JMS, but instantiating your JMS connection factory directly, you can specify the parameters using the appropriate setter methods on the <code class="literal">ActiveMQConnectionFactory</code> immediately after creating it.
+				</p><p>
+					If you are using the core API and instantiating the <code class="literal">ServerLocator</code> instance directly you can also specify the parameters using the appropriate setter methods on the ServerLocator immediately after creating it.
+				</p><p>
+					If your client does manage to reconnect but the session is no longer available on the server, for instance if the server has been restarted or it has timed out, then the client will not be able to reattach, and any <code class="literal">ExceptionListener</code> or <code class="literal">FailureListener</code> instances registered on the connection or session will be called.
+				</p><h3><a id="exceptionlisteners_and_sessionfailurelisteners"/>ExceptionListeners and SessionFailureListeners</h3><p>
+					Note that when a client reconnects or reattaches, any registered JMS <code class="literal">ExceptionListener</code> or core API <code class="literal">SessionFailureListener</code> will be called.
+				</p></div></div></body></html>

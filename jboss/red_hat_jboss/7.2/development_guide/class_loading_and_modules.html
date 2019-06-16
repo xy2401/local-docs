@@ -1,0 +1,980 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 3. Class Loading and Modules</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="class_loading_and_modules"/>Chapter 3. Class Loading and Modules</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="introduction"/>Introduction</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="overview_of_class_loading_and_modules"/>Overview of Class Loading and Modules</h2></div></div></div><p>
+					JBoss EAP uses a modular class loading system for controlling the class paths of deployed applications. This system provides more flexibility and control than the traditional system of hierarchical class loaders. Developers have fine-grained control of the classes available to their applications, and can configure a deployment to ignore classes provided by the application server in favor of their own.
+				</p><p>
+					The modular class loader separates all Java classes into logical groups called modules. Each module can define dependencies on other modules in order to have the classes from that module added to its own class path. Because each deployed JAR and WAR file is treated as a module, developers can control the contents of their application’s class path by adding module configuration to their application.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="class_loading_in_deployments"/>Class Loading in Deployments</h2></div></div></div><p>
+					For the purposes of class loading, JBoss EAP treats all deployments as modules. These are called dynamic modules. Class loading behavior varies according to the deployment type.
+				</p><div class="variablelist"><dl class="variablelist"><dt><span class="term">WAR Deployment</span></dt><dd>
+								A WAR deployment is considered to be a single module. Classes in the <code class="literal">WEB-INF/lib</code> directory are treated the same as classes in the <code class="literal">WEB-INF/classes</code> directory. All classes packaged in the WAR will be loaded with the same class loader.
+							</dd><dt><span class="term">EAR Deployment</span></dt><dd><p class="simpara">
+								EAR deployments are made up of more than one module, and are defined by the following rules:
+							</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+										The <code class="literal">lib/</code> directory of the EAR is a single module called the parent module.
+									</li><li class="listitem">
+										Each WAR deployment within the EAR is a single module.
+									</li><li class="listitem">
+										Each EJB JAR deployment within the EAR is a single module.
+									</li></ol></div></dd></dl></div><p>
+					Subdeployment modules, for example the WAR and JAR deployments within the EAR, have an automatic dependency on the parent module. However, they do not have automatic dependencies on each other. This is called subdeployment isolation and can be disabled per deployment or for the entire application server.
+				</p><p>
+					Explicit dependencies between subdeployment modules can be added by the same means as any other module.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="class_loading_precedence"/>Class Loading Precedence</h2></div></div></div><p>
+					The JBoss EAP modular class loader uses a precedence system to prevent class loading conflicts.
+				</p><p>
+					During deployment, a complete list of packages and classes is created for each deployment and each of its dependencies. The list is ordered according to the class loading precedence rules. When loading classes at runtime, the class loader searches this list, and loads the first match. This prevents multiple copies of the same classes and packages within the deployments class path from conflicting with each other.
+				</p><p>
+					The class loader loads classes in the following order, from highest to lowest:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							<span class="strong"><strong>Implicit dependencies:</strong></span> These dependencies are automatically added by JBoss EAP, such as the JAVA EE APIs. These dependencies have the highest class loader precedence because they contain common functionality and APIs that are supplied by JBoss EAP.
+						</p><p class="simpara">
+							See <a class="link" href="class_loading_and_modules.html#implicit_module_dependencies" title="Implicit Module Dependencies">Implicit Module Dependencies</a> for complete details about each implicit dependency.
+						</p></li><li class="listitem"><p class="simpara">
+							<span class="strong"><strong>Explicit dependencies:</strong></span> These dependencies are manually added to the application configuration using the application’s <code class="literal">MANIFEST.MF</code> file or the new optional JBoss deployment descriptor <code class="literal">jboss-deployment-structure.xml</code> file.
+						</p><p class="simpara">
+							See <a class="link" href="class_loading_and_modules.html#add_an_explicit_module_dependency_to_a_deployment" title="Add an Explicit Module Dependency to a Deployment">Add an Explicit Module Dependency to a Deployment</a> to learn how to add explicit dependencies.
+						</p></li><li class="listitem">
+							<span class="strong"><strong>Local resources:</strong></span> These are class files packaged up inside the deployment itself, for example in the <code class="literal">WEB-INF/classes</code> or <code class="literal">WEB-INF/lib</code> directories of a WAR file.
+						</li><li class="listitem">
+							<span class="strong"><strong>Inter-deployment dependencies:</strong></span> These are dependencies on other deployments in a EAR deployment. This can include classes in the <code class="literal">lib</code> directory of the EAR or classes defined in other EJB jars.
+						</li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="jboss_deployment_structure_xml"/>jboss-deployment-structure.xml</h2></div></div></div><p>
+					The <code class="literal">jboss-deployment-structure.xml</code> file is an optional deployment descriptor for JBoss EAP. This deployment descriptor provides control over class loading in the deployment.
+				</p><p>
+					The XML schema for this deployment descriptor is located in the product install directory under <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/docs/schema/jboss-deployment-structure-1_2.xsd</code>.
+				</p><p>
+					The key tasks that can be performed using this deployment descriptor are:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							Defining explicit module dependencies.
+						</li><li class="listitem">
+							Preventing specific implicit dependencies from loading.
+						</li><li class="listitem">
+							Defining additional modules from the resources of that deployment.
+						</li><li class="listitem">
+							Changing the subdeployment isolation behavior in that EAR deployment.
+						</li><li class="listitem">
+							Adding additional resource roots to a module in an EAR.
+						</li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="add_an_explicit_module_dependency_to_a_deployment"/>Add an Explicit Module Dependency to a Deployment</h1></div></div></div><p>
+				Explicit module dependencies can be added to applications to add the classes of those modules to the class path of the application at deployment.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					JBoss EAP automatically adds some dependencies to deployments. See <a class="link" href="class_loading_and_modules.html#implicit_module_dependencies" title="Implicit Module Dependencies">Implicit Module Dependencies</a> for details.
+				</p></div><h3><a id="prerequisites"/>Prerequisites</h3><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						A working software project that you want to add a module dependency to.
+					</li><li class="listitem">
+						You must know the name of the module being added as a dependency. See <a class="link" href="class_loading_and_modules.html#included_modules" title="Included Modules">Included Modules</a> for the list of static modules included with JBoss EAP. If the module is another deployment, then see <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuration_guide/#dynamic_module_naming">Dynamic Module Naming</a> in the JBoss EAP <span class="emphasis"><em>Configuration Guide</em></span> to determine the module name.
+					</li></ol></div><p>
+				Dependencies can be configured using two methods:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						Adding entries to the <code class="literal">MANIFEST.MF</code> file of the deployment.
+					</li><li class="listitem">
+						Adding entries to the <code class="literal">jboss-deployment-structure.xml</code> deployment descriptor.
+					</li></ul></div><h3><a id="add_dependency_manifest"/>Add a Dependency Configuration to MANIFEST.MF</h3><p>
+				Maven projects can be configured to create the required dependency entries in the <code class="literal">MANIFEST.MF</code> file.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						If the project does not have one, create a file called <code class="literal">MANIFEST.MF</code>. For a web application (WAR), add this file to the <code class="literal">META-INF/</code> directory. For an EJB archive (JAR), add it to the <code class="literal">META-INF/</code> directory.
+					</li><li class="listitem"><p class="simpara">
+						Add a dependencies entry to the <code class="literal">MANIFEST.MF</code> file with a comma-separated list of dependency module names:
+					</p><pre class="screen">Dependencies: org.javassist, org.apache.velocity, org.antlr</pre><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+								To make a dependency optional, append <code class="literal">optional</code> to the module name in the dependency entry:
+							</p><pre class="screen">Dependencies: org.javassist optional, org.apache.velocity</pre></li><li class="listitem"><p class="simpara">
+								A dependency can be exported by appending <code class="literal">export</code> to the module name in the dependency entry:
+							</p><pre class="screen">Dependencies: org.javassist, org.apache.velocity export</pre></li><li class="listitem"><p class="simpara">
+								The <code class="literal">annotations</code> flag is needed when the module dependency contains annotations that need to be processed during annotation scanning, such as when declaring EJB interceptors. Without this, an EJB interceptor declared in a module cannot be used in a deployment. There are other situations involving annotation scanning when this is needed too.
+							</p><pre class="screen">Dependencies: org.javassist, test.module annotations</pre></li><li class="listitem"><p class="simpara">
+								By default items in the <code class="literal">META-INF</code> of a dependency are not accessible. The <code class="literal">services</code> dependency makes items from <code class="literal">META-INF/services</code> accessible so that <code class="literal">services</code> in the modules can be loaded.
+							</p><pre class="screen">Dependencies: org.javassist, org.hibernate services</pre></li><li class="listitem"><p class="simpara">
+								To scan a <code class="literal">beans.xml</code> file and make its resulting beans available to the application, the <code class="literal">meta-inf</code> dependency can be used.
+							</p><pre class="screen">Dependencies: org.javassist, test.module meta-inf</pre></li></ul></div></li></ol></div><h3><a id="add_dependency_jboss_deployment_structure"/>Add a Dependency Configuration to the jboss-deployment-structure.xml</h3><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						If the application does not have one, create a new file called <code class="literal">jboss-deployment-structure.xml</code> and add it to the project. This file is an XML file with the root element of <code class="literal">&lt;jboss-deployment-structure&gt;</code>.
+					</p><pre class="programlisting">&lt;jboss-deployment-structure&gt;
+
+&lt;/jboss-deployment-structure&gt;</pre><p class="simpara">
+						For a web application (WAR), add this file to the <code class="literal">WEB-INF/</code> directory. For an EJB archive (JAR), add it to the <code class="literal">META-INF/</code> directory.
+					</p></li><li class="listitem">
+						Create a <code class="literal">&lt;deployment&gt;</code> element within the document root and a <code class="literal">&lt;dependencies&gt;</code> element within that.
+					</li><li class="listitem"><p class="simpara">
+						Within the <code class="literal">&lt;dependencies&gt;</code> node, add a module element for each module dependency. Set the <code class="literal">name</code> attribute to the name of the module.
+					</p><pre class="programlisting">&lt;module name="org.javassist" /&gt;</pre><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+								A dependency can be made optional by adding the <code class="literal">optional</code> attribute to the module entry with the value of <code class="literal">true</code>. The default value for this attribute is <code class="literal">false</code>.
+							</p><pre class="programlisting">&lt;module name="org.javassist" optional="true" /&gt;</pre></li><li class="listitem"><p class="simpara">
+								A dependency can be exported by adding the <code class="literal">export</code> attribute to the module entry with the value of <code class="literal">true</code>. The default value for this attribute is <code class="literal">false</code>.
+							</p><pre class="programlisting">&lt;module name="org.javassist" export="true" /&gt;</pre></li><li class="listitem"><p class="simpara">
+								When the module dependency contains annotations that need to be processed during annotation scanning, the <code class="literal">annotations</code> flag is used.
+							</p><pre class="programlisting">&lt;module name="test.module" annotations="true" /&gt;</pre></li><li class="listitem"><p class="simpara">
+								The <code class="literal">services</code> dependency specifies whether and how <code class="literal">services</code> found in this dependency are used. The default is <code class="literal">none</code>. Specifying a value of <code class="literal">import</code> for this attribute is equivalent to adding a filter at the end of the import filter list which includes the <code class="literal">META-INF/services</code> path from the dependency module. Setting a value of <code class="literal">export</code> for this attribute is equivalent to the same action on the export filter list.
+							</p><pre class="programlisting">&lt;module name="org.hibernate" services="import" /&gt;</pre></li><li class="listitem"><p class="simpara">
+								The <code class="literal">META-INF</code> dependency specifies whether and how <code class="literal">META-INF</code> entries in this dependency are used. The default is <code class="literal">none</code>. Specifying a value of <code class="literal">import</code> for this attribute is equivalent to adding a filter at the end of the import filter list which includes the <code class="literal">META-INF/**</code> path from the dependency module. Setting a value of <code class="literal">export</code> for this attribute is equivalent to the same action on the export filter list.
+							</p><pre class="programlisting">&lt;module name="test.module" meta-inf="import" /&gt;</pre></li></ul></div></li></ol></div><p>
+				Example: <code class="literal">jboss-deployment-structure.xml</code> File with Two Dependencies
+			</p><pre class="programlisting">&lt;jboss-deployment-structure&gt;
+   &lt;deployment&gt;
+      &lt;dependencies&gt;
+         &lt;module name="org.javassist" /&gt;
+         &lt;module name="org.apache.velocity" export="true" /&gt;
+      &lt;/dependencies&gt;
+   &lt;/deployment&gt;
+&lt;/jboss-deployment-structure&gt;</pre><p>
+				JBoss EAP adds the classes from the specified modules to the class path of the application when it is deployed.
+			</p><h3><a id="creating_a_jandex_index"/>Creating a Jandex Index</h3><p>
+				The <code class="literal">annotations</code> flag requires that the module contain a Jandex index. In JBoss EAP 7.2, this is generated automatically. However, adding the index manually is still recommended for performance reasons because automatic scanning can be a long process that consumes the CPU and increases the deployment time.
+			</p><p>
+				To add the index manually, create a new "index JAR" to add to the module. Use the Jandex JAR to build the index, and then insert it into a new JAR file. In the current implementation, when an index is added to a JAR file inside a module, no scanning at all is executed.
+			</p><div class="orderedlist"><p class="title"><strong>Creating a Jandex index::</strong></p><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Create the index:
+					</p><pre class="screen">java -jar modules/system/layers/base/org/jboss/jandex/main/jandex-jandex-2.0.0.Final-redhat-1.jar $JAR_FILE</pre></li><li class="listitem"><p class="simpara">
+						Create a temporary working space:
+					</p><pre class="screen">mkdir /tmp/META-INF</pre></li><li class="listitem"><p class="simpara">
+						Move the index file to the working directory
+					</p><pre class="screen">mv $JAR_FILE.ifx /tmp/META-INF/jandex.idx</pre><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Option 1: Include the index in a new JAR file
+							</p><pre class="screen">jar cf index.jar -C /tmp META-INF/jandex.idx</pre><p class="simpara">
+								Then place the JAR in the module directory and edit <code class="literal">module.xml</code> to add it to the resource roots.
+							</p></li><li class="listitem"><p class="simpara">
+								Option 2: Add the index to an existing JAR
+							</p><pre class="screen">java -jar /modules/org/jboss/jandex/main/jandex-1.0.3.Final-redhat-1.jar -m $JAR_FILE</pre></li></ol></div></li><li class="listitem"><p class="simpara">
+						Tell the module import to utilize the annotation index, so that annotation scanning can find the annotations.
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Option 1: If you are adding a module dependency using <code class="literal">MANIFEST.MF</code>, add <code class="literal">annotations</code> after the module name. For example change:
+							</p><pre class="screen">Dependencies: test.module, other.module</pre><p class="simpara">
+								to
+							</p><pre class="screen">Dependencies: test.module annotations, other.module</pre></li><li class="listitem"><p class="simpara">
+								Option 2: If you are adding a module dependency using <code class="literal">jboss-deployment-structure.xml</code> add <code class="literal">annotations="true"</code> on the module dependency.
+							</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+									An annotation index is required when an application wants to use annotated Java EE components defined in classes within the static module. In JBoss EAP 7.2, annotation indexes for static modules are automatically generated, so you do not need to create them. However, you must tell the module import to use the annotations by adding the dependencies to either the <code class="literal">MANIFEST.MF</code> or the <code class="literal">jboss-deployment-structure.xml</code> file.
+								</p></div></li></ol></div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="generate_manifest_mf_entries_using_maven"/>Generate MANIFEST.MF entries using Maven</h1></div></div></div><p>
+				Maven projects using the Maven JAR, EJB, or WAR packaging plug-ins can generate a <code class="literal">MANIFEST.MF</code> file with a <code class="literal">Dependencies</code> entry. This does not automatically generate the list of dependencies, but only creates the <code class="literal">MANIFEST.MF</code> file with the details specified in the <code class="literal">pom.xml</code>.
+			</p><p>
+				Before generating the <code class="literal">MANIFEST.MF</code> entries using Maven, you will require:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						A working Maven project, which is using one of the JAR, EJB, or WAR plug-ins (<code class="literal">maven-jar-plugin</code>, <code class="literal">maven-ejb-plugin</code>, or <code class="literal">maven-war-plugin</code>).
+					</li><li class="listitem">
+						You must know the name of the project’s module dependencies. Refer to <a class="link" href="class_loading_and_modules.html#included_modules" title="Included Modules">Included Modules</a> for the list of static modules included with JBoss EAP. If the module is another deployment, then refer to <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuration_guide/#dynamic_module_naming">Dynamic Module Naming</a> in the JBoss EAP <span class="emphasis"><em>Configuration Guide</em></span> to determine the module name.
+					</li></ul></div><h3><a id="generate_a_manifest_mf_file_containing_module_dependencies"/>Generate a MANIFEST.MF File Containing Module Dependencies</h3><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Add the following configuration to the packaging plug-in configuration in the project’s <code class="literal">pom.xml</code> file.
+					</p><pre class="programlisting">&lt;configuration&gt;
+   &lt;archive&gt;
+      &lt;manifestEntries&gt;
+         &lt;Dependencies&gt;&lt;/Dependencies&gt;
+      &lt;/manifestEntries&gt;
+   &lt;/archive&gt;
+&lt;/configuration&gt;</pre></li><li class="listitem"><p class="simpara">
+						Add the list of module dependencies to the <code class="literal">&lt;Dependencies&gt;</code> element. Use the same format that is used when adding the dependencies to the <code class="literal">MANIFEST.MF</code> file:
+					</p><pre class="programlisting">&lt;Dependencies&gt;org.javassist, org.apache.velocity&lt;/Dependencies&gt;</pre><p class="simpara">
+						The <code class="literal">optional</code> and <code class="literal">export</code> attributes can also be used here:
+					</p><pre class="programlisting">&lt;Dependencies&gt;org.javassist optional, org.apache.velocity export&lt;/Dependencies&gt;</pre></li><li class="listitem"><p class="simpara">
+						Build the project using the Maven assembly goal:
+					</p><pre class="programlisting">[Localhost ]$ mvn assembly:single</pre><p class="simpara">
+						When the project is built using the assembly goal, the final archive contains a <code class="literal">MANIFEST.MF</code> file with the specified module dependencies.
+					</p><p class="simpara">
+						Example: Configured Module Dependencies in <code class="literal">pom.xml</code>
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The example here shows the WAR plug-in but it also works with the JAR and EJB plug-ins (maven-jar-plugin and maven-ejb-plugin).
+						</p></div><pre class="programlisting">&lt;plugins&gt;
+   &lt;plugin&gt;
+      &lt;groupId&gt;org.apache.maven.plugins&lt;/groupId&gt;
+      &lt;artifactId&gt;maven-war-plugin&lt;/artifactId&gt;
+      &lt;configuration&gt;
+         &lt;archive&gt;
+            &lt;manifestEntries&gt;
+               &lt;Dependencies&gt;org.javassist, org.apache.velocity&lt;/Dependencies&gt;
+            &lt;/manifestEntries&gt;
+         &lt;/archive&gt;
+      &lt;/configuration&gt;
+   &lt;/plugin&gt;
+&lt;/plugins&gt;</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="prevent_a_module_being_implicitly_loaded"/>Prevent a Module Being Implicitly Loaded</h1></div></div></div><p>
+				You can configure a deployable application to prevent implicit dependencies from being loaded. This can be useful when an application includes a different version of a library or framework than the one that will be provided by the application server as an implicit dependency.
+			</p><div class="itemizedlist"><p class="title"><strong>Prerequisites</strong></p><ul class="itemizedlist"><li class="listitem">
+						A working software project that you want to exclude an implicit dependency from.
+					</li><li class="listitem">
+						You must know the name of the module to exclude. Refer to <a class="link" href="class_loading_and_modules.html#implicit_module_dependencies" title="Implicit Module Dependencies">Implicit Module Dependencies</a> for a list of implicit dependencies and their conditions.
+					</li></ul></div><div class="orderedlist"><p class="title"><strong>Add dependency exclusion configuration to jboss-deployment-structure.xml</strong></p><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						If the application does not have one, create a new file called <code class="literal">jboss-deployment-structure.xml</code> and add it to the project. This is an XML file with the root element of <code class="literal">&lt;jboss-deployment-structure&gt;</code>.
+					</p><pre class="programlisting">&lt;jboss-deployment-structure&gt;
+
+&lt;/jboss-deployment-structure&gt;</pre><p class="simpara">
+						For a web application (WAR), add this file to the <code class="literal">WEB-INF/</code> directory. For an EJB archive (JAR), add it to the <code class="literal">META-INF/</code> directory.
+					</p></li><li class="listitem"><p class="simpara">
+						Create a <code class="literal">&lt;deployment&gt;</code> element within the document root and an <code class="literal">&lt;exclusions&gt;</code> element within that.
+					</p><pre class="programlisting">&lt;deployment&gt;
+   &lt;exclusions&gt;
+
+   &lt;/exclusions&gt;
+&lt;/deployment&gt;</pre></li><li class="listitem"><p class="simpara">
+						Within the exclusions element, add a <code class="literal">&lt;module&gt;</code> element for each module to be excluded. Set the <code class="literal">name</code> attribute to the name of the module.
+					</p><pre class="programlisting">&lt;module name="org.javassist" /&gt;</pre><p class="simpara">
+						Example: Excluding Two Modules
+					</p><pre class="programlisting">&lt;jboss-deployment-structure&gt;
+   &lt;deployment&gt;
+      &lt;exclusions&gt;
+         &lt;module name="org.javassist" /&gt;
+         &lt;module name="org.dom4j" /&gt;
+      &lt;/exclusions&gt;
+   &lt;/deployment&gt;
+&lt;/jboss-deployment-structure&gt;</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="exclude_a_subsystem_from_a_deployment"/>Exclude a Subsystem from a Deployment</h1></div></div></div><p>
+				Excluding a subsystem provides the same effect as removing the subsystem, but it applies only to a single deployment. You can exclude a subsystem from a deployment by editing the <code class="literal">jboss-deployment-structure.xml</code> configuration file.
+			</p><div class="orderedlist"><p class="title"><strong>Exclude a Subsystem</strong></p><ol class="orderedlist"><li class="listitem">
+						Edit the <code class="literal">jboss-deployment-structure.xml</code> file.
+					</li><li class="listitem"><p class="simpara">
+						Add the following XML inside the <code class="literal">&lt;deployment&gt;</code> tags:
+					</p><pre class="programlisting">&lt;exclude-subsystems&gt;
+  &lt;subsystem name="<span class="emphasis"><em>SUBSYSTEM_NAME</em></span>" /&gt;
+&lt;/exclude-subsystems&gt;</pre></li><li class="listitem">
+						Save the <code class="literal">jboss-deployment-structure.xml</code> file.
+					</li></ol></div><p>
+				The subsystem’s deployment unit processors will no longer run on the deployment.
+			</p><p>
+				Example: <code class="literal">jboss-deployment-structure.xml</code> File
+			</p><pre class="programlisting">&lt;jboss-deployment-structure xmlns="urn:jboss:deployment-structure:1.2"&gt;
+  &lt;ear-subdeployments-isolated&gt;true&lt;/ear-subdeployments-isolated&gt;
+  &lt;deployment&gt;
+    &lt;exclude-subsystems&gt;
+      &lt;subsystem name="jaxrs" /&gt;
+    &lt;/exclude-subsystems&gt;
+    &lt;exclusions&gt;
+      &lt;module name="org.javassist" /&gt;
+    &lt;/exclusions&gt;
+    &lt;dependencies&gt;
+      &lt;module name="deployment.javassist.proxy" /&gt;
+      &lt;module name="deployment.myjavassist" /&gt;
+      &lt;module name="myservicemodule" services="import"/&gt;
+    &lt;/dependencies&gt;
+    &lt;resources&gt;
+      &lt;resource-root path="my-library.jar" /&gt;
+    &lt;/resources&gt;
+  &lt;/deployment&gt;
+  &lt;sub-deployment name="myapp.war"&gt;
+    &lt;dependencies&gt;
+      &lt;module name="deployment.myear.ear.myejbjar.jar" /&gt;
+    &lt;/dependencies&gt;
+    &lt;local-last value="true" /&gt;
+  &lt;/sub-deployment&gt;
+  &lt;module name="deployment.myjavassist" &gt;
+    &lt;resources&gt;
+     &lt;resource-root path="javassist.jar" &gt;
+       &lt;filter&gt;
+         &lt;exclude path="javassist/util/proxy" /&gt;
+       &lt;/filter&gt;
+     &lt;/resource-root&gt;
+    &lt;/resources&gt;
+  &lt;/module&gt;
+  &lt;module name="deployment.javassist.proxy" &gt;
+    &lt;dependencies&gt;
+      &lt;module name="org.javassist" &gt;
+        &lt;imports&gt;
+          &lt;include path="javassist/util/proxy" /&gt;
+          &lt;exclude path="/**" /&gt;
+        &lt;/imports&gt;
+      &lt;/module&gt;
+    &lt;/dependencies&gt;
+  &lt;/module&gt;
+&lt;/jboss-deployment-structure&gt;</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="use_the_class_loader_programmatically_in_a_deployment"/>Use the Class Loader Programmatically in a Deployment</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="programmatically_load_classes_and_resources_in_a_deployment"/>Programmatically Load Classes and Resources in a Deployment</h2></div></div></div><p>
+					You can programmatically find or load classes and resources in your application code. The method you choose depends on a number of factors. This section describes the methods available and provides guidelines for when to use them.
+				</p><div class="title"><strong>Load a Class Using the Class.forName() Method</strong></div><p>
+						You can use the <code class="literal">Class.forName()</code> method to programmatically load and initialize classes. This method has two signatures:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							<code class="literal">Class.forName(String className)</code>:
+						</p><p class="simpara">
+							This signature takes only one parameter, the name of the class you need to load. With this method signature, the class is loaded by the class loader of the current class and initializes the newly loaded class by default.
+						</p></li><li class="listitem"><p class="simpara">
+							<code class="literal">Class.forName(String className, boolean initialize, ClassLoader loader)</code>:
+						</p><p class="simpara">
+							This signature expects three parameters: the class name, a boolean value that specifies whether to initialize the class, and the <code class="literal">ClassLoader</code> that should load the class.
+						</p></li></ul></div><p>
+					The three argument signature is the recommended way to programmatically load a class. This signature allows you to control whether you want the target class to be initialized upon load. It is also more efficient to obtain and provide the class loader because the JVM does not need to examine the call stack to determine which class loader to use. Assuming the class containing the code is named <code class="literal">CurrentClass</code>, you can obtain the class’s class loader using <code class="literal">CurrentClass.class.getClassLoader()</code> method.
+				</p><p>
+					The following example provides the class loader to load and initialize the <code class="literal">TargetClass</code> class:
+				</p><pre class="programlisting">Class&lt;?&gt; targetClass = Class.forName("com.myorg.util.TargetClass", true, CurrentClass.class.getClassLoader());</pre><div class="title"><strong>Find All Resources with a Given Name</strong></div><p>
+						If you know the name and path of a resource, the best way to load it directly is to use the standard Java Development Kit (JDK) <code class="literal">Class</code> or <code class="literal">ClassLoader</code> API.
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							Load a single resource.
+						</p><p class="simpara">
+							To load a single resource located in the same directory as your class or another class in your deployment, you can use the <code class="literal">Class.getResourceAsStream()</code> method.
+						</p><pre class="programlisting">InputStream inputStream = CurrentClass.class.getResourceAsStream("targetResourceName");</pre></li><li class="listitem"><p class="simpara">
+							Load all instances of a single resource.
+						</p><p class="simpara">
+							To load all instances of a single resource that are visible to your deployment’s class loader, use the <code class="literal">Class.getClassLoader().getResources(String resourceName)</code> method, where <code class="literal">resourceName</code> is the fully qualified path of the resource. This method returns an Enumeration of all <code class="literal">URL</code> objects for resources accessible by the class loader with the given name. You can then iterate through the array of URLs to open each stream using the <code class="literal">openStream()</code> method.
+						</p><p class="simpara">
+							The following example loads all instances of a resource and iterates through the results.
+						</p><pre class="programlisting">Enumeration&lt;URL&gt; urls = CurrentClass.class.getClassLoader().getResources("full/path/to/resource");
+while (urls.hasMoreElements()) {
+    URL url = urls.nextElement();
+    InputStream inputStream = null;
+    try {
+        inputStream = url.openStream();
+        // Process the inputStream
+        ...
+    } catch(IOException ioException) {
+        // Handle the error
+    } finally {
+        if (inputStream != null) {
+            try {
+                inputStream.close();
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+    }
+}</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								Because the URL instances are loaded from local storage, it is not necessary to use the <code class="literal">openConnection()</code> or other related methods. Streams are much simpler to use and minimize the complexity of the code.
+							</p></div></li><li class="listitem"><p class="simpara">
+							Load a class file from the class loader.
+						</p><p class="simpara">
+							If a class has already been loaded, you can load the class file that corresponds to that class using the following syntax:
+						</p><pre class="programlisting">InputStream inputStream = CurrentClass.class.getResourceAsStream(TargetClass.class.getSimpleName() + ".class");</pre><p class="simpara">
+							If the class is not yet loaded, you must use the class loader and translate the path:
+						</p><pre class="programlisting">String className = "com.myorg.util.TargetClass"
+InputStream inputStream = CurrentClass.class.getClassLoader().getResourceAsStream(className.replace('.', '/') + ".class");</pre></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="programmatically_iterate_resources_in_a_deployment"/>Programmatically Iterate Resources in a Deployment</h2></div></div></div><p>
+					The JBoss Modules library provides several APIs for iterating all deployment resources. The JavaDoc for the JBoss Modules API is located here: <a class="link" href="http://docs.jboss.org/jbossmodules/1.3.0.Final/api/">http://docs.jboss.org/jbossmodules/1.3.0.Final/api/</a>. To use these APIs, you must add the following dependency to the <code class="literal">MANIFEST.MF</code>:
+				</p><pre class="screen">Dependencies: org.jboss.modules</pre><p>
+					It is important to note that while these APIs provide increased flexibility, they also run much more slowly than a direct path lookup.
+				</p><p>
+					This section describes some of the ways you can programmatically iterate through resources in your application code.
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							List resources within a deployment and within all imports.
+						</p><p class="simpara">
+							There are times when it is not possible to look up resources by the exact path. For example, the exact path might not be known or you might need to examine more than one file in a given path. In this case, the JBoss Modules library provides several APIs for iterating all deployment resources. You can iterate through resources in a deployment by utilizing one of two methods.
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+									Iterate all resources found in a single module.
+								</p><p class="simpara">
+									The <code class="literal">ModuleClassLoader.iterateResources()</code> method iterates all the resources within this module class loader. This method takes two arguments: the starting directory name to search and a boolean that specifies whether it should recurse into subdirectories.
+								</p><p class="simpara">
+									The following example demonstrates how to obtain the ModuleClassLoader and obtain the iterator for resources in the <code class="literal">bin/</code> directory, recursing into subdirectories.
+								</p><pre class="programlisting">ModuleClassLoader moduleClassLoader = (ModuleClassLoader) TargetClass.class.getClassLoader();
+Iterator&lt;Resource&gt; mclResources = moduleClassLoader.iterateResources("bin",true);</pre><p class="simpara">
+									The resultant iterator can be used to examine each matching resource and query its name and size (if available), open a readable stream, or acquire a URL for the resource.
+								</p></li><li class="listitem"><p class="simpara">
+									Iterate all resources found in a single module and imported resources.
+								</p><p class="simpara">
+									The <code class="literal">Module.iterateResources()</code> method iterates all the resources within this module class loader, including the resources that are imported into the module. This method returns a much larger set than the previous method. This method requires an argument, which is a filter that narrows the result to a specific pattern. Alternatively, PathFilters.acceptAll() can be supplied to return the entire set.
+								</p><p class="simpara">
+									The following example demonstrates how to find the entire set of resources in this module, including imports.
+								</p><pre class="programlisting">ModuleClassLoader moduleClassLoader = (ModuleClassLoader) TargetClass.class.getClassLoader();
+Module module = moduleClassLoader.getModule();
+Iterator&lt;Resource&gt; moduleResources = module.iterateResources(PathFilters.acceptAll());</pre></li></ul></div></li><li class="listitem"><p class="simpara">
+							Find all resources that match a pattern.
+						</p><p class="simpara">
+							If you need to find only specific resources within your deployment or within your deployment’s full import set, you need to filter the resource iteration. The JBoss Modules filtering APIs give you several tools to accomplish this.
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+									Examine the full set of dependencies.
+								</p><p class="simpara">
+									If you need to examine the full set of dependencies, you can use the <code class="literal">Module.iterateResources()</code> method’s <code class="literal">PathFilter</code> parameter to check the name of each resource for a match.
+								</p></li><li class="listitem"><p class="simpara">
+									Examine deployment dependencies.
+								</p><p class="simpara">
+									If you need to look only within the deployment, use the <code class="literal">ModuleClassLoader.iterateResources()</code> method. However, you must use additional methods to filter the resultant iterator. The <code class="literal">PathFilters.filtered()</code> method can provide a filtered view of a resource iterator this case. The <code class="literal">PathFilters</code> class includes many static methods to create and compose filters that perform various functions, including finding child paths or exact matches, or matching an Ant-style "glob" pattern.
+								</p></li></ul></div></li><li class="listitem"><p class="simpara">
+							Additional code examples for filtering resources.
+						</p><p class="simpara">
+							The following examples demonstrate how to filter resources based on different criteria.
+						</p><div class="title"><strong>Example: Find All Files Named <code class="literal">messages.properties</code> in Your Deployment</strong></div><p>
+								
+</p><pre class="programlisting">ModuleClassLoader moduleClassLoader = (ModuleClassLoader) TargetClass.class.getClassLoader();
+Iterator&lt;Resource&gt; mclResources = PathFilters.filtered(PathFilters.match("**/messages.properties"), moduleClassLoader.iterateResources("", true));</pre><p>
+
+							</p><div class="title"><strong>Example: Find All Files Named <code class="literal">messages.properties</code> in Your Deployment and Imports</strong></div><p>
+								
+</p><pre class="programlisting">ModuleClassLoader moduleClassLoader = (ModuleClassLoader) TargetClass.class.getClassLoader();
+Module module = moduleClassLoader.getModule();
+Iterator&lt;Resource&gt; moduleResources = module.iterateResources(PathFilters.match("**/message.properties"));</pre><p>
+
+							</p><div class="title"><strong>Example: Find All Files Inside Any Directory Named <code class="literal">my-resources</code> in Your Deployment</strong></div><p>
+								
+</p><pre class="programlisting">ModuleClassLoader moduleClassLoader = (ModuleClassLoader) TargetClass.class.getClassLoader();
+Iterator&lt;Resource&gt; mclResources = PathFilters.filtered(PathFilters.match("**/my-resources/**"), moduleClassLoader.iterateResources("", true));</pre><p>
+
+							</p><div class="title"><strong>Example: Find All Files Named <code class="literal">messages</code> or <code class="literal">errors</code> in Your Deployment and Imports</strong></div><p>
+								
+</p><pre class="programlisting">ModuleClassLoader moduleClassLoader = (ModuleClassLoader) TargetClass.class.getClassLoader();
+Module module = moduleClassLoader.getModule();
+Iterator&lt;Resource&gt; moduleResources = module.iterateResources(PathFilters.any(PathFilters.match("**/messages"), PathFilters.match("**/errors"));</pre><p>
+
+							</p><div class="title"><strong>Example: Find All Files in a Specific Package in Your Deployment</strong></div><p>
+								
+</p><pre class="programlisting">ModuleClassLoader moduleClassLoader = (ModuleClassLoader) TargetClass.class.getClassLoader();
+Iterator&lt;Resource&gt; mclResources = moduleClassLoader.iterateResources("path/form/of/packagename", false);</pre><p>
+
+							</p></li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="class_loading_and_subdeployments"/>Class Loading and Subdeployments</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="modules_and_class_loading_in_enterprise_archives"/>Modules and Class Loading in Enterprise Archives</h2></div></div></div><p>
+					Enterprise Archives (EAR) are not loaded as a single module like JAR or WAR deployments. They are loaded as multiple unique modules.
+				</p><p>
+					The following rules determine what modules exist in an EAR:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The contents of the <code class="literal">lib/</code> directory in the root of the EAR archive is a module. This is called the parent module.
+						</li><li class="listitem">
+							Each WAR and EJB JAR subdeployment is a module. These modules have the same behavior as any other module as well as implicit dependencies on the parent module.
+						</li><li class="listitem">
+							Subdeployments have implicit dependencies on the parent module and any other non-WAR subdeployments.
+						</li></ul></div><p>
+					The implicit dependencies on non-WAR subdeployments occur because JBoss EAP has subdeployment class loader isolation disabled by default. Dependencies on the parent module persist, regardless of subdeployment class loader isolation.
+				</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						No subdeployment ever gains an implicit dependency on a WAR subdeployment. Any subdeployment can be configured with explicit dependencies on another subdeployment as would be done for any other module.
+					</p></div><p>
+					Subdeployment class loader isolation can be enabled if strict compatibility is required. This can be enabled for a single EAR deployment or for all EAR deployments. The Java EE specification recommends that portable applications should not rely on subdeployments being able to access each other unless dependencies are explicitly declared as <code class="literal">Class-Path</code> entries in the <code class="literal">MANIFEST.MF</code> file of each subdeployment.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="subdeployment_class_loader_isolation"/>Subdeployment Class Loader Isolation</h2></div></div></div><p>
+					Each subdeployment in an Enterprise Archive (EAR) is a dynamic module with its own class loader. By default, a subdeployment can access the resources of other subdeployments.
+				</p><p>
+					If a subdeployment is not to be allowed to access the resources of other subdeployments, strict subdeployment isolation can be enabled.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="enable_subdeployment_class_loader_isolation_within_a_ear"/>Enable Subdeployment Class Loader Isolation Within a EAR</h2></div></div></div><p>
+					This task shows you how to enable subdeployment class loader isolation in an EAR deployment by using a special deployment descriptor in the EAR. This does not require any changes to be made to the application server and does not affect any other deployments.
+				</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						Even when subdeployment class loader isolation is disabled, it is not possible to add a WAR deployment as a dependency.
+					</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Add the deployment descriptor file.
+						</p><p class="simpara">
+							Add the <code class="literal">jboss-deployment-structure.xml</code> deployment descriptor file to the <code class="literal">META-INF</code> directory of the EAR if it doesn’t already exist and add the following content:
+						</p><pre class="screen">&lt;jboss-deployment-structure&gt;
+
+&lt;/jboss-deployment-structure&gt;</pre></li><li class="listitem"><p class="simpara">
+							Add the <code class="literal">&lt;ear-subdeployments-isolated&gt;</code> element.
+						</p><p class="simpara">
+							Add the <code class="literal">&lt;ear-subdeployments-isolated&gt;</code> element to the <code class="literal">jboss-deployment-structure.xml</code> file if it doesn’t already exist with the content of <code class="literal">true</code>.
+						</p><pre class="screen">&lt;ear-subdeployments-isolated&gt;true&lt;/ear-subdeployments-isolated&gt;</pre></li></ol></div><p>
+					Subdeployment class loader isolation is now enabled for this EAR deployment. This means that the subdeployments of the EAR will not have automatic dependencies on each of the non-WAR subdeployments.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configuring_session_sharing_between_subdeployments_in_enterprise_archives"/>Configuring Session Sharing between Subdeployments in Enterprise Archives</h2></div></div></div><p>
+					JBoss EAP provides the ability to configure enterprise archives (EARs) to share sessions between WAR module subdeployments contained in the EAR. This functionality is disabled by default and must be explicitly enabled in the <code class="literal">META-INF/jboss-all.xml</code> file in the EAR.
+				</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						Since this feature is not a standard servlet feature, your applications might not be portable if this functionality is enabled.
+					</p></div><p>
+					To enable session sharing between WARs within an EAR, you need to declare a <code class="literal">shared-session-config</code> element in the <code class="literal">META-INF/jboss-all.xml</code> of the EAR:
+				</p><div class="title"><strong>Example: <code class="literal">META-INF/jboss-all.xml</code></strong></div><p>
+						
+</p><pre class="programlisting">&lt;jboss xmlns="urn:jboss:1.0"&gt;
+  ...
+  &lt;shared-session-config xmlns="urn:jboss:shared-session-config:1.0"&gt;
+  &lt;/shared-session-config&gt;
+  ...
+&lt;/jboss&gt;</pre><p>
+
+					</p><p>
+					The <code class="literal">shared-session-config</code> element is used to configure the shared session manager for all WARs within the EAR. If the <code class="literal">shared-session-config</code> element is present, all WARs within the EAR will share the same session manager. Changes made here will affect all the WARs contained within the EAR.
+				</p><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="reference_of_shared_session_configuration_options"/>Reference of Shared Session Configuration Options</h3></div></div></div><div class="title"><strong>Example: <code class="literal">META-INF/jboss-all.xml</code></strong></div><p>
+							
+</p><pre class="programlisting">&lt;jboss xmlns="urn:jboss:1.0"&gt;
+    &lt;shared-session-config xmlns="urn:jboss:shared-session-config:1.0"&gt;
+        &lt;max-active-sessions&gt;10&lt;/max-active-sessions&gt;
+        &lt;session-config&gt;
+            &lt;session-timeout&gt;0&lt;/session-timeout&gt;
+            &lt;cookie-config&gt;
+                &lt;name&gt;JSESSIONID&lt;/name&gt;
+                &lt;domain&gt;domainName&lt;/domain&gt;
+                &lt;path&gt;/cookiePath&lt;/path&gt;
+                &lt;comment&gt;cookie comment&lt;/comment&gt;
+                &lt;http-only&gt;true&lt;/http-only&gt;
+                &lt;secure&gt;true&lt;/secure&gt;
+                &lt;max-age&gt;-1&lt;/max-age&gt;
+            &lt;/cookie-config&gt;
+            &lt;tracking-mode&gt;COOKIE&lt;/tracking-mode&gt;
+        &lt;/session-config&gt;
+        &lt;replication-config&gt;
+            &lt;cache-name&gt;web&lt;/cache-name&gt;
+            &lt;replication-granularity&gt;SESSION&lt;/replication-granularity&gt;
+        &lt;/replication-config&gt;
+    &lt;/shared-session-config&gt;
+&lt;/jboss&gt;</pre><p>
+
+						</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Element</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										shared-session-config
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Root element for the shared session configuration. If this is present in the <code class="literal">META-INF/jboss-all.xml</code>, then all deployed WARs contained in the EAR will share a single session manager.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										max-active-sessions
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Number of maximum sessions allowed.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										session-config
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Contains the session configuration parameters for all deployed WARs contained in the EAR.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										session-timeout
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Defines the default session timeout interval for all sessions created in the deployed WARs contained in the EAR. The specified timeout must be expressed in a whole number of minutes. If the timeout is <span class="emphasis"><em>0</em></span> or less, the container ensures the default behavior of sessions is to never time out. If this element is not specified, the container must set its default timeout period.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										cookie-config
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Contains the configuration of the session tracking cookies created by the deployed WARs contained in the EAR.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										name
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The name that will be assigned to any session tracking cookies created by the deployed WARs contained in the EAR. The default is <code class="literal">JSESSIONID</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										domain
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The domain name that will be assigned to any session tracking cookies created by the deployed WARs contained in the EAR.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										path
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The path that will be assigned to any session tracking cookies created by the deployed WARs contained in the EAR.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										comment
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The comment that will be assigned to any session tracking cookies created by the deployed WARs contained in the EAR.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										http-only
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Specifies whether any session tracking cookies created by the deployed WARs contained in the EAR will be marked as <code class="literal">HttpOnly</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										secure
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Specifies whether any session tracking cookies created by the deployed WARs contained in the EAR will be marked as secure even if the request that initiated the corresponding session is using plain HTTP instead of HTTPS.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										max-age
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The lifetime (in seconds) that will be assigned to any session tracking cookies created by the deployed WARs contained in the EAR. Default is <code class="literal">-1</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										tracking-mode
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Defines the tracking modes for sessions created by the deployed WARs contained in the EAR.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										replication-config
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Contains the HTTP session clustering configuration.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										cache-name
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										This option is for use in clustering only. It specifies the name of the Infinispan container and cache in which to store session data. The default value, if not explicitly set, is determined by the application server. To use a specific cache within a cache container, use the form <code class="literal">container.cache</code>, for example <code class="literal">web.dist</code>. If name is unqualified, the default cache of the specified container is used.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										replication-granularity
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										This option is for use in clustering only. It determines the session replication granularity level. The possible values are <code class="literal">SESSION</code> and <code class="literal">ATTRIBUTE</code> with <code class="literal">SESSION</code> being the default.
+									</p>
+									 <p>
+										If <code class="literal">SESSION</code> granularity is used, all session attributes are replicated if any were modified within the scope of a request. This policy is required if an object reference is shared by multiple session attributes. However, this can be inefficient if session attributes are sufficiently large and/or are modified infrequently, since all attributes must be replicated regardless of whether they were modified or not.
+									</p>
+									 <p>
+										If <code class="literal">ATTRIBUTE</code> granularity is used, only those attributes that were modified within the scope of a request are replicated. This policy is not appropriate if an object reference is shared by multiple session attributes. This can be more efficient than <code class="literal">SESSION</code> granularity if the session attributes are sufficiently large and/or are modified infrequently.
+									</p>
+									 </td></tr></tbody></table></div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="deploy_tag_library_descriptors_TLDs_in_a_custom_module"/>Deploy Tag Library Descriptors (TLDs) in a Custom Module</h1></div></div></div><p>
+				If you have multiple applications that use common Tag Library Descriptors (TLDs), it might be useful to separate the TLDs from the applications so that they are located in one central and unique location. This enables easier additions and updates to TLDs without necessarily having to update each individual application that uses them.
+			</p><p>
+				This can be done by creating a custom JBoss EAP module that contains the TLD JARs, and declaring a dependency on that module in the applications.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Ensure that at least one JAR contains TLDs and that the TLDs are packed in <code class="literal">META-INF</code>.
+				</p></div><h3><a id="deploy_tlds_in_a_custom_module"/>Deploy TLDs in a Custom Module</h3><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Using the management CLI, connect to your JBoss EAP instance and execute the following command to create the custom module containing the TLD JAR:
+					</p><pre class="screen">module add --name=MyTagLibs --resources=/path/to/TLDarchive.jar</pre><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+							Using the <code class="literal">module</code> management CLI command to add and remove modules is provided as Technology Preview only. This command is not appropriate for use in a managed domain or when connecting to the management CLI remotely. Modules should be added and removed manually in a production environment. For more information, see the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuration_guide/#create_module_manually">Create a Custom Module Manually</a> and <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuration_guide/#remove_module_manually">Remove a Custom Module Manually</a> sections of the JBoss EAP <span class="emphasis"><em>Configuration Guide</em></span>.
+						</p><p>
+							Technology Preview features are not supported with Red Hat production service level agreements (SLAs), might not be functionally complete, and Red Hat does not recommend to use them for production. These features provide early access to upcoming product features, enabling customers to test functionality and provide feedback during the development process.
+						</p><p>
+							See <a class="link" href="https://access.redhat.com/support/offerings/techpreview">Technology Preview Features Support Scope</a> on the Red Hat Customer Portal for information about the support scope for Technology Preview features.
+						</p></div><p class="simpara">
+						If the TLDs are packaged with classes that require dependencies, use the <code class="literal">--dependencies</code> option to ensure that you specify those dependencies when creating the custom module.
+					</p><p class="simpara">
+						When creating the module, you can specify multiple JAR resources by separating each one with the file system-specific separator for your system.
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								For linux - <code class="literal">:</code>. Example, <code class="literal">--resources=&lt;path-to-jar&gt;:&lt;path-to-another-jar&gt;</code>
+							</li><li class="listitem"><p class="simpara">
+								For Windows - <code class="literal">;</code>. Example, <code class="literal">--resources=&lt;path-to-jar&gt;;&lt;path-to-another-jar&gt;</code>
+							</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><div class="variablelist"><dl class="variablelist"><dt><span class="term"><code class="literal">--resources</code></span></dt><dd>
+												It is required unless <code class="literal">--module-xml</code> is used. It lists file system paths, usually JAR files, separated by a file system-specific path separator, for example <code class="literal">java.io.File.pathSeparatorChar</code>. The files specified will be copied to the created module’s directory.
+											</dd><dt><span class="term"><code class="literal">--resource-delimiter</code></span></dt><dd>
+												It is an optional user-defined path separator for the resources argument. If this argument is present, the command parser will use the value here instead of the file system-specific path separator. This allows the <code class="literal">modules</code> command to be used in cross-platform scripts.
+											</dd></dl></div></div></li></ul></div></li><li class="listitem">
+						In your applications, declare a dependency on the new MyTagLibs custom module using one of the methods described in <a class="link" href="class_loading_and_modules.html#add_an_explicit_module_dependency_to_a_deployment" title="Add an Explicit Module Dependency to a Deployment">Add an Explicit Module Dependency to a Deployment</a>.
+					</li></ol></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+					Ensure that you also import <code class="literal">META-INF</code> when declaring the dependency. For example, for <code class="literal">MANIFEST.MF</code>:
+				</p><pre class="screen">Dependencies: com.MyTagLibs meta-inf</pre><p>
+					Or, for <code class="literal">jboss-deployment-structure.xml</code>, use the <code class="literal">meta-inf</code> attribute.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="class_loading_reference"/>Class Loading Reference</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="implicit_module_dependencies"/>Implicit Module Dependencies</h2></div></div></div><p>
+					The following table lists the modules that are automatically added to deployments as dependencies and the conditions that trigger the dependency.
+				</p><div class="table"><a id="idm139905058408864"/><p class="title"><strong>Table 3.1. Implicit Module Dependencies</strong></p><div class="table-contents"><table summary="Implicit Module Dependencies" border="1" width="99%"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/><col class="col_4"/></colgroup><thead><tr><th style="text-align: left" valign="top">Subsystem Responsible for Adding the Dependency</th><th style="text-align: left" valign="top">Package Dependencies That Are Always Added</th><th style="text-align: left" valign="top">Package Dependencies That Are Conditionally Added</th><th style="text-align: left" valign="top">Conditions That Trigger the Addition of the Dependency</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+									Application Client
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											org.omg.api
+										</li><li class="listitem">
+											org.jboss.xnio
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									Batch
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											javax.batch.api
+										</li><li class="listitem">
+											org.jberet.jberet-core
+										</li><li class="listitem">
+											org.wildfly.jberet
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									Bean Validation
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											org.hibernate.validator
+										</li><li class="listitem">
+											javax.validation.api
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									Core Server
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											javax.api
+										</li><li class="listitem">
+											sun.jdk
+										</li><li class="listitem">
+											org.jboss.vfs
+										</li><li class="listitem">
+											ibm.jdk
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									DriverDependenciesProcessor
+								</p>
+								 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											javax.transaction.api
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									EE
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											org.jboss.invocation (except org.jboss.invocation.proxy.classloading)
+										</li><li class="listitem">
+											org.jboss.as.ee (except org.jboss.as.ee.component.serialization, org.jboss.as.ee.concurrent, org.jboss.as.ee.concurrent.handle)
+										</li><li class="listitem">
+											org.wildfly.naming
+										</li><li class="listitem">
+											javax.annotation.api
+										</li><li class="listitem">
+											javax.enterprise.concurrent.api
+										</li><li class="listitem">
+											javax.interceptor.api
+										</li><li class="listitem">
+											javax.json.api
+										</li><li class="listitem">
+											javax.resource.api
+										</li><li class="listitem">
+											javax.rmi.api
+										</li><li class="listitem">
+											javax.xml.bind.api
+										</li><li class="listitem">
+											javax.api
+										</li><li class="listitem">
+											org.glassfish.javax.el
+										</li><li class="listitem">
+											org.glassfish.javax.enterprise.concurrent
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									EJB 3
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											javax.ejb.api
+										</li><li class="listitem">
+											javax.xml.rpc.api
+										</li><li class="listitem">
+											org.jboss.ejb-client
+										</li><li class="listitem">
+											org.jboss.iiop-client
+										</li><li class="listitem">
+											org.jboss.as.ejb3
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											org.wildfly.iiop-openjdk
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									IIOP
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											org.omg.api
+										</li><li class="listitem">
+											javax.rmi.api
+										</li><li class="listitem">
+											javax.orb.api
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									JAX-RS (RESTEasy)
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											javax.xml.bind.api
+										</li><li class="listitem">
+											javax.ws.rs.api
+										</li><li class="listitem">
+											javax.json.api
+										</li><li class="listitem">
+											org.jboss.resteasy.resteasy-atom-provider
+										</li><li class="listitem">
+											org.jboss.resteasy.resteasy-crypto
+										</li><li class="listitem">
+											org.jboss.resteasy.resteasy-validator-provider-11
+										</li><li class="listitem">
+											org.jboss.resteasy.resteasy-jaxrs
+										</li><li class="listitem">
+											org.jboss.resteasy.resteasy-jaxb-provider
+										</li><li class="listitem">
+											org.jboss.resteasy.resteasy-jackson2-provider
+										</li><li class="listitem">
+											org.jboss.resteasy.resteasy-jsapi
+										</li><li class="listitem">
+											org.jboss.resteasy.resteasy-json-p-provider
+										</li><li class="listitem">
+											org.jboss.resteasy.resteasy-multipart-provider
+										</li><li class="listitem">
+											org.jboss.resteasy.resteasy-yaml-provider
+										</li><li class="listitem">
+											org.codehaus.jackson.jackson-core-asl
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											org.jboss.resteasy.resteasy-cdi
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> <p>
+									The presence of JAX-RS annotations in the deployment.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									JCA
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											javax.resource.api
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											javax.jms.api
+										</li><li class="listitem">
+											javax.validation.api
+										</li><li class="listitem">
+											org.jboss.ironjacamar.api
+										</li><li class="listitem">
+											org.jboss.ironjacamar.impl
+										</li><li class="listitem">
+											org.hibernate.validator
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> <p>
+									The deployment of a resource adapter (RAR) archive.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									JPA (Hibernate)
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											javax.persistence.api
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											org.jboss.as.jpa
+										</li><li class="listitem">
+											org.jboss.as.jpa.spi
+										</li><li class="listitem">
+											org.javassist
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> <p>
+									The presence of an <code class="literal">@PersistenceUnit</code> or <code class="literal">@PersistenceContext</code> annotation, or a <code class="literal">&lt;persistence-unit-ref&gt;</code> or <code class="literal">&lt;persistence-context-ref&gt;</code> element in a deployment descriptor.
+								</p>
+								 <p>
+									JBoss EAP maps persistence provider names to module names. If you name a specific provider in the <code class="literal">persistence.xml</code> file, a dependency is added for the appropriate module. If this not the desired behavior, you can exclude it using a <code class="literal">jboss-deployment-structure.xml</code> file.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									JSF (Java Server Faces)
+								</p>
+								 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											javax.faces.api
+										</li><li class="listitem">
+											com.sun.jsf-impl
+										</li><li class="listitem">
+											org.jboss.as.jsf
+										</li><li class="listitem">
+											org.jboss.as.jsf-injection
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Added to EAR applications.
+								</p>
+								 <p>
+									Added to WAR applications only if the <code class="literal">web.xml</code> file does NOT specify a <code class="literal">context-param</code> of <code class="literal">org.jboss.jbossfaces.WAR_BUNDLES_JSF_IMPL</code> with a value of <code class="literal">true</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									JSR-77
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											javax.management.j2ee.api
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									Logging
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											org.jboss.logging
+										</li><li class="listitem">
+											org.apache.commons.logging
+										</li><li class="listitem">
+											org.apache.log4j
+										</li><li class="listitem">
+											org.slf4j
+										</li><li class="listitem">
+											org.jboss.logging.jul-to-slf4j-stub
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									Mail
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											javax.mail.api
+										</li><li class="listitem">
+											javax.activation.api
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									Messaging
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											javax.jms.api
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											org.wildfly.extension.messaging-activemq
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									PicketLink Federation
+								</p>
+								 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											org.picketlink
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									Pojo
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											org.jboss.as.pojo
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									SAR
+								</p>
+								 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											org.jboss.modules
+										</li><li class="listitem">
+											org.jboss.as.system-jmx
+										</li><li class="listitem">
+											org.jboss.common-beans
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> <p>
+									The deployment of a SAR archive that has a <code class="literal">jboss-service.xml</code>.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									Seam2
+								</p>
+								 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											org.jboss.vfs
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> <p>
+									.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									Security
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											org.picketbox
+										</li><li class="listitem">
+											org.jboss.as.security
+										</li><li class="listitem">
+											javax.security.jacc.api
+										</li><li class="listitem">
+											javax.security.auth.message.api
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									ServiceActivator
+								</p>
+								 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											org.jboss.msc
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									Transactions
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											javax.transaction.api
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											org.jboss.xts
+										</li><li class="listitem">
+											org.jboss.jts
+										</li><li class="listitem">
+											org.jboss.narayana.compensations
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									Undertow
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											javax.servlet.jstl.api
+										</li><li class="listitem">
+											javax.servlet.api
+										</li><li class="listitem">
+											javax.servlet.jsp.api
+										</li><li class="listitem">
+											javax.websocket.api
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											io.undertow.core
+										</li><li class="listitem">
+											io.undertow.servlet
+										</li><li class="listitem">
+											io.undertow.jsp
+										</li><li class="listitem">
+											io.undertow.websocket
+										</li><li class="listitem">
+											io.undertow.js
+										</li><li class="listitem">
+											org.wildfly.clustering.web.api
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									Web Services
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											javax.jws.api
+										</li><li class="listitem">
+											javax.xml.soap.api
+										</li><li class="listitem">
+											javax.xml.ws.api
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											org.jboss.ws.api
+										</li><li class="listitem">
+											org.jboss.ws.spi
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> <p>
+									If it is not application client type, then it will add the conditional dependencies.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									Weld (CDI)
+								</p>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											javax.enterprise.api
+										</li><li class="listitem">
+											javax.inject.api
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											javax.persistence.api
+										</li><li class="listitem">
+											org.javassist
+										</li><li class="listitem">
+											org.jboss.as.weld
+										</li><li class="listitem">
+											org.jboss.weld.core
+										</li><li class="listitem">
+											org.jboss.weld.probe
+										</li><li class="listitem">
+											org.jboss.weld.api
+										</li><li class="listitem">
+											org.jboss.weld.spi
+										</li><li class="listitem">
+											org.hibernate.validator.cdi
+										</li></ul></div>
+								 </td><td style="text-align: left" valign="top"> <p>
+									The presence of a <code class="literal">beans.xml</code> file in the deployment.
+								</p>
+								 </td></tr></tbody></table></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="included_modules"/>Included Modules</h2></div></div></div><p>
+					For the complete listing of the included modules and whether they are supported, see <a class="link" href="https://access.redhat.com/articles/2158031">Red Hat JBoss Enterprise Application Platform 7 Included Modules</a> on the Red Hat Customer Portal.
+				</p></div></div></div></body></html>

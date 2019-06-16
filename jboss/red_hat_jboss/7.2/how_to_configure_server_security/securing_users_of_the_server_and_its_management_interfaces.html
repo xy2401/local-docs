@@ -1,0 +1,1356 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 2. Securing Users of the Server and Its Management Interfaces</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="securing_users_of_the_server_and_its_management_interfaces"/>Chapter 2. Securing Users of the Server and Its Management Interfaces</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="mgmt_user_authentication_with_eltyron"/>User Authentication with Elytron</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="default_elytron_mgmt_auth"/>Default Configuration</h2></div></div></div><p>
+					By default, the JBoss EAP management interfaces are secured by the legacy core management authentication.
+				</p><div class="title"><strong>Example: Default Configuration</strong></div><p>
+						
+</p><pre class="screen">/core-service=management/management-interface=http-interface:read-resource()
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; {
+        "allowed-origins" =&gt; undefined,
+        "console-enabled" =&gt; true,
+        "http-authentication-factory" =&gt; undefined,
+        "http-upgrade" =&gt; {"enabled" =&gt; true},
+        "http-upgrade-enabled" =&gt; true,
+        "sasl-protocol" =&gt; "remote",
+        "secure-socket-binding" =&gt; undefined,
+        "security-realm" =&gt; "ManagementRealm",
+        "server-name" =&gt; undefined,
+        "socket-binding" =&gt; "management-http",
+        "ssl-context" =&gt; undefined
+    }</pre><p>
+
+					</p><p>
+					JBoss EAP does provide <code class="literal">management-http-authentication</code> and <code class="literal">management-sasl-authentication</code> in the <code class="literal">elytron</code> subsystem for securing the management interfaces as well.
+				</p><p>
+					To update JBoss EAP to use the default Elytron components:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Set <code class="literal">http-authentication-factory</code> to use <code class="literal">management-http-authentication</code>:
+						</p><pre class="screen">/core-service=management/management-interface=http-interface:write-attribute(name=http-authentication-factory, value=management-http-authentication)</pre></li><li class="listitem"><p class="simpara">
+							Set <code class="literal">sasl-authentication-factory</code> to use <code class="literal">management-sasl-authentication</code>:
+						</p><pre class="screen">/core-service=management/management-interface=http-interface:write-attribute(name=http-upgrade.sasl-authentication-factory, value=management-sasl-authentication)</pre></li><li class="listitem"><p class="simpara">
+							Undefine <code class="literal">security-realm</code>:
+						</p><pre class="screen">/core-service=management/management-interface=http-interface:undefine-attribute(name=security-realm)</pre></li><li class="listitem">
+							Reload JBoss EAP for the changes to take affect:
+						</li></ol></div><pre class="screen">reload</pre><p>
+					The management interfaces are now secured using the default components provided by the <code class="literal">elytron</code> subsystem.
+				</p><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="default_elytron_http_authentication_configuration"/>Default Elytron HTTP Authentication Configuration</h3></div></div></div><p>
+						When you access the management interface over http, for example when using the web-based management console, JBoss EAP will use the <code class="literal">management-http-authentication</code> http-authentication-factory.
+					</p><pre class="screen">/subsystem=elytron/http-authentication-factory=management-http-authentication:read-resource()
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; {
+        "http-server-mechanism-factory" =&gt; "global",
+        "mechanism-configurations" =&gt; [{
+            "mechanism-name" =&gt; "DIGEST",
+            "mechanism-realm-configurations" =&gt; [{"realm-name" =&gt; "ManagementRealm"}]
+        }],
+        "security-domain" =&gt; "ManagementDomain"
+    }
+}</pre><p>
+						The <code class="literal">management-http-authentication</code> http-authentication-factory, is configured to use the <code class="literal">ManagementDomain</code> security domain.
+					</p><pre class="screen">/subsystem=elytron/security-domain=ManagementDomain:read-resource()
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; {
+        "default-realm" =&gt; "ManagementRealm",
+        "permission-mapper" =&gt; "default-permission-mapper",
+        "post-realm-principal-transformer" =&gt; undefined,
+        "pre-realm-principal-transformer" =&gt; undefined,
+        "principal-decoder" =&gt; undefined,
+        "realm-mapper" =&gt; undefined,
+        "realms" =&gt; [
+            {
+                "realm" =&gt; "ManagementRealm",
+                "role-decoder" =&gt; "groups-to-roles"
+            },
+            {
+                "realm" =&gt; "local",
+                "role-mapper" =&gt; "super-user-mapper"
+            }
+        ],
+        "role-mapper" =&gt; undefined,
+        "trusted-security-domains" =&gt; undefined
+    }
+}</pre><p>
+						The <code class="literal">ManagementDomain</code> security domain is backed by the <code class="literal">ManagementRealm</code> Elytron security realm, which is a properties-based realm.
+					</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+							A properties-based realm is only read when the server starts. Any users added after server start, either manually or by using an <code class="literal">add-user</code> script, will require a server reload. This reload is accomplished by running the <code class="literal">reload</code> command from the management CLI.
+						</p><pre class="screen">reload</pre></div><pre class="screen">/subsystem=elytron/properties-realm=ManagementRealm:read-resource()
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; {
+        "groups-attribute" =&gt; "groups",
+        "groups-properties" =&gt; {
+            "path" =&gt; "mgmt-groups.properties",
+            "relative-to" =&gt; "jboss.server.config.dir"
+        },
+        "plain-text" =&gt; false,
+        "users-properties" =&gt; {
+            "path" =&gt; "mgmt-users.properties",
+            "relative-to" =&gt; "jboss.server.config.dir"
+        }
+    }
+}</pre></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="default_elytron_management_cli_authentication"/>Default Elytron Management CLI Authentication</h3></div></div></div><p>
+						By default, the management CLI (<code class="literal">jboss-cli.sh</code>) is configured to connect over <code class="literal">remote+http</code>.
+					</p><div class="title"><strong>Example: Default jboss-cli.xml</strong></div><p>
+							
+</p><pre class="programlisting">&lt;jboss-cli xmlns="urn:jboss:cli:3.1"&gt;
+
+    &lt;default-protocol use-legacy-override="true"&gt;remote+http&lt;/default-protocol&gt;
+
+    &lt;!-- The default controller to connect to when 'connect' command is executed w/o arguments --&gt;
+    &lt;default-controller&gt;
+        &lt;protocol&gt;remote+http&lt;/protocol&gt;
+        &lt;host&gt;localhost&lt;/host&gt;
+        &lt;port&gt;9990&lt;/port&gt;
+    &lt;/default-controller&gt;</pre><p>
+
+						</p><p>
+						This will establish a connection over HTTP and use HTTP upgrade to change the communication protocol to <code class="literal">Remoting</code>. The HTTP upgrade connection is secured in the <code class="literal">http-upgrade</code> section of the <code class="literal">http-interface</code> using a <code class="literal">sasl-authentication-factory</code>.
+					</p><div class="title"><strong>Example: Configuration with Default Components</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/management-interface=http-interface:read-resource()
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; {
+        "allowed-origins" =&gt; undefined,
+        "console-enabled" =&gt; true,
+        "http-authentication-factory" =&gt; "management-http-authentication",
+        "http-upgrade" =&gt; {
+            "enabled" =&gt; true,
+            "sasl-authentication-factory" =&gt; "management-sasl-authentication"
+        },
+        "http-upgrade-enabled" =&gt; true,
+        "sasl-protocol" =&gt; "remote",
+        "secure-socket-binding" =&gt; undefined,
+        "security-realm" =&gt; undefined,
+        "server-name" =&gt; undefined,
+        "socket-binding" =&gt; "management-http",
+        "ssl-context" =&gt; undefined
+    }
+}</pre><p>
+
+						</p><p>
+						The default sasl-authentication-factory is <code class="literal">management-sasl-authentication</code>.
+					</p><pre class="screen">/subsystem=elytron/sasl-authentication-factory=management-sasl-authentication:read-resource()
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; {
+        "mechanism-configurations" =&gt; [
+            {
+                "mechanism-name" =&gt; "JBOSS-LOCAL-USER",
+                "realm-mapper" =&gt; "local"
+            },
+            {
+                "mechanism-name" =&gt; "DIGEST-MD5",
+                "mechanism-realm-configurations" =&gt; [{"realm-name" =&gt; "ManagementRealm"}]
+            }
+        ],
+        "sasl-server-factory" =&gt; "configured",
+        "security-domain" =&gt; "ManagementDomain"
+    }
+}</pre><p>
+						The <code class="literal">management-sasl-authentication</code> sasl-authentication-factory specifies <code class="literal">JBOSS-LOCAL-USER</code> and <code class="literal">DIGEST-MD5</code> mechanisms.
+					</p><p>
+						The <code class="literal">ManagementRealm</code> Elytron security realm, used in <code class="literal">DIGEST-MD5</code>, is the same realm used in the <code class="literal">management-http-authentication</code> http-authentication-factory.
+					</p><div class="title"><strong>Example: JBOSS-LOCAL-USER Realm</strong></div><p>
+							
+</p><pre class="screen">/subsystem=elytron/identity-realm=local:read-resource()
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; {
+        "attribute-name" =&gt; undefined,
+        "attribute-values" =&gt; undefined,
+        "identity" =&gt; "$local"
+    }
+}</pre><p>
+
+						</p><p>
+						The <code class="literal">local</code> Elytron security realm is for handling silent authentication for local users.
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="elytron_secure_mgmt_new_identity_store"/>Secure the Management Interfaces with a New Identity Store</h2></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Create a security domain and any supporting security realms, decoders, or mappers for your identity store.
+						</p><p class="simpara">
+							This process is covered in the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_configure_identity_management/#elytron_secure_apps">Elytron Subsystem</a> section of JBoss EAP <span class="emphasis"><em>How to Configure Identity Management Guide</em></span>. For example, if you wanted to secure the management interfaces using a filesystem-based identity store, you would follow the steps in <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_configure_identity_management/#elytron_apps_filesystemAuth">Configure Authentication with a Filesystem-based Identity Store</a>.
+						</p></li><li class="listitem"><p class="simpara">
+							Create an <code class="literal">http-authentication-factory</code> or <code class="literal">sasl-authentication-factory</code>.
+						</p><div class="title"><strong>Example: http-authentication-factory</strong></div><p>
+								
+</p><pre class="screen">/subsystem=elytron/http-authentication-factory=example-http-auth:add(http-server-mechanism-factory=global, security-domain=exampleSD, mechanism-configurations=[{mechanism-name=DIGEST, mechanism-realm-configurations=[{realm-name=exampleManagementRealm}]}])</pre><p>
+
+							</p><div class="title"><strong>Example: sasl-authentication-factory</strong></div><p>
+								
+</p><pre class="screen">/subsystem=elytron/sasl-authentication-factory=example-sasl-auth:add(sasl-server-factory=configured, security-domain=exampleSD, mechanism-configurations=[{mechanism-name=DIGEST-MD5, mechanism-realm-configurations=[{realm-name=exampleManagementRealm}]}])</pre><p>
+
+							</p></li><li class="listitem"><p class="simpara">
+							Add pattern-filter to the <code class="literal">configured</code> <code class="literal">configurable-sasl-server-factory</code>.
+						</p><div class="title"><strong>Example: Add GSSAPI to the Configured configurable-sasl-server-factory</strong></div><p>
+								
+</p><pre class="screen">/subsystem=elytron/configurable-sasl-server-factory=configured:list-add(name=filters, value={pattern-filter=GSSAPI})</pre><p>
+
+							</p><p class="simpara">
+							This is an optional step. When a client attempts to connect to the HTTP management interfaces, JBoss EAP sends back an HTTP response with a status code of <code class="literal">401 Unauthorized</code>, and a set of headers that list the supported authentication mechanisms, for example, Digest, GSSAPI, and so on. For more information, see the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/#local_and_remote_client_authentication_with_http_interfaces">Local and Remote Client Authentication with the HTTP Interface</a> section in the JBoss EAP <span class="emphasis"><em>Security Architecture</em></span> guide.
+						</p></li><li class="listitem"><p class="simpara">
+							Update the management interfaces to use your <code class="literal">http-authentication-factory</code> or <code class="literal">sasl-authentication-factory</code>.
+						</p><div class="title"><strong>Example: Update http-authentication-factory</strong></div><p>
+								
+</p><pre class="screen">/core-service=management/management-interface=http-interface:write-attribute(name=http-authentication-factory, value=example-http-auth)
+
+reload</pre><p>
+
+							</p><div class="title"><strong>Example: Update sasl-authentication-factory</strong></div><p>
+								
+</p><pre class="screen">/core-service=management/management-interface=http-interface:write-attribute(name=http-upgrade.sasl-authentication-factory, value=example-sasl-auth)
+
+reload</pre><p>
+
+							</p><p class="simpara">
+							You can also update the native interface to use a <code class="literal">sasl-authentication-factory</code>.
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								The native interface is not enabled by default.
+							</p></div><div class="title"><strong>Example: Add Native Interface and Use sasl-authentication-factory</strong></div><p>
+								
+</p><pre class="screen">/socket-binding-group=standard-sockets/socket-binding=native:add(interface=management, port=9999)
+
+/core-service=management/management-interface=native-interface:add(socket-binding=native)
+
+/core-service=management/management-interface=native-interface:write-attribute(name=sasl-authentication-factory, value=example-sasl-auth)
+
+reload</pre><p>
+
+							</p></li></ol></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						When using legacy core management authentication, you can only secure the http management interface with a single legacy security realm. This forces the HTTP and SASL configuration to appear in a single legacy security realm. When using the <code class="literal">elytron</code> subsystem, you can configure the <code class="literal">http-authentication-factory</code> and <code class="literal">sasl-authentication-factory</code> separately, allowing you to use distinct security domains for securing the HTTP and SASL mechanisms of the http management interface.
+					</p></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						If two different attributes with similar implementation in legacy security and Elytron, respectively, are configured in the management interface, only the Elytron related configurations are used. For example, if <code class="literal">security-realm</code> for legacy security and <code class="literal">http-authentication-factory</code> for Elytron are configured, then authentication is handled by <code class="literal">http-authentication-factory</code> configuration.
+					</p></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						When the management interface includes both <code class="literal">http-authentication-factory</code>, or <code class="literal">sasl-authentication-factory</code> for the native interface, as well as the <code class="literal">security-realm</code>, and the <code class="literal">ssl-context</code> attribute is not used, the authentication is handled by Elytron and the SSL is handled by the legacy security realm.
+					</p><p>
+						When the management interface includes both the <code class="literal">security-realm</code> and the <code class="literal">ssl-context</code>, and the <code class="literal">http-authentication-factory</code> or <code class="literal">sasl-authentication-factory</code> for the native interface is not used, then authentication is handled by the legacy security realm and SSL is handled by Elytron.
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="adding_silent_authentication"/>Adding Silent Authentication</h2></div></div></div><p>
+					By default, JBoss EAP provides an authentication mechanism for local users, also know as silent authentication, through the <code class="literal">local</code> security realm. You can find more details on silent authentication in the <a class="link" href="securing_the_server_and_its_interfaces.html#silent-auth" title="Silent Authentication">Silent Authentication</a> section.
+				</p><p>
+					Silent authentication must be added to a <code class="literal">sasl-authentication-factory</code>.
+				</p><p>
+					To add silent authentication to an existing <code class="literal">sasl-authentication-factory</code>:
+				</p><pre class="screen">/subsystem=elytron/sasl-authentication-factory=example-sasl-auth:list-add(name=mechanism-configurations, value={mechanism-name=JBOSS-LOCAL-USER, realm-mapper=local})
+
+reload</pre><p>
+					To create a new <code class="literal">sasl-server-factory</code> with silent authentication:
+				</p><pre class="screen">/subsystem=elytron/sasl-authentication-factory=example-sasl-auth:add(sasl-server-factory=configured,security-domain=ManagementDomain,mechanism-configurations=[{mechanism-name=DIGEST-MD5,mechanism-realm-configurations=[{realm-name=exampleManagementRealm}]},{mechanism-name=JBOSS-LOCAL-USER, realm-mapper=local}])
+
+reload</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						The above example uses the existing <code class="literal">ManagementDomain</code> security domain, but you can also create and use other security domains. You can find more examples of creating security domains in the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_configure_identity_management/#elytron_secure_apps">Elytron Subsystem</a> section of the JBoss EAP <span class="emphasis"><em>How to Configure Identity Management Guide</em></span>.
+					</p></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						If the Elytron security is used and an authentication attempt comes in using the <code class="literal">JBOSS-LOCAL-USER SASL</code> mechanism with an authentication name that does not correspond to a real identity, authentication fails.
+					</p><p>
+						Choosing a custom user name for <code class="literal">JBOSS-LOCAL-USER</code> is possible with legacy <code class="literal">security</code> subsystem. There the authentication proceeds by mapping the user name to a <span class="emphasis"><em>special</em></span> identity.
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="mapping_identity_for_authenticated_management_users"/>Mapping Identity for Authenticated Management Users</h2></div></div></div><p>
+					When using the <code class="literal">elytron</code> subsystem to secure the management interfaces, you can provide a security domain to the management interfaces for identity mapping of authenticated users. This allows authenticated users to appear with the appropriate identity when logged into the management interfaces.
+				</p><p>
+					The application server exposes more than one kind of management interface. Each type of interface can be associated with an independent <code class="literal">authentication-factory</code> to handle the authentication requirements of that interface.
+				</p><p>
+					To make the authorization decision, the current security identity is obtained from the security domain. The returned security identity has the role mapping and permission assignment, based on the rules defined within that security domain.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						In most cases, a common security domain is used for all management; for authentication of the management interfaces as well as for obtaining the security identity used for the authorization decisions. In these cases, the security domain is associated with the authentication factory of the management interface and no special <code class="literal">access=identity</code> needs to be defined.
+					</p><p>
+						In some cases, a different security domain is used to obtain the identity for the authorization decisions. Here, the <code class="literal">access=identity</code> resource is defined. It contains a reference to a security domain to obtain the identity for authorization.
+					</p></div><p>
+					The below example assumes you have secured the management interfaces with the <code class="literal">exampleSD</code> Elytron security domain and have it exposed as <code class="literal">exampleManagementRealm</code>.
+				</p><p>
+					To define the identity mapping, add the <code class="literal">identity</code> resource to the management interfaces.
+				</p><div class="title"><strong>Example: Add the <code class="literal">identity</code> Resource</strong></div><p>
+						
+</p><pre class="screen">/core-service=management/access=identity:add(security-domain=exampleSD)</pre><p>
+
+					</p><p>
+					Once you have added the <code class="literal">identity</code> resource, the identity of an authenticated user will appear when accessing the management interfaces. When the <code class="literal">identity</code> resource is not added, then the identity of the security domain used for authentication is used.
+				</p><p>
+					For example, if you logged into the management CLI as <code class="literal">user1</code>, your identity will properly appear.
+				</p><div class="title"><strong>Example: Display the Identity of an Authenticated User from the Management CLI</strong></div><p>
+						
+</p><pre class="screen">:whoami
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; {"identity" =&gt; {"username" =&gt; "user1"}}
+}</pre><p>
+
+					</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						If the <code class="literal">identity</code> resource is added and legacy security realms are used to secure the management interfaces, authenticated users will always have the <code class="literal">anonymous</code> identity. Once the <code class="literal">identity</code> resource is removed, users authenticated from the legacy security realms will appear with the appropriate identity.
+					</p></div><p>
+					Authorization for management operation always uses the security domain, which is the domain specified on <code class="literal">access=identity</code>. If not specified, it is the domain used for authentication. Any role mapping is always in the context of the security domain.
+				</p><p>
+					The <code class="literal">identity</code> resource for the current request will return a set of roles as mapped using the Elytron configuration. When an RBAC based role mapping definition is in use, the roles from the <code class="literal">identity</code> resource will be taken as groups and fed into the management <code class="literal">RoleMapping</code> to obtain the management roles for the current request.
+				</p><div class="table"><a id="idm139923977831072"/><p class="title"><strong>Table 2.1. Identity to be Used for Different Scenarios</strong></p><div class="table-contents"><table summary="Identity to be Used for Different Scenarios" border="1" width="100%"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Scenario</th><th style="text-align: left" valign="top">No access=identity definition</th><th style="text-align: left" valign="top">access=identity referencing an Elytron <code class="literal">security-domain</code></th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+									HTTP management interface using legacy <code class="literal">security-realm</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Identity from connection.
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Unsupported or anonymous identity.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									HTTP management interface using <code class="literal">elytron</code> HTTP authentication factory backed by <code class="literal">security-domain</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Identity from connection.
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Identity from referenced <code class="literal">security-domain</code> if it was successfully inflowed.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									Native management, including over HTTP Upgrade, interface using legacy <code class="literal">security-realm</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Identity from connection.
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Unsupported or anonymous identity.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									Native management, including over HTTP Upgrade, interface using <code class="literal">elytron</code> SASL authentication factory backed by <code class="literal">security-domain</code>
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Identity from connection.
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Identity from referenced <code class="literal">security-domain</code> if it was successfully inflowed.
+								</p>
+								 </td></tr></tbody></table></div></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						If security domain used in the <code class="literal">identity</code> resource does not trust the security domain from authentication, anonymous identity is used.
+					</p><p>
+						The security domain used in the <code class="literal">identity</code> resource does not need to trust the security domain from authentication, when both are using an identical security realm.
+					</p><p>
+						The trusted security domains is not transitive.
+					</p></div><p>
+					Where no <code class="literal">access=identity</code> resource is defined, then the identity established during authentication against the management interface will be used. Identities established using connections, through the <code class="literal">remoting</code> subsystem or using applications, will not be usable in this case.
+				</p><p>
+					Where an <code class="literal">access=identity</code> resource is defined but the security domain used by the management interfaces is different and not listed in the list of domains to inflow from, no identity will be established. An inflow will be attempted using the identity established during authentication. Identities established using connections through the <code class="literal">remoting</code> subsystem or using applications will not be inflowed in this way.
+				</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						Where the management interfaces are secured using the legacy security realms, the identity will not be sharable across different security domains. In that case no <code class="literal">access=identity</code> resource should be defined. So the identity established during authentication can be used directly. Thus, applications secured using PicketBox are not supported for the <code class="literal">identity</code> resource.
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="elytron_client_mgmt_cli"/>Using Elytron Client with the Management CLI</h2></div></div></div><p>
+					You can configure the management CLI to use Elytron Client for providing security information when connecting to JBoss EAP.
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Secure the management interfaces with Elytron.
+						</p><p class="simpara">
+							In order to use Elytron Client with the management CLI, you must secure the management interfaces with Elytron. You can find more details on securing the management interfaces with Elytron in <a class="link" href="securing_users_of_the_server_and_its_management_interfaces.html#mgmt_user_authentication_with_eltyron" title="User Authentication with Elytron">User Authentication with Elytron</a>.
+						</p></li><li class="listitem"><p class="simpara">
+							Create an Elytron Client configuration file.
+						</p><p class="simpara">
+							You need to create an Elytron Client configuration file that houses your authentication configuration as well as rules for using that configuration. You can find more details on creating an authentication configuration in the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_configure_identity_management/#elytron_client_configuration_file_approach">The Configuration File Approach</a> section of the JBoss EAP <span class="emphasis"><em>How to Configure Identity Management Guide</em></span>.
+						</p><div class="title"><strong>Example: custom-config.xml</strong></div><p>
+								
+</p><pre class="programlisting">&lt;configuration&gt;
+    &lt;authentication-client xmlns="urn:elytron:client:1.2"&gt;
+        &lt;authentication-rules&gt;
+            &lt;rule use-configuration="configuration1"&gt;
+                &lt;match-host name="localhost" /&gt;
+            &lt;/rule&gt;
+        &lt;/authentication-rules&gt;
+        &lt;authentication-configurations&gt;
+            &lt;configuration name="configuration1"&gt;
+                &lt;sasl-mechanism-selector selector="DIGEST-MD5" /&gt;
+                &lt;providers&gt;
+                  &lt;use-service-loader /&gt;
+                &lt;/providers&gt;
+                &lt;set-user-name name="user1" /&gt;
+                &lt;credentials&gt;
+                    &lt;clear-password password="password123" /&gt;
+                &lt;/credentials&gt;
+                &lt;set-mechanism-realm name="exampleManagementRealm" /&gt;
+             &lt;/configuration&gt;
+        &lt;/authentication-configurations&gt;
+    &lt;/authentication-client&gt;
+&lt;/configuration&gt;</pre><p>
+
+							</p></li><li class="listitem"><p class="simpara">
+							Use the Elytron Client configuration file with management CLI script.
+						</p><pre class="screen">$ ./jboss-cli.sh -c  -Dwildfly.config.url=/path/to/custom-config.xml</pre></li></ol></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="identity_propagation_and_forwarding_with_elytron"/>Identity Propagation and Forwarding with Elytron</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="propagating_security_identities_for_remote_calls"/>Propagating Security Identities for Remote Calls</h2></div></div></div><p>
+					JBoss EAP 7.1 introduced the ability to easily configure the server and your applications to propagate a security identity from a client to the server for remoting calls. You can also configure server components to run within the security identity of a given user.
+				</p><p>
+					The example in this section demonstrates how to forward security identity credentials. It propagates the security identity of a client and an EJB to a remote EJB. It returns a string containing the name of the <code class="literal">Principal</code> that called the remote EJB along with the user’s authorized role information. The example consists of the following components.
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							A secured EJB that contains a single method, accessible by all users, that returns authorization information about the caller.
+						</li><li class="listitem">
+							An intermediate EJB that contains a single method. It makes use of a remote connection and invokes the method on the secured EJB.
+						</li><li class="listitem">
+							A remote standalone client application that invokes the intermediate EJB.
+						</li><li class="listitem">
+							A <code class="literal">META-INF/wildfly-config.xml</code> file that contains the identity information used for authentication.
+						</li></ul></div><p>
+					You must first <a class="link" href="securing_users_of_the_server_and_its_management_interfaces.html#configure_the_server_for_security_propagation" title="Configure the Server for Security Propagation">enable security identity propagation</a> by configuring the server. Next <a class="link" href="securing_users_of_the_server_and_its_management_interfaces.html#review_the_example_application_code_that_propagates_a_security_identity" title="Review the Example Application Code That Propagates a Security Identity">review the example application code</a> that uses the <code class="literal">WildFlyInitialContextFactory</code> to look up and invoke the remote EJB.
+				</p><h4><a id="configure_the_server_for_security_propagation"/>Configure the Server for Security Propagation</h4><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Configure the <code class="literal">ejb3</code> subsystem to use the Elytron <code class="literal">ApplicationDomain</code>.
+						</p><pre class="screen">/subsystem=ejb3/application-security-domain=quickstart-domain:add(security-domain=ApplicationDomain)</pre><p class="simpara">
+							This adds the following <code class="literal">application-security-domain</code> configuration to the <code class="literal">ejb3</code> subsystem.
+						</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:ejb3:5.0"&gt;
+    ....
+    &lt;application-security-domains&gt;
+        &lt;application-security-domain name="quickstart-domain" security-domain="ApplicationDomain"/&gt;
+    &lt;/application-security-domains&gt;
+&lt;/subsystem&gt;</pre></li><li class="listitem"><p class="simpara">
+							Add the <code class="literal">PLAIN</code> authentication configuration to send plain text user names and passwords, and the authentication context that is to be used for outbound connections. See <a class="link" href="securing_users_of_the_server_and_its_management_interfaces.html#mechanisms_that_support_security_identity_propagation" title="Mechanisms That Support Security Identity Propagation">Mechanisms That Support Security Identity Propagation</a> for the list of mechanisms that support identity propagation.
+						</p><pre class="screen">/subsystem=elytron/authentication-configuration=ejb-outbound-configuration:add(security-domain=ApplicationDomain,sasl-mechanism-selector="PLAIN")
+/subsystem=elytron/authentication-context=ejb-outbound-context:add(match-rules=[{authentication-configuration=ejb-outbound-configuration}])</pre><p class="simpara">
+							This adds the following <code class="literal">authentication-client</code> configuration to the <code class="literal">elytron</code> subsystem.
+						</p><pre class="programlisting">&lt;subsystem xmlns="urn:wildfly:elytron:4.0" final-providers="combined-providers" disallowed-providers="OracleUcrypto"&gt;
+    &lt;authentication-client&gt;
+        &lt;authentication-configuration name="ejb-outbound-configuration" security-domain="ApplicationDomain" sasl-mechanism-selector="PLAIN"/&gt;
+        &lt;authentication-context name="ejb-outbound-context"&gt;
+            &lt;match-rule authentication-configuration="ejb-outbound-configuration"/&gt;
+        &lt;/authentication-context&gt;
+    &lt;/authentication-client&gt;
+    ....
+&lt;/subsystem&gt;</pre></li><li class="listitem"><p class="simpara">
+							Add the remote destination outbound socket binding to the <code class="literal">standard-sockets</code> socket binding group.
+						</p><pre class="screen">/socket-binding-group=standard-sockets/remote-destination-outbound-socket-binding=ejb-outbound:add(host=localhost,port=8080)</pre><p class="simpara">
+							This adds the following <code class="literal">ejb-outbound</code> outbound socket binding to the <code class="literal">standard-sockets</code> socket binding group.
+						</p><pre class="programlisting">&lt;socket-binding-group name="standard-sockets" default-interface="public" port-offset="${jboss.socket.binding.port-offset:0}"&gt;
+    ....
+    &lt;outbound-socket-binding name="ejb-outbound"&gt;
+        &lt;remote-destination host="localhost" port="8080"/&gt;
+    &lt;/outbound-socket-binding&gt;
+&lt;/socket-binding-group&gt;</pre></li><li class="listitem"><p class="simpara">
+							Add the remote outbound connection and set the SASL authentication factory in the HTTP connector.
+						</p><pre class="screen">/subsystem=remoting/remote-outbound-connection=ejb-outbound-connection:add(outbound-socket-binding-ref=ejb-outbound, authentication-context=ejb-outbound-context)
+/subsystem=remoting/http-connector=http-remoting-connector:write-attribute(name=sasl-authentication-factory,value=application-sasl-authentication)</pre><p class="simpara">
+							This adds the following <code class="literal">http-remoting-connector</code> and <code class="literal">ejb-outbound-connection</code> configuration to the <code class="literal">remoting</code> subsystem.
+						</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:remoting:4.0"&gt;
+    ....
+    &lt;http-connector name="http-remoting-connector" connector-ref="default" security-realm="ApplicationRealm" sasl-authentication-factory="application-sasl-authentication"/&gt;
+    &lt;outbound-connections&gt;
+        &lt;remote-outbound-connection name="ejb-outbound-connection" outbound-socket-binding-ref="ejb-outbound" authentication-context="ejb-outbound-context"/&gt;
+    &lt;/outbound-connections&gt;
+&lt;/subsystem&gt;</pre></li><li class="listitem"><p class="simpara">
+							Configure the Elytron SASL authentication to use the <code class="literal">PLAIN</code> mechanism.
+						</p><pre class="screen">/subsystem=elytron/sasl-authentication-factory=application-sasl-authentication:write-attribute(name=mechanism-configurations,value=[{mechanism-name=PLAIN},{mechanism-name=JBOSS-LOCAL-USER,realm-mapper=local},{mechanism-name=DIGEST-MD5,mechanism-realm-configurations=[{realm-name=ApplicationRealm}]}])</pre><p class="simpara">
+							This adds the following <code class="literal">application-sasl-authentication</code> configuration to the <code class="literal">elytron</code> subsystem.
+						</p><pre class="programlisting">&lt;subsystem xmlns="urn:wildfly:elytron:4.0" final-providers="combined-providers" disallowed-providers="OracleUcrypto"&gt;
+    ....
+    &lt;sasl&gt;
+      ....
+      &lt;sasl-authentication-factory name="application-sasl-authentication" sasl-server-factory="configured" security-domain="ApplicationDomain"&gt;
+          &lt;mechanism-configuration&gt;
+              &lt;mechanism mechanism-name="PLAIN"/&gt;
+              &lt;mechanism mechanism-name="JBOSS-LOCAL-USER" realm-mapper="local"/&gt;
+              &lt;mechanism mechanism-name="DIGEST-MD5"&gt;
+                  &lt;mechanism-realm realm-name="ApplicationRealm"/&gt;
+              &lt;/mechanism&gt;
+          &lt;/mechanism-configuration&gt;
+      &lt;/sasl-authentication-factory&gt;
+  &lt;/sasl&gt;
+  ....
+&lt;/subsystem&gt;</pre></li></ol></div><p>
+					The server is now configured to enable security propagation for the following example application.
+				</p><h4><a id="review_the_example_application_code_that_propagates_a_security_identity"/>Review the Example Application Code That Propagates a Security Identity</h4><p>
+					Once security identity propagation is enabled in the server configuration, the EJB client application can use the <code class="literal">WildFlyInitialContextFactory</code> to look up and invoke the EJB proxy. The EJB is invoked as the user that authenticated in the client example shown below. The following abbreviated code examples are taken from the <code class="literal">ejb-security-context-propagation</code> quickstart that ships with JBoss EAP 7.2. See that quickstart for a complete working example of security identity propagation.
+				</p><p>
+					To invoke the EJB as a different user, you can set the <code class="literal">Context.SECURITY_PRINCIPAL</code> and <code class="literal">Context.SECURITY_CREDENTIALS</code> in the context properties.
+				</p><div class="title"><strong>Example: Remote Client</strong></div><p>
+						
+</p><pre class="programlisting">public class RemoteClient {
+
+    public static void main(String[] args) throws Exception {
+        // invoke the intermediate bean using the identity configured in wildfly-config.xml
+        invokeIntermediateBean();
+
+        // now lets programmatically setup an authentication context to switch users before invoking the intermediate bean
+        AuthenticationConfiguration superUser = AuthenticationConfiguration.empty().setSaslMechanismSelector(SaslMechanismSelector.NONE.addMechanism("PLAIN")).
+                useName("superUser").usePassword("superPwd1!");
+        final AuthenticationContext authCtx = AuthenticationContext.empty().
+                with(MatchRule.ALL, superUser);
+
+        AuthenticationContext.getContextManager().setThreadDefault(authCtx);
+        invokeIntermediateBean();
+    }
+
+    private static void invokeIntermediateBean() throws Exception {
+        final Hashtable&lt;String, String&gt; jndiProperties = new Hashtable&lt;&gt;();
+        jndiProperties.put(Context.INITIAL_CONTEXT_FACTORY, "org.wildfly.naming.client.WildFlyInitialContextFactory");
+        jndiProperties.put(Context.PROVIDER_URL, "remote+http://localhost:8080");
+        final Context context = new InitialContext(jndiProperties);
+        IntermediateEJBRemote intermediate = (IntermediateEJBRemote) context.lookup("ejb:/ejb-security-context-propagation/IntermediateEJB!"
+                + IntermediateEJBRemote.class.getName());
+        // Call the intermediate EJB
+        System.out.println(intermediate.makeRemoteCalls());
+    }
+}</pre><p>
+
+					</p><div class="title"><strong>Example: Intermediate EJB</strong></div><p>
+						
+</p><pre class="programlisting">@Stateless
+@Remote(IntermediateEJBRemote.class)
+@SecurityDomain("quickstart-domain")
+@PermitAll
+public class IntermediateEJB implements IntermediateEJBRemote {
+
+    @EJB(lookup="ejb:/ejb-security-context-propagation/SecuredEJB!org.jboss.as.quickstarts.ejb_security_context_propagation.SecuredEJBRemote")
+    private SecuredEJBRemote remote;
+
+    @Resource
+    private EJBContext context;
+
+    public String makeRemoteCalls() {
+        try {
+            StringBuilder sb = new StringBuilder("** ").
+                    append(context.getCallerPrincipal()).
+                    append(" * * \n\n");
+            sb.append("Remote Security Information: ").
+                    append(remote.getSecurityInformation()).
+                    append("\n");
+
+            return sb.toString();
+        } catch (Exception e) {
+            if (e instanceof RuntimeException) {
+                throw (RuntimeException) e;
+            }
+            throw new RuntimeException("Teasting failed.", e);
+        }
+    }
+}</pre><p>
+
+					</p><div class="title"><strong>Example: Secured EJB</strong></div><p>
+						
+</p><pre class="programlisting">@Stateless
+@Remote(SecuredEJBRemote.class)
+@SecurityDomain("quickstart-domain")
+public class SecuredEJB implements SecuredEJBRemote {
+
+    @Resource
+    private SessionContext context;
+
+    @PermitAll
+    public String getSecurityInformation() {
+        StringBuilder sb = new StringBuilder("[");
+        sb.append("Principal=[").
+                append(context.getCallerPrincipal().getName()).
+                append("], ");
+        userInRole("guest", sb).append(", ");
+        userInRole("user", sb).append(", ");
+        userInRole("admin", sb).append("]");
+        return sb.toString();
+    }
+}</pre><p>
+
+					</p><div class="title"><strong>Example: wildfly-config.xml File</strong></div><p>
+						
+</p><pre class="programlisting">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;configuration&gt;
+    &lt;authentication-client xmlns="urn:elytron:client:1.2"&gt;
+        &lt;authentication-rules&gt;
+            &lt;rule use-configuration="default"/&gt;
+        &lt;/authentication-rules&gt;
+        &lt;authentication-configurations&gt;
+            &lt;configuration name="default"&gt;
+                &lt;set-user-name name="quickstartUser"/&gt;
+                &lt;credentials&gt;
+                    &lt;clear-password password="quickstartPwd1!"/&gt;
+                &lt;/credentials&gt;
+                &lt;sasl-mechanism-selector selector="PLAIN"/&gt;
+                &lt;providers&gt;
+                    &lt;use-service-loader /&gt;
+                &lt;/providers&gt;
+            &lt;/configuration&gt;
+        &lt;/authentication-configurations&gt;
+    &lt;/authentication-client&gt;
+&lt;/configuration&gt;</pre><p>
+
+					</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="utilizing_authorization_forwarding_mode"/>Utilizing Authorization Forwarding Mode</h2></div></div></div><p>
+					In addition to credential forwarding, Elytron supports the trusted use of identities between peers. This can be useful in the following cases.
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							Requirements are such that you cannot send passwords over the wire.
+						</li><li class="listitem">
+							The authentication type is one that does not <a class="link" href="securing_users_of_the_server_and_its_management_interfaces.html#mechanisms_that_support_security_identity_propagation" title="Mechanisms That Support Security Identity Propagation">support credential forwarding</a>.
+						</li><li class="listitem">
+							The environment requires a need to limit which systems are allowed to receive the propagated requests.
+						</li></ul></div><p>
+					To utilize authorization forwarding, you first <a class="link" href="securing_users_of_the_server_and_its_management_interfaces.html#configure_authorization_forwarding_forwarding_server" title="Configure the Authentication Client on the Forwarding Server">configure an authentication client on the forwarding server</a> and then <a class="link" href="securing_users_of_the_server_and_its_management_interfaces.html#configure_authorization_forwarding_receiving_server" title="Configure the Authorization Forwarding on the Receiving Server">configure the receiving server to accept and handle the authorization</a>.
+				</p><h4><a id="configure_authorization_forwarding_forwarding_server"/>Configure the Authentication Client on the Forwarding Server</h4><p>
+					To enable authorization forwarding, you must configure an authentication client configuration in the forwarding server configuration.
+				</p><p>
+					The following management CLI commands create a default authentication client configuration to enable authentication forwarding. You can configure a more advanced rule based selection if you need one.
+				</p><div class="title"><strong>Example: Management CLI Command to Create the Authentication Client Configuration</strong></div><p>
+						
+</p><pre class="screen">/subsystem=elytron/authentication-configuration=forwardit:add(authentication-name=theserver1,security-domain=ApplicationDomain,realm=ApplicationRealm,forwarding-mode=authorization,credential-reference={clear-text=thereallysecretpassword})
+/subsystem=elytron/authentication-context=forwardctx:add(match-rules=[{authentication-configuration=forwardit,match-no-user=true}])</pre><p>
+
+					</p><p>
+					These commands add the following <code class="literal">authentication-configuration</code> and <code class="literal">authentication-context</code> configuration to the <code class="literal">elytron</code> subsystem.
+				</p><div class="title"><strong>Example: Authentication Client Configuration</strong></div><p>
+						
+</p><pre class="programlisting">&lt;authentication-client&gt;
+    &lt;authentication-configuration name="forwardit" authentication-name="theserver1" security-domain="ApplicationDomain" forwarding-mode="authorization" realm="ApplicationRealm"&gt;
+        &lt;credential-reference clear-text="thereallysecretpassword"/&gt;
+    &lt;/authentication-configuration&gt;
+    &lt;authentication-context name="forwardctx"&gt;
+        &lt;match-rule match-no-user="true" authentication-configuration="forwardit"/&gt;
+    &lt;/authentication-context&gt;
+&lt;/authentication-client&gt;</pre><p>
+
+					</p><p>
+					When the forwarding server contacts the receiving server, instead of using the default authentication-based user name and credentials, it uses the predefined server login name <code class="literal">theserver1</code> to establish the trust relationship.
+				</p><h4><a id="configure_authorization_forwarding_receiving_server"/>Configure the Authorization Forwarding on the Receiving Server</h4><p>
+					For the forwarding to complete successfully, the receiving server configuration needs to be configured with the identity matching the one passed by the forwarding server. In this case, you must configure a user named <code class="literal">theserver1</code> on the receiving server with the correct credentials.
+				</p><p>
+					You must also configure a "RunAs" permission mapping in the <code class="literal">elytron</code> subsystem to allow the identity switch for the <code class="literal">theserver1</code> identity that is passed from the forwarding server. For more information about permission mapping, see <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_configure_server_security/#create_an_elytron_permission_mapper">Create an Elytron Permission Mapper</a> in <span class="emphasis"><em>How to Configure Server Security</em></span> for JBoss EAP.
+				</p><p>
+					The command below adds a <code class="literal">simple-permission-mapper</code> named <code class="literal">auth-forwarding-permission-mapper</code> that includes the following configurations.
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							A permission mapping for the user <code class="literal">anonymous</code>. This user has no permissions, which prevents an anonymous user from being able to log in.
+						</li><li class="listitem">
+							A permission mapping for the user <code class="literal">theserver1</code>. This user is assigned the <code class="literal">RunAsPrincipalPermission</code> permission of <code class="literal">*</code>, which gives this user global permissions to run as any identity. You can restrict the permission to a specific identity if you prefer.
+						</li><li class="listitem">
+							A permission mapping for all other users.
+						</li></ul></div><div class="title"><strong>Example: Management CLI Command to the Create Simple Permission Mapper</strong></div><p>
+						
+</p><pre class="screen">/subsystem=elytron/permission-set=run-as-principal-permission:add(permissions=[{class-name="org.wildfly.security.auth.permission.RunAsPrincipalPermission",target-name="*"}])
+
+/subsystem=elytron/simple-permission-mapper=auth-forwarding-permission-mapper:add(permission-mappings=[{principals=["anonymous"]},{principals=["theserver1"],permission-sets=[{permission-set=login-permission},{permission-set=default-permissions},{permission-set=run-as-principal-permission}]},{match-all=true,permission-sets=[{permission-set=login-permission},{permission-set=default-permissions}]}]</pre><p>
+
+					</p><p>
+					This command adds the following <code class="literal">simple-permission-mapper</code> configuration to the <code class="literal">elytron</code> subsystem.
+				</p><div class="title"><strong>Example: Simple Permission Mapper Configuration</strong></div><p>
+						
+</p><pre class="programlisting">&lt;mappers&gt;
+    &lt;simple-permission-mapper name="auth-forwarding-permission-mapper"&gt;
+        &lt;permission-mapping&gt;
+            &lt;principal name="anonymous"/&gt;
+            &lt;!-- No permissions: Deny any permission to anonymous! --&gt;
+        &lt;/permission-mapping&gt;
+        &lt;permission-mapping&gt;
+            &lt;principal name="theserver1"/&gt;
+            &lt;permission-set name="login-permission"/&gt;
+            &lt;permission-set name="default-permissions"/&gt;
+            &lt;permission-set name="run-as-principal-permission"/&gt;
+        &lt;/permission-mapping&gt;
+        &lt;permission-mapping match-all="true"&gt;
+            &lt;permission-set name="login-permission"/&gt;
+            &lt;permission-set name="default-permissions"/&gt;
+        &lt;/permission-mapping&gt;
+    &lt;/simple-permission-mapper&gt;
+&lt;/mappers&gt;
+&lt;permission-sets&gt;
+    &lt;permission-set name="login-permission"&gt;
+        &lt;permission class-name="org.wildfly.security.auth.permission.LoginPermission"/&gt;
+    &lt;/permission-set&gt;
+    &lt;permission-set name="default-permissions"&gt;
+        &lt;permission class-name="org.wildfly.extension.batch.jberet.deployment.BatchPermission" module="org.wildfly.extension.batch.jberet" target-name="*"/&gt;
+        &lt;permission class-name="org.wildfly.transaction.client.RemoteTransactionPermission" module="org.wildfly.transaction.client"/&gt;
+        &lt;permission class-name="org.jboss.ejb.client.RemoteEJBPermission" module="org.jboss.ejb-client"/&gt;
+    &lt;/permission-set&gt;
+    &lt;permission-set name="run-as-principal-permission"&gt;
+        &lt;permission class-name="org.wildfly.security.auth.permission.RunAsPrincipalPermission" target-name="*"/&gt;
+    &lt;/permission-set&gt;
+&lt;/permission-sets&gt;</pre><p>
+
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						The <code class="literal">login-permission</code> and <code class="literal">default-permissions</code> permission sets are already present in the default configuration.
+					</p></div><p>
+					In cases where principal transformers are used after forwarding authorization, then those transformers are applied on both the authentication and the authorization principals.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="retrieving_security_identity_credentials"/>Retrieving Security Identity Credentials</h2></div></div></div><p>
+					There might be situations where you need to retrieve identity credentials for use in outgoing calls, for example, by an HTTP client. The following example demonstrates how to retrieve security credentials programmatically.
+				</p><pre class="programlisting">import org.wildfly.security.auth.server.IdentityCredentials;
+import org.wildfly.security.auth.server.SecurityDomain;
+import org.wildfly.security.auth.server.SecurityIdentity;
+import org.wildfly.security.credential.PasswordCredential;
+import org.wildfly.security.password.interfaces.ClearPassword;
+
+SecurityIdentity securityIdentity = null;
+ClearPassword password = null;
+
+// Obtain the SecurityDomain for the current deployment.
+// The calling code requires the
+//     org.wildfly.security.permission.ElytronPermission("getSecurityDomain") permission
+//     if running with a security manager.
+SecurityDomain securityDomain = SecurityDomain.getCurrent();
+if (securityDomain != null) {
+    // Obtain the current security identity from the security domain.
+    // This always returns an identity, but it could be the representation
+    //     of the anonymous identity if no authenticated identity is available.
+    securityIdentity = securityDomain.getCurrentSecurityIdentity();
+    // The private credentials can be accessed to obtain any credentials delegated to the identity.
+    // The calling code requires the
+    //     org.wildfly.security.permission.ElytronPermission("getPrivateCredentials")
+    //     permission if running with a security manager.
+    IdentityCredentials credentials = securityIdentity.getPrivateCredentials();
+    if (credentials.contains(PasswordCredential.class)) {
+        password = credentials.getCredential(PasswordCredential.class).getPassword(ClearPassword.class);
+    }
+}</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="mechanisms_that_support_security_identity_propagation"/>Mechanisms That Support Security Identity Propagation</h2></div></div></div><p>
+					The following SASL mechanisms support propagation of security identities:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							<code class="literal">PLAIN</code>
+						</li><li class="listitem">
+							<code class="literal">OAUTHBEARER</code>
+						</li><li class="listitem">
+							<code class="literal">GSSAPI</code>
+						</li><li class="listitem">
+							<code class="literal">GS2-KRB5</code>
+						</li></ul></div><p>
+					The following HTTP mechanisms support propagation of security identities:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							<code class="literal">FORM</code> <sup>1</sup>
+						</li><li class="listitem">
+							<code class="literal">BASIC</code>
+						</li><li class="listitem">
+							<code class="literal">BEARER_TOKEN</code>
+						</li><li class="listitem">
+							<code class="literal">SPNEGO</code>
+						</li></ul></div><p>
+					<sup>1</sup> <code class="literal">FORM</code> authentication is not automatically handled by the web browser. For this reason, you cannot use identity propagation with web applications that use <code class="literal">FORM</code> authentication when running in an HA cluster. Other mechanisms, such as <code class="literal">BASIC</code> and <code class="literal">SPNEGO</code>, support identity propagation in an HA cluster environment.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="identity_switching_with_elytron"/>Identity Switching with Elytron</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="switching_identities_in_server_to_server_ejb_calls"/>Switching Identities in Server-to-server EJB Calls</h2></div></div></div><p>
+					By default, when you make a remote call to an EJB deployed to an application server, the identity used for authentication on the remote server is the same one that was used on the source server. In some cases, you might want to run the remote secured EJB within the security context of a different identity.
+				</p><p>
+					You can use the Elytron API to switch identities in server-to-server EJB calls. When you do that, the request received over the connection is executed as a new request, using the identity specified programmatically in the API call.
+				</p><p>
+					The following code example demonstrates how to switch the identity that is used for authentication on a remote EJB. The <code class="literal">remoteUsername</code> and <code class="literal">remotePassword</code> arguments passed in the <code class="literal">securityDomain.authenticate()</code> method are the identity credentials that are to be used for authentication on the target server.
+				</p><div class="title"><strong>Example: Switching Identities in Server-to-server EJB Calls</strong></div><p>
+						
+</p><pre class="programlisting">SecurityDomain securityDomain = SecurityDomain.getCurrent();
+Callable&lt;T&gt; forwardIdentityCallable = () -&gt; {
+    return AuthenticationContext.empty()
+            .with(MatchRule.ALL,
+                    AuthenticationConfiguration.empty()
+                    .setSaslMechanismSelector(SaslMechanismSelector.ALL)
+                    .useForwardedIdentity(securityDomain))
+            .runCallable(callable);
+};
+
+securityDomain.authenticate(remoteUsername, new PasswordGuessEvidence(remotePassword.toCharArray())).runAs(forwardIdentityCallable);</pre><p>
+
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="user_authentication_with_legacy_core_management_authentication"/>User Authentication with Legacy Core Management Authentication</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="default_user_configuration"/>Default User Configuration</h2></div></div></div><p>
+					All management interfaces in JBoss EAP are secured by default and users can access them in two different ways: local interfaces and remote interfaces. The basics of both of these authentication mechanisms are covered in the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/#default_security">Default Security</a> and <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/#how_red_hat_jboss_enterprise_application_platform_7_handles_security_out_of_the_box">JBoss EAP Out of the Box</a> sections of the JBoss EAP <span class="emphasis"><em>Security Architecture</em></span> guide. By default, access to these interfaces is configured in the <span class="emphasis"><em>Management Realm</em></span> security realm. Initially, the local interface is enabled and requires access to the host machine running the JBoss EAP instance. Remote access is also enabled and is configured to use a file-based identity store. By default it uses <code class="literal">mgmt-users.properties</code> file to store user names and passwords, and <code class="literal">mgmt-groups.properties</code> to store user group information.
+				</p><p>
+					User information is added to these files by using the included <code class="literal">adduser</code> script located in the <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/bin/</code> directory.
+				</p><p>
+					To add a user via the <code class="literal">adduser</code> script:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							Run the <code class="literal">add-user.sh</code> or <code class="literal">add-user.bat</code> command.
+						</li><li class="listitem">
+							Choose whether to add a management user or application user.
+						</li><li class="listitem">
+							Choose the realm the user will be added to. By default, the only available realms are <code class="literal">ManagementRealm</code> and <code class="literal">ApplicationRealm</code>. If a custom realm has been added, its name can be manually entered instead.
+						</li><li class="listitem">
+							Type the desired user name, password, and optional roles when prompted. The changes are written to each of the properties files for the security realm.
+						</li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="adding_authentication_via_ldap"/>Adding Authentication via LDAP</h2></div></div></div><p>
+					JBoss EAP also supports using LDAP authentication for securing the management interfaces. The basics of LDAP and how it works with JBoss EAP are covered in the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/#ldap">LDAP</a>, <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/#using_ldap_with_the_management_interfaces">Using LDAP with the Management Interfaces</a>, and <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/#using_ldap_management_realm">Using LDAP with the ManagementRealm</a> sections of the Red Hat JBoss Enterprise Application Platform 7 <span class="emphasis"><em>Security Architecture</em></span> guide. For more specifics on how to secure the management interfaces using LDAP authentication, see the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_configure_identity_management/#securing_the_management_interfaces_with_ldap">Securing the Management Interfaces with LDAP</a> section of the JBoss EAP <span class="emphasis"><em>How to Configure Identity Management Guide</em></span>.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="using_jaas_for_securing_the_management_interfaces"/>Using JAAS for Securing the Management Interfaces</h2></div></div></div><p>
+					JAAS is a declarative security API used by JBoss EAP to manage security. For more details and background regarding JAAS and declarative security, see the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/#declarative_security_and_jaas">Declarative Security and JAAS</a> section of the Red Hat JBoss Enterprise Application Platform <span class="emphasis"><em>Security Architecture</em></span> guide.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						When JBoss EAP instances are configured to run in <span class="strong"><strong>ADMIN_ONLY</strong></span> mode, using JAAS to secure the management interfaces is not supported. For more information on <span class="strong"><strong>ADMIN_ONLY</strong></span> mode, see the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuration_guide/#running_eap_in_admin_only_mode">Running JBoss EAP in ADMIN_ONLY Mode</a> section of the JBoss EAP <span class="emphasis"><em>Configuration Guide</em></span>.
+					</p></div><p>
+					To use JAAS to authenticate to the management interfaces, the following steps must be performed:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Create a security domain.
+						</p><p class="simpara">
+							In this example, a security domain is created with the <code class="literal">UserRoles</code> login module, but other login modules may be used as well:
+						</p><pre class="screen">/subsystem=security/security-domain=UsersLMDomain:add(cache-type=default)
+
+/subsystem=security/security-domain=UsersLMDomain/authentication=classic:add
+
+/subsystem=security/security-domain=UsersLMDomain/authentication=classic/login-module=UsersRoles:add(code=UsersRoles, flag=required,module-options=[("usersProperties"=&gt;"users.properties"),("rolesProperties"=&gt;"roles.properties")])</pre></li><li class="listitem"><p class="simpara">
+							Create a security realm with JAAS authentication.
+						</p><pre class="screen">/core-service=management/security-realm=SecurityDomainAuthnRealm:add
+
+/core-service=management/security-realm=SecurityDomainAuthnRealm/authentication=jaas:add(name=UsersLMDomain)</pre></li><li class="listitem"><p class="simpara">
+							Update the <code class="literal">http-interface</code> management interface to use new security realm.
+						</p><pre class="screen">/core-service=management/management-interface=http-interface/:write-attribute(name=security-realm,value=SecurityDomainAuthnRealm)</pre></li><li class="listitem"><p class="simpara">
+							<span class="strong"><strong>Optional:</strong></span> Assign group membership.
+						</p><p class="simpara">
+							The attribute <code class="literal">assign-groups</code> determines whether loaded user membership information from the security domain is used for group assignment in the security realm. When set to <code class="literal">true</code>, this group assignment is used for Role-Based Access Control (RBAC).
+						</p><pre class="screen">/core-service=management/security-realm=SecurityDomainAuthnRealm/authentication=jaas:write-attribute(name=assign-groups,value=true)</pre></li></ol></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="role_based_access_control"/>Role-Based Access Control</h1></div></div></div><p>
+				The basics of Role-Based Access Control are covered in the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/#role_based_access_control">Role-Based Access Control</a> and <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/#adding_rbac_to_the_management_interfaces">Adding RBAC to the Management Interfaces</a> sections of the JBoss EAP <span class="emphasis"><em>Security Architecture</em></span> guide.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="enabling_role_based_access_control"/>Enabling Role-Based Access Control</h2></div></div></div><p>
+					By default the Role-Based Access Control (RBAC) system is disabled. It is enabled by changing the <code class="literal">provider</code> attribute from <code class="literal">simple</code> to <code class="literal">rbac</code>. <code class="literal">provider</code> is an attribute of the <code class="literal">access-control</code> element of the <code class="literal">management</code> element. This can be done using the management CLI or by editing the server configuration XML file if the server is offline. When RBAC is disabled or enabled on a running server, the server configuration must be reloaded before it takes effect.
+				</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+						Before changing the provider to <code class="literal">rbac</code>, be sure your configuration has a user who will be mapped to one of the RBAC roles, preferably with at least one in the <code class="literal">Administrator</code> or <code class="literal">SuperUser</code> role. Otherwise your installation will not be manageable except by shutting it down and editing the XML configuration. If you have started with one of the standard XML configurations shipped with JBoss EAP, the <code class="literal">$local</code> user will be mapped to the <code class="literal">SuperUser</code> role and the <code class="literal">local</code> authentication scheme will be enabled. This will allow a user, running the CLI on the same system as the JBoss EAP process, to have full administrative permissions. Remote CLI users and web-based management console users will have no permissions.
+					</p><p>
+						It is recommended to map at least one user, besides <code class="literal">$local</code>, before switching the provider to <code class="literal">rbac</code>. You can do all of the configuration associated with the <code class="literal">rbac</code> provider even when the provider is set to <code class="literal">simple</code>.
+					</p></div><p>
+					Once enabled it can only be disabled by a user of the <code class="literal">Administrator</code> or <code class="literal">SuperUser</code> roles. By default the management CLI runs as the <code class="literal">SuperUser</code> role if it is run on the same machine as the server.
+				</p><h4><a id="cli_to_enable_rbac"/>CLI to Enable RBAC</h4><p>
+					To enable RBAC with the management CLI, use the <code class="literal">write-attribute</code> operation of the access authorization resource to set the <code class="literal">provider</code> attribute to <code class="literal">rbac</code>.
+				</p><pre class="screen">/core-service=management/access=authorization:write-attribute(name=provider, value=rbac)
+{
+    "outcome" =&gt; "success",
+    "response-headers" =&gt; {
+        "operation-requires-reload" =&gt; true,
+        "process-state" =&gt; "reload-required"
+    }
+}
+
+reload</pre><p>
+					In a managed domain, the access control configuration is part of the domain wide configuration, so the resource address is the same as above, but the management CLI is connected to the master domain controller.
+				</p><pre class="screen">/core-service=management/access=authorization:write-attribute(name=provider,value=rbac)
+{
+    "outcome" =&gt; "success",
+    "response-headers" =&gt; {
+        "operation-requires-reload" =&gt; true,
+        "process-state" =&gt; "reload-required"
+    },
+    "result" =&gt; undefined,
+    "server-groups" =&gt; {"main-server-group" =&gt; {"host" =&gt; {"master" =&gt; {
+        "server-one" =&gt; {"response" =&gt; {
+            "outcome" =&gt; "success",
+            "response-headers" =&gt; {
+                "operation-requires-reload" =&gt; true,
+                "process-state" =&gt; "reload-required"
+            }
+        }},
+        "server-two" =&gt; {"response" =&gt; {
+            "outcome" =&gt; "success",
+            "response-headers" =&gt; {
+                "operation-requires-reload" =&gt; true,
+                "process-state" =&gt; "reload-required"
+            }
+        }}
+    }}}}
+}
+
+reload --host=master</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						As with a standalone server, a reload or restart is required for the change to take effect. In a managed domain, all hosts and servers in the domain will need to be reloaded or restarted, starting with the master domain controller.
+					</p></div><h4><a id="management_cli_command_to_disable_rbac"/>Management CLI Command to Disable RBAC</h4><p>
+					To disable RBAC with the management CLI, use the <code class="literal">write-attribute</code> operation of the access authorization resource to set the <code class="literal">provider</code> attribute to <code class="literal">simple</code>.
+				</p><pre class="screen">/core-service=management/access=authorization:write-attribute(name=provider, value=simple)</pre><h4><a id="xml_configuration_to_enable_or_disable_rbac"/>XML Configuration to Enable or Disable RBAC</h4><p>
+					If the server is offline the XML configuration can be edited to enable or disable RBAC. To do this, edit the provider attribute of the access-control element of the management element. Set the value to <code class="literal">rbac</code> to enable, and <code class="literal">simple</code> to disable.
+				</p><div class="title"><strong>Example: XML Configuration to Enable or Disable RBAC</strong></div><p>
+						
+</p><pre class="programlisting">&lt;management&gt;
+  &lt;access-control provider="rbac"&gt;
+    &lt;role-mapping&gt;
+      &lt;role name="SuperUser"&gt;
+        &lt;include&gt;
+          &lt;user name="$local"/&gt;
+        &lt;/include&gt;
+      &lt;/role&gt;
+    &lt;/role-mapping&gt;
+  &lt;/access-control&gt;
+&lt;/management&gt;</pre><p>
+
+					</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="changing_the_permission_combination_policy"/>Changing the Permission Combination Policy</h2></div></div></div><p>
+					The Permission Combination Policy determines how permissions are determined if a user is assigned more than one role. This can be set to <code class="literal">permissive</code> or <code class="literal">rejecting</code>. The default is <code class="literal">permissive</code>.
+				</p><p>
+					When set to <code class="literal">permissive</code>, if any role is assigned to the user that permits an action, then the action is allowed.
+				</p><p>
+					When set to <code class="literal">rejecting</code>, if multiple roles are assigned to a user, then no action is allowed. This means that when the policy is set to rejecting each user should only be assigned one role. Users with multiple roles will not be able to use the management console or the management CLI when the policy is set to rejecting.
+				</p><p>
+					The Permission Combination Policy is configured by setting the <code class="literal">permission-combination-policy</code> attribute to either <code class="literal">permissive</code> or <code class="literal">rejecting</code>. This can be done using the management CLI or by editing the server configuration XML file if the server is offline. The <code class="literal">permission-combination-policy</code> attribute is part of the <code class="literal">access-control</code> element and the <code class="literal">access-control</code> element can be found in the <code class="literal">management</code> element.
+				</p><h4><a id="setting_the_permission_combination_policy"/>Setting the Permission Combination Policy</h4><p>
+					Use the write-attribute operation of the access authorization resource to set the permission-combination-policy attribute to the required policy name.
+				</p><pre class="screen">/core-service=management/access=authorization:write-attribute(name=permission-combination-policy, value=POLICYNAME)</pre><p>
+					The valid policy names are <code class="literal">rejecting</code> and <code class="literal">permissive</code>.
+				</p><div class="title"><strong>Example: Management CLI Command for Rejecting Permission Combination Policy</strong></div><p>
+						
+</p><pre class="screen">/core-service=management/access=authorization:write-attribute(name=permission-combination-policy, value=rejecting)</pre><p>
+
+					</p><p>
+					If the server is offline the XML configuration can be edited to change the permission combination policy value. To do this, edit the <code class="literal">permission-combination-policy</code> attribute of the <code class="literal">access-control</code> element.
+				</p><div class="title"><strong>Example: XML Configuration for Rejecting Permission Combination Policy</strong></div><p>
+						
+</p><pre class="programlisting">&lt;access-control provider="rbac" permission-combination-policy="rejecting"&gt;
+  &lt;role-mapping&gt;
+    &lt;role name="SuperUser"&gt;
+      &lt;include&gt;
+        &lt;user name="$local"/&gt;
+      &lt;/include&gt;
+    &lt;/role&gt;
+  &lt;/role-mapping&gt;
+&lt;/access-control&gt;</pre><p>
+
+					</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="managing_roles_rbac"/>Managing Roles</h2></div></div></div><p>
+					When Role-Based Access Control (RBAC) is enabled, what a management user is permitted to do is determined by the roles to which the user is assigned. JBoss EAP 7 uses a system of includes and excludes based on both the user and group membership to determine to which role a user belongs.
+				</p><p>
+					A user is considered to be assigned to a role if the user is:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							listed as a user to be included in the role, or
+						</li><li class="listitem">
+							a member of a group that is listed to be included in the role.
+						</li></ul></div><p>
+					A user is also considered to be assigned to a role if the user is not:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							listed as a user to exclude from the role, or
+						</li><li class="listitem">
+							a member of a group that is listed to be excluded from the role.
+						</li></ul></div><p>
+					Exclusions take priority over inclusions.
+				</p><p>
+					Role include and exclude settings for users and groups can be configured using both the management console and the management CLI.
+				</p><p>
+					Only users of the <code class="literal">SuperUser</code> or <code class="literal">Administrator</code> roles can perform this configuration.
+				</p><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="configure_user_role_assignment_using_the_management_cli"/>Configure User Role Assignment Using the Management CLI</h3></div></div></div><p>
+						The configuration of mapping users and groups to roles is located at: <code class="literal">/core-service=management/access=authorization</code> as <code class="literal">role-mapping</code> elements.
+					</p><p>
+						Only users of the <code class="literal">SuperUser</code> or <code class="literal">Administrator</code> roles can perform this configuration.
+					</p><h5><a id="viewing_role_assignment_configuration"/>Viewing Role Assignment Configuration</h5><p>
+						Use the <code class="literal">:read-children-names</code> operation to get a complete list of the configured roles:
+					</p><pre class="screen">/core-service=management/access=authorization:read-children-names(child-type=role-mapping)
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; [
+        "Administrator",
+        "Deployer",
+        "Maintainer",
+        "Monitor",
+        "Operator",
+        "SuperUser"
+    ]
+}</pre><p>
+						Use the <code class="literal">read-resource</code> operation of a specified role-mapping to get the full details of a specific role:
+					</p><pre class="screen">/core-service=management/access=authorization/role-mapping=ROLENAME:read-resource(recursive=true)
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; {
+        "include-all" =&gt; false,
+        "exclude" =&gt; undefined,
+        "include" =&gt; {
+            "user-theboss" =&gt; {
+                "name" =&gt; "theboss",
+                "realm" =&gt; undefined,
+                "type" =&gt; "USER"
+            },
+            "user-harold" =&gt; {
+                "name" =&gt; "harold",
+                "realm" =&gt; undefined,
+                "type" =&gt; "USER"
+            },
+            "group-SysOps" =&gt; {
+                "name" =&gt; "SysOps",
+                "realm" =&gt; undefined,
+                "type" =&gt; "GROUP"
+            }
+        }
+    }
+}</pre><h5><a id="add_a_new_role"/>Add a New Role</h5><p>
+						This procedure shows how to add a role-mapping entry for a role. This must be done before the role can be configured.
+					</p><p>
+						Use the <code class="literal">add</code> operation to add a new role configuration.
+					</p><pre class="screen">/core-service=management/access=authorization/role-mapping=<span class="emphasis"><em>ROLENAME</em></span>:add</pre><p>
+						<span class="emphasis"><em>ROLENAME</em></span> is the name of the role that the new mapping is for, such as <code class="literal">Auditor</code>.
+					</p><div class="title"><strong>Example: Management CLI Command for New Role Configuration</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/access=authorization/role-mapping=Auditor:add</pre><p>
+
+						</p><h5><a id="add_a_user_as_included_in_a_role"/>Add a User as Included in a Role</h5><p>
+						This procedure shows how to add a user to the included list of a role.
+					</p><p>
+						If no configuration for a role has been done, then a role-mapping entry for it must be done first.
+					</p><p>
+						Use the <code class="literal">add</code> operation to add a user entry to the includes list of the role.
+					</p><pre class="screen">/core-service=management/access=authorization/role-mapping=<span class="emphasis"><em>ROLENAME</em></span>/include=<span class="emphasis"><em>ALIAS</em></span>:add(name=<span class="emphasis"><em>USERNAME</em></span>, type=USER)</pre><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								<span class="emphasis"><em>ROLENAME</em></span> is the name of the role being configured, such as <code class="literal">Auditor</code>.
+							</li><li class="listitem">
+								<span class="emphasis"><em>ALIAS</em></span> is a unique name for this mapping. Red Hat recommends the use of a naming convention for aliases, such as <code class="literal">user-<span class="emphasis"><em>USERNAME</em></span></code> (for example, <code class="literal">user-max</code>).
+							</li><li class="listitem">
+								<span class="emphasis"><em>USERNAME</em></span> is the name of the user being added to the include list, such as <code class="literal">max</code>.
+							</li></ul></div><div class="title"><strong>Example: Management CLI Command for User Included in a Role</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/access=authorization/role-mapping=Auditor/include=user-max:add(name=max, type=USER)</pre><p>
+
+						</p><h5><a id="add_a_user_as_excluded_in_a_role"/>Add a User as Excluded in a Role</h5><p>
+						This procedure shows how to add a user to the excluded list of a role.
+					</p><p>
+						If no configuration for a role has been done, then a role-mapping entry for it must be done first.
+					</p><p>
+						Use the <code class="literal">add</code> operation to add a user entry to the excludes list of the role.
+					</p><pre class="screen">/core-service=management/access=authorization/role-mapping=<span class="emphasis"><em>ROLENAME</em></span>/exclude=<span class="emphasis"><em>ALIAS</em></span>:add(name=<span class="emphasis"><em>USERNAME</em></span>, type=USER)</pre><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								<span class="emphasis"><em>ROLENAME</em></span> is the name of the role being configured, for example <code class="literal">Auditor</code>.
+							</li><li class="listitem">
+								<span class="emphasis"><em>USERNAME</em></span> is the name of the user being added to the exclude list, for example <code class="literal">max</code>.
+							</li><li class="listitem">
+								<span class="emphasis"><em>ALIAS</em></span> is a unique name for this mapping. Red Hat recommends that the use of a naming convention for aliases, such as <code class="literal">user-<span class="emphasis"><em>USERNAME</em></span></code> (for example, <code class="literal">user-max</code>).
+							</li></ul></div><div class="title"><strong>Example: Management CLI Command User Excluded in a Role</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/access=authorization/role-mapping=Auditor/exclude=user-max:add(name=max, type=USER)</pre><p>
+
+						</p><h5><a id="remove_user_role_include_configuration"/>Remove User Role Include Configuration</h5><p>
+						This procedure shows how to remove a user include entry from a role mapping.
+					</p><p>
+						Use the <code class="literal">remove</code> operation to remove the entry.
+					</p><pre class="screen">/core-service=management/access=authorization/role-mapping=<span class="emphasis"><em>ROLENAME</em></span>/include=<span class="emphasis"><em>ALIAS</em></span>:remove</pre><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								<span class="emphasis"><em>ROLENAME</em></span> is the name of the role being configured, such as <code class="literal">Auditor</code>.
+							</li><li class="listitem">
+								<span class="emphasis"><em>ALIAS</em></span> is a unique name for this mapping. Red Hat recommends that the use of a naming convention for aliases, such as <code class="literal">user-<span class="emphasis"><em>USERNAME</em></span></code> (for example, <code class="literal">user-max</code>).
+							</li></ul></div><div class="title"><strong>Example: Management CLI Command for Removing User Role Include Configuration</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/access=authorization/role-mapping=Auditor/include=user-max:remove</pre><p>
+
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							Removing the user from the list of includes does not remove the user from the system, nor does it guarantee that the role will not be assigned to the user. The role might still be assigned based on group membership.
+						</p></div><h5><a id="remove_user_role_exclude_configuration"/>Remove User Role Exclude Configuration</h5><p>
+						This procedure shows how to remove an user exclude entry from a role mapping.
+					</p><p>
+						Use the remove operation to remove the entry.
+					</p><pre class="screen">/core-service=management/access=authorization/role-mapping=<span class="emphasis"><em>ROLENAME</em></span>/exclude=<span class="emphasis"><em>ALIAS</em></span>:remove</pre><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								<span class="emphasis"><em>ROLENAME</em></span> is the name of the role being configured, such as <code class="literal">Auditor</code>.
+							</li><li class="listitem">
+								<span class="emphasis"><em>ALIAS</em></span> is a unique name for this mapping. Red Hat recommends that the use of a naming convention for aliases, such as <code class="literal">user-<span class="emphasis"><em>USERNAME</em></span></code> (for example, <code class="literal">user-max</code>).
+							</li></ul></div><pre class="screen">/core-service=management/access=authorization/role-mapping=Auditor/exclude=user-max:remove</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							Removing the user from the list of excludes does not remove the user from the system, nor does it guarantee the role will be assigned to the user. Roles might still be excluded based on group membership.
+						</p></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="rbac_roles_elytron"/>Configure User Role Assignment with the Elytron Subsystem</h2></div></div></div><p>
+					In addition to adding role mappings for users directly, as covered in <a class="xref" href="securing_users_of_the_server_and_its_management_interfaces.html#managing_roles_rbac" title="Managing Roles">Managing Roles</a> section, you can also configure RBAC roles to be directly taken from the identity provided by the <code class="literal">elytron</code> subsystem.
+				</p><p>
+					To configure the RBAC system to use roles provided by the <code class="literal">elytron</code> subsystem:
+				</p><pre class="screen">/core-service=management/access=authorization:write-attribute(name=use-identity-roles,value=true)</pre><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						RBAC must be enabled to use this functionality, and the principal must have RBAC roles.
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="roles_and_user_groups"/>Roles and User Groups</h2></div></div></div><p>
+					A user group is an arbitrary label that can be assigned to one or more users. When authenticating using the management interfaces, users are assigned groups from either the <code class="literal">elytron</code> subsystem or core management authentication, depending on how the management interfaces are secured. The RBAC system can be configured to automatically assign roles to users depending on what user groups they are members of. It can also exclude users from roles based on group membership.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configure_group_role_assignment_using_the_management_cli"/>Configure Group Role Assignment Using the Management CLI</h2></div></div></div><p>
+					Groups to be included or excluded from a role can be configured in the management console and the management CLI. This topic only shows using the management CLI.
+				</p><p>
+					The configuration of mapping users and groups to roles is located in the management API at: <code class="literal">/core-service=management/access=authorization</code> as <code class="literal">role-mapping</code> elements.
+				</p><p>
+					Only users in the <code class="literal">SuperUser</code> or <code class="literal">Administrator</code> roles can perform this configuration.
+				</p><h4><a id="viewing_group_role_assignment_configuration"/>Viewing Group Role Assignment Configuration</h4><p>
+					Use the <code class="literal">read-children-names</code> operation to get a complete list of the configured roles:
+				</p><pre class="screen">/core-service=management/access=authorization:read-children-names(child-type=role-mapping)
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; [
+        "Administrator",
+        "Deployer",
+        "Maintainer",
+        "Monitor",
+        "Operator",
+        "SuperUser"
+    ]
+}</pre><p>
+					Use the <code class="literal">read-resource</code> operation of a specified role-mapping to get the full details of a specific role:
+				</p><pre class="screen">/core-service=management/access=authorization/role-mapping=ROLENAME:read-resource(recursive=true)
+{
+    "outcome" =&gt; "success",
+    "result" =&gt; {
+        "include-all" =&gt; false,
+        "exclude" =&gt; undefined,
+        "include" =&gt; {
+            "user-theboss" =&gt; {
+                "name" =&gt; "theboss",
+                "realm" =&gt; undefined,
+                "type" =&gt; "USER"
+            },
+            "user-harold" =&gt; {
+                "name" =&gt; "harold",
+                "realm" =&gt; undefined,
+                "type" =&gt; "USER"
+            },
+            "group-SysOps" =&gt; {
+                "name" =&gt; "SysOps",
+                "realm" =&gt; undefined,
+                "type" =&gt; "GROUP"
+            }
+        }
+    }
+}</pre><h4><a id="add_a_new_role_2"/>Add a New Role</h4><p>
+					This procedure shows how to add a role-mapping entry for a role. This must be done before the role can be configured.
+				</p><p>
+					Use the <code class="literal">add</code> operation to add a new role configuration.
+				</p><pre class="screen">/core-service=management/access=authorization/role-mapping=<span class="emphasis"><em>ROLENAME</em></span>:add</pre><h4><a id="add_a_group_as_included_in_a_role"/>Add a Group as Included in a Role</h4><p>
+					This procedure shows how to add a group to the included list of a role.
+				</p><p>
+					If no configuration for a role has been done, then a role-mapping entry for it must be done first.
+				</p><p>
+					Use the <code class="literal">add</code> operation to add a group entry to the includes list of the role.
+				</p><pre class="screen">/core-service=management/access=authorization/role-mapping=<span class="emphasis"><em>ROLENAME</em></span>/include=<span class="emphasis"><em>ALIAS</em></span>:add(name=<span class="emphasis"><em>GROUPNAME</em></span>, type=GROUP)</pre><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							<span class="emphasis"><em>ROLENAME</em></span> is the name of the role being configured, such as <code class="literal">Auditor</code>.
+						</li><li class="listitem">
+							<span class="emphasis"><em>GROUPNAME</em></span> is the name of the group being added to the include list, such as <code class="literal">investigators</code>.
+						</li><li class="listitem">
+							<span class="emphasis"><em>ALIAS</em></span> is a unique name for this mapping. Red Hat recommends that you use a naming convention for your aliases, such as <code class="literal">group-<span class="emphasis"><em>GROUPNAME</em></span></code> (for example, <code class="literal">group-investigators</code>).
+						</li></ul></div><div class="title"><strong>Example: Management CLI Command for Adding a Group as Included in a Role</strong></div><p>
+						
+</p><pre class="screen">/core-service=management/access=authorization/role-mapping=Auditor/include=group-investigators:add(name=investigators, type=GROUP)</pre><p>
+
+					</p><h4><a id="add_a_group_as_excluded_in_a_role"/>Add a Group as Excluded in a Role</h4><p>
+					This procedure shows how to add a group to the excluded list of a role.
+				</p><p>
+					If no configuration for a role has been done, then a role-mapping entry for it must be created first.
+				</p><p>
+					Use the <code class="literal">add</code> operation to add a group entry to the excludes list of the role.
+				</p><pre class="screen">/core-service=management/access=authorization/role-mapping=<span class="emphasis"><em>ROLENAME</em></span>/exclude=<span class="emphasis"><em>ALIAS</em></span>:add(name=<span class="emphasis"><em>GROUPNAME</em></span>, type=GROUP)</pre><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							<span class="emphasis"><em>ROLENAME</em></span> is the name of the role being configured, such as <code class="literal">Auditor</code>.
+						</li><li class="listitem">
+							<span class="emphasis"><em>GROUPNAME</em></span> is the name of the group being added to the include list, such as <code class="literal">supervisors</code>.
+						</li><li class="listitem">
+							<span class="emphasis"><em>ALIAS</em></span> is a unique name for this mapping. Red Hat recommends that you use a naming convention for your aliases, such as <code class="literal">group-<span class="emphasis"><em>GROUPNAME</em></span></code> (for example, <code class="literal">group-supervisors</code>).
+						</li></ul></div><div class="title"><strong>Example: Management CLI Command for Adding a Group as Excluded in a Role</strong></div><p>
+						
+</p><pre class="screen">/core-service=management/access=authorization/role-mapping=Auditor/exclude=group-supervisors:add(name=supervisors, type=GROUP)</pre><p>
+
+					</p><h4><a id="remove_group_role_include_configuration"/>Remove Group Role Include Configuration</h4><p>
+					This procedure shows how to remove a group include entry from a role mapping.
+				</p><p>
+					Use the <code class="literal">remove</code> operation to remove the entry.
+				</p><pre class="screen">/core-service=management/access=authorization/role-mapping=<span class="emphasis"><em>ROLENAME</em></span>/include=<span class="emphasis"><em>ALIAS</em></span>:remove</pre><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							<span class="emphasis"><em>ROLENAME</em></span> is the name of the role being configured, such as <code class="literal">Auditor</code>.
+						</li><li class="listitem">
+							<span class="emphasis"><em>ALIAS</em></span> is a unique name for this mapping. Red Hat recommends that you use a naming convention for your aliases, such as <code class="literal">group-<span class="emphasis"><em>GROUPNAME</em></span></code> (for example, <code class="literal">group-investigators</code>).
+						</li></ul></div><div class="title"><strong>Example: Management CLI Command for Removing Group Role Include Configuration</strong></div><p>
+						
+</p><pre class="screen">/core-service=management/access=authorization/role-mapping=Auditor/include=group-investigators:remove</pre><p>
+
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						Removing the group from the list of includes does not remove the group from the system, nor does it guarantee that the role will not be assigned to users in this group. The role might still be assigned to users in the group individually.
+					</p></div><h4><a id="remove_a_user_group_exclude_entry"/>Remove a User Group Exclude Entry</h4><p>
+					This procedure shows how to remove a group exclude entry from a role mapping.
+				</p><p>
+					Use the <code class="literal">remove</code> operation to remove the entry.
+				</p><pre class="screen">/core-service=management/access=authorization/role-mapping=<span class="emphasis"><em>ROLENAME</em></span>/exclude=<span class="emphasis"><em>ALIAS</em></span>:remove</pre><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							<span class="emphasis"><em>ROLENAME</em></span> is the name of the role being configured, such as <code class="literal">Auditor</code>.
+						</li><li class="listitem">
+							<span class="emphasis"><em>ALIAS</em></span> is a unique name for this mapping. Red Hat recommends that you use a naming convention for your aliases, such as <code class="literal">group-<span class="emphasis"><em>GROUPNAME</em></span></code> (for example, <code class="literal">group-supervisors</code>).
+						</li></ul></div><pre class="screen">/core-service=management/access=authorization/role-mapping=Auditor/exclude=group-supervisors:remove</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						Removing the group from the list of excludes does not remove the group from the system. It also does not guarantee the role will be assigned to members of the group. Roles might still be excluded based on group membership.
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="using_rbac_with_ldap"/>Using RBAC with LDAP</h2></div></div></div><p>
+					The basics of using RBAC with LDAP as well as how to configure JBoss EAP to use RBAC with LDAP are covered in the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_configure_identity_management/#ldap_and_rbac">LDAP and RBAC</a> section of the JBoss EAP <span class="emphasis"><em>How to Configure Identity Management Guide</em></span>.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="scoped_roles"/>Scoped Roles</h2></div></div></div><p>
+					Scoped roles are user-defined roles that grant the permissions of one of the standard roles but only for one or more specified server groups or hosts in an JBoss EAP managed domain. Scoped roles allow for management users to be granted permissions that are limited to only those server groups or hosts that are required.
+				</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						Scoped roles can be created by users assigned the <code class="literal">Administrator</code> or <code class="literal">SuperUser</code> roles.
+					</p></div><p>
+					They are defined by five characteristics:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							A unique name.
+						</li><li class="listitem">
+							The standard roles which it is based on.
+						</li><li class="listitem">
+							If it applies to server groups or hosts.
+						</li><li class="listitem">
+							The list of server groups or hosts that it is restricted to.
+						</li><li class="listitem">
+							If all users are automatically included. This defaults to <code class="literal">false</code>.
+						</li></ul></div><p>
+					Once created a scoped role can be assigned to users and groups the same way that the standard roles are.
+				</p><p>
+					Creating a scoped role does not allow for defining new permissions. Scoped roles can only be used to apply the permissions of an existing role in a limited scope. For example, a scoped role could be created based on the <code class="literal">Deployer</code> role which is restricted to a single server group.
+				</p><p>
+					There are only two scopes that roles can be limited to:
+				</p><div class="variablelist"><dl class="variablelist"><dt><span class="term">Host-scoped roles</span></dt><dd>
+								A role that is host-scoped restricts the permissions of that role to one or more hosts. This means access is provided to the relevant <code class="literal">/host=*/</code> resource trees but resources that are specific to other hosts are hidden.
+							</dd><dt><span class="term">Server-group-scoped roles</span></dt><dd>
+								A role that is server-group-scoped restricts the permissions of that role to one or more server groups. Additionally the role permissions will also apply to the profile, socket binding group, server configuration, and server resources that are associated with the specified <span class="emphasis"><em>server-groups</em></span>. Any sub-resources within any of those that are not logically related to the server-group will not be visible to the user.
+							</dd></dl></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						Some resources are non-addressable to <code class="literal">server-group</code> and <code class="literal">host</code> scoped roles in order to provide a simplified view of the management model to improve usability. This is distinct from resources that are non-addressable to protect sensitive data.
+					</p><p>
+						For <code class="literal">host</code> scoped roles this means that resources in the <code class="literal">/host=*</code> portion of the management model will not be visible if they are not related to the server groups specified for the role.
+					</p><p>
+						For <code class="literal">server-group</code> scoped roles, this means that resources in the <code class="literal">profile</code>, <code class="literal">socket-binding-group</code>, <code class="literal">deployment</code>, <code class="literal">deployment-overlay</code>, <code class="literal">server-group</code>, <code class="literal">server-config</code> and <code class="literal">server</code> portions of the management model will not be visible if they are not related to the server groups specified for the role.
+					</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="configuring_scoped_roles_from_the_management_cli"/>Configuring Scoped Roles from the Management CLI</h3></div></div></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+							Only users in the <code class="literal">SuperUser</code> or <code class="literal">Administrator</code> roles can perform this configuration.
+						</p></div><h5><a id="add_a_new_scoped_role"/>Add a New Scoped Role</h5><p>
+						To add a new scoped role, the following operations must be done:
+					</p><pre class="screen">/core-service=management/access=authorization/role-mapping=<span class="emphasis"><em>NEW-SCOPED-ROLE</em></span>:add</pre><pre class="screen">/core-service=management/access=authorization/server-group-scoped-role=<span class="emphasis"><em>NEW-SCOPED-ROLE</em></span>:add(base-role=<span class="emphasis"><em>BASE-ROLE</em></span>, server-groups=[<span class="emphasis"><em>SERVER-GROUP-NAME</em></span>])</pre><p>
+						Replace <span class="emphasis"><em>NEW-SCOPED-ROLE</em></span>, <span class="emphasis"><em>BASE-ROLE</em></span>, and <span class="emphasis"><em>SERVER-GROUP-NAME</em></span> with the proper information.
+					</p><h5><a id="viewing_and_editing_a_scoped_role_mapping"/>Viewing and Editing a Scoped Role Mapping</h5><p>
+						A scoped role’s details, including members, can be viewed by using the following command:
+					</p><pre class="screen">/core-service=management/access=authorization/role-mapping=<span class="emphasis"><em>NEW-SCOPED-ROLE</em></span>:read-resource(recursive=true)</pre><p>
+						Replace <span class="emphasis"><em>NEW-SCOPED-ROLE</em></span> with the proper information.
+					</p><p>
+						To edit a scoped role’s details, the <code class="literal">write-attribute</code> command may be used. For example:
+					</p><pre class="screen">/core-service=management/access=authorization/role-mapping=<span class="emphasis"><em>NEW-SCOPED-ROLE</em></span>:write-attribute(name=include-all, value=true)</pre><p>
+						Replace <span class="emphasis"><em>NEW-SCOPED-ROLE</em></span> with the proper information.
+					</p><h5><a id="delete_a_scoped_role"/>Delete a Scoped Role</h5><pre class="screen">/core-service=management/access=authorization/role-mapping=<span class="emphasis"><em>NEW-SCOPED-ROLE</em></span>:remove</pre><pre class="screen">/core-service=management/access=authorization/server-group-scoped-role=<span class="emphasis"><em>NEW-SCOPED-ROLE</em></span>:remove</pre><p>
+						Replace <span class="emphasis"><em>NEW-SCOPED-ROLE</em></span> with the proper information.
+					</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+							A scoped role cannot be deleted if users or groups are assigned to it. Remove the role assignments first, and then delete it.
+						</p></div><h5><a id="adding_and_removing_users"/>Adding and Removing Users</h5><p>
+						Adding and removing users to and from scoped roles follows the same process as <a class="link" href="securing_users_of_the_server_and_its_management_interfaces.html#managing_roles_rbac" title="Managing Roles">adding and removing standard roles</a>.
+					</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="configuring_scoped_roles_from_the_management_console"/>Configuring Scoped Roles from the Management Console</h3></div></div></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+							Only users in the <code class="literal">SuperUser</code> or <code class="literal">Administrator</code> roles can perform this configuration.
+						</p></div><p>
+						Scoped role configuration in the management console can be found by following these steps:
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+								Log in to the management console.
+							</li><li class="listitem">
+								Click on the <span class="strong"><strong>Access Control</strong></span> tab.
+							</li><li class="listitem">
+								Click on <span class="strong"><strong>Roles</strong></span> to view all roles, including scoped roles.
+							</li></ol></div><p>
+						The following procedures show how to perform configuration tasks for scoped roles.
+					</p><h5><a id="add_a_new_scoped_role_2"/>Add a New Scoped Role</h5><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+								Log in to the management console.
+							</li><li class="listitem">
+								Click on the <span class="strong"><strong>Access Control</strong></span> tab.
+							</li><li class="listitem">
+								Select <span class="strong"><strong>Roles</strong></span> and click the Add (<span class="strong"><strong>+</strong></span>) button.
+							</li><li class="listitem">
+								Choose <span class="strong"><strong>Host Scoped Role</strong></span> or <span class="strong"><strong>Server Group Scoped Role</strong></span>.
+							</li><li class="listitem"><p class="simpara">
+								Specify the following details:
+							</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+										<span class="strong"><strong>Name</strong></span>: The unique name for the new scoped role.
+									</li><li class="listitem">
+										<span class="strong"><strong>Base Role</strong></span>: The role which this role will base its permissions on.
+									</li><li class="listitem">
+										<span class="strong"><strong>Hosts</strong></span> or <span class="strong"><strong>Server Groups</strong></span>: The list of hosts or server groups that the role is restricted to, depending on the type of scoped role being added. Multiple entries can be selected.
+									</li><li class="listitem">
+										<span class="strong"><strong>Include All</strong></span>: Whether this role should automatically include all users. Defaults to <code class="literal">OFF</code>.
+									</li></ul></div></li><li class="listitem">
+								Click <span class="strong"><strong>Add</strong></span> to create the new role.
+							</li></ol></div><h5><a id="edit_a_scoped_role"/>Edit a Scoped Role</h5><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+								Log in to the management console.
+							</li><li class="listitem">
+								Click on the <span class="strong"><strong>Access Control</strong></span> tab.
+							</li><li class="listitem">
+								Click on the <span class="strong"><strong>Roles</strong></span> menu on the left.
+							</li><li class="listitem">
+								Click on the desired scoped role to edit and click <span class="strong"><strong>Edit</strong></span>.
+							</li><li class="listitem">
+								Update the desired details to change and click the <span class="strong"><strong>Save</strong></span> button.
+							</li></ol></div><h5><a id="view_scoped_role_members"/>View Scoped Role Members</h5><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+								Log in to the management console.
+							</li><li class="listitem">
+								Click on the <span class="strong"><strong>Access Control</strong></span> tab.
+							</li><li class="listitem">
+								Click on the <span class="strong"><strong>Roles</strong></span> menu on the left.
+							</li><li class="listitem">
+								Click on the desired scoped role to view the included and excluded members.
+							</li></ol></div><h5><a id="delete_a_scoped_role_2"/>Delete a Scoped Role</h5><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+								Log in to the management console.
+							</li><li class="listitem">
+								Click on the <span class="strong"><strong>Access Control</strong></span> tab.
+							</li><li class="listitem">
+								Click on the <span class="strong"><strong>Roles</strong></span> menu on the left.
+							</li><li class="listitem">
+								Click on the desired scoped role and click <span class="strong"><strong>Remove</strong></span> from the drop down.
+							</li><li class="listitem">
+								Click <span class="strong"><strong>Yes</strong></span> to remove the role and all of its assignments.
+							</li></ol></div><h5><a id="adding_and_removing_users_2"/>Adding and Removing Users</h5><p>
+						Adding and removing users to and from scoped roles follows the same process as adding and removing standard roles. To update a user’s scoped roles:
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+								Log in to the management console.
+							</li><li class="listitem">
+								Click on the <span class="strong"><strong>Access Control</strong></span> tab.
+							</li><li class="listitem">
+								Click on the <span class="strong"><strong>Roles</strong></span> menu on the left and click on the desired scoped role.
+							</li><li class="listitem">
+								Select the Plus (<span class="strong"><strong>+</strong></span>) button to include a member or the Minus (<span class="strong"><strong>-</strong></span>) button to exclude a member.
+							</li></ol></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configuring_constraints"/>Configuring Constraints</h2></div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="configure_sensitivity_constraints"/>Configure Sensitivity Constraints</h3></div></div></div><p>
+						Each sensitivity constraint defines a set of resources that are considered <span class="emphasis"><em>sensitive</em></span>. A <span class="emphasis"><em>sensitive</em></span> resource is generally one that either should be secret, like passwords, or one that will have serious impact on the server, like networking, JVM configuration, or system properties. The access control system itself is also considered sensitive. Resource sensitivity limits which roles are able to read, write or address a specific resource.
+					</p><p>
+						Sensitivity constraint configuration is at <code class="literal">/core-service=management/access=authorization/constraint=sensitivity-classification</code>.
+					</p><p>
+						Within the management model each sensitivity constraint is identified as a classification. The classifications are then grouped into types. Each classification has an <code class="literal">applies-to</code> element which is a list of path patterns to which the classifications configuration applies.
+					</p><p>
+						To configure a sensitivity constraint, use the <code class="literal">write-attribute</code> operation to set the <code class="literal">configured-requires-read</code>, <code class="literal">configured-requires-write</code>, or <code class="literal">configured-requires-addressable</code> attribute. To make that type of operation sensitive set the value of the attribute to <code class="literal">true</code>, otherwise to make it nonsensitive set it to <code class="literal">false</code>. By default these attributes are not set and the values of <code class="literal">default-requires-read</code>, <code class="literal">default-requires-write</code>, and <code class="literal">default-requires-addressable</code> are used. Once the configured attribute is set it is that value that is used instead of the default. The default values cannot be changed.
+					</p><div class="title"><strong>Example: Make Reading System Properties a Sensitive Operation</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/access=authorization/constraint=sensitivity-classification/type=core/classification=system-property:write-attribute(name=configured-requires-read,value=true)</pre><p>
+
+						</p><div class="title"><strong>Example: Result</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/access=authorization/constraint=sensitivity-classification/type=core/classification=system-property:read-resource</pre><p>
+
+						</p><pre class="screen">{
+    "outcome" =&gt; "success",
+    "result" =&gt; {
+        "configured-requires-addressable" =&gt; undefined,
+        "configured-requires-read" =&gt; true,
+        "configured-requires-write" =&gt; undefined,
+        "default-requires-addressable" =&gt; false,
+        "default-requires-read" =&gt; false,
+        "default-requires-write" =&gt; true,
+        "applies-to" =&gt; {
+            "/core-service=platform-mbean/type=runtime" =&gt; undefined,
+            "/system-property=*" =&gt; undefined,
+            "/" =&gt; undefined
+        }
+    }
+}</pre><p>
+						The roles, and the respective operations that they are able to perform, depend on the configuration of the attributes. This is summarized in the following table:
+					</p><div class="table"><a id="idm139923977208112"/><p class="title"><strong>Table 2.2. Sensitivity Constraint Configuration Outcomes</strong></p><div class="table-contents"><table summary="Sensitivity Constraint Configuration Outcomes" border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/><col class="col_4"/></colgroup><thead><tr><th style="text-align: left" valign="top">Value</th><th style="text-align: left" valign="top">requires-read</th><th style="text-align: left" valign="top">requires-write</th><th style="text-align: left" valign="top">requires-addressable</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										true
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Read is sensitive. Only <code class="literal">Auditor</code>, <code class="literal">Administrator</code>, <code class="literal">SuperUser</code> can read.
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Write is sensitive. Only <code class="literal">Administrator</code> and <code class="literal">SuperUser</code> can write.
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Addressing is sensitive. Only <code class="literal">Auditor</code>, <code class="literal">Administrator</code>, <code class="literal">SuperUser</code> can address.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										false
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Read is not sensitive. Any management user can read.
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Write is not sensitive. Only <code class="literal">Maintainer</code>, <code class="literal">Administrator</code> and <code class="literal">SuperUser</code> can write. <code class="literal">Deployer</code> can also write the resource is an application resource.
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Addressing is not sensitive. Any management user can address.
+									</p>
+									 </td></tr></tbody></table></div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="list_sensitivity_constraints"/>List Sensitivity Constraints</h3></div></div></div><p>
+						You can see a list of the available sensitivity constraints directly from the JBoss EAP management model using the following management CLI command:
+					</p><pre class="screen">/core-service=management/access=authorization/constraint=sensitivity-classification:read-resource(include-runtime=true,recursive=true)</pre></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="configure_application_resource_constraints"/>Configure Application Resource Constraints</h3></div></div></div><p>
+						Each application resource constraint defines a set of resources, attributes and operations that are usually associated with the deployment of applications and services. When an application resource constraint is enabled management users of the <code class="literal">Deployer</code> role are granted access to the resources that it applies to.
+					</p><p>
+						Application constraint configuration is at <code class="literal">/core-service=management/access=authorization/constraint=application-classification/</code>.
+					</p><p>
+						Each application resource constraint is identified as a classification. The classifications are then grouped into types. Each classification has an <code class="literal">applies-to</code> element which is a list of path patterns to which the classifications configuration applies.
+					</p><p>
+						By default the only application resource classification that is enabled is core. Core includes deployments, deployment overlays, and the deployment operations.
+					</p><p>
+						To enable an application resource, use the <code class="literal">write-attribute</code> operation to set the <code class="literal">configured-application</code> attribute of the classification to <code class="literal">true</code>. To disable an application resource, set this attribute to <code class="literal">false</code>. By default these attributes are not set and the value of <code class="literal">default-application</code> attribute is used. The default value cannot be changed.
+					</p><div class="title"><strong>Example: Enabling the logger-profile Application Resource Classification</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/access=authorization/constraint=application-classification/type=logging/classification=logging-profile:write-attribute(name=configured-application,value=true)</pre><p>
+
+						</p><div class="title"><strong>Example: Result</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/access=authorization/constraint=application-classification/type=logging/classification=logging-profile:read-resource</pre><p>
+
+						</p><pre class="screen">{
+    "outcome" =&gt; "success",
+    "result" =&gt; {
+        "configured-application" =&gt; true,
+        "default-application" =&gt; false,
+        "applies-to" =&gt; {"/subsystem=logging/logging-profile=*" =&gt; undefined}
+    }
+}</pre><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+							Application resource constraints apply to all resources that match its configuration. For example, it is not possible to grant a <code class="literal">Deployer</code> user access to one datasource resource but not another. If this level of separation is required then it is recommended to configure the resources in different server groups and create different scoped <code class="literal">Deployer</code> roles for each group.
+						</p></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="list_application_resource_constraints"/>List Application Resource Constraints</h3></div></div></div><p>
+						You can see a list of the available application resource constraints directly from the JBoss EAP management model using the following management CLI command:
+					</p><pre class="screen">/core-service=management/access=authorization/constraint=application-classification:read-resource(include-runtime=true,recursive=true)</pre></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="configure_the_vault_expression_constraint"/>Configure the Vault Expression Constraint</h3></div></div></div><p>
+						By default, reading and writing vault expressions are sensitive operations. Configuring the vault expression constraint allows either or both of those operations to be set to nonsensitive. Changing this constraint allows a greater number of roles to read and write vault expressions.
+					</p><p>
+						The vault expression constraint is found at <code class="literal">/core-service=management/access=authorization/constraint=vault-expression</code>.
+					</p><p>
+						To configure the vault expression constraint, use the <code class="literal">write-attribute</code> operation to set the attributes of <code class="literal">configured-requires-write</code> and <code class="literal">configured-requires-read</code> to <code class="literal">true</code> or <code class="literal">false</code>. By default these are not set and the values of <code class="literal">default-requires-read</code> and <code class="literal">default-requires-write</code> are used. The default values cannot be changed.
+					</p><div class="title"><strong>Example: Making Writing to Vault Expressions a Nonsensitive Operation</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/access=authorization/constraint=vault-expression:write-attribute(name=configured-requires-write,value=false)</pre><p>
+
+						</p><div class="title"><strong>Example: Result</strong></div><p>
+							
+</p><pre class="screen">/core-service=management/access=authorization/constraint=vault-expression:read-resource</pre><p>
+
+						</p><pre class="screen">{
+    "outcome" =&gt; "success",
+    "result" =&gt; {
+        "configured-requires-read" =&gt; undefined,
+        "configured-requires-write" =&gt; false,
+        "default-requires-read" =&gt; true,
+        "default-requires-write" =&gt; true
+    }
+}</pre><p>
+						The roles, and the respective vault expressions that they will be able to read and write, depend on the configuration of the attributes. This is summarized in the following table:
+					</p><div class="table"><a id="idm139923977140720"/><p class="title"><strong>Table 2.3. Vault Expression Constraint Configuration Outcomes</strong></p><div class="table-contents"><table summary="Vault Expression Constraint Configuration Outcomes" border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Value</th><th style="text-align: left" valign="top">requires-read</th><th style="text-align: left" valign="top">requires-write</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										true
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Read operation is sensitive. Only <code class="literal">Auditor</code>, <code class="literal">Administrator</code>, and <code class="literal">SuperUser</code> can read.
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Write operation is sensitive. Only <code class="literal">Administrator</code> and <code class="literal">SuperUser</code> can write.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										false
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Read operation is not sensitive. All management users can read.
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Write operation is not sensitive. <code class="literal">Monitor</code>, <code class="literal">Administrator</code>, and <code class="literal">SuperUser</code> can write. <code class="literal">Deployer</code> can also write if the vault expression is in an application resource.
+									</p>
+									 </td></tr></tbody></table></div></div></div></div></div></div></body></html>

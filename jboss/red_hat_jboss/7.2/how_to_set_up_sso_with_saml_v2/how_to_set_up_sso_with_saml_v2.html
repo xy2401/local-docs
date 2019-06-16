@@ -1,0 +1,1631 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 2. How To Set Up SSO with SAML v2</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="how_to_set_up_sso_with_saml_v2"/>Chapter 2. How To Set Up SSO with SAML v2</h1></div></div></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+				Setting up SSO with SAML v2 using Picketlink is deprecated. Going forward, you should use <a class="link" href="https://access.redhat.com/documentation/en/red-hat-single-sign-on/">Red Hat Single Sign-On</a>, which supports OAuth and OpenID Connect as well as SAML. You can find more information on how to configure SSO with Red Hat Single Sign-On in the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_single_sign-on/7.2/html-single/securing_applications_and_services_guide/"><span class="emphasis"><em>Securing Applications and Services Guide</em></span></a>.
+			</p></div><p>
+			This section details the actual steps for setting up SSO with SAML v2 using JBoss EAP.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="components"/>Components</h1></div></div></div><p>
+				As covered in the <a class="link" href="sso_with_saml_v2_deeper_dive.html#saml_entities" title="Entities">Entities section</a> as well as in the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/#single_sign_on_sso"> <span class="emphasis"><em>Security Architecture</em></span> guide</a>, there are three <code class="literal">entities</code>, or parties, involved in browser-based SSO using SAML v2:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						A principal using a user agent (browser) to request access to a secured resource.
+					</li><li class="listitem">
+						A service provider housing the secured resource.
+					</li><li class="listitem">
+						An identity provider which issues security assertions to principals, allowing them to access secured resources on service providers.
+					</li></ul></div><p>
+				In addition, the following is needed to support browser-based SSO using SAML v2:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						Separate web applications serving as SPs and IDPs
+					</li><li class="listitem">
+						JBoss EAP instances to host the SPs and IDPs
+					</li><li class="listitem">
+						Security Domains to support the SPs and IDPs
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idp_and_sp_setup_and_configuration"/>IDP and SP Setup and Configuration</h1></div></div></div><p>
+				This section covers setting up an application to be either an SP or IDP, as well as setting up a JBoss EAP instance to host those applications.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="setting_up_idp"/>Setting up an IDP</h2></div></div></div><p>
+					To set up an application to serve as an IDP, the following steps must be performed:
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						The security domain should be created and configured before creating and deploying the application.
+					</p></div><div class="orderedlist"><a id="create_security_domain_IDP"/><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Create a security domain for an IDP.
+						</p><p class="simpara">
+							The IDP handles challenging a principal for their credentials, handling the authentication and authorization of that principal, and issuing the proper SAML v2 security assertions based on the result. This requires that an identity store be configured using a security domain. The only requirement around creating this security domain and identity store is that it has authentication and authorization mechanisms properly defined. This means that many different identity stores — for example, properties file, database, or LDAP — and their associated login modules, could be used to support an IDP application. For more information on security domains, see the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/#security_domains">Security Domains</a> section of the JBoss EAP <span class="emphasis"><em>Security Architecture</em></span> guide.
+						</p><p class="simpara">
+							The following example uses a simple <code class="literal">UsersRoles</code> login module using properties files.
+						</p><div class="title"><strong>Management CLI Commands for Creating a Security Domain</strong></div><p>
+								
+</p><pre class="screen">/subsystem=security/security-domain=idp:add(cache-type=default)
+
+/subsystem=security/security-domain=idp/authentication=classic:add
+
+/subsystem=security/security-domain=idp/authentication=classic/login-module=UsersRoles:add(code=UsersRoles,flag=required,module-options=[usersProperties=${jboss.server.config.dir}/idp-users.properties,rolesProperties=${jboss.server.config.dir}/idp-roles.properties])
+
+reload</pre><p>
+
+							</p><p class="simpara">
+							The <code class="literal">UsersRoles</code> login module utilizes properties files to store the user/password and user/role information. For more information on the <code class="literal">UsersRoles</code> module, see the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/login_module_reference/#userroles_login_module"><span class="emphasis"><em>Login Module Reference</em></span></a>. In this example, the properties files contain the following:
+						</p><div class="title"><strong>idp-users.properties</strong></div><p>
+								
+</p><pre class="programlisting">Eric=samplePass
+Alan=samplePass</pre><p>
+
+							</p><div class="title"><strong>idp-roles.properties</strong></div><p>
+								
+</p><pre class="programlisting">Eric=All
+Alan=</pre><p>
+
+							</p></li><li class="listitem"><p class="simpara">
+							Configure the <code class="literal">web.xml</code> file for an IDP.
+						</p><p class="simpara"><a id="configure_web_xml_IDP"/>
+							The <code class="literal">web.xml</code> file for an IDP must contain the following:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									A <code class="literal">&lt;security-constraint&gt;</code> with a <code class="literal">&lt;web-resource-collection&gt;</code> containing a <code class="literal">&lt;url-pattern&gt;</code> that maps to the URL pattern of the secured area. Optionally, <code class="literal">&lt;security-constraint&gt;</code> can also contain an <code class="literal">&lt;auth-constraint&gt;</code> stipulating the allowed roles.
+								</li><li class="listitem">
+									A <code class="literal">&lt;login-config&gt;</code> configured for <code class="literal">FORM</code> authentication.
+								</li><li class="listitem">
+									If any roles were specified in <code class="literal">&lt;auth-constraint&gt;</code>, those roles should be defined in a <code class="literal">&lt;security-role&gt;</code>.
+								</li><li class="listitem">
+									Optionally, resources used by the login form, for example images and styles, can be specified by an additional security constraint to be unsecured so they can be accessed prior to authentication, for example on the login page.
+								</li></ul></div><p class="simpara">
+							The <code class="literal">&lt;security-constraint&gt;</code> and <code class="literal">&lt;security-role&gt;</code> elements enable administrators to setup restricted or unrestricted areas based on URL patterns and roles. This allows resources to be secured or unsecured.
+						</p><p class="simpara">
+							The <code class="literal">&lt;login-config&gt;</code> tag defines the login and error pages used by the IDP when authenticating users.
+						</p><div class="title"><strong>Example <code class="literal">web.xml</code> file:</strong></div><p>
+								
+</p><pre class="programlisting">&lt;web-app&gt;
+  &lt;display-name&gt;IDP&lt;/display-name&gt;
+  &lt;description&gt;IDP&lt;/description&gt;
+  &lt;!-- Define a security constraint that gives unlimited access to images --&gt;
+  &lt;security-constraint&gt;
+    &lt;web-resource-collection&gt;
+      &lt;web-resource-name&gt;Images&lt;/web-resource-name&gt;
+      &lt;url-pattern&gt;/images/*&lt;/url-pattern&gt;
+    &lt;/web-resource-collection&gt;
+  &lt;/security-constraint&gt;
+  &lt;!-- Define a security constraint that requires the All role to access resources --&gt;
+  &lt;security-constraint&gt;
+    &lt;web-resource-collection&gt;
+      &lt;web-resource-name&gt;IDP&lt;/web-resource-name&gt;
+      &lt;url-pattern&gt;/*&lt;/url-pattern&gt;
+    &lt;/web-resource-collection&gt;
+    &lt;auth-constraint&gt;
+      &lt;role-name&gt;All&lt;/role-name&gt;
+    &lt;/auth-constraint&gt;
+  &lt;/security-constraint&gt;
+  &lt;!-- Define the Login Configuration for this Application --&gt;
+  &lt;login-config&gt;
+    &lt;auth-method&gt;FORM&lt;/auth-method&gt;
+    &lt;realm-name&gt;IDP Application&lt;/realm-name&gt;
+    &lt;form-login-config&gt;
+      &lt;form-login-page&gt;/jsp/login.jsp&lt;/form-login-page&gt;
+      &lt;form-error-page&gt;/jsp/error.jsp&lt;/form-error-page&gt;
+    &lt;/form-login-config&gt;
+  &lt;/login-config&gt;
+  &lt;!-- Security roles referenced by this web application --&gt;
+  &lt;security-role&gt;
+    &lt;description&gt;The role that is required to log in to the IDP Application&lt;/description&gt;
+    &lt;role-name&gt;All&lt;/role-name&gt;
+  &lt;/security-role&gt;
+&lt;/web-app&gt;</pre><p>
+
+							</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								It is recommended that a welcome page is defined in the application. By default, JBoss EAP will look for a file named <code class="literal">index.jsp</code>, but this can be configured using <code class="literal">&lt;welcome-file-list&gt;</code> in <code class="literal">web.xml</code>.
+							</p></div><div class="title"><strong>Example <code class="literal">login.jsp</code> file:</strong></div><p>
+								
+</p><pre class="programlisting">&lt;html&gt;
+  &lt;head&gt;&lt;/head&gt;
+  &lt;body&gt;
+    &lt;form id="login_form" name="login_form" method="post" action="j_security_check" enctype="application/x-www-form-urlencoded"&gt;
+      &lt;center&gt; &lt;p&gt;Welcome to the &lt;b&gt;IDP&lt;/b&gt;&lt;/p&gt; &lt;p&gt;Please login to proceed.&lt;/p&gt; &lt;/center&gt;
+      &lt;div style="margin-left: 15px;"&gt;
+        &lt;p&gt; &lt;label for="username"&gt;Username&lt;/label&gt; &lt;br /&gt; &lt;input id="username" type="text" name="j_username"/&gt; &lt;/p&gt;
+        &lt;p&gt; &lt;label for="password"&gt;Password&lt;/label&gt; &lt;br /&gt; &lt;input id="password" type="password" name="j_password" value=""/&gt; &lt;/p&gt;
+        &lt;center&gt; &lt;input id="submit" type="submit" name="submit" value="Login"/&gt; &lt;/center&gt;
+      &lt;/div&gt;
+    &lt;/form&gt;
+  &lt;/body&gt;
+&lt;/html&gt;</pre><p>
+
+							</p><div class="title"><strong>Example <code class="literal">error.jsp</code> file:</strong></div><p>
+								
+</p><pre class="programlisting">&lt;html&gt;
+  &lt;head&gt;&lt;/head&gt;
+  &lt;body&gt;
+    &lt;p&gt;Login failed, please go back and try again.&lt;/p&gt;
+  &lt;/body&gt;
+&lt;/html&gt;</pre><p>
+
+							</p></li><li class="listitem"><p class="simpara">
+							Configure the authenticator for an IDP.
+						</p><p class="simpara"><a id="configure_authenticator_IDP"/>
+							The authenticator is responsible for the authentication of users and for issuing and validating SAML v2 security assertions. Part of the authenticator is configured in the <code class="literal">jboss-web.xml</code> file by defining the security domain to be used in authenticating and authorizing principals (see <a class="link" href="how_to_set_up_sso_with_saml_v2.html#create_security_domain_IDP">Step 1</a>). You also must ensure that <a class="link" href="how_to_set_up_sso_with_saml_v2.html#configure_web_xml_IDP">a <code class="literal">&lt;login-config&gt;</code> is specified in the <code class="literal">web.xml</code></a> and <a class="link" href="how_to_set_up_sso_with_saml_v2.html#declare_dependencies_IDP">the necessary dependencies have been declared</a>.
+						</p><p class="simpara">
+							The <code class="literal">jboss-web.xml</code> file must have the following:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									A <code class="literal">&lt;security-domain&gt;</code> to specify which security domain to use for authentication and authorization.
+								</li></ul></div><div class="title"><strong>Example <code class="literal">jboss-web.xml</code> File</strong></div><p>
+								
+</p><pre class="programlisting">&lt;jboss-web&gt;
+  &lt;security-domain&gt;idp&lt;/security-domain&gt;
+  &lt;context-root&gt;identity&lt;/context-root&gt;
+&lt;/jboss-web&gt;</pre><p>
+
+							</p></li><li class="listitem"><p class="simpara">
+							Declare the necessary dependencies for an IDP.
+						</p><p class="simpara"><a id="declare_dependencies_IDP"/>
+							The web application serving as the IDP requires a dependency to be defined in <code class="literal">jboss-deployment-structure.xml</code>, so that the <code class="literal">org.picketlink</code> classes can be located. JBoss EAP provides all necessary <code class="literal">org.picketlink</code> and related classes, and the application only needs to declare them as dependencies to use them.
+						</p><div class="title"><strong>Using jboss-deployment-structure.xml to Declare Dependencies</strong></div><p>
+								
+</p><pre class="programlisting">&lt;jboss-deployment-structure&gt;
+  &lt;deployment&gt;
+    &lt;dependencies&gt;
+      &lt;module name="org.picketlink" services="import"/&gt;
+    &lt;/dependencies&gt;
+  &lt;/deployment&gt;
+&lt;/jboss-deployment-structure&gt;</pre><p>
+
+							</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								In previous versions of JBoss EAP, you would have declared this same dependency, but would have declared a valve to install the SAML authenticators. With the introduction of Undertow in JBoss EAP 7, you now use <code class="literal">services="import"</code> to install the SAML authenticators.
+							</p></div></li><li class="listitem"><p class="simpara">
+							Create and configure a <code class="literal">picketlink.xml</code> file for an IDP.
+						</p><p class="simpara"><a id="create_configure_picketlink_xml_IDP"/>
+							The <code class="literal">picketlink.xml</code> file is responsible for the behavior of the Authenticator and is loaded at the application’s startup.
+						</p><p class="simpara">
+							The file must contain at least the following elements:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									<code class="literal">&lt;PicketLinkIDP&gt;</code> defining the URL of the IDP, using <code class="literal">&lt;IdentityURL&gt;</code>, and any hosts trusted by the IDP.
+								</li><li class="listitem">
+									<code class="literal">&lt;Handlers&gt;</code> defining the set of handlers needed for processing the SAML requests and responses.
+								</li></ul></div><div class="title"><strong>Example picketlink.xml File</strong></div><p>
+								
+</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  &lt;PicketLinkIDP xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+    &lt;IdentityURL&gt;${idp.url::http://localhost:8080/identity/}&lt;/IdentityURL&gt;
+    &lt;Trust&gt;
+      &lt;Domains&gt;localhost,example.com&lt;/Domains&gt;
+    &lt;/Trust&gt;
+  &lt;/PicketLinkIDP&gt;
+  &lt;Handlers xmlns="urn:picketlink:identity-federation:handler:config:2.1"&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2IssuerTrustHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2LogOutHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2AuthenticationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.RolesGenerationHandler" /&gt;
+  &lt;/Handlers&gt;
+&lt;/PicketLink&gt;</pre><p>
+
+							</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+								Handlers are implemented using a Chain of Responsibility, with each individual handler performing logic on request and responses in the order defined in <code class="literal">picketlink.xml</code>. It is very important to pay attention to the order in which the handlers are configured.
+							</p></div><p class="simpara">
+							By default, <code class="literal">picketlink.xml</code> is located in the <code class="literal">WEB-INF</code> directory of the IDP web application. However, a custom path to <code class="literal">picketlink.xml</code> that is external to the application can be configured. This is useful in cases where multiple applications across one or more JBoss EAP instances share the same <code class="literal">picketlink.xml</code> configuration.
+						</p></li><li class="listitem"><p class="simpara">
+							<span class="emphasis"><em>Optional:</em></span> Setting a custom location for <code class="literal">picketlink.xml</code>
+						</p><p class="simpara">
+							You can specify a custom location for the <code class="literal">picketlink.xml</code> using the <code class="literal">CONFIG_FILE</code> parameter. This is done by adding a <code class="literal">&lt;context-param&gt;</code> element to the <code class="literal">web.xml</code>.
+						</p><div class="title"><strong>Using the <code class="literal">CONFIG_FILE</code> Parameter</strong></div><p>
+								
+</p><pre class="programlisting">&lt;context-param&gt;
+  &lt;param-name&gt;CONFIG_FILE&lt;/param-name&gt;
+  &lt;param-value&gt;/path/to/picketlink.xml&lt;/param-value&gt;
+&lt;/context-param&gt;</pre><p>
+
+							</p><p class="simpara">
+							You can also use the <code class="literal">org.picketlink.federation.saml.CONFIG_PROVIDER</code> parameter to specify a custom configuration provider. This allows you to create a custom implementation that extends <code class="literal">org.picketlink.identity.federation.web.util.SAMLConfigurationProvider</code> to provide your own configuration logic.
+						</p><div class="title"><strong>Using the <code class="literal">org.picketlink.federation.saml.CONFIG_PROVIDER</code> Parameter</strong></div><p>
+								
+</p><pre class="programlisting">&lt;context-param&gt;
+  &lt;param-name&gt;org.picketlink.federation.saml.CONFIG_PROVIDER&lt;/param-name&gt;
+  &lt;param-value&gt;MyConfigurationProvider&lt;/param-value&gt;
+&lt;/context-param&gt;</pre><p>
+
+							</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								The management CLI commands shown assume that you are running a JBoss EAP standalone server. For more details on using the management CLI for a JBoss EAP managed domain, see the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/management_cli_guide/"><span class="emphasis"><em>Management CLI Guide</em></span></a>.
+							</p></div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="setting_up_sp"/>Setting up an SP</h2></div></div></div><p>
+					To set up an application to serve as an SP, the following steps must be performed:
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						The security domain must be created and configured before creating and deploying the application.
+					</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Configure a security domain for an SP.
+						</p><p class="simpara"><a id="create_security_domain_SP"/>
+							Since the IDP handles challenging the user for their credentials and issuing SAML v2 security assertions, the SP is in charge of validating those assertions. A security domain is still needed to perform this validation, but an identity store is not. In this case, the security domain for the SP must use <code class="literal">SAML2LoginModule</code>.
+						</p><div class="title"><strong>Management CLI Commands for Adding Security Domain</strong></div><p>
+								
+</p><pre class="screen">/subsystem=security/security-domain=sp:add(cache-type=default)
+
+/subsystem=security/security-domain=sp/authentication=classic:add
+
+/subsystem=security/security-domain=sp/authentication=classic/login-module=org.picketlink.identity.federation.bindings.jboss.auth.SAML2LoginModule:add(code=org.picketlink.identity.federation.bindings.jboss.auth.SAML2LoginModule,flag=required)
+
+reload</pre><p>
+
+							</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+								The <code class="literal">SAML2LoginModule</code> is intended for use only with applications using PicketLink with SAML, and should not be used without the PicketLink Service Provider Undertow ServletExtension (<code class="literal">org.picketlink.identity.federation.bindings.wildfly.sp.SPServletExtension</code>). Doing so presents a possible security risk, as <code class="literal">SAML2LoginModule</code> or <code class="literal">SAML2CommonLoginModule</code> will always accept the default password of <code class="literal">EMPTY_STR</code>. For example, this can also occur if the PicketLink Service Provider Undertow ServletExtension is not installed in the SP application. The PicketLink Service Provider Undertow ServletExtension is installed automatically when <a class="link" href="how_to_set_up_sso_with_saml_v2.html#declare_dependencies_SP">configuring the SP application for JBoss EAP</a>. This can also occur if <code class="literal">SAML2LoginModule</code> is stacked with other login modules:
+							</p><pre class="programlisting">&lt;security-domain name="sp" cache-type="default"&gt;
+  &lt;authentication&gt;
+    &lt;login-module code="org.picketlink.identity.federation.bindings.jboss.auth.SAML2LoginModule" flag="optional"&gt;
+      &lt;module-option name="password-stacking" value="useFirstPass"/&gt;
+    &lt;/login-module&gt;
+    &lt;login-module code="UsersRoles" flag="required"&gt;
+      &lt;module-option name="usersProperties" value="users.properties"/&gt;
+      &lt;module-option name="rolesProperties" value="roles.properties"/&gt;
+      &lt;module-option name="password-stacking" value="useFirstPass"/&gt;
+    &lt;/login-module&gt;
+  &lt;/authentication&gt;
+&lt;/security-domain&gt;</pre></div><p class="simpara">
+							<code class="literal">SAML2LoginModule</code> is used to build a security context for a user based on assertions. The PicketLink SAML Authenticator, which is installed by the PicketLink Service Provider Undertow ServletExtension (<code class="literal">org.picketlink.identity.federation.bindings.wildfly.sp.SPServletExtension</code>), uses <code class="literal">SAML2LoginModule</code> and allows for authentication decisions to be deferred to an IDP, which is configured in the SP’s <code class="literal">picketlink.xml</code>.
+						</p><p class="simpara">
+							The authenticator is responsible for the authentication of principals based on the security assertions, in this case SAML assertions, issued by the IDP. They intercept each request made to the application, check if a SAML assertion is present in the request, validate the assertions, execute principal’s SAML specific validations, and create a security context for the principal in the requested application.
+						</p><p class="simpara">
+							Part of the authenticator is configured in the <code class="literal">jboss-web.xml</code> file by defining the security domain to be used in authenticating and authorizing principals. You also must ensure that <a class="link" href="how_to_set_up_sso_with_saml_v2.html#configure_web_xml_SP">a <code class="literal">&lt;login-config&gt;</code> is specified in the <code class="literal">web.xml</code></a> and <a class="link" href="how_to_set_up_sso_with_saml_v2.html#declare_dependencies_SP">the necessary dependencies have been declared</a>, which are done in later steps.
+						</p><p class="simpara">
+							The <code class="literal">jboss-web.xml</code> file for an SP must have the following:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									A <code class="literal">&lt;security-domain&gt;</code> to specify which security domain to use for authentication and authorization.
+								</li></ul></div><div class="title"><strong>Example <code class="literal">jboss-web.xml</code> File</strong></div><p>
+								
+</p><pre class="programlisting">&lt;jboss-web&gt;
+  &lt;security-domain&gt;sp&lt;/security-domain&gt;
+  &lt;context-root&gt;sales-post&lt;/context-root&gt;
+&lt;/jboss-web&gt;</pre><p>
+
+							</p></li><li class="listitem"><p class="simpara">
+							Configure the <code class="literal">web.xml</code> file for an SP.
+						</p><p class="simpara"><a id="configure_web_xml_SP"/>
+							The <code class="literal">web.xml</code> file for an SP must contain the following:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									A <code class="literal">&lt;security-constraint&gt;</code> with a <code class="literal">&lt;web-resource-collection&gt;</code> containing a <code class="literal">&lt;url-pattern&gt;</code> that maps to the URL pattern of the secured area. Optionally, <code class="literal">&lt;security-constraint&gt;</code> can also contain an <code class="literal">&lt;auth-constraint&gt;</code> stipulating the allowed roles.
+								</li><li class="listitem">
+									If any roles were specified in the <code class="literal">&lt;auth-constraint&gt;</code>, those roles should be defined in a <code class="literal">&lt;security-role&gt;</code>.
+								</li><li class="listitem">
+									A <code class="literal">&lt;login-config&gt;</code> with an <code class="literal">&lt;auth-method&gt;</code> specifying <code class="literal">FORM</code> authentication. <a class="link" href="how_to_set_up_sso_with_saml_v2.html#picketlink-changes-authenticator-changes" title="Authenticator Changes">This is required for the SAML authenticators</a>.
+								</li></ul></div><div class="title"><strong>Example web.xml File</strong></div><p>
+								
+</p><pre class="programlisting">&lt;web-app&gt;
+  &lt;display-name&gt;SP&lt;/display-name&gt;
+  &lt;description&gt;SP&lt;/description&gt;
+  &lt;!-- Define a Security Constraint on this Application --&gt;
+  &lt;security-constraint&gt;
+    &lt;web-resource-collection&gt;
+      &lt;web-resource-name&gt;SP&lt;/web-resource-name&gt;
+      &lt;url-pattern&gt;/*&lt;/url-pattern&gt;
+    &lt;/web-resource-collection&gt;
+    &lt;auth-constraint&gt;
+      &lt;role-name&gt;All&lt;/role-name&gt;
+    &lt;/auth-constraint&gt;
+  &lt;/security-constraint&gt;
+  &lt;!-- Security roles referenced by this web application --&gt;
+  &lt;security-role&gt;
+    &lt;description&gt; The role that is required to log in to the SP Application &lt;/description&gt;
+    &lt;role-name&gt;All&lt;/role-name&gt;
+  &lt;/security-role&gt;
+  &lt;!-- Define the Login Configuration for this Application --&gt;
+  &lt;login-config&gt;
+    &lt;auth-method&gt;FORM&lt;/auth-method&gt;
+  &lt;/login-config&gt;
+&lt;/web-app&gt;</pre><p>
+
+							</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								It is recommended that you define a welcome page in the application. By default, JBoss EAP looks for a file named <code class="literal">index.jsp</code> but this can be configured using the <code class="literal">&lt;welcome-file-list&gt;</code> in <code class="literal">web.xml</code>.
+							</p><p>
+								The logout process attempts to redirect principals to <code class="literal">logout.jsp</code> on successful logout. Ensure this file is defined at the root directory of the application.
+							</p></div></li><li class="listitem"><p class="simpara">
+							Declare the necessary dependencies for an SP.
+						</p><p class="simpara"><a id="declare_dependencies_SP"/>
+							The web application serving as the SP requires a dependency to be defined in <code class="literal">jboss-deployment-structure.xml</code>, so that the <code class="literal">org.picketlink</code> classes can be located. JBoss EAP provides all necessary <code class="literal">org.picketlink</code> and related classes, and the application only needs to declare them as dependencies to use them.
+						</p><div class="title"><strong>Using jboss-deployment-structure.xml to Declare Dependencies</strong></div><p>
+								
+</p><pre class="programlisting">&lt;jboss-deployment-structure&gt;
+  &lt;deployment&gt;
+    &lt;dependencies&gt;
+      &lt;module name="org.picketlink" services="import"/&gt;
+    &lt;/dependencies&gt;
+  &lt;/deployment&gt;
+&lt;/jboss-deployment-structure&gt;</pre><p>
+
+							</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								In previous versions of JBoss EAP, you would have declared this same dependency, but would have declared a valve to install the SAML authenticators. With the introduction of Undertow in JBoss EAP 7, you do not need to manually configure your deployments with the PicketLink SAML Authenticators. Now, they are configured automatically when you define use <code class="literal">services="import"</code> with the <code class="literal">org.picketlink</code> dependency. You must declare this configuration to enable SAML to your deployment.
+							</p></div></li><li class="listitem"><p class="simpara">
+							Create and Configure a picketlink.xml File for an SP.
+						</p><p class="simpara"><a id="create_configure_picketlink_xml_SP"/>
+							The <code class="literal">picketlink.xml</code> file is responsible for the behavior of the Authenticator, and is loaded at the application’s startup.
+						</p><p class="simpara">
+							The file must contain at least the following elements:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									<code class="literal">&lt;PicketLinkSP&gt;</code> defining the URL of the IDP (<code class="literal">&lt;IdentityURL&gt;</code>) and the URL the SP (<code class="literal">&lt;ServiceURL&gt;</code>).
+								</li><li class="listitem">
+									<code class="literal">&lt;Handlers&gt;</code> defining the set of handlers needed for processing the SAML requests and responses.
+								</li></ul></div><div class="title"><strong>Example picketlink.xml File</strong></div><p>
+								
+</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  &lt;PicketLinkSP xmlns="urn:picketlink:identity-federation:config:2.1" BindingType="POST"&gt;
+    &lt;IdentityURL&gt;${idp.url::http://localhost:8080/identity/}&lt;/IdentityURL&gt;
+    &lt;ServiceURL&gt;${sales-post.url::http://localhost:8080/sales-post/}&lt;/ServiceURL&gt;
+  &lt;/PicketLinkSP&gt;
+  &lt;Handlers xmlns="urn:picketlink:identity-federation:handler:config:2.1"&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2LogOutHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2AuthenticationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.RolesGenerationHandler" /&gt;
+  &lt;/Handlers&gt;
+&lt;/PicketLink&gt;</pre><p>
+
+							</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								While not recommended, the SP may also be configured to use HTTP/REDIRECT by changing <code class="literal">BindingType="POST"</code> to <code class="literal">BindingType="REDIRECT"</code>.
+							</p></div><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+								Handlers are implemented using a Chain of Responsibility, with each individual handler performing logic on request and responses in the order defined in <code class="literal">picketlink.xml</code>. It is very important to pay attention to the order in which the handlers are configured.
+							</p></div><p class="simpara">
+							By default, <code class="literal">picketlink.xml</code> is located in the <code class="literal">WEB-INF</code> directory of the SP web application; however, a custom path to <code class="literal">picketlink.xml</code> that is external to the application can be configured. This is useful in cases where multiple applications across one or more JBoss EAP instances share the same <code class="literal">picketlink.xml</code> configuration.
+						</p></li><li class="listitem"><p class="simpara">
+							<span class="emphasis"><em>Optional:</em></span> Setting a custom location for <code class="literal">picketlink.xml</code>.
+						</p><p class="simpara">
+							You can specify a custom location for <code class="literal">picketlink.xml</code> using the <code class="literal">CONFIG_FILE</code> parameter. This is done by adding a <code class="literal">&lt;context-param&gt;</code> element to <code class="literal">web.xml</code>.
+						</p><div class="title"><strong>Using the <code class="literal">CONFIG_FILE</code> Parameter</strong></div><p>
+								
+</p><pre class="programlisting">&lt;context-param&gt;
+  &lt;param-name&gt;CONFIG_FILE&lt;/param-name&gt;
+  &lt;param-value&gt;/path/to/picketlink.xml&lt;/param-value&gt;
+&lt;/context-param&gt;</pre><p>
+
+							</p><p class="simpara">
+							You can also use the <code class="literal">org.picketlink.federation.saml.CONFIG_PROVIDER</code> parameter to specify a custom configuration provider. This allows you to create a custom implementation that extends <code class="literal">org.picketlink.identity.federation.web.util.SAMLConfigurationProvider</code> to provide your own configuration logic.
+						</p><div class="title"><strong>Using the <code class="literal">org.picketlink.federation.saml.CONFIG_PROVIDER</code> Parameter</strong></div><p>
+								
+</p><pre class="programlisting">&lt;context-param&gt;
+  &lt;param-name&gt;org.picketlink.federation.saml.CONFIG_PROVIDER&lt;/param-name&gt;
+  &lt;param-value&gt;MyConfigurationProvider&lt;/param-value&gt;
+&lt;/context-param&gt;</pre><p>
+
+							</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								The management CLI commands shown assume that you are running a JBoss EAP standalone server. For more details on using the management CLI for a JBoss EAP managed domain, see the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/management_cli_guide/"><span class="emphasis"><em>Management CLI Guide</em></span></a>.
+							</p></div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="using_sp_initiated_flow"/>Using SP-initiated Flow</h2></div></div></div><p>
+					The SP-inited Flow is a common use case citied when describing browser-based SSO, and is covered in the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/#browser_based_sso_using_saml">Browser-Based SSO Using SAML</a> and <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/#multiple_red_hat_jboss_enterprise_application_platform_instances_and_multiple_applications_using_browser_based_sso_with_saml">Multiple Red Hat JBoss Enterprise Application Platform Instances and Multiple Applications Using Browser-Based SSO with SAML</a> sections of the JBoss EAP <span class="emphasis"><em>Security Architecture</em></span> guide. In summary, a principal attempts to access a secured resource in a SP. The SP starts the flow by checking for a principal’s security assertions and redirecting any unauthenticated principal to the IDP. Upon successful authentication with the IDP, the principal is then redirected back to the initial SP with their security assertions for the SP to validate and permit/deny access to the original resource requested.
+				</p><div class="orderedlist"><p class="title"><strong>Walkthrough</strong></p><ol class="orderedlist"><li class="listitem">
+							A principal attempts to access secured resource on a SP.
+						</li><li class="listitem">
+							SP performs a check on the principal. If the principal has not yet authenticated, they need to be redirected to the IDP. If they have already authenticated, then all other steps are skipped and the final step is performed.
+						</li><li class="listitem">
+							The SP locates the IDP and issues an authentication request to the IDP using the principal’s browser.
+						</li><li class="listitem">
+							The IDP attempts to authenticate the principal, for example challenging them with a login page, using the configured identity store.
+						</li><li class="listitem">
+							After the principal is identified by the IDP, for example after a successful login, the IDP issues a response, containing SAML v2 assertions with the principal’s security-related information, to the SP using the principal’s browser.
+						</li><li class="listitem">
+							The SP performs a check on the principal’s security assertions, and based on the information contained in those assertions, the SP allows or denies access to the requested resource.
+						</li></ol></div><p>
+					This flow requires no additional steps or configuration for setup. All redirects are handled by the configured SPs and IDPs, and links to both secured and unsecured resources require no additional changes.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="using_idp_initiated_flow"/>Using IDP-Initiated Flow</h2></div></div></div><p>
+					Most examples of browser-based SSO with SAML v2 use a SP-initiated flow, as covered in the <a class="link" href="how_to_set_up_sso_with_saml_v2.html#using_sp_initiated_flow" title="Using SP-initiated Flow">previous section</a>. However, SAML v2 supports an additional flow: the IDP-initiated or Unsolicited Response flow. In this scenario, the SP does not initiate the authentication flow and receive a SAML response from the IDP. Instead, the flow starts on the IDP-side, and once authenticated, the principal can choose a specific SP from a list and then get redirected to its URL.
+				</p><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="walkthrough"/>Walkthrough</h3></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+								Principal accesses the IDP.
+							</li><li class="listitem">
+								The IDP, seeing that there is neither SAML request nor response, assumes an IDP-first scenario using SAML.
+							</li><li class="listitem">
+								The IDP challenges the principal to authenticate.
+							</li><li class="listitem">
+								Upon authentication, the IDP shows the hosted section, where the principal is shown a page that links to all the SP applications.
+							</li><li class="listitem">
+								The principal chooses an SP application.
+							</li><li class="listitem">
+								The IDP redirects the principal to the SP with a SAML assertion in the query parameter. In the cases where the <code class="literal">POST</code> binding is used, the IDP sends the SAML assertion to the service provider using an HTTP <code class="literal">POST</code>.
+							</li><li class="listitem">
+								The SP checks the SAML assertion and provides access.
+							</li></ol></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="hosted_section"/>Hosted Section</h3></div></div></div><p>
+						The <code class="literal">hosted section</code> is a location to direct users after a successful authentication in the IDP-initiated flow, or if a principal, who has already authenticated, attempts to access the root of the IDP directly. By default, the hosted section is located at <code class="literal">/hosted/</code>, but may be changed in the <code class="literal">picketlink.xml</code> file by adding the <code class="literal">HostedURI</code> attribute to the <code class="literal">&lt;PicketLinkIDP&gt;</code> element:
+					</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  &lt;PicketLinkIDP xmlns="urn:picketlink:identity-federation:config:2.1" HostedURI="/hosted/"&gt;
+    ...
+  &lt;/PicketLinkIDP&gt;
+&lt;/Picketlink&gt;</pre></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="linking_to_sps"/>Linking to SPs</h3></div></div></div><p>
+						When the user is authenticated, the IDP shows a page with links to all service provider applications. A link will usually look like this:
+					</p><pre class="programlisting">&lt;a href="http://localhost:8080/identity?SAML_VERSION=2.0&amp;TARGET=http://localhost:8080/sales-post/"&gt;Sales&lt;/a&gt;</pre><p>
+						Note that the link above redirects the user to the IDP passing the <code class="literal">TARGET</code> query parameter, whose value is the URL to the target SP application. When the user clicks the link above, the IDP extracts the <code class="literal">TARGET</code> parameter from the request, builds a SAML v2 response, and redirects the user to the target URL. When the user hits the SP, they are automatically authenticated. The <code class="literal">SAML_VERSION</code> query parameter is used to specify the SAML version that must be used by the IDP to create the SAML response.
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configuring_the_global_logout_profile"/>Configuring the Global Logout Profile</h2></div></div></div><p>
+					A Global Logout Profile initiated at one service provider, logs out the user from the Identity Provider (IDP) and all the service providers.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						For a Global Logout Profile to function appropriately, ensure that only up to five SPs are configured per IDP.
+					</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Configure <code class="literal">picketlink.xml</code>.
+						</p><p class="simpara">
+							Add the <code class="literal">SAML2LogOutHandler</code> in the <code class="literal">picketlink.xml</code>.
+						</p></li><li class="listitem"><p class="simpara">
+							Create a <code class="literal">logout.jsp</code> page.
+						</p><p class="simpara">
+							As part of the logout process, the user is redirected to a <code class="literal">logout.jsp</code> page located in the root directory of the service provider application. Ensure that this page is created.
+						</p><div class="title"><strong>Example logout.jsp</strong></div><p>
+								
+</p><pre class="programlisting">&lt;html&gt;
+  &lt;head&gt;&lt;/head&gt;
+  &lt;body&gt;
+    &lt;p&gt;You have successfully logged out.&lt;/p&gt;
+  &lt;/body&gt;
+&lt;/html&gt;</pre><p>
+
+							</p></li><li class="listitem"><p class="simpara">
+							Configure Global Logout Profile links for the SPs.
+						</p><p class="simpara">
+							Use <code class="literal">GLO=true</code> as a URL parameter in a link to an SP resource to initiate the Global Logout Profile process.
+						</p><div class="title"><strong>Example Logout Link</strong></div><p>
+								
+</p><pre class="programlisting">&lt;a href="?GLO=true"&gt;Click to log out&lt;/a&gt;</pre><p>
+
+							</p></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="using_local_logout"/>Using Local Logout</h2></div></div></div><p>
+					In addition to Global Logout Profile, Local Logout can also be used. Local Logout, in contrast to Global Logout Profile, logs a principal out of a single SP while leaving the session at the IDP and other SPs intact. Essentially, Local Logout allows principals to be "locally logged out" at a single SP.
+				</p><p>
+					The process for using Local Logout is essentially the same as Global Logout Profile, with the URL parameter in the logout link taking the form of <code class="literal">LLO=true</code>.
+				</p><div class="title"><strong>Example Logout Link</strong></div><p>
+						
+</p><pre class="programlisting">&lt;a href="?LLO=true"&gt;Click to log out&lt;/a&gt;</pre><p>
+
+					</p><p>
+					When a principal clicks on the Local Logout link at the SP, the SP will invalidate their session and forward the principal to the configured logout page.
+				</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+						When a principal is only disconnected from one service provider, they still have an active session with the IDP and other SPs that might allow them to still access secured resources. While this behavior may be desired in certain circumstances, it is strongly recommended to use Global Logout in most scenarios.
+					</p></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring_idps_and_sps_via_the_federation_subsystem"/>Configuring IDPs and SPs via the Federation Subsystem</h1></div></div></div><p>
+				In addition to configuring IDPs and SPs manually, SSO using SAML v2 may also be configured using a JBoss EAP subsystem. This method of configuration is known as the <code class="literal">Domain Model</code>, and allows all the configuration to reside centrally on the JBoss EAP instance and not with the individual applications. This also enables the SSO configuration to be created and updated using the JBoss EAP management interfaces, such as the management console and management CLI.
+			</p><div class="title"><strong>Federations</strong></div><p>
+					When using the JBoss EAP subsystem to configure and deploy IDPs and SPs, they are grouped together in a <code class="literal">Federation</code>. A Federation can be understood as a <code class="literal">Circle of Trust</code>. A Circle of trust contains applications that share common configurations, including certificates and SAML-specific configurations. It also contains domains that trust each other to accurately document the processes used to identify a user, the type of authentication system used, and any policies associated with the resulting authentication credentials. Each federation has one IDP and many SPs. The federation also defines trust relationship between SPs and IDPs, removing the need for each SP to individual track and maintain that information.
+				</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configuring_the_subsystem"/>Configuring the Subsystem</h2></div></div></div><p>
+					Before the subsystem can be used to setup federations, it needs to be enabled and configured in JBoss EAP. The following steps are needed to enable and configure the subsystem:
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						It is recommended that you shut down the JBoss EAP instance before performing these steps.
+					</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Update the extensions.
+						</p><p class="simpara"><a id="update-extensions"/>
+							In the JBoss EAP configuration file, <code class="literal">standalone.xml</code> for standalone instances or <code class="literal">domain.xml</code> for domains, add the <code class="literal">org.wildfly.extension.picketlink</code> extension:
+						</p><pre class="programlisting">&lt;extensions&gt;
+  ...
+  &lt;extension module="org.wildfly.extension.picketlink"/&gt;
+  ...
+&lt;/extensions&gt;</pre></li><li class="listitem"><p class="simpara">
+							Add the subsystems.
+						</p><p class="simpara"><a id="add-subsystem"/>
+							In the JBoss EAP configuration file, <code class="literal">standalone.xml</code> for standalone instances or <code class="literal">domain.xml</code> for domains, add the <code class="literal">picketlink-federation</code> subsystem:
+						</p><pre class="programlisting">&lt;profile&gt;
+  ...
+  &lt;subsystem xmlns="urn:jboss:domain:picketlink-federation:2.0"/&gt;
+   ...
+&lt;/profile&gt;</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								Examples of configuration can also be found in <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/docs/examples/configs/standalone-picketlink.xml</code>.
+							</p></div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="setting_up_a_federation"/>Setting up a Federation</h2></div></div></div><p>
+					Once the subsystem has been setup and configured, you can use the management interfaces to configure federations. Before you can set up a federation using the subsystem, you must prepare both the IDP and SP applications.
+				</p><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="preparing_the_sp_and_idp_applications"/>Preparing the SP and IDP Applications</h3></div></div></div><p>
+						As covered in the <a class="link" href="how_to_set_up_sso_with_saml_v2.html#idp_and_sp_setup_and_configuration" title="IDP and SP Setup and Configuration">previous section</a>, when configuring SSO using SAML v2 manually, the following files are required to be created or updated:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								<code class="literal">web.xml</code>
+							</li><li class="listitem">
+								<code class="literal">jboss-web.xml</code>
+							</li><li class="listitem">
+								<code class="literal">picketlink.xml</code>
+							</li><li class="listitem">
+								<code class="literal">jboss-deployment-structure.xml</code>
+							</li></ul></div><p>
+						When using the subsystem to set up federations for SSO using SAML v2, the vast majority of the configuration happens from the management interfaces without having to update any of those files. The only configuration that must be done to the application is to configure the <code class="literal">&lt;security-constraint&gt;</code> and associated <code class="literal">&lt;security-role&gt;</code> in the <code class="literal">web.xml</code> file of the <a class="link" href="how_to_set_up_sso_with_saml_v2.html#configure_web_xml_IDP">IDPs</a> and <a class="link" href="how_to_set_up_sso_with_saml_v2.html#configure_web_xml_SP">SPs</a>. In addition, <code class="literal">&lt;login-config&gt;</code> in <code class="literal">web.xml</code>, as well as the login and error pages must also be present in the IDP.
+					</p><p>
+						If an IDP or SP has already been configured as outlined in the <a class="link" href="how_to_set_up_sso_with_saml_v2.html#idp_and_sp_setup_and_configuration" title="IDP and SP Setup and Configuration">previous section</a>, the following files will need to be removed:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								<code class="literal">jboss-web.xml</code>
+							</li><li class="listitem">
+								<code class="literal">picketlink.xml</code>
+							</li><li class="listitem">
+								<code class="literal">jboss-deployment-structure.xml</code>
+							</li></ul></div><p>
+						When the applications have been prepared, they must be deployed to the JBoss EAP instance.
+					</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="creating_a_federation_using_the_management_cli"/>Creating a Federation Using the Management CLI</h3></div></div></div><p>
+						The following commands show how an example federation called <code class="literal">new-federation</code> can be added with the following information:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								The identity provider <code class="literal">IDP.war</code> is deployed to the JBoss EAP instance at <code class="literal"><a class="link" href="http://localhost:8080/identity/">http://localhost:8080/identity/</a></code>
+							</li><li class="listitem">
+								The service provider <code class="literal">SP.war</code> is deployed to the JBoss EAP instance at <code class="literal"><a class="link" href="http://localhost:8080/sales-post/">http://localhost:8080/sales-post/</a></code>
+							</li><li class="listitem">
+								The security domains <code class="literal">idp</code> and <code class="literal">sp</code> have been configured correctly for the identity provider and service provider respectively
+							</li></ul></div><p>
+						To configure a federation using the management CLI, you must:
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Add a new federation.
+							</p><pre class="screen">/subsystem=picketlink-federation/federation=new-federation:add</pre></li><li class="listitem"><p class="simpara">
+								Add an identity provider to the federation.
+							</p><pre class="screen">/subsystem=picketlink-federation/federation=new-federation/identity-provider=IDP.war:add(url="http://localhost:8080/identity/",security-domain=idp)</pre></li><li class="listitem"><p class="simpara">
+								Add a service provider to the federation.
+							</p><pre class="screen">/subsystem=picketlink-federation/federation=new-federation/service-provider=SP.war:add(url="http://localhost:8080/sales-post/",security-domain=sp)</pre></li><li class="listitem"><p class="simpara">
+								Add a trust domain to the federation.
+							</p><pre class="screen">/subsystem=picketlink-federation/federation=new-federation/identity-provider=IDP.war/trust-domain="localhost:8080":add</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="reference_of_attributes_for_the_federation_subsystem"/>Reference of Attributes for the Federation Subsystem</h3></div></div></div><p>
+						The <code class="literal">picketlink-federation</code> subsystem has the following structure:
+					</p><div class="itemizedlist"><p class="title"><strong>federation</strong></p><ul class="itemizedlist"><li class="listitem">
+								saml
+							</li><li class="listitem"><p class="simpara">
+								key-store
+							</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+										keys
+									</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+												key
+											</li></ul></div></li></ul></div></li><li class="listitem"><p class="simpara">
+								identity-provider
+							</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+										trust
+									</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+												trust-domain
+											</li></ul></div></li><li class="listitem">
+										role-generator
+									</li><li class="listitem">
+										attribute-manager
+									</li><li class="listitem"><p class="simpara">
+										handlers
+									</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+												handler
+											</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+														handler-parameter
+													</li></ul></div></li></ul></div></li></ul></div></li><li class="listitem"><p class="simpara">
+								service-providers
+							</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+										service-provider
+									</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+												handlers
+											</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+														handler
+													</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+																handler-parameter
+															</li></ul></div></li></ul></div></li></ul></div></li></ul></div></li></ul></div><div class="title"><strong>Example Federation Subsystem</strong></div><p>
+							
+</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:picketlink-federation:2.0"&gt;
+  &lt;federation name="federation-redirect-with-signatures"&gt;
+    &lt;key-store file="/jbid_test_keystore.jks" password="store123" sign-key-alias="servercert" sign-key-password="test123"&gt;
+      &lt;keys&gt;
+        &lt;key name="servercert" host="${jboss.bind.address:localhost},127.0.0.1"/&gt;
+      &lt;/keys&gt;
+    &lt;/key-store&gt;
+    &lt;identity-provider name="idp-redirect-sig.war" url="http://${jboss.bind.address:127.0.0.1}:8080/idp-redirect-sig/" security-domain="idp" support-signatures="true" strict-post-binding="false"&gt;
+      &lt;trust&gt;
+        &lt;trust-domain name="${jboss.bind.address:127.0.0.1}"/&gt;
+      &lt;/trust&gt;
+      ​&lt;handlers&gt;
+​        &lt;handler class-name="com.mycompany.CustomHandler"&gt;
+​          &lt;handler-parameter name="param1" value="paramValue1"/&gt;
+​          &lt;handler-parameter name="param2" value="paramValue2"/&gt;
+​          &lt;handler-parameter name="param3" value="paramValue3"/&gt;
+​        &lt;/handler&gt;
+​      &lt;/handlers&gt;
+    &lt;/identity-provider&gt;
+    &lt;service-providers&gt;
+      &lt;service-provider name="sp-redirect-sig1.war" security-domain="sp" url="http://${jboss.bind.address:127.0.0.1}:8080/sp-redirect-sig1/" post-binding="false" support-signatures="true"&gt;
+      ​  &lt;handlers&gt;
+​          &lt;handler class-name="com.mycompany.CustomHandler"&gt;
+​            &lt;handler-parameter name="param1" value="paramValue1"/&gt;
+​            &lt;handler-parameter name="param2" value="paramValue2"/&gt;
+​            &lt;handler-parameter name="param3" value="paramValue3"/&gt;
+​          &lt;/handler&gt;
+​        &lt;/handlers&gt;
+      &lt;/service-provider&gt;
+      &lt;service-provider name="sp-redirect-sig2.war" security-domain="sp" url="http://${jboss.bind.address:127.0.0.1}:8080/sp-redirect-sig2/" post-binding="false" support-signatures="true"/&gt;
+    &lt;/service-providers&gt;
+  &lt;/federation&gt;
+&lt;/subsystem&gt;</pre><p>
+
+						</p><div class="table"><a id="idm140305055790272"/><p class="title"><strong>Table 2.1. federation</strong></p><div class="table-contents"><table summary="federation" border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Default</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										name
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										The federation name.
+									</p>
+									 </td></tr></tbody></table></div></div><div class="title"><strong>saml</strong></div><p>
+							Defines the SAML type. This type defines all configurations about how SAML assertions are processed and created.
+						</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Default</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										clock-skew
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										0
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Defines the clock skew for SAML assertions. The value must be specified in milliseconds.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										token-timeout
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										5000
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Defines the timeout for SAML assertions. The value must be specified in milliseconds.
+									</p>
+									 </td></tr></tbody></table></div><div class="title"><strong>key-store</strong></div><p>
+							Defines the <code class="literal">KeyStore</code> type. This type defines how keystores are configured.
+						</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Default</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										password
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Defines the password for the keystore.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										sign-key-alias
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Defines the alias to be used when signing documents.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										sign-key-password
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Defines the password for the sign-key-alias.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										file
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Defines the file location.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										relative-to
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										One of the system-provided named paths, such as <code class="literal">jboss.home.dir</code>, <code class="literal">user.home</code>, <code class="literal">user.dir</code>, relative to which the absolute path will be calculated for the path specified in the file attribute.
+									</p>
+									 </td></tr></tbody></table></div><div class="title"><strong>keys</strong></div><p>
+							Keys Configuration.
+						</p><div class="title"><strong>key</strong></div><p>
+							Defines a Key.
+						</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Default</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										name
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Defines the name or alias of a key in a given keystore.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										host
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										A single or a comma separated list of strings representing the host names validated by the given key.
+									</p>
+									 </td></tr></tbody></table></div><div class="title"><strong>identity-provider</strong></div><p>
+							Defines the Identity Provider type.
+						</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Default</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										name
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										A unique name for the Identity Provider. The name must be the deployment unit name. For example, <code class="literal">idp.war</code>.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										url
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										URL for this Identity Provider.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										support-signatures
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										false
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Indicates if signature is supported.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										encrypt
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										false
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Indicates if encryption is supported.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										security-domain
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										The name of a security-domain that will be used to authenticate and authorize users. This attribute is required if the IDP is not external. See the <code class="literal">external</code> attribute for more details.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										strict-post-binding
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										true
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Indicates if the IDP should always respond using HTTP <code class="literal">POST</code> binding.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										external
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										false
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Indicates if the configuration is a reference to a external IDP.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										support-metadata
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										false
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Enable/Disable SAML Metadata Support.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										ssl-authentication
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										false
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Indicates if the identity provider should also support HTTP <code class="literal">CLIENT_CERT</code> authentication.
+									</p>
+									 </td></tr></tbody></table></div><div class="title"><strong>trust</strong></div><p>
+							Groups Trusted Domain Types.
+						</p><div class="title"><strong>trust-domain</strong></div><p>
+							Defines the Trusted Domain Type.
+						</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Default</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										name
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Defines the domain name.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										cert-alias
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Defines the certificate alias for this domain.
+									</p>
+									 </td></tr></tbody></table></div><div class="title"><strong>role-generator</strong></div><p>
+							The <code class="literal">RoleGenerator</code> implementation that will be used to load roles and push them to SAML assertions.
+						</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Default</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										name
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Defines the role generator name.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										class-name
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										The fully qualified name of the <code class="literal">RoleGenerator</code> type.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										code
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Defines an alias which maps to a built-in type.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										module
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Defines the module to be used when loading <code class="literal">class-name</code>.
+									</p>
+									 </td></tr></tbody></table></div><div class="title"><strong>attribute-manager</strong></div><p>
+							The <code class="literal">AttributeManager</code> implementation that will be used to load roles and push them to SAML assertions.
+						</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Default</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										name
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Defines the attribute manager name.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										class-name
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										The fully qualified name of the <code class="literal">AttributeManager</code> type.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										code
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Defines an alias which maps to a built-in type.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										module
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Defines the module to be used when loading <code class="literal">class-name</code>.
+									</p>
+									 </td></tr></tbody></table></div><div class="title"><strong>handlers</strong></div><p>
+							Groups Handler Types.
+						</p><div class="title"><strong>handler</strong></div><p>
+							Defines the Handler Type.
+						</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Default</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										name
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Defines the handler name.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										class-name
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Defines the handler class name.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										code
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Defines an alias which maps to a built-in type.
+									</p>
+									 </td></tr></tbody></table></div><div class="title"><strong>handler-parameter</strong></div><p>
+							Defines the Handler Parameter Type.
+						</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Default</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										name
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Defines the parameter name.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										value
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Defines the parameter value.
+									</p>
+									 </td></tr></tbody></table></div><div class="title"><strong>service-providers</strong></div><p>
+							Groups Service Provider types.
+						</p><div class="title"><strong>service-provider</strong></div><p>
+							Defines the Service Provider type.
+						</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Attribute</th><th style="text-align: left" valign="top">Default</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										name
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Name for this instance. This name must be the deployment unit name.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										url
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										URL for this Service Provider.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										post-binding
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										true
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Indicates which SAML Binding to use. If it is true, HTTP <code class="literal">POST</code> binding will be used. Otherwise HTTP REDIRECT binding will be used.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										strict-post-binding
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										true
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Indicates which SAML Binding to use. If it is true, HTTP <code class="literal">POST</code> binding will be used. Otherwise HTTP REDIRECT binding will be used.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										support-signatures
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										false
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Indicates if signature is supported.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										support-metadata
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										false
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Enable/Disable SAML Metadata Support.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										security-domain
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+										Security Domain name used to authenticate users.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										error-page
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										<code class="literal">/error.jsp</code>
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Defines a custom error page location.
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										logout-page
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										<code class="literal">/logout.jsp</code>
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Defines a custom logout page location.
+									</p>
+									 </td></tr></tbody></table></div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring_identity_stores_for_IDPs"/>Configuring Identity Stores for IDPs</h1></div></div></div><p>
+				Since IDPs use security domains, the functionality of an IDP is independent from the actual identity store that backs it. As a result, administrators have many options when configuring security domains for IDPs. The specifics around security domains and login modules can be found in the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/#security_subsystem">Security Subsystem section</a> of the JBoss EAP <span class="emphasis"><em>Security Architecture</em></span> guide. Just as with setting up any login module for a security domain, please keep in mind that different identity stores offer different functionality and performance tradeoffs.
+			</p><p>
+				The following steps are needed for setting up a security domain that uses an identity store:
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					For the purposes of this document, the Database login module and LDAP login module are shown as examples, but other identity stores and login modules can also be configured for use with IDPs.
+				</p></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					The management CLI commands shown assume that you are running a JBoss EAP standalone server. For more details on using the management CLI for a JBoss EAP managed domain, see the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/management_cli_guide/"><span class="emphasis"><em>Management CLI Guide</em></span></a>.
+				</p></div><div class="orderedlist"><a id="set-up-identity-store"/><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Set up the identity store.
+					</p><p class="simpara">
+						Before a security domain and login module can be configured to use an identity provider, the identity provider, and sometimes a connection to that identity provider, must be setup.
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Configure the identity store for the Database Login Module.
+							</p><p class="simpara">
+								The first item needed for a Database-backed identity store is a database for the login module to use.
+							</p><p class="simpara">
+								The following data points are needed:
+							</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+										Usernames
+									</li><li class="listitem">
+										Passwords
+									</li><li class="listitem">
+										Roles
+									</li><li class="listitem">
+										Role Groups
+									</li></ul></div><p class="simpara">
+								The Database Login module requires the ability to create a query that maps usernames to passwords, and a query that maps usernames to roles and role groups. This information can be stored within the database in a variety of ways, but creating a database with tables is not in the scope of this guide. For the purposes of this example, it is assumed the following tables have been created:
+							</p><div class="table"><a id="idm140305157614560"/><p class="title"><strong>Table 2.2. sso-users</strong></p><div class="table-contents"><table summary="sso-users" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">username</th><th style="text-align: left" valign="top">passwd</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+												Sarah
+											</p>
+											 </td><td style="text-align: left" valign="top"> <p>
+												Testing123!
+											</p>
+											 </td></tr></tbody></table></div></div><div class="table"><a id="idm140305055963568"/><p class="title"><strong>Table 2.3. sso-roles</strong></p><div class="table-contents"><table summary="sso-roles" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">username</th><th style="text-align: left" valign="top">role</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+												role-group
+											</p>
+											 </td><td style="text-align: left" valign="top"> <p>
+												Sarah
+											</p>
+											 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+												Sample
+											</p>
+											 </td><td style="text-align: left" valign="top"> <p>
+												SSO-Users
+											</p>
+											 </td></tr></tbody></table></div></div><p class="simpara">
+								Creating datasources is not in the scope of this guide. For details on setting up a datasource, see the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuration_guide/#datasource_management">Datasource Management</a> section of the JBoss EAP <span class="emphasis"><em>Configuration Guide</em></span>.
+							</p><p class="simpara">
+								For the purposes of this example, it is assumed that a datasource named <code class="literal">idpDS</code> has been created, properly configured, and deployed to the JBoss EAP instance. This datasource has a connection to the database storing the <code class="literal">sso-users</code> and <code class="literal">sso-roles</code> tables.
+							</p></li><li class="listitem"><p class="simpara">
+								Configure the identity store for the LDAP login module.
+							</p><p class="simpara">
+								A properly configured LDAP server is required prior to setting up the LDAP login module. Unlike the Database login module, a datasource is not needed for setting up the LDAP login module. The basics of LDAP and how it relates to JBoss EAP security are covered in the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/#ldap"><span class="emphasis"><em>Security Architecture</em></span> guide</a>.
+							</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+										Set up an LDAP server.
+									</p><p class="simpara">
+										Setting up an LDAP server is not in the scope of this guide. For the purposes of this example, the LDAP server can be reached at <code class="literal"><a class="link" href="http://ldaphost.example.com:1389/">http://ldaphost.example.com:1389/</a></code>.
+									</p></li><li class="listitem"><p class="simpara">
+										Example directory information.
+									</p><p class="simpara">
+										The directory structure and organization of an LDAP server can vary greatly depending on the use case and organizational needs. For the purposes of this example, the below entries have been created, shown in LDIF format:
+									</p><pre class="screen">dn: dc=example,dc=com
+objectclass: top
+objectclass: dcObject
+objectclass: organization
+dc: example
+o:  Example
+#=============================
+dn: ou=People,dc=example,dc=com
+objectclass: top
+objectclass: organizationalUnit
+ou: People
+#=============================
+dn: uid=jsmith,ou=People,dc=example,dc=com
+objectclass: top
+objectclass: uidObject
+objectclass: person
+uid: jsmith
+cn: John
+sn: Smith
+userPassword: theduke
+#=============================
+dn: ou=Roles,dc=example,dc=com
+objectclass: top
+objectclass: organizationalUnit
+ou: Roles
+#=============================
+dn: cn=Sample,ou=Roles,dc=example,dc=com
+objectclass: top
+objectclass: groupOfNames
+cn: Sample
+member: uid=jsmith,ou=People,dc=example,dc=com
+description: the Sample group</pre></li></ol></div></li></ol></div></li><li class="listitem"><p class="simpara">
+						Add the security domain.
+					</p><p class="simpara"><a id="add-security-domain"/>
+						Once the identity store itself has been setup, and the connection between the JBoss EAP instance and the identity store has been configured, the security domain can be created and configured. The following command shows how to create an empty security domain. Replace <code class="literal">MY-DOMAIN</code> with the desired name of the security domain.
+					</p><div class="title"><strong>Management CLI Command for Adding a Security Domain</strong></div><p>
+							
+</p><pre class="screen">/subsystem=security/security-domain=<span class="emphasis"><em>MY-DOMAIN</em></span>:add(cache-type=default)</pre><p>
+
+						</p></li><li class="listitem"><p class="simpara">
+						Add the authentication section and login module to the security domain. After the empty security domain has been created, the authentication section must be created with a login module added to it. The below command shows how to add an empty authentication section to an existing security domain.
+					</p><div class="title"><strong>Management CLI Command for Adding an Authentication Section to a Security Domain</strong></div><p>
+							
+</p><pre class="screen">/subsystem=security/security-domain=<span class="emphasis"><em>MY-DOMAIN</em></span>/authentication=classic:add</pre><p>
+
+						</p><p class="simpara">
+						Once the empty authentication section has been created, a login module can be added to it and configured to use the desired identity store. After adding a login module to a security domain, a configuration reload is usually required.
+					</p><p class="simpara">
+						Below is the general command structure for adding a login module and reloading the configuration. Replace <code class="literal">MY-DOMAIN</code>, <code class="literal">MY-LOGIN-MODULE</code>, and <code class="literal">MY-CONFIGURATION</code> with the appropriate values:
+					</p><pre class="screen">/subsystem=security/security-domain=<span class="emphasis"><em>MY-DOMAIN</em></span>/authentication=classic/login-module=<span class="emphasis"><em>MY-LOGIN-MODULE</em></span>:add(<span class="emphasis"><em>MY-CONFIGURATION</em></span>)
+
+reload</pre><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+								Add a Database login module.
+							</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+									This example assumes a datasource named <code class="literal">idpDS</code> has been created in <a class="link" href="how_to_set_up_sso_with_saml_v2.html#set-up-identity-store">Step 1</a> and a security domain named <code class="literal">idp-db-domain</code> was created in <a class="link" href="how_to_set_up_sso_with_saml_v2.html#add-security-domain">Step 2</a>.
+								</p></div><div class="title"><strong>Management CLI Command for Configuring the Authentication Section to use the Database Login Module</strong></div><p>
+									
+</p><pre class="screen">/subsystem=security/security-domain=idp-db-domain/authentication=classic/login-module=Database:add(code=Database,flag=required,module-options=[("dsJndiName"=&gt;"java:/idpDS"),("principalsQuery"=&gt;"select passwd from 'sso-users' where username=?"),("rolesQuery"=&gt;"select role, role-group from 'sso-roles' where username=?")])
+
+reload</pre><p>
+
+								</p></li><li class="listitem"><p class="simpara">
+								Add an LDAP login module.
+							</p><p class="simpara">
+								The steps necessary for configuring the <code class="literal">LdapExtended</code> login module can be found in <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_configure_identity_management/#configure_a_security_domain_to_use_ldap"><span class="emphasis"><em>How to Configure Identity Management</em></span></a>.
+							</p></li></ul></div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configure-ssl-idps-sps"/>Configuring SSL/TLS with SPs and IDPs</h1></div></div></div><p>
+				The basics of SSL/TLS are covered in the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/security_architecture/#ssl_tls_and_certificates"><span class="emphasis"><em>Security Architecture</em></span> guide</a>. Adding SSL/TLS support to a browser-based SSO environment is not much different from adding it to non-SSO environment. Both the IDPs and SPs can have an HTTPS connector added to allow for traffic to be secured.
+			</p><p>
+				If one has not already been created, a security realm with an SSL/TLS server identity must be created. It must also be configured with an SSL/TLS certificate.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="setup-ssl-realm-and-undertow"/>Enable One-way SSL/TLS for Applications Using Legacy Security Realms</h2></div></div></div><p>
+					This example assumes that the keystore, <code class="literal">identity.jks</code>, has been copied to the server configuration directory and configured with the given properties. Administrators should substitute their own values for the example ones.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						The management CLI commands shown assume that you are running a JBoss EAP standalone server. For more details on using the management CLI for a JBoss EAP managed domain, see the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/management_cli_guide/"><span class="emphasis"><em>Management CLI Guide</em></span></a>.
+					</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Add and configure an HTTPS security realm first. Once the HTTPS security realm has been configured, configure an <code class="literal">https-listener</code> in the <code class="literal">undertow</code> subsystem that references the security realm:
+						</p><pre class="screen">batch
+
+/core-service=management/security-realm=HTTPSRealm:add
+
+/core-service=management/security-realm=HTTPSRealm/server-identity=ssl:add(keystore-path=identity.jks, keystore-relative-to=jboss.server.config.dir, keystore-password=password1, alias=appserver)
+
+/subsystem=undertow/server=default-server/https-listener=https:write-attribute(name=security-realm, value=HTTPSRealm)
+
+run-batch</pre><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+								Red Hat recommends that SSLv2, SSLv3, and TLSv1.0 be explicitly disabled in favor of TLSv1.1 or TLSv1.2 in all affected packages.
+							</p></div></li><li class="listitem">
+							Restart the JBoss EAP instance for the changes to take effect.
+						</li></ol></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring_an_identity_provider_to_use_certificate_based_authentication"/>Configuring an Identity Provider to Use Certificate-Based Authentication</h1></div></div></div><p>
+				In addition to configuring SPs and IDPs to use SSL/TLS, you can also configure an IDP to use certificate-based authentication. Before setting up an IDP to use certificate-based authentication you will need to <a class="link" href="how_to_set_up_sso_with_saml_v2.html#configure-ssl-idps-sps" title="Configuring SSL/TLS with SPs and IDPs">configure the IDPs and SPs to use SSL/TLS</a>.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Create a client certificate and truststore.
+					</p><p class="simpara">
+						You must create a certificate and truststore for clients to use to authenticate. You will need to use these in the server configuration as well as with the client’s browser.
+					</p><div class="title"><strong>Example Client Certificate and Truststore</strong></div><p>
+							
+</p><pre class="programlisting">$ keytool -genkeypair -alias client -storetype jks -keyalg RSA -keysize 2048 -keypass change_it -keystore client.jks -storepass change_it -dname "CN=client,OU=Sales,O=Systems Inc,L=Raleigh,ST=NC,C=US" -validity 730 -v
+
+$ keytool -export -alias client -keystore client.jks -storepass change_it -file client.cer
+
+$ keytool -import -file client.cer -alias client -keystore client.truststore</pre><p>
+
+						</p></li><li class="listitem"><p class="simpara">
+						Creating a Security Domain for the IDP.
+					</p><p class="simpara">
+						You need to create a security domain that uses a certificate-based login module for the IDP to use for authentication. For more details on certificate-based login modules, see the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/login_module_reference/#certificate_login_module"><span class="emphasis"><em>Login Module Reference</em></span></a>.
+					</p><div class="title"><strong>Example Security Domain with a CertificateRoles Login Module</strong></div><p>
+							
+</p><pre class="screen">/subsystem=security/security-domain=idp-cert:add
+
+/subsystem=security/security-domain=idp-cert/authentication=classic:add
+
+/subsystem=security/security-domain=idp-cert/authentication=classic/login-module=CertificateRoles:add(code=CertificateRoles,flag=optional,module-options=[("password-stacking"=&gt;"useFirstPass"),("securityDomain"=&gt;"idp-cert"),("verifier"=&gt;"org.jboss.security.auth.certs.AnyCertVerifier")])
+
+/subsystem=security/security-domain=idp-cert/jsse=classic:add(truststore={url=&gt;"/path/to/client.jks",password=&gt;change_it})
+
+reload</pre><p>
+
+						</p><p class="simpara">
+						You also need to configure your IDP to use this security domain. For more details on configuring the IDP, see the <a class="link" href="how_to_set_up_sso_with_saml_v2.html#setting_up_idp" title="Setting up an IDP">Setting up an IDP</a> section.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							You can also use the <code class="literal">RegExUserNameLoginModule</code> in conjunction with Certificate login modules to extract a username, UID, or other information from the principal name. For more details on the <code class="literal">RegExUserNameLoginModule</code>, see the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/login_module_reference/#regex-user-name-login-module"><span class="emphasis"><em>Login Module Reference</em></span></a>.
+						</p></div></li><li class="listitem">
+						Import the client certificate into the client’s browser. Once the IDP and server configuration is complete, you must configure the client’s browser to use the client certificate. This configuration varies between browsers. Once the client’s browser is configured to use the client certificate, the client will be able to authenticate with the IDP using the certificate.
+					</li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configure-idp-krb"/>Configuring an Identity Provider to Use Kerberos Authentication</h1></div></div></div><p>
+				In addition to other identity stores, an IDP can also use Kerberos as its authentication mechanism. To setup an IDP to use Kerberos, you will need to do the following:
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					It is assumed you have a working Kerberos environment.
+				</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Configure the security domains for Kerberos authentication.
+					</p><p class="simpara">
+						You can use the following commands to configure the security domains required by the IDP. For additional information, see the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_set_up_sso_with_kerberos/#configure_legacy_security_subsystem">Configure the Legacy Security Subsystem</a> section of the <span class="emphasis"><em>How to Set Up SSO with Kerberos</em></span> guide.
+					</p><pre class="screen">/subsystem=security/security-domain=host:add(cache-type=default)
+
+/subsystem=security/security-domain=host/authentication=classic:add
+
+/subsystem=security/security-domain=host/authentication=classic/login-module=Kerberos:add(code=Kerberos, flag=required, module-options=[debug=false, storeKey=true, refreshKrb5Config=true, useKeyTab=true, doNotPrompt=true, keyTab=/home/username/service.keytab, principal=host/<span class="emphasis"><em>SERVER_NAME</em></span>@<span class="emphasis"><em>REALM_NAME</em></span>])
+
+/subsystem=security/security-domain=app-spnego:add(cache-type=default)
+
+/subsystem=security/security-domain=app-spnego/authentication=classic:add
+
+/subsystem=security/security-domain=app-spnego/authentication=classic/login-module=SPNEGO:add(code=SPNEGO, flag=required, module-options=[serverSecurityDomain=host])</pre><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+							You should also ensure that all <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_set_up_sso_with_kerberos/#configure_relevant_system_properties">relevant system properties</a> are enabled as well.
+						</p></div><p class="simpara">
+						For more information on login modules, see <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/login_module_reference/#kerberos_login_module">Kerberos Login Module</a> and <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/login_module_reference/#spnego_login_module">SPNEGO Login Module</a> sections of the JBoss EAP <span class="emphasis"><em>Login Module Reference</em></span> reference.
+					</p></li><li class="listitem"><p class="simpara">
+						Configure the security domain for the SPs.
+					</p><p class="simpara">
+						You can use the following commands to configure the security domains required by the SP. For additional information, see the full documentation at <a class="link" href="how_to_set_up_sso_with_saml_v2.html#setting_up_sp" title="Setting up an SP">Setting up an SP</a>.
+					</p><pre class="screen">/subsystem=security/security-domain=sp:add(cache-type=default)
+
+/subsystem=security/security-domain=sp/authentication=classic:add
+
+/subsystem=security/security-domain=sp/authentication=classic/login-module=org.picketlink.identity.federation.bindings.jboss.auth.SAML2LoginModule:add(code=org.picketlink.identity.federation.bindings.jboss.auth.SAML2LoginModule,flag=required)</pre></li><li class="listitem"><p class="simpara">
+						Reload the server for the changes to take effect.
+					</p><pre class="screen">reload</pre></li><li class="listitem"><p class="simpara">
+						After completing the above steps the following configuration is created.
+					</p><div class="title"><strong>Example: Security Domains for the IDP and SPs</strong></div><p>
+							
+</p><pre class="programlisting">&lt;security-domain name="host" cache-type="default"&gt;
+  &lt;authentication&gt;
+    &lt;login-module code="Kerberos" flag="required"&gt;
+      &lt;module-option name="debug" value="false"/&gt;
+      &lt;module-option name="storeKey" value="true"/&gt;
+      &lt;module-option name="refreshKrb5Config" value="true"/&gt;
+      &lt;module-option name="useKeyTab" value="true"/&gt;
+      &lt;module-option name="doNotPrompt" value="true"/&gt;
+      &lt;module-option name="keyTab" value="/home/username/service.keytab"/&gt;
+      &lt;module-option name="principal" value="HTTP/testserver@MY_REALM"/&gt;
+    &lt;/login-module&gt;
+  &lt;/authentication&gt;
+&lt;/security-domain&gt;
+&lt;security-domain name="app-spnego" cache-type="default"&gt;
+    &lt;authentication&gt;
+        &lt;login-module code="SPNEGO" flag="required"&gt;
+            &lt;module-option name="serverSecurityDomain" value="host"/&gt;
+        &lt;/login-module&gt;
+    &lt;/authentication&gt;
+    &lt;mapping&gt;
+    ...
+    &lt;/mapping&gt;
+&lt;/security-domain&gt;
+&lt;security-domain name="sp" cache-type="default"&gt;
+    &lt;authentication&gt;
+        &lt;login-module code="org.picketlink.identity.federation.bindings.jboss.auth.SAML2LoginModule" flag="required"/&gt;
+    &lt;/authentication&gt;
+&lt;/security-domain&gt;</pre><p>
+
+						</p></li><li class="listitem"><p class="simpara">
+						Configure the IDP application.
+					</p><p class="simpara">
+						The process of configuring the IDP is the same as covered in the <a class="link" href="how_to_set_up_sso_with_saml_v2.html#setting_up_idp" title="Setting up an IDP">Setting up an IDP section</a>, but with the following changes:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								Declaring an additional dependency for JBoss Negotiation
+							</li><li class="listitem"><p class="simpara">
+								Configure the IDP application to use the security domain with the <code class="literal">SPNEGO</code> login module
+							</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+									When configuring the IDP, you do not need to specify the <code class="literal">PicketLinkSTS</code> element in the configuration. If it is ommited <code class="literal">PicketLink</code> will load the default configurations from a file named <code class="literal">core-sts</code> inside <code class="literal">picketlink-core-<span class="emphasis"><em>VERSION</em></span>.jar</code>.
+								</p><p>
+									Override this configuration only if you need to. For example, change the token timeout or specify a custom Security Token Provider for SAML assertions.
+								</p></div><div class="title"><strong>Example: <code class="literal">jboss-deployment-structure.xml</code> with Kerberos and Picketlink Dependencies</strong></div><p>
+									
+</p><pre class="programlisting">&lt;jboss-deployment-structure&gt;
+  &lt;deployment&gt;
+    &lt;dependencies&gt;
+      &lt;module name="org.picketlink" services="import"/&gt;
+      &lt;module name="org.jboss.security.negotiation"/&gt;
+    &lt;/dependencies&gt;
+  &lt;/deployment&gt;
+&lt;/jboss-deployment-structure&gt;</pre><p>
+
+								</p><div class="title"><strong>Example: <code class="literal">jboss-web.xml</code> in the IDP</strong></div><p>
+									
+</p><pre class="programlisting">&lt;jboss-web&gt;
+  &lt;security-domain&gt;app-spnego&lt;/security-domain&gt;
+  &lt;context-root&gt;identity&lt;/context-root&gt;
+&lt;/jboss-web&gt;</pre><p>
+
+								</p><div class="title"><strong>Example: <code class="literal">picketlink.xml</code> with the <code class="literal">PicketLinkSTS</code> Element</strong></div><p>
+									
+</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  &lt;PicketLinkIDP xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  &lt;IdentityURL&gt;${idp.url::http://localhost:8080/idp/}&lt;/IdentityURL&gt;
+    &lt;Trust&gt;
+     &lt;Domains&gt;redhat.com,localhost,amazonaws.com&lt;/Domains&gt;
+    &lt;/Trust&gt;
+  &lt;/PicketLinkIDP&gt;
+  &lt;Handlers xmlns="urn:picketlink:identity-federation:handler:config:2.1"&gt;
+      &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2IssuerTrustHandler" /&gt;
+      &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2LogOutHandler" /&gt;
+      &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2AuthenticationHandler" /&gt;
+      &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.RolesGenerationHandler" /&gt;
+  &lt;/Handlers&gt;
+  &lt;!-- The configuration bellow defines a token timeout and a clock skew. Both  configurations will be used during the SAML Assertion creation. This configuration is optional. It is defined only to show you how to set the token timeout and clock skew configuration.   --&gt;
+  &lt;PicketLinkSTS xmlns="urn:picketlink:identity-federation:config:1.0" TokenTimeout="5000" ClockSkew="0"&gt;
+    &lt;TokenProviders&gt;
+    &lt;TokenProvider
+       ProviderClass="org.picketlink.identity.federation.core.saml.v1.providers.SAML11AssertionTokenProvider"
+       TokenType="urn:oasis:names:tc:SAML:1.0:assertion"
+       TokenElement="Assertion" TokenElementNS="urn:oasis:names:tc:SAML:1.0:assertion" /&gt;
+    &lt;TokenProvider
+       ProviderClass="org.picketlink.identity.federation.core.saml.v2.providers.SAML20AssertionTokenProvider"
+       TokenType="urn:oasis:names:tc:SAML:2.0:assertion"
+       TokenElement="Assertion" TokenElementNS="urn:oasis:names:tc:SAML:2.0:assertion" /&gt;
+    &lt;/TokenProviders&gt;
+  &lt;/PicketLinkSTS&gt;
+&lt;/PicketLink&gt;</pre><p>
+
+								</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+									You must ensure that any roles configured in the IDP’s <code class="literal">web.xml</code> match up with the roles configured in your Kerberos environment. This can be accomplished by configuring a second login module in the IDP’s security domain to map the appropriate roles to after the SPNEGO authentication, or by using a mapping provider in the IDP’s security domain.
+								</p></div></li></ul></div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="picketlink-changes-from-prev-version"/>Changes from Previous Versions of JBoss EAP</h1></div></div></div><p>
+				The addition of the Undertow server in JBoss EAP 7 has introduced some changes to how SAML SSO is configured. You will have to account for these changes when setting up IDPs and SPs on JBoss EAP 7, as well as when migrating IDPs and SPs running on previous versions of JBoss EAP.
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						Valves are no longer used and their parameters are now configured using <code class="literal">context-param</code>.
+					</li><li class="listitem">
+						The dependency declaration has changed.
+					</li><li class="listitem">
+						SAML authenticators now require <code class="literal">FORM</code> authentication to be configured in <code class="literal">web.xml</code>.
+					</li><li class="listitem">
+						The dynamic account chooser configuration has changed.
+					</li></ul></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="valve_and_valve_configuration_changes"/>Valve and Valve Configuration Changes</h2></div></div></div><p>
+					In JBoss EAP 7, valves are no longer used, but similar functionality is available in Undertow handlers. The net result is that you no longer need to add the valve declaration in <code class="literal">jboss-web.xml</code>. For details on this change and how it affects migration in general, see the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/migration_guide/#migrate_custom_application_valves">Migrate Custom Application Valves section</a> of the JBoss EAP <span class="emphasis"><em>Migration Guide</em></span>.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						Other configuration, such as specifying a security domain, is still configured in <code class="literal">jboss-web.xml</code>.
+					</p></div><p>
+					Since valves are no longer used, the following items are now configured using <code class="literal">&lt;context-param&gt;</code> in <code class="literal">web.xml</code>.
+				</p><div class="title"><strong>Configuration Provider</strong></div><p>
+						
+</p><pre class="programlisting">&lt;context-param&gt;
+  &lt;param-name&gt;org.picketlink.federation.saml.CONFIG_PROVIDER&lt;/param-name&gt;
+  &lt;param-value&gt;MyConfigurationProvider&lt;/param-value&gt;
+&lt;/context-param&gt;</pre><p>
+
+					</p><div class="title"><strong>Audit Helper</strong></div><p>
+						
+</p><pre class="programlisting">&lt;context-param&gt;
+  &lt;param-name&gt;org.picketlink.federation.saml.AUDIT_HELPER&lt;/param-name&gt;
+  &lt;param-value&gt;MyAuditHelper&lt;/param-value&gt;
+&lt;/context-param&gt;</pre><p>
+
+					</p><div class="title"><strong>Configuration Refresh Internval</strong></div><p>
+						
+</p><pre class="programlisting">&lt;context-param&gt;
+  &lt;param-name&gt;org.picketlink.federation.saml.REFRESH_CONFIG_TIMER_INTERVAL&lt;/param-name&gt;
+  &lt;param-value&gt;1000&lt;/param-value&gt;
+&lt;/context-param&gt;</pre><p>
+
+					</p><div class="title"><strong>Character Encoding</strong></div><p>
+						
+</p><pre class="programlisting">&lt;context-param&gt;
+  &lt;param-name&gt;org.picketlink.federation.saml.CHARACTER_ENCODING&lt;/param-name&gt;
+  &lt;param-value&gt;UTF-8&lt;/param-value&gt;
+&lt;/context-param&gt;</pre><p>
+
+					</p><div class="title"><strong>Pass User Principal to Attribute Manager</strong></div><p>
+						
+</p><pre class="programlisting">&lt;context-param&gt;
+  &lt;param-name&gt;org.picketlink.federation.saml.PASS_USER_PRINCIPAL_TO_ATTRIBUTE_MANAGER&lt;/param-name&gt;
+  &lt;param-value&gt;true&lt;/param-value&gt;
+&lt;/context-param&gt;</pre><p>
+
+					</p><div class="title"><strong>Custom Location for picketlink.xml</strong></div><p>
+						
+</p><pre class="programlisting">&lt;context-param&gt;
+  &lt;param-name&gt;CONFIG_FILE&lt;/param-name&gt;
+  &lt;param-value&gt;/path/to/picketlink.xml&lt;/param-value&gt;
+&lt;/context-param&gt;</pre><p>
+
+					</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="dependency_declaration_changes"/>Dependency Declaration Changes</h2></div></div></div><p>
+					As with previous versions of JBoss EAP, you will still need to declare the proper dependencies using the <code class="literal">jboss-deployment-structure.xml</code> file, but you will now also need to include <code class="literal">services="import"</code> in the module. In previous versions of JBoss EAP, you would have declared this same dependency, but would have declared a valve to install the SAML authenticators and excluded <code class="literal">services="import"</code>. With the introduction of Undertow in JBoss EAP 7, you now use <code class="literal">services="import"</code> to install the SAML authenticators.
+				</p><div class="title"><strong>Using jboss-deployment-structure.xml to Declare Dependencies</strong></div><p>
+						
+</p><pre class="programlisting">&lt;jboss-deployment-structure&gt;
+  &lt;deployment&gt;
+    &lt;dependencies&gt;
+      &lt;module name="org.picketlink" services="import"/&gt;
+    &lt;/dependencies&gt;
+  &lt;/deployment&gt;
+&lt;/jboss&gt;</pre><p>
+
+					</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="picketlink-changes-authenticator-changes"/>Authenticator Changes</h2></div></div></div><p>
+					The SAML authenticators extend the <code class="literal">FORM</code> authenticator in JBoss EAP. In order to enable the SAML authenticators, you must define a <code class="literal">&lt;login-config&gt;</code> configured for <code class="literal">FORM</code> authentication in <code class="literal">web.xml</code>.
+				</p><div class="title"><strong>Example <code class="literal">web.xml</code> File</strong></div><p>
+						
+</p><pre class="programlisting">&lt;web-app&gt;
+  ...
+  &lt;login-config&gt;
+    &lt;auth-method&gt;FORM&lt;/auth-method&gt;
+    ...
+  &lt;/login-config&gt;
+&lt;/web-app&gt;</pre><p>
+
+					</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="dynamic_account_chooser_changes"/>Dynamic Account Chooser Changes</h2></div></div></div><p>
+					In previous versions of JBoss EAP, certain parts of the dynamic account chooser were configured using parameters passed to the valve. Since valves are no longer used in JBoss EAP 7, this configuration has been moved into the <code class="literal">Provider</code> element contained in <code class="literal">picketlink.xml</code>. For more details on those configuration options, see the <a class="link" href="how_to_set_up_sso_with_saml_v2.html#sso-saml-setup-account-chooser" title="Configuring a Dynamic Account Chooser">Configuring a Dynamic Account Chooser section</a>.
+				</p><p>
+					Previous versions of JBoss EAP also defined the <code class="literal">org.picketlink.identity.federation.bindings.tomcat.sp.AbstractAccountChooserValve.AccountIDPMapProvider</code> interface, which was implemented when creating a custom <code class="literal">IDPMapProvider</code>. In JBoss EAP 7, this interface no longer exists, and you must now implement the <code class="literal">org.picketlink.identity.federation.web.config.IdentityURLConfigurationProvider</code> interface. The contract on this new interface is the same.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="additional_features"/>Additional Features</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="saml_assertion_encryption"/>SAML Assertion Encryption</h2></div></div></div><p>
+					In addition to offering <a class="link" href="how_to_set_up_sso_with_saml_v2.html#configure-ssl-idps-sps" title="Configuring SSL/TLS with SPs and IDPs">SSL/TLS encryption between IDPs and SPs</a>, the SAML assertions themselves may also be encrypted. This is useful in securing SAML v2 assertions that are transmitted in an unsecured manner, for example not using SSL/TLS.
+				</p><p>
+					To enable encryption of security assertions directly in IDPs and SPs, the following steps must be performed to both the IDP and SP <code class="literal">picketlink.xml</code> files:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Enable <code class="literal">Encrypt</code> and <code class="literal">SupportsSignatures</code>.
+						</p><p class="simpara">
+							To enable encryption, the <code class="literal">&lt;PicketLinkIDP&gt;</code> and <code class="literal">&lt;PicketLinkSP&gt;</code> must be updated.
+						</p><p class="simpara">
+							For the IDP, add or update the <code class="literal">Encrypt</code> and <code class="literal">SupportsSignatures</code> attributes in <code class="literal">&lt;PicketLinkIDP&gt;</code> to be true:
+						</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;PicketLinkIDP xmlns="urn:picketlink:identity-federation:config:2.1" Encrypt="true" SupportsSignatures="true"&gt;
+    ...
+  &lt;/PicketLinkIDP&gt;
+&lt;/PicketLink&gt;</pre><p class="simpara">
+							For the SP, add or update the <code class="literal">SupportsSignatures</code> attribute in <code class="literal">&lt;PicketLinkSP&gt;</code> to be true:
+						</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;PicketLinkSP xmlns="urn:picketlink:identity-federation:config:2.1" SupportsSignatures="true"&gt;
+    ...
+  &lt;/PicketLinkSP&gt;
+&lt;/PicketLink&gt;</pre></li><li class="listitem"><p class="simpara">
+							Add handlers.
+						</p><p class="simpara">
+							In addition, handlers must be added to <code class="literal">&lt;Handlers&gt;</code>.
+						</p><p class="simpara">
+							For the IDP add <code class="literal">SAML2EncryptionHandler</code> and <code class="literal">SAML2SignatureValidationHandler</code> to the <code class="literal">picketlink.xml</code> file:
+						</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;Handlers xmlns="urn:picketlink:identity-federation:handler:config:2.1"&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2IssuerTrustHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2LogOutHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2AuthenticationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.RolesGenerationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2EncryptionHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2SignatureValidationHandler" /&gt;
+  &lt;/Handlers&gt;
+&lt;/PicketLink&gt;</pre><p class="simpara">
+							For the SP add <code class="literal">SAML2SignatureGenerationHandler</code> and <code class="literal">SAML2SignatureValidationHandler</code> to the <code class="literal">picketlink.xml</code> file:
+						</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;Handlers xmlns="urn:picketlink:identity-federation:handler:config:2.1"&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2LogOutHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2AuthenticationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.RolesGenerationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2SignatureGenerationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2SignatureValidationHandler" /&gt;
+  &lt;/Handlers&gt;
+&lt;/PicketLink&gt;</pre><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+								Handlers are implemented using a Chain of Responsibility, with each individual handler performing logic on request and responses in the order defined in <code class="literal">picketlink.xml</code>. It is very important to pay attention to the order in which the handlers are configured.
+							</p><p>
+								The <code class="literal">SAML2SignatureGenerationHandler</code> must not be configured in the same chain as the <code class="literal">SAML2EncryptoinHandler</code>. This will cause SAML messages will be signed several times.
+							</p></div></li><li class="listitem"><p class="simpara">
+							Configure key provider.
+						</p><p class="simpara">
+							Lastly, a <code class="literal">&lt;KeyProvider&gt;</code> element must be added to <span class="strong"><strong>BOTH</strong></span> <code class="literal">picketlink.xml</code> files. This element provides the location and credentials for accessing the Java keystore used for encrypting and decrypting security assertions. An example of generating a Java keystore can be found in the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_configure_server_security/#create_a_keystore_to_secure_the_management_interfaces"><span class="emphasis"><em>How to Configure Server Security</em></span> guide</a>.
+						</p><p class="simpara">
+							For the IDP, the element should be added to <code class="literal">&lt;PicketLinkIDP&gt;</code>:
+						</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;PicketLinkIDP xmlns="urn:picketlink:identity-federation:config:2.1" Encrypt="true" SupportsSignatures="true"&gt;
+    ...
+    &lt;KeyProvider ClassName="org.picketlink.identity.federation.core.impl.KeyStoreKeyManager"&gt;
+      &lt;Auth Key="KeyStoreURL" Value="/my_keystore.jks" /&gt;
+      &lt;Auth Key="KeyStorePass" Value="store123" /&gt;
+      &lt;Auth Key="SigningKeyPass" Value="test123" /&gt;
+      &lt;Auth Key="SigningKeyAlias" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="idp.example.com" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="localhost" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="sp1.example.com" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="sp2.example.com" Value="servercert" /&gt;
+    &lt;/KeyProvider&gt;
+    ...
+  &lt;/PicketLinkIDP&gt;
+  ...
+&lt;PicketLink&gt;</pre><p class="simpara">
+							For the SP the element should be added to <code class="literal">&lt;PicketLinkSP&gt;</code>:
+						</p><pre class="screen">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;PicketLinkSP xmlns="urn:picketlink:identity-federation:config:2.1" SupportsSignatures="true"&gt;
+    ...
+    &lt;KeyProvider ClassName="org.picketlink.identity.federation.core.impl.KeyStoreKeyManager"&gt;
+      &lt;Auth Key="KeyStoreURL" Value="/my_keystore.jks" /&gt;
+      &lt;Auth Key="KeyStorePass" Value="store123" /&gt;
+      &lt;Auth Key="SigningKeyPass" Value="test123" /&gt;
+      &lt;Auth Key="SigningKeyAlias" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="idp.example.com" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="localhost" Value="servercert" /&gt;
+    &lt;/KeyProvider&gt;
+    ...
+  &lt;/PicketLinkSP&gt;
+&lt;/PicketLink&gt;</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								In order to properly encrypt and decrypt assertions, the IDP needs to generate signatures and the SP needs to verify those signatures as well as identify where they came from. This is accomplished using the <code class="literal">&lt;ValidatingAlias&gt;</code> element. IDPs need to have a <code class="literal">&lt;ValidatingAlias&gt;</code> for each trusted server/domain that is trusted, which is every entry in the <code class="literal">&lt;Trust&gt;</code> element. SPs need to have a <code class="literal">&lt;ValidatingAlias&gt;</code> for each server/domain containing an IDP.
+							</p></div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="digital_signatures_in_assertions"/>Digital Signatures in Assertions</h2></div></div></div><p>
+					Digital Signatures allow IDPs to sign their SAML v2 security assertions and have those signatures and assertions validated by the SPs. This is useful for validating the authenticity of assertions, especially for assertions that are transmitted in an unsecured manner, for example not using SSL/TLS.
+				</p><p>
+					To enable digital signatures in security assertions directly in IDPs and SPs, the following steps must be performed to both the IDP and SP <code class="literal">picketlink.xml</code> files:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Enable <code class="literal">SupportsSignatures</code>.
+						</p><p class="simpara">
+							To enable digital signatures, the <code class="literal">&lt;PicketLinkIDP&gt;</code> and <code class="literal">&lt;PicketLinkSP&gt;</code> elements must be updated.
+						</p><p class="simpara">
+							For the IDP and SP, add or update the <code class="literal">SupportsSignatures</code> attribute in <code class="literal">&lt;PicketLinkSP&gt;</code> to be true:
+						</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;PicketLinkIDP xmlns="urn:picketlink:identity-federation:config:2.1" SupportsSignatures="true"&gt;
+    ...
+  &lt;/PicketLinkIDP&gt;
+&lt;/PicketLink&gt;</pre><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;PicketLinkSP xmlns="urn:picketlink:identity-federation:config:2.1" SupportsSignatures="true"&gt;
+    ...
+  &lt;/PicketLinkSP&gt;
+&lt;/PicketLink&gt;</pre></li><li class="listitem"><p class="simpara">
+							Add handlers.
+						</p><p class="simpara">
+							In addition, handlers must be added to <code class="literal">&lt;Handlers&gt;</code>.
+						</p><p class="simpara">
+							For the IDP and SP, add <code class="literal">SAML2SignatureGenerationHandler</code> and <code class="literal">SAML2SignatureValidationHandler</code> to the <code class="literal">picketlink.xml</code> file:
+						</p><div class="title"><strong>IDP picketlink.xml</strong></div><p>
+								
+</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;Handlers xmlns="urn:picketlink:identity-federation:handler:config:2.1"&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2IssuerTrustHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2LogOutHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2AuthenticationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.RolesGenerationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2SignatureGenerationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2SignatureValidationHandler" /&gt;
+  &lt;/Handlers&gt;
+&lt;/PicketLink&gt;</pre><p>
+
+							</p><div class="title"><strong>SP picketlink.xml</strong></div><p>
+								
+</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;Handlers xmlns="urn:picketlink:identity-federation:handler:config:2.1"&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2LogOutHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2AuthenticationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.RolesGenerationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2SignatureGenerationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2SignatureValidationHandler" /&gt;
+  &lt;/Handlers&gt;
+&lt;/PicketLink&gt;</pre><p>
+
+							</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+								Handlers are implemented using a Chain of Responsibility, with each individual handler performing logic on request and responses in the order defined in <code class="literal">picketlink.xml</code>. It is very important to pay attention to the order in which the handlers are configured.
+							</p><p>
+								The <code class="literal">SAML2SignatureGenerationHandler</code> must not be configured in the same chain as the <code class="literal">SAML2EncryptionHandler</code>. This will cause SAML messages will be signed several times.
+							</p></div></li><li class="listitem"><p class="simpara">
+							Configure key provider.
+						</p><p class="simpara">
+							Lastly, a <code class="literal">&lt;KeyProvider&gt;</code> element must be added to <span class="strong"><strong>BOTH</strong></span> <code class="literal">picketlink.xml</code> files. This element provides the location and credentials for accessing the Java keystore used for signing security assertions. An example of generating a Java keystore can be found in the JBoss EAP <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/how_to_configure_server_security/#create_a_keystore_to_secure_the_management_interfaces"><span class="emphasis"><em>How to Configure Server Security</em></span> guide</a>.
+						</p><p class="simpara">
+							For the IDP, the element should be added to <code class="literal">&lt;PicketLinkIDP&gt;</code>:
+						</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;PicketLinkIDP xmlns="urn:picketlink:identity-federation:config:2.1" SupportsSignatures="true"&gt;
+    ...
+    &lt;KeyProvider ClassName="org.picketlink.identity.federation.core.impl.KeyStoreKeyManager"&gt;
+      &lt;Auth Key="KeyStoreURL" Value="/my_keystore.jks" /&gt;
+      &lt;Auth Key="KeyStorePass" Value="store123" /&gt;
+      &lt;Auth Key="SigningKeyPass" Value="test123" /&gt;
+      &lt;Auth Key="SigningKeyAlias" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="idp.example.com" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="localhost" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="sp1.example.com" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="sp2.example.com" Value="servercert" /&gt;
+    &lt;/KeyProvider&gt;
+    ...
+  &lt;/PicketLinkIDP&gt;
+  ...
+&lt;PicketLink&gt;</pre><p class="simpara">
+							For the SP the element should be added to <code class="literal">&lt;PicketLinkSP&gt;</code>:
+						</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;PicketLinkSP xmlns="urn:picketlink:identity-federation:config:2.1" SupportsSignatures="true"&gt;
+    ...
+    &lt;KeyProvider ClassName="org.picketlink.identity.federation.core.impl.KeyStoreKeyManager"&gt;
+      &lt;Auth Key="KeyStoreURL" Value="/my_keystore.jks" /&gt;
+      &lt;Auth Key="KeyStorePass" Value="store123" /&gt;
+      &lt;Auth Key="SigningKeyPass" Value="test123" /&gt;
+      &lt;Auth Key="SigningKeyAlias" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="idp.example.com" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="localhost" Value="servercert" /&gt;
+    &lt;/KeyProvider&gt;
+    ...
+  &lt;/PicketLinkSP&gt;
+&lt;/PicketLink&gt;</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								In order to properly encrypt and decrypt assertions, the IDP needs to generate signatures and the SP needs to verify those signatures as well as identify where they came from. This is accomplished using the <code class="literal">&lt;ValidatingAlias&gt;</code> element. IDPs need to have a <code class="literal">&lt;ValidatingAlias&gt;</code> for each trusted server/domain that is trusted, which is every entry in the <code class="literal">&lt;Trust&gt;</code> element. SPs need to have a <code class="literal">&lt;ValidatingAlias&gt;</code> for each server/domain containing an IDP.
+							</p></div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sso-saml-setup-account-chooser"/>Configuring a Dynamic Account Chooser</h2></div></div></div><p>
+					If a service provider is configured with multiple identity providers, you can configure that service provider to prompt the user to choose which IDP to use to authenticate their credentials. To configure a service provider with a dynamic account chooser, must to do the following:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Configure all identity providers.
+						</p><p class="simpara">
+							For more details on setting up identity providers, see the <a class="link" href="how_to_set_up_sso_with_saml_v2.html#setting_up_idp" title="Setting up an IDP">Setting up an IDP</a> section.
+						</p></li><li class="listitem"><p class="simpara">
+							Configure a <code class="literal">WEB-INF/idpmap.properties</code> file.
+						</p><p class="simpara">
+							You need to create a <code class="literal">WEB-INF/idpmap.properties</code> file that lists all available identity providers using the format <code class="literal">name=url</code>.
+						</p><div class="title"><strong>Example <code class="literal">WEB-INF/idpmap.properties</code></strong></div><p>
+								
+</p><pre class="screen">Domain=http://localhost:8080/idp/
+Domain-Alt=http://localhost:8080/idp-alt/</pre><p>
+
+							</p></li><li class="listitem"><p class="simpara">
+							Create an account chooser landing page.
+						</p><p class="simpara">
+							In order for the user to select an identity provider to authenticate against, you must create an account chooser landing page to present to them, and include it in your service provider. This page should contain links to all identity providers that you want to allow them to authenticate against.
+						</p><div class="title"><strong>Example <code class="literal">accountChooser.html</code></strong></div><p>
+								
+</p><pre class="programlisting">&lt;html&gt;
+  &lt;head&gt;...&lt;/head&gt;
+  &lt;body&gt;
+    &lt;h1&gt;Account Chooser&lt;/h1&gt;
+    &lt;ul&gt;
+      &lt;li&gt;&lt;a href="?idp=Domain"&gt;Domain&lt;/a&gt;
+      &lt;li&gt;&lt;a href="?idp=Domain-Alt"&gt;Domain Alt&lt;/a&gt;
+    &lt;/ul&gt;
+  &lt;/body&gt;
+&lt;/html&gt;</pre><p>
+
+							</p></li><li class="listitem"><p class="simpara">
+							Configure the <code class="literal">IdentityURL</code> element in <code class="literal">picketlink.xml</code>.
+						</p><p class="simpara">
+							You will also need to configure the <code class="literal">IdentityURL</code> element in <code class="literal">picketlink.xml</code> to reference the account chooser landing page. For more details on configuring the rest of <code class="literal">picketlink.xml</code> for the service provider, please see the <a class="link" href="how_to_set_up_sso_with_saml_v2.html#setting_up_sp" title="Setting up an SP">Setting up an SP</a> section.
+						</p><div class="title"><strong>Example <code class="literal">picketlink.xml</code></strong></div><p>
+								
+</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  &lt;PicketLinkSP xmlns="urn:picketlink:identity-federation:config:2.1" BindingType="REDIRECT"&gt;
+    &lt;IdentityURL&gt;
+      &lt;Provider Page="/accountChooser.html"/&gt;
+    &lt;/IdentityURL&gt;
+    ...
+  &lt;/PicketLinkSP&gt;
+  &lt;Handlers xmlns="urn:picketlink:identity-federation:handler:config:2.1"&gt;
+    ...
+  &lt;/Handlers&gt;
+&lt;/PicketLink&gt;</pre><p>
+
+							</p><p class="simpara">
+							You can configure additional options for the dynamic account chooser using the attributes available in the <code class="literal">Provider</code> element.
+						</p><div class="table"><a id="idm140305121221728"/><p class="title"><strong>Table 2.4. Provider Element Attributes</strong></p><div class="table-contents"><table summary="Provider Element Attributes" border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/><col class="col_4"/></colgroup><thead><tr><th style="text-align: left" valign="top">Option</th><th style="text-align: left" valign="top">Type</th><th style="text-align: left" valign="top">Default</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+											Page
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											String
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											/accountChooser.html
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											The name of the HTML/JSP page for listing the different IDP accounts.
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											Expiration
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											Integer
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											-1
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											The cookie expiry in seconds. Default is <code class="literal">-1</code>, which means the cookie expires when the browser is closed.
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											DefaultURL
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											String
+										</p>
+										 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+											URL of the default IDP.
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											Domain
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											String
+										</p>
+										 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+											The domain name to be used for the cookie that is sent to the user’s browser.
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											Type
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											String
+										</p>
+										 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+											The fully qualified name of the implementation for IDP Mapping to replace the default implementation. This implementation must implement <code class="literal">org.picketlink.identity.federation.web.config.IdentityURLConfigurationProvider</code>. The default implementation uses the <code class="literal">WEB-INF/idpmap.properties</code> file in your SP web application.
+										</p>
+										 </td></tr></tbody></table></div></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+								Configuring a dynamic account chooser using the <code class="literal">picketlink-federation</code> subsystem is not supported.
+							</p></div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="handling_ajax_requests"/>Handling AJAX Requests</h2></div></div></div><p>
+					In certain instances, SPs may need to receive AJAX requests to secured resources. This is handled automatically without the need of any additional configuration, and enables authenticated and authorized users to make AJAX calls.
+				</p><p>
+					This is accomplished by checking for the existence of the <code class="literal">X-Requested-With</code> header in the request. AJAX requests are identified by the value <code class="literal">XMLHttpRequest</code> in the <code class="literal">X-Requested-With</code> header. In addition, in cases where a user is not authenticated and sends a request to both the IDP and SP using AJAX, PicketLink will respond with a <code class="literal">403</code> HTTP status code instead of the login page.
+				</p><p>
+					<br/><br/><br/><br/>
+				</p><p>
+					<span class="emphasis"><em><span class="right">Revised on 2019-05-02 08:54:18 UTC</span></em></span>
+				</p></div></div></div></body></html>

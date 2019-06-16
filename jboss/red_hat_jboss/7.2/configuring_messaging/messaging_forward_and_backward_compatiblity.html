@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 32. Backward and Forward Compatibility</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="messaging_forward_and_backward_compatiblity"/>Chapter 32. Backward and Forward Compatibility</h1></div></div></div><p>
+				JBoss EAP supports both backward and forward compatibility with legacy versions of JBoss EAP that were using HornetQ as their messaging brokers, such as JBoss EAP 6. These two compatibility modes are provided by the JBoss EAP built-in messaging server, ActiveMQ Artemis, that supports the HornetQ’s core protocol.
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<a class="link" href="messaging_forward_and_backward_compatiblity.html#messaging_forward_compatiblity" title="Forward Compatibility">Forward compatibility</a>: Legacy JMS clients using HornetQ can connect to a JBoss EAP 7 server running ActiveMQ Artemis.
+					</li><li class="listitem">
+						<a class="link" href="messaging_forward_and_backward_compatiblity.html#messaging_backward_compatiblity" title="Backward Compatibility">Backward compatibility</a>: JBoss EAP 7 JMS clients using JBoss EAP messaging can connect to the legacy JBoss EAP 6 server running HornetQ.
+					</li></ul></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="messaging_forward_compatiblity"/>Forward Compatibility</h1></div></div></div><p>
+					Forward compatibility requires no code changes to legacy JBoss EAP 6 JMS clients. Support is provided by the JBoss EAP <code class="literal">messaging-activemq</code> subsystem and its resources. To enable support of forward compatibility make the following changes to the configuration of the JBoss EAP 7 server. Example management CLI commands for a standalone server are provided for each step.
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							Create a <code class="literal">socket-binding</code> the listens on port 4447 for remote legacy clients.
+						</p><pre class="screen">/socket-binding-group=standard-sockets/socket-binding=legacy-remoting:add(port=4447)</pre></li><li class="listitem"><p class="simpara">
+							Create a legacy <code class="literal">remote-connector</code> that will use the <code class="literal">socket-binding</code> created in the previous step. This is required for JNDI lookups.
+						</p><pre class="screen">/subsystem=remoting/connector=legacy-remoting-connector:add(socket-binding=legacy-remoting)</pre></li><li class="listitem"><p class="simpara">
+							Set up a legacy messaging <code class="literal">socket-binding</code> that listens on port 5445.
+						</p><pre class="screen">/socket-binding-group=standard-sockets/socket-binding=legacy-messaging:add(port=5445)</pre></li><li class="listitem"><p class="simpara">
+							Set up a <code class="literal">remote-connector</code> and a <code class="literal">remote-acceptor</code> in the <code class="literal">messaging-activemq</code> subsystem that use the binding from the previous step.
+						</p><pre class="screen">/subsystem=messaging-activemq/server=default/remote-connector=legacy-messaging-connector:add(socket-binding=legacy-messaging)
+
+/subsystem=messaging-activemq/server=default/remote-acceptor=legacy-messaging-acceptor:add(socket-binding=legacy-messaging)</pre></li><li class="listitem"><p class="simpara">
+							Create a legacy HornetQ JMS ConnectionFactory in the <code class="literal">legacy-connection-factory</code> element of the <code class="literal">messaging-activemq</code> subsystem.
+						</p><pre class="screen">/subsystem=messaging-activemq/server=default/legacy-connection-factory=legacy-discovery:add(entries=[java:jboss/exported/jms/LegacyRemoteConnectionFactory], connectors=[legacy-messaging-connector])</pre></li><li class="listitem"><p class="simpara">
+							Create legacy HornetQ JMS destinations and include <code class="literal">legacy-entries</code> attributes to the <code class="literal">jms-queue</code> or <code class="literal">jms-topic</code> resources.
+						</p><pre class="screen">jms-queue add --queue-address=myQueue --entries=[java:jboss/exported/jms/myQueue-new] --legacy-entries=[java:jboss/exported/jms/myQueue]
+
+jms-topic add --topic-address=myTopic --entries=[java:jboss/exported/jms/myTopic-new] --legacy-entries=[java:jboss/exported/jms/myTopic]</pre><p class="simpara">
+							You can add <code class="literal">legacy-entries</code> to an existing queue or topic by following the below example.
+						</p><pre class="screen">/subsystem=messaging-activemq/server=default/jms-queue=myQueue:write-attribute(name=legacy-entries,value=[java:jboss/exported/jms/myQueue])</pre><p class="simpara">
+							While the <code class="literal">entries</code> attributes are used by JBoss EAP messaging JMS clients, the <code class="literal">legacy-entries</code> are used by the legacy HornetQ JMS clients. Legacy JMS clients look up this legacy JMS resource to communicate with JBoss EAP 7.
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								To avoid any code change in the legacy JMS clients, the legacy JNDI entries configured in the <code class="literal">messaging-activemq</code> subsystem must match the lookup expected by the legacy JMS client.
+							</p></div></li></ul></div><h3><a id="management_cli_migrate_operation"/>Management CLI migrate Operation</h3><p>
+					When you run the management CLI <code class="literal">migrate</code> operation to update your <code class="literal">messaging</code> subsystem configuration, if the boolean argument <code class="literal">add-legacy-entries</code> is set to <code class="literal">true</code>, the <code class="literal">messaging-activemq</code> subsystem creates the <code class="literal">legacy-connection-factory</code> resource and adds <code class="literal">legacy-entries</code> to the <code class="literal">jms-queue</code> and <code class="literal">jms-topic</code> resources. The legacy entries in the migrated <code class="literal">messaging-activemq</code> subsystem will correspond to the entries specified in the legacy <code class="literal">messaging</code> subsystem and the regular entries are created with a <code class="literal">-new</code> suffix.
+				</p><p>
+					If the boolean argument <code class="literal">add-legacy-entries</code> is set to <code class="literal">false</code> when you run the <code class="literal">migrate</code> operation, no legacy resources are created in the <code class="literal">messaging-activemq</code> subsystem and legacy JMS clients will not be able to communicate with the JBoss EAP 7 servers.
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="messaging_backward_compatiblity"/>Backward Compatibility</h1></div></div></div><p>
+					Backward compatibility requires no configuration change in the legacy JBoss EAP 7 servers. JBoss EAP 7 JMS clients do not look up resources on the legacy server, but instead use client-side JNDI to create JMS resources. JBoss EAP 7 JMS clients can then use these resources to communicate with the legacy server using the HornetQ core protocol.
+				</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+						JBoss EAP 7 client connections to a JBoss EAP 5 server are currently not supported.
+					</p></div><p>
+					JBoss EAP messaging supports client-side JNDI to create JMS <code class="literal">ConnectionFactory</code> and <code class="literal">Destination</code> resources.
+				</p><p>
+					For example, if a JBoss EAP 7 JMS client wants to communicate with a legacy server using a JMS queue named "myQueue", it must use the following properties to configure its JNDI <code class="literal">InitialContext</code>:
+				</p><pre class="screen">java.naming.factory.initial=org.apache.activemq.artemis.jndi.ActiveMQInitialContextFactory
+connectionFactory.jms/ConnectionFactory=tcp://&lt;legacy server address&gt;:5445? \
+    protocolManagerFactoryStr=org.apache.activemq.artemis.core.protocol.hornetq.client.HornetQClientProtocolManagerFactory
+queue.jms/myQueue=myQueue</pre><p>
+					The client can then use the <code class="literal">jms/ConnectionFactory</code> name to create the JMS <code class="literal">ConnectionFactory</code> and use the <code class="literal">jms/myQueue</code> to create the JMS <code class="literal">Queue</code>. Note that the property <code class="literal">protocolManagerFactoryStr=org.apache.activemq.artemis.core.protocol.hornetq.client.HornetQClientProtocolManagerFactory</code> is mandatory when specifying the URL of the legacy connection factory. This allows the JBoss EAP messaging JMS client to communicate with the HornetQ broker in the legacy server.
+				</p></div></div></body></html>

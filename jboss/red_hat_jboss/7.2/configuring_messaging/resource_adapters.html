@@ -1,0 +1,653 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 31. Resource Adapters</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="resource_adapters"/>Chapter 31. Resource Adapters</h1></div></div></div><p>
+				A Java Connector Architecture (JCA) Resource Adapter lets your applications communicate with any messaging provider. It configures how JEE components such as MDBs and other EJBs, and even Servlets, can send or receive messages.
+			</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="about_integrated_artemis_resource_adapter"/>About the Integrated Artemis Resource Adapter</h1></div></div></div><p>
+					JBoss EAP 7 includes an integrated Artemis resource adapter, which uses the <code class="literal">pooled-connection-factory</code> element to configure the outbound and inbound connections of the resource adapter.
+				</p><h3><a id="about_integrated_artemis_resource_adapter_outbound_connection"/>Outbound Connection</h3><p>
+					Outbound connections are defined using the <code class="literal">pooled-connection-factory</code> element, which is then used in Java EE deployments by EJBs and servlets to send messages to and receive messages from queues or topics. Because connections created from connection factories are created in the scope of the application server, they can use application server features like the following:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							Connection pooling
+						</li><li class="listitem">
+							Authentication using the security domains defined by the application server
+						</li><li class="listitem">
+							Participation in XA transactions using the transaction manager
+						</li></ul></div><p>
+					This is a major difference with a <code class="literal">pooled-connection-factory</code> as these features are not available with a basic <code class="literal">connection-factory</code> like <code class="literal">InVmConnectionFactory</code> or <code class="literal">RemoteConnectionFactory</code>. Also, be aware that with a connection factory defined using <code class="literal">pooled-connection-factory</code>, it is not possible to do a lookup using JNDI from an external standalone JMS client.
+				</p><h3><a id="about_integrated_artemis_resource_adapter_inbound_connection"/>Inbound Connections</h3><p>
+					Inbound connections are used only by message-driven beans (MDBs) to receive message from a queue or a topic. MDBs are stateless session beans that listen on a queue or topic. They must implement the public <code class="literal">onMessage(Message message)</code> method, which is called when a message is sent to a queue or a topic. The Artemis resource adapter is responsible for receiving the message from the queue or the topic and passing it to the <code class="literal">onMessage(Message message)</code> method. For this purpose it configures the inbound connection, which defines the location of the integrated Artemis server and some additional elements.
+				</p><p>
+					Each MDB session bean uses a thread from the client thread pool to consume the message from the destination. If the maximum pool size is not defined, it is determined to be eight (8) times the number of CPU core processors. For systems with many MDB sessions, such as test suites, this can potentially lead to thread exhaustion and force MDBs to wait for a free thread from the pool. You can increase the maximum pool size of client thread pool using the management CLI. The following command sets the maximum client thread pool size to <code class="literal">128</code>.
+				</p><pre class="screen">/subsystem=messaging-activemq:write-attribute(name=global-client-thread-pool-max-size,value=128)</pre><p>
+					For information about how to configure the client thread pool size, see <a class="link" href="server-side_thread_management.html#client-side_thread_management" title="Client Thread Management">Client Thread Management</a>. For more information about MDBs, see <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/developing_ejb_applications/#message_driven_beans-1">Message Driven Beans</a> in <span class="emphasis"><em>Developing EJB Applications</em></span> for JBoss EAP.
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="use_provided_amq_adapter"/>Using the Integrated Artemis Resource Adapter for Remote Connections</h1></div></div></div><p>
+					JBoss EAP includes a resource adapter to make connections to its integrated ActiveMQ Artemis messaging server. By default the <code class="literal">pooled-connection-factory</code> defined in the <code class="literal">messaging-activemq</code> subsystem uses the adapter to make the connections. However, you can use the same resource adapter to make connections to an Artemis server running inside a remote instance of JBoss EAP as well.
+				</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						The <code class="literal">activemq-ra</code> pooled connection factory, which is configured by default in the <code class="literal">messaging-activemq</code> subsystem, has the <code class="literal">java:jboss/DefaultJMSConnectionFactory</code> entry assigned. This entry is required by the <code class="literal">messaging-activemq</code> subsystem. If you decide to remove the <code class="literal">activemq-ra</code> pooled connection factory, you must assign this entry to a different connection factory. Otherwise you will see the following error in the server log on deployment.
+					</p><pre class="screen">WFLYCTL0412: Required services that are not installed:" =&gt; ["jboss.naming.context.java.jboss.DefaultJMSConnectionFactory"]</pre></div><p>
+					To connect to an Artemis server running inside a remote instance of JBoss EAP, create a new <code class="literal">pooled-connection-factory</code> by following the steps below.
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Create an outbound-socket-binding pointing to the remote messaging server:
+						</p><pre class="screen">/socket-binding-group=standard-sockets/remote-destination-outbound-socket-binding=remote-server:add(host=&lt;server host&gt;, port=8080)</pre></li><li class="listitem"><p class="simpara">
+							Create a remote-connector referencing the outbound-socket-binding created in step 1.
+						</p><pre class="screen">/subsystem=messaging-activemq/server=default/http-connector=remote-http-connector:add(socket-binding=remote-server,endpoint=http-acceptor)</pre></li><li class="listitem"><p class="simpara">
+							Create a pooled-connection-factory referencing the remote-connector created in step 2.
+						</p><pre class="screen">/subsystem=messaging-activemq/server=default/pooled-connection-factory=remote-artemis:add(connectors=[remote-http-connector], entries=[java:/jms/remoteCF])</pre></li></ol></div><h3><a id="remote_artemis_configuring_mdb_pooled_connections"/>Configuring an MDB to use a pooled-connection-factory</h3><p>
+					After the <code class="literal">pooled-connection-factory</code> is configured to connect to a remote Artemis server, Message-Driven Beans (MDB) wanting to read messages from the remote server must be annotated with the <code class="literal">@ResourceAdapter</code> annotation using the name of the <code class="literal">pooled-connection-factory</code> resource.
+				</p><pre class="programlisting">import org.jboss.ejb3.annotation.ResourceAdapter;
+
+@ResourceAdapter("remote-artemis")
+@MessageDriven(name = "MyMDB", activationConfig = { ... })
+public class MyMDB implements MessageListener {
+    public void onMessage(Message message) {
+       ...
+    }
+}</pre><p>
+					If the MDB needs to send messages to the remote server, it must inject the <code class="literal">pooled-connection-factory</code> by looking it up using one of its JNDI <code class="literal">entries</code>.
+				</p><pre class="programlisting">@Inject
+@JMSConnectionFactory("java:/jms/remoteCF")
+private JMSContext context;</pre><h3><a id="remote_artemis_configuring_the_jms_destination"/>Configuring the JMS destination</h3><p>
+					An MDB must also specify the destination from which it will consume messages. The standard way to do this is to define a <code class="literal">destinationLookup</code> activation config property that corresponds to a JNDI lookup on the local server.
+				</p><pre class="programlisting">@ResourceAdapter("remote-artemis")
+@MessageDriven(name = "MyMDB", activationConfig = {
+    @ActivationConfigProperty(propertyName = "destinationLookup", propertyValue = "myQueue"),
+    ...
+})
+public class MyMDB implements MessageListener {
+    ...
+}</pre><p>
+					If the local server does not include a JNDI binding for the remote Artemis server, specify the name of the destination, as configured in the remote Artemis server, using the <code class="literal">destination</code> activation config property and set the <code class="literal">useJNDI</code> activation config property to <code class="literal">false</code>. This instructs the Artemis resource adapter to automatically create the JMS destination without requiring a JNDI lookup.
+				</p><pre class="programlisting">@ResourceAdapter("remote-artemis")
+@MessageDriven(name = "MyMDB", activationConfig = {
+    @ActivationConfigProperty(propertyName = "useJNDI", propertyValue = "false"),
+    @ActivationConfigProperty(propertyName = "destination", propertyValue = "myQueue"),
+    ...
+})
+public class MyMDB implements MessageListener {
+    ...
+}</pre><p>
+					In the above example, the activation config properties configure the MDB to consume messages from the JMS Queue named <code class="literal">myQueue</code> hosted on the remote Artemis server. In most cases, the MDB does not need to lookup other destinations to process the consumed messages, and it can use the <code class="literal">JMSReplyTo</code> destination if it is defined on the message.
+				</p><p>
+					If the MDB needs any other JMS destinations defined on the remote server, it must use client-side JNDI. See <a class="link" href="acceptors_and_connectors.html#connecting_to_messaging_server" title="Connecting to a Server">Connecting to a Server</a> for more information.
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="using_jboss_amq_for_remote_jms_communication"/>Configuring the Artemis Resource Adapter to Connect to Red Hat AMQ</h1></div></div></div><p>
+					You can configure the integrated Artemis resource adapter to connect to a remote installation of Red Hat AMQ 7, which then becomes the JMS provider for your JBoss EAP 7.2 applications. This allows JBoss EAP to be a client for the remote Red Hat AMQ 7 server.
+				</p><p>
+					If you require support for other messaging protocols, such as AMQP or STOMP, you must configure Red Hat AMQ 7 as your messaging broker. The Artemis resource adapter integrated in the JBoss EAP server can then be used to process messages for the deployed applications.
+				</p><h3><a id="limitations_of_the_integrated_resource_adapter"/>Limitations of the Integrated Resource Adapter</h3><h4><a id="limitations_of_the_integrated_resource_adapter_dynamic_queues"/>Dynamic Creation of Queues and Topics</h4><p>
+					Be aware that the Artemis resource adapter that is integrated in JBoss EAP 7.2 does not support dynamic creation of queues and topics in the Red Hat AMQ 7 broker. You must configure all queue and topic destinations directly on the remote Red Hat AMQ 7 server.
+				</p><h4><a id="limitations_of_the_integrated_resource_adapter_connection_factories"/>Creation of Connection Factories</h4><p>
+					Although Red Hat AMQ allows connection factories to be configured using both the <code class="literal">pooled-connection-factory</code> and the <code class="literal">external-context</code>, there is a difference in the way each connection factory is created. When the <code class="literal">external-context</code> is used to create the connection factory, it creates simple JMS connection factory as defined in the <a class="link" href="https://jcp.org/en/jsr/detail?id=368">JMS specification</a>. The newly created connection factory is equivalent to the <code class="literal">RemoteConnectionFactory</code>, which is defined by default in <code class="literal">messaging-activemq</code> subsystem. This connection factory is independent of the other components in the application server, meaning it is not aware of, nor is it able to use, other components like the transaction manager or the security manager. For this reason, only the <code class="literal">pooled-connection-factory</code> can be used to create connection factories in JBoss EAP 7. The <code class="literal">external-context</code> can only be used to register JMS destinations, which are already configured on the remote AMQ 7 broker, into the JNDI tree of the JBoss EAP 7 server so that local deployments can look them up or inject them.
+				</p><p>
+					Connection factories created by configuring the <code class="literal">external-context</code> or the <code class="literal">connection-factory</code> elements cannot be used to connect to the remote AMQ 7 broker as they do not use the Artemis resource adapter. Only connection factories created by configuring the <code class="literal">pooled-connection-factory</code> element are supported for use when connecting to the remote AMQ7 broker.
+				</p><h3><a id="configure_eap_to_use_a_remote_jboss_amq_server"/>Configure JBoss EAP to Use a Remote Red Hat AMQ Server</h3><p>
+					You can use the management CLI to configure JBoss EAP to use a remote installation of Red Hat AMQ 7 as the messaging provider by following the steps below:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Configure the queue in the Red Hat AMQ 7 <code class="literal">broker.xml</code> deployment descriptor file.
+						</p><pre class="programlisting">&lt;configuration xmlns="urn:activemq"
+               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xsi:schemaLocation="urn:activemq /schema/artemis-configuration.xsd"&gt;
+
+    &lt;core xmlns="urn:activemq:core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="urn:activemq:core "&gt;
+        ...
+        &lt;acceptors&gt;
+            &lt;acceptor name="netty-acceptor"&gt;tcp://localhost:61616?anycastPrefix=jms.queue.;multicastPrefix=jms.topic.
+            &lt;/acceptor&gt;
+        &lt;/acceptors&gt;
+        &lt;addresses&gt;
+            &lt;address name="MyQueue"&gt;
+                &lt;anycast&gt;
+                    &lt;queue name="MyQueue" /&gt;
+                &lt;/anycast&gt;
+            &lt;/address&gt;
+            &lt;address name="MyOtherQueue"&gt;
+                &lt;anycast&gt;
+                    &lt;queue name="MyOtherQueue" /&gt;
+                &lt;/anycast&gt;
+            &lt;/address&gt;
+            &lt;address name="MyTopic"&gt;
+                &lt;multicast/&gt;
+            &lt;/address&gt;
+        &lt;addresses&gt;
+        ...
+    &lt;/core&gt;
+&lt;/configuration&gt;</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								The Artemis resource adapter that is included with JBoss EAP uses the ActiveMQ Artemis JMS Client 1.5.5. This client requires <code class="literal">anycastPrefix</code> and <code class="literal">multicastPrefix</code> prefixing on the address. It also expects the queue name to be the same as the address name.
+							</p></div></li><li class="listitem"><p class="simpara">
+							Create the remote connector.
+						</p><pre class="screen">/subsystem=messaging-activemq/remote-connector=netty-remote-throughput:add(socket-binding=messaging-remote-throughput)</pre><p class="simpara">
+							This creates the following <code class="literal">remote-connector</code> in the <code class="literal">messaging-activemq</code> subsystem.
+						</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+    ...
+    &lt;remote-connector name="netty-remote-throughput" socket-binding="messaging-remote-throughput"/&gt;
+    ...
+&lt;/subsystem&gt;</pre></li><li class="listitem"><p class="simpara">
+							Add the remote destination outbound socket binding.
+						</p><pre class="screen">/socket-binding-group=standard-sockets/remote-destination-outbound-socket-binding=messaging-remote-throughput:add(host=localhost, port=61616)</pre><p class="simpara">
+							This creates the following <code class="literal">remote-destination</code> in the <code class="literal">outbound-socket-binding</code> element configuration.
+						</p><pre class="programlisting">&lt;outbound-socket-binding name="messaging-remote-throughput"&gt;
+    &lt;remote-destination host="localhost" port="61616"/&gt;
+&lt;/outbound-socket-binding&gt;</pre></li><li class="listitem"><p class="simpara">
+							Add a pooled connection factory for the remote connector.
+						</p><pre class="screen">/subsystem=messaging-activemq/pooled-connection-factory=activemq-ra-remote:add(transaction=xa,entries=[java:/RemoteJmsXA, java:jboss/RemoteJmsXA],connectors=[netty-remote-throughput])</pre><p class="simpara">
+							This creates the following <code class="literal">pooled-connection-factory</code> in the <code class="literal">messaging-activemq</code> subsystem.
+						</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+    ...
+    &lt;pooled-connection-factory name="activemq-ra-remote" entries="java:/RemoteJmsXA java:jboss/RemoteJmsXA" connectors="netty-remote-throughput"/&gt;
+    ...
+&lt;/subsystem&gt;</pre></li><li class="listitem"><p class="simpara">
+							Create the <code class="literal">external-context</code> bindings for the queues and topics.
+						</p><pre class="screen">/subsystem=naming/binding=java\:global\/remoteContext:add(binding-type=external-context, class=javax.naming.InitialContext, module=org.apache.activemq.artemis, environment=[java.naming.factory.initial=org.apache.activemq.artemis.jndi.ActiveMQInitialContextFactory, java.naming.provider.url=tcp://127.0.0.1:61616, queue.MyQueue=MyQueue, queue.MyOtherQueue=MyOtherQueue, topic.MyTopic=MyTopic])</pre><p class="simpara">
+							This creates the following <code class="literal">external-context</code> bindings in the <code class="literal">naming</code> subsystem.
+						</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:naming:2.0"&gt;
+    ...
+    &lt;bindings&gt;
+        &lt;external-context name="java:global/remoteContext" module="org.apache.activemq.artemis" class="javax.naming.InitialContext"&gt;
+            &lt;environment&gt;
+                &lt;property name="java.naming.factory.initial" value="org.apache.activemq.artemis.jndi.ActiveMQInitialContextFactory"/&gt;
+                &lt;property name="java.naming.provider.url" value="tcp://127.0.0.1:61616"/&gt;
+                &lt;property name="queue.MyQueue" value="MyQueue"/&gt;
+                &lt;property name="queue.MyOtherQueue" value="MyOtherQueue"/&gt;
+                &lt;property name="topic.MyTopic" value="MyTopic"/&gt;
+            &lt;/environment&gt;
+        &lt;/external-context&gt;
+    &lt;/bindings&gt;
+    ...
+&lt;/subsystem&gt;</pre></li><li class="listitem"><p class="simpara">
+							Create the lookup entry for the JMS queues and topics by setting the JNDI name to the Red Hat AMQ 7 address name value. This creates a mapping between the JNDI name and the Red Hat AMQ 7 address name.
+						</p><pre class="screen">/subsystem=naming/binding=java\:\/MyQueue:add(lookup=java:global/remoteContext/MyQueue,binding-type=lookup)
+/subsystem=naming/binding=java\:\/MyOtherQueue:add(lookup=java:global/remoteContext/MyOtherQueue,binding-type=lookup)
+/subsystem=naming/binding=java\:\/MyTopic:add(lookup=java:global/remoteContext/MyTopic,binding-type=lookup)</pre><p class="simpara">
+							This creates the following <code class="literal">lookup</code> configurations in the <code class="literal">naming</code> subsystem.
+						</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:naming:2.0"&gt;
+    ...
+    &lt;lookup name="java:/MyQueue" lookup="java:global/remoteContext/MyQueue"/&gt;
+    &lt;lookup name="java:/MyOtherQueue" lookup="java:global/remoteContext/MyOtherQueue"/&gt;
+    &lt;lookup name="java:/MyTopic" lookup="java:global/remoteContext/MyTopic"/&gt;
+    ...
+&lt;/subsystem&gt;</pre><p class="simpara">
+							Alternatively, define the <code class="literal">/subsystem=messaging-activemq/external-jms-queue</code> or the <code class="literal">/subsystem=messaging-activemq/external-jms-topic</code> resource instead of configuring naming subsystem. For example:
+						</p><pre class="screen">/subsystem=messaging-activemq/external-jms-queue=MyQueue:add(entries=[java:/MyQueue])</pre><p class="simpara">
+							This creates the following resource:
+						</p><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:messaging-activemq:4.0"&gt;
+    ...
+    &lt;external-jms-queue name="MyQueue" entries="java:/MyQueue"/&gt;
+    ...
+&lt;/subsystem&gt;</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								The <code class="literal">external-jms-queue</code> resource does not provide operations for queue management and statistics.
+							</p></div></li></ol></div><p>
+					JBoss EAP is now configured to use the remote installation of Red Hat AMQ 7 as the messaging provider.
+				</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="deploy_amq_resource_adapter"/>Deploying a Red Hat JBoss A-MQ Resource Adapter</h1></div></div></div><p>
+					You can deploy the resource adapter provided by the Red Hat JBoss A-MQ product and have, for example, Red Hat JBoss A-MQ 6.3.0, become the external JMS provider for JBoss EAP.
+				</p><p>
+					See <a class="link" href="https://access.redhat.com/documentation/en-US/Red_Hat_JBoss_A-MQ/6.3/html/Integrating_with_JBoss_Enterprise_Application_Platform/DeployRar-InstallRar.html">Install the ActiveMQ Resource Adapter</a> in <span class="emphasis"><em>Integrating with JBoss Enterprise Application Platform</em></span>, which is in the Red Hat JBoss A-MQ documentation suite, for details on how to deploy and configure a Red Hat JBoss A-MQ resource adapter.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						Be aware that the product name changed from Red Hat JBoss A-MQ in the 6.x releases to Red Hat AMQ in the 7.x releases.
+					</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="issues_with_the_red_hat_jboss_a_mq_6_resource_adapter"/>Issues with the Red Hat JBoss A-MQ 6 Resource Adapter</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+								JBoss EAP will track and monitor applications, looking for unclosed resources. While useful in many cases, such monitoring might cause unexpected behavior when an application tries to re-use a closed instance of <code class="literal">UserTransaction</code> in a single method. Add the attribute <code class="literal">tracking="false"</code> to the <code class="literal">&lt;connection-definition/&gt;</code> element when configuring the Red Hat JBoss A-MQ resource adapter if your applications re-use connections in this way.
+							</p><pre class="programlisting">&lt;connection-definition class-name="..." tracking="false" ... /&gt;</pre></li><li class="listitem">
+								The Red Hat JBoss A-MQ 6 resource adapter does not implement <code class="literal">XAResourceWrapper</code> from the Narayana API, which is used by JBoss EAP. Consequently, when the Transaction Manager sends a commit to all the XA transaction participants and then crashes while waiting for a reply, it will go on indefinitely logging warnings until records of the committed transaction are removed from its object store.
+							</li><li class="listitem"><p class="simpara">
+								The Red Hat JBoss A-MQ 6 resource adapter returns the code <code class="literal">XAER_RMERR</code> when an error, such as a network disconnection, occurs during the call of the commit method protocol. This behavior breaks the XA specification since the correct return code should be <code class="literal">XAER_RMFAIL</code> or <code class="literal">XAER_RETRY</code>. Consequently, the transaction is left in an unknown state on the message broker side, which can cause data inconsistency in some cases. A message will be logged similar to the one below when the unexpected error code is returned.
+							</p><pre class="screen">WARN [com.arjuna.ats.jtax] ...: XAResourceRecord.rollback caused an XA error: ARJUNA016099: Unknown error code:0 from resource ... in transaction ...: javax.transaction.xa.XAException: Transaction ... has not been started.</pre></li><li class="listitem">
+								Red Hat JBoss A-MQ 6.x supports the JMS 1.1 specification that is included with Java EE 6. It does not support the JMS 2.0 specification that was introduced in Java EE 7 and is supported in JBoss EAP 7. If you need to send messages to a remote Red Hat JBoss A-MQ broker, you must use the <a class="link" href="http://docs.oracle.com/javaee/6/api/index.html?javax/jms/package-summary.html">JMS 1.1 API</a> within your application code. For more information about Red Hat JBoss A-MQ 6.x supported standards, see <a class="link" href="https://access.redhat.com/articles/375833">Red Hat JBoss A-MQ Supported Standards and Protocols</a>.
+							</li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="deploy_the_ibm_mq_resource_adapter"/>Deploying the IBM MQ Resource Adapter</h1></div></div></div><h3><a id="deploy_the_ibm_mq_resource_adapter_about"/>About IBM MQ</h3><p>
+					IBM MQ is the Messaging Oriented Middleware (MOM) product offering from IBM that allows applications on distributed systems to communicate with each other. This is accomplished through the use of messages and message queues. IBM MQ is responsible for delivering messages to the message queues and for transferring data to other queue managers using message channels. For more information about IBM MQ, see <a class="link" href="https://www.ibm.com/products/mq">IBM MQ</a> on the IBM products website.
+				</p><h3><a id="deploy_the_ibm_mq_resource_adapter_summary"/>Summary</h3><p>
+					IBM MQ can be configured as an external JMS provider for JBoss EAP 7.2. This section covers the steps to deploy and configure the IBM MQ resource adapter in JBoss EAP. This deployment and configuration can be accomplished by using the management CLI tool or the web-based management console.
+				</p><p>
+					JBoss EAP 7.2 has been tested with the following configurations.
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The IBM MQ 8.0.0.10 resource adapter was tested against the IBM MQ 8.0.0.x broker. Versions 8.0.0.0 through 8.0.0.9 of the IBM MQ resource adapter are not supported.
+						</li><li class="listitem">
+							The IBM MQ 9.0.0.4 resource adapter was tested against the IBM MQ 9.0.0.x broker. Versions 9.0.0.0 through 9.0.0.3 of the IBM MQ resource adapter are not supported.
+						</li></ul></div><p>
+					See <a class="link" href="https://access.redhat.com/articles/2026253">JBoss EAP supported configurations</a> for the most current information about the supported configurations of IBM MQ.
+				</p><h3><a id="deploy_the_ibm_mq_resource_adapter_prerequisites"/>Prerequisites</h3><p>
+					Before you get started, you must verify the version of the IBM MQ resource adapter and understand its configuration properties.
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The IBM MQ resource adapter is supplied as a Resource Archive (RAR) file called <code class="literal">wmq.jmsra.rar</code>. You can obtain the <code class="literal">wmq.jmsra.rar</code> file from <code class="literal">/opt/mqm/java/lib/jca/wmq.jmsra.rar</code>. See <a class="link" href="https://access.redhat.com/articles/2026253">JBoss EAP supported configurations</a> for information about the specific versions that are supported for each release of JBoss EAP.
+						</li><li class="listitem"><p class="simpara">
+							You must know the following IBM MQ configuration values. Refer to the IBM MQ product documentation for details about these values.
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									<span class="emphasis"><em>MQ_QUEUE_MANAGER</em></span>: The name of the IBM MQ queue manager
+								</li><li class="listitem">
+									<span class="emphasis"><em>MQ_HOST_NAME</em></span>: The host name used to connect to the IBM MQ queue manager
+								</li><li class="listitem">
+									<span class="emphasis"><em>MQ_CHANNEL_NAME</em></span>: The server channel used to connect to the IBM MQ queue manager
+								</li><li class="listitem">
+									<span class="emphasis"><em>MQ_QUEUE_NAME</em></span>: The name of the destination queue
+								</li><li class="listitem">
+									<span class="emphasis"><em>MQ_TOPIC_NAME</em></span>: The name of the destination topic
+								</li><li class="listitem">
+									<span class="emphasis"><em>MQ_PORT</em></span>: The port used to connect to the IBM MQ queue manager
+								</li><li class="listitem">
+									<span class="emphasis"><em>MQ_CLIENT</em></span>: The transport type
+								</li></ul></div></li><li class="listitem"><p class="simpara">
+							For outbound connections, you must also be familiar with the following configuration value:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									<span class="emphasis"><em>MQ_CONNECTIONFACTORY_NAME</em></span>: The name of the connection factory instance that will provide the connection to the remote system
+								</li></ul></div></li></ul></div><h3><a id="deploy_the_ibm_mq_resource_adapter_procedure"/>Procedure</h3><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						The following are default configurations provided by IBM and are subject to change. Please refer to IBM MQ documentation for more information.
+					</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							First, deploy the resource adapter manually by copying the <code class="literal">wmq.jmsra.rar</code> file to the <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/standalone/deployments/</code> directory.
+						</li><li class="listitem"><p class="simpara">
+							Next, use the management CLI to add the resource adapter and configure it.
+						</p><pre class="screen">/subsystem=resource-adapters/resource-adapter=wmq.jmsra.rar:add(archive=wmq.jmsra.rar, transaction-support=XATransaction)</pre><p class="simpara">
+							Note that the <code class="literal">transaction-support</code> element was set to <code class="literal">XATransaction</code>. When using transactions, be sure to supply the security domain of the XA recovery datasource, as in the example below.
+						</p><pre class="screen">/subsystem=resource-adapters/resource-adapter=test/connection-definitions=test:write-attribute(name=recovery-security-domain,value=myDomain)</pre><p class="simpara">
+							For more information about XA Recovery see <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/configuration_guide/">Configuring XA Recovery</a> in the JBoss EAP <span class="emphasis"><em>Configuration Guide</em></span>.
+						</p><p class="simpara">
+							For non-transactional deployments, change the value of <code class="literal">transaction-support</code> to <code class="literal">NoTransaction</code>.
+						</p><pre class="screen">/subsystem=resource-adapters/resource-adapter=wmq.jmsra.rar:add(archive=wmq.jmsra.rar, transaction-support=NoTransaction)</pre></li><li class="listitem"><p class="simpara">
+							Now that the resource adapter is created, you can add the necessary configuration elements to it.
+						</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									Add an <code class="literal">admin-object</code> for queues and configure its properties.
+								</p><pre class="screen">/subsystem=resource-adapters/resource-adapter=wmq.jmsra.rar/admin-objects=queue-ao:add(class-name=com.ibm.mq.connector.outbound.MQQueueProxy, jndi-name=java:jboss/<span class="emphasis"><em>MQ_QUEUE_NAME</em></span>)
+
+/subsystem=resource-adapters/resource-adapter=wmq.jmsra.rar/admin-objects=queue-ao/config-properties=baseQueueName:add(value=<span class="emphasis"><em>MQ_QUEUE_NAME</em></span>)
+
+/subsystem=resource-adapters/resource-adapter=wmq.jmsra.rar/admin-objects=queue-ao/config-properties=baseQueueManagerName:add(value=<span class="emphasis"><em>MQ_QUEUE_MANAGER</em></span>)</pre></li><li class="listitem"><p class="simpara">
+									Add an <code class="literal">admin-object</code> for topics and configure its properties.
+								</p><pre class="screen">/subsystem=resource-adapters/resource-adapter=wmq.jmsra.rar/admin-objects=topic-ao:add(class-name=com.ibm.mq.connector.outbound.MQTopicProxy, jndi-name=java:jboss/<span class="emphasis"><em>MQ_TOPIC_NAME</em></span>)
+
+/subsystem=resource-adapters/resource-adapter=wmq.jmsra.rar/admin-objects=topic-ao/config-properties=baseTopicName:add(value=<span class="emphasis"><em>MQ_TOPIC_NAME</em></span>)
+
+/subsystem=resource-adapters/resource-adapter=wmq.jmsra.rar/admin-objects=topic-ao/config-properties=brokerPubQueueManager:add(value=<span class="emphasis"><em>MQ_QUEUE_MANAGER</em></span>)</pre></li><li class="listitem"><p class="simpara">
+									Add a connection definition for a managed connection factory and configure its properties.
+								</p><pre class="screen">/subsystem=resource-adapters/resource-adapter=wmq.jmsra.rar/connection-definitions=mq-cd:add(class-name=com.ibm.mq.connector.outbound.ManagedConnectionFactoryImpl, jndi-name=java:jboss/<span class="emphasis"><em>MQ_CONNECTIONFACTORY_NAME</em></span>, tracking=false)
+
+/subsystem=resource-adapters/resource-adapter=wmq.jmsra.rar/connection-definitions=mq-cd/config-properties=hostName:add(value=<span class="emphasis"><em>MQ_HOST_NAME</em></span>)
+
+/subsystem=resource-adapters/resource-adapter=wmq.jmsra.rar/connection-definitions=mq-cd/config-properties=port:add(value=<span class="emphasis"><em>MQ_PORT</em></span>)
+
+/subsystem=resource-adapters/resource-adapter=wmq.jmsra.rar/connection-definitions=mq-cd/config-properties=channel:add(value=<span class="emphasis"><em>MQ_CHANNEL_NAME</em></span>)
+
+/subsystem=resource-adapters/resource-adapter=wmq.jmsra.rar/connection-definitions=mq-cd/config-properties=transportType:add(value=<span class="emphasis"><em>MQ_CLIENT</em></span>)
+
+/subsystem=resource-adapters/resource-adapter=wmq.jmsra.rar/connection-definitions=mq-cd/config-properties=queueManager:add(value=<span class="emphasis"><em>MQ_QUEUE_MANAGER</em></span>)</pre></li></ol></div></li><li class="listitem"><p class="simpara">
+							If you want to change the default provider for the EJB3 messaging system in JBoss EAP from JBoss EAP 7 messaging to IBM MQ, use the management CLI to modify the <code class="literal">ejb3</code> subsystem as follows:
+						</p><pre class="screen">/subsystem=ejb3:write-attribute(name=default-resource-adapter-name,value=wmq.jmsra.rar)</pre></li><li class="listitem"><p class="simpara">
+							Configure the <code class="literal">@ActivationConfigProperty</code> and <code class="literal">@ResourceAdapter</code> annotations in the MDB code as follows:
+						</p><pre class="programlisting">@MessageDriven(name="IbmMqMdb", activationConfig = {
+    @ActivationConfigProperty(propertyName = "destinationType",propertyValue = "javax.jms.Queue"),
+    @ActivationConfigProperty(propertyName = "useJNDI", propertyValue = "false"),
+    @ActivationConfigProperty(propertyName = "hostName", propertyValue = "<span class="emphasis"><em>MQ_HOST_NAME</em></span>"),
+    @ActivationConfigProperty(propertyName = "port", propertyValue = "<span class="emphasis"><em>MQ_PORT</em></span>"),
+    @ActivationConfigProperty(propertyName = "channel", propertyValue = "<span class="emphasis"><em>MQ_CHANNEL_NAME</em></span>"),
+    @ActivationConfigProperty(propertyName = "queueManager", propertyValue = "<span class="emphasis"><em>MQ_QUEUE_MANAGER</em></span>"),
+    @ActivationConfigProperty(propertyName = "destination", propertyValue = "<span class="emphasis"><em>MQ_QUEUE_NAME</em></span>"),
+    @ActivationConfigProperty(propertyName = "transportType", propertyValue = "<span class="emphasis"><em>MQ_CLIENT</em></span>")
+})
+
+@ResourceAdapter(value = "wmq.jmsra-<span class="emphasis"><em>VERSION</em></span>.rar")
+@TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
+public class IbmMqMdb implements MessageListener {
+}</pre><p class="simpara">
+							Be sure to replace the <span class="emphasis"><em>VERSION</em></span> in the <code class="literal">@ResourceAdapter</code> value with the actual version in the name of the RAR.
+						</p></li></ol></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="the_limitations_and_known_problems_for_ibm_mq"/>Limitations and Known Issues with the IBM MQ Resource Adapters</h2></div></div></div><p>
+						The following table lists known issues with the IBM MQ resource adapters. A checkmark (<code class="literal">✔</code>) in the version column indicates the issue is a problem for that version of the resource adapter.
+					</p><div class="table"><a id="idm139716445816832"/><p class="title"><strong>Table 31.1. Known Issues with the IBM MQ Resource Adapters</strong></p><div class="table-contents"><table summary="Known Issues with the IBM MQ Resource Adapters" border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/><col class="col_4"/></colgroup><thead><tr><th style="text-align: left" valign="top">JIRA</th><th style="text-align: left" valign="top">Description of Issue</th><th style="text-align: left" valign="top">IBM MQ 8</th><th style="text-align: left" valign="top">IBM MQ 9</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										<a class="link" href="https://issues.jboss.org/browse/JBEAP-503">JBEAP-503</a>
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The IBM MQ resource adapter returns different String values for the <code class="literal">Queue.toString()</code> and <code class="literal">QueueBrowser.getQueue().toString()</code> methods. <code class="literal">Queue</code> is instance of the <code class="literal">com.ibm.mq.connector.outbound.MQQueueProxy</code> class, which is different from the <code class="literal">com.ibm.mq.jms.MQQueue</code> class that is returned by the <code class="literal">QueueBrowser.htmlQueueBrowser.getQueue()</code> method. These classes contain different implementations of the <code class="literal">toString()</code> method. Be aware that you cannot rely on these <code class="literal">toString()</code> methods to return the same value.
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										<a class="link" href="https://issues.jboss.org/browse/JBEAP-511">JBEAP-511</a>, <a class="link" href="https://issues.jboss.org/browse/JBEAP-550">JBEAP-550</a>, <a class="link" href="https://issues.jboss.org/browse/JBEAP-3686">JBEAP-3686</a>
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The following restrictions apply to message property names for IBM MQ.
+									</p>
+									 <div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+												In the <code class="literal">activation-config</code> section of the deployment descriptor, you must not configure the <code class="literal">destinationName</code> property using special characters such as <code class="literal">_</code>, <code class="literal">&amp;</code>, or <code class="literal">|</code>. Use of these characters causes the MDB deployment to fail with a <code class="literal">com.ibm.msg.client.jms.DetailedInvalidDestinationException</code> exception.
+											</li><li class="listitem">
+												In the <code class="literal">activation-config</code> section of the deployment descriptor, you must not configure the <code class="literal">destinationName</code> property using the <code class="literal">java:/</code> prefix. Use of this prefix causes the MDB deployment to fail with a <code class="literal">com.ibm.msg.client.jms.DetailedInvalidDestinationException</code> exception.
+											</li><li class="listitem">
+												A property must not begin with "JMS" or "usr.JMS" as they are reserved for use by IBM MQ JMS classes. Exceptions are noted on the IBM Knowledge Center website.
+											</li></ul></div>
+									 <p>
+										See <a class="link" href="https://www.ibm.com/support/knowledgecenter/SSFKSJ_8.0.0/com.ibm.mq.dev.doc/q022950_.htm">Property name restrictions for IBM MQ, Version 8.0</a> and <a class="link" href="https://www.ibm.com/support/knowledgecenter/SSFKSJ_9.0.0/com.ibm.mq.dev.doc/q022950_.html">Property name restrictions for IBM MQ, Version 9.0</a> on the IBM Knowledge Center website for the complete list of message property name restrictions for each version of the resource adapter.
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										<a class="link" href="https://issues.jboss.org/browse/JBEAP-549">JBEAP-549</a>
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										When specifying the <code class="literal">destination</code> property name value for an MDB using the <code class="literal">@ActivationConfigProperty</code> annotation, you must use all upper case letters. For example:
+									</p>
+									 
+<pre class="programlisting">@ActivationConfigProperty(propertyName = "destination", propertyValue = "QUEUE")</pre>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										<a class="link" href="https://issues.jboss.org/browse/JBEAP-624">JBEAP-624</a>
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										If the IBM MQ resource adapter is used to create a connection factory in a Java EE deployment using the <code class="literal">@JMSConnectionFactoryDefinition</code> annotation, you must specify the <code class="literal">resourceAdapter</code> property. Otherwise, the deployment will fail.
+									</p>
+									 
+<pre class="programlisting">@JMSConnectionFactoryDefinition(
+    name = "java:/jms/WMQConnectionFactory",
+    interfaceName = "javax.jms.ConnectionFactory",
+    resourceAdapter = "wmq.jmsra",
+    properties = {
+        "channel=&lt;channel&gt;",
+        "hostName=&lt;hostname_wmq_broker&gt;",
+        "transportType=&lt;transport_type&gt;",
+        "queueManager=&lt;queue_manager&gt;"
+    }
+)</pre>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										<a class="link" href="https://issues.jboss.org/browse/JBEAP-2339">JBEAP-2339</a>
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The IBM MQ resource adapter is able to read messages from queues and topics even before the connection has started. This means a consumer can consume messages before the connection is started. To avoid hitting this issue, use connection factories created by the remote IBM MQ broker using the <code class="literal">external-context</code> and not connection factories created by IBM MQ resource adapter.
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										<a class="link" href="https://issues.jboss.org/browse/JBEAP-3685">JBEAP-3685</a>
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Once <code class="literal">&lt;transaction-support&gt;XATransaction&lt;/transaction-support&gt;</code> is set, a <code class="literal">JMSContext</code> is always <code class="literal">JMSContext.SESSION_TRANSACTED</code>, whether it was created using injection or manually.
+									</p>
+									 <p>
+										In the following code example, the <code class="literal">@JMSSessionMode(JMSContext.DUPS_OK_ACKNOWLEDGE)</code> is ignored and the <code class="literal">JMSContext</code> remains at <code class="literal">JMSContext.SESSION_TRANSACTED</code>.
+									</p>
+									 
+<pre class="programlisting">@Inject
+@JMSConnectionFactory("jms/CF")
+@JMSPasswordCredential(userName="myusername", password="mypassword")
+@JMSSessionMode(JMSContext.DUPS_OK_ACKNOWLEDGE)
+transient JMSContext context3;</pre>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										<a class="link" href="https://issues.jboss.org/browse/JBEAP-14633">JBEAP-14633</a>
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										According to the JMS specification, the <a class="link" href="https://access.redhat.com/webassets/avalon/d/red_hat_jboss_enterprise_application_platform/7.2/javadocs/javax/jms/QueueSession.html"><code class="literal">QueueSession</code></a> interface cannot be used to create objects specific to the publish/subscribe domain and certain methods that inherit from <code class="literal">Session</code> should throw an <code class="literal">javax.jms.IllegalStateException</code>. One such method is such <code class="literal">QueueSession.createTemporaryTopic()</code>. Instead of throwing an <code class="literal">javax.jms.IllegalStateException</code>, the IBM MQ resource adapter throws a <code class="literal">java.lang.NullPointerException</code>.
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										<a class="link" href="https://issues.jboss.org/browse/JBEAP-14634">JBEAP-14634</a>
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The <code class="literal">MQTopicProxy.getTopicName()</code> returns different topic name than was set by the IBM MQ broker. For example, if the topic name was set to <code class="literal">topic://MYTOPIC?XMSC_WMQ_BROKER_PUBQ_QMGR=QM</code>, the <code class="literal">MQTopicProxy</code> returns <code class="literal">topic://MYTOPIC</code>.
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										<a class="link" href="https://issues.jboss.org/browse/JBEAP-14636">JBEAP-14636</a>
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The default <code class="literal">autoStart</code> setting for the <a class="link" href="https://access.redhat.com/webassets/avalon/d/red_hat_jboss_enterprise_application_platform/7.2/javadocs/javax/jms/JMSContext.html"><code class="literal">JMSContext</code></a> is <code class="literal">false</code>, meaning the underlying connection used by the <code class="literal">JMSContext</code> is not started automatically when a consumer is created. This setting should default to <code class="literal">true</code>.
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										<a class="link" href="https://issues.jboss.org/browse/JBEAP-14640">JBEAP-14640</a>
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The IBM MQ resource adapter throws <code class="literal">DetailedJMSException</code> instead of a <a class="link" href="https://access.redhat.com/webassets/avalon/d/red_hat_jboss_enterprise_application_platform/7.2/javadocs/javax/jms/JMSSecurityException.html"><code class="literal">JMSSecurityException</code></a> when invalid credentials are used and logs the following error to the server console.
+									</p>
+									 
+<pre class="screen">WARN  [org.jboss.jca.core.connectionmanager.pool.strategy.PoolByCri] (EJB default - 7) IJ000604: Throwable while attempting to get a new connection: null: com.ibm.mq.connector.DetailedResourceException: MQJCA1011: Failed to allocate a JMS connection., error code: MQJCA1011 An internal error caused an attempt to allocate a connection to fail. See the linked exception for details of the failure.</pre>
+									 <p>
+										The following is an example of code that can cause this issue.
+									</p>
+									 
+<pre class="programlisting">QueueConnection qc = queueConnectionFactory.createQueueConnection("invalidUserName", "invalidPassword");</pre>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										<a class="link" href="https://issues.jboss.org/browse/JBEAP-14642">JBEAP-14642</a>
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Due to an invalid class cast conversion by the resource adapter in the <code class="literal">MQMessageProducer.send(Destination destination, Message message)</code> and <code class="literal">MQMessageProducer.send(Destination destination, Message message, int deliveryMode, int priority, long timeToLive, CompletionListener completionListener)</code> methods, the IBM MQ resource adapter throws a <code class="literal">JMSException</code> and logs the following error message to the server console.
+									</p>
+									 
+<pre class="screen">SVR-ERROR: Expected JMSException, received com.ibm.mq.connector.outbound.MQQueueProxy cannot be cast to com.ibm.mq.jms.MQDestination</pre>
+									 <p>
+										This is because the JNDI name used in the queue or topic lookup is <code class="literal">com.ibm.mq.connector.outbound.MQQueueProxy/MQTopicProxy</code>.
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										<a class="link" href="https://issues.jboss.org/browse/JBEAP-14643">JBEAP-14643</a>
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										The <code class="literal">setDeliveryDelay(expDeliveryDelay)</code> method on the <a class="link" href="https://access.redhat.com/webassets/avalon/d/red_hat_jboss_enterprise_application_platform/7.2/javadocs/javax/jms/JMSProducer.html"><code class="literal">JMSProducer</code></a> interface does not change the setting. After calling this method, it remains at the default setting of <code class="literal">0</code>.
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										<a class="link" href="https://issues.jboss.org/browse/JBEAP-14670">JBEAP-14670</a>
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										If work is done on a <code class="literal">QueueSession</code> that was created prior to a <code class="literal">UserTransaction.begin()</code>, that work is not considered part of the transaction. This means that any message sent to the queue using this session is not committed by a <code class="literal">UserTransaction.commit()</code>, and after a <code class="literal">UserTransaction.rollback()</code>, the message remains on the queue.
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										<a class="link" href="https://issues.jboss.org/browse/JBEAP-14675">JBEAP-14675</a>
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										If you close a connection and then immediately create a <a class="link" href="https://access.redhat.com/webassets/avalon/d/red_hat_jboss_enterprise_application_platform/7.2/javadocs/javax/jms/JMSContext.html"><code class="literal">JMSContext</code></a> with the same <code class="literal">clientID</code>, the IBM MQ resource adapter intermittently logs the following error to the server console.
+									</p>
+									 
+<pre class="screen">ERROR [io.undertow.request] (default task-1) UT005023: Exception handling request to /jmsServlet-1.0-SNAPSHOT/: com.ibm.msg.client.jms.DetailedJMSRuntimeException: MQJCA0002: An exception occurred in the IBM MQ layer. See the linked exception for details.
+A call to IBM MQ classes for Java(tm) caused an exception to be thrown.</pre>
+									 <p>
+										This issue does not occur when there is a delay in creating the new <code class="literal">JMSContext</code> after the connection with the same <code class="literal">clientID</code> is closed.
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+										<a class="link" href="https://issues.jboss.org/browse/JBEAP-15535">JBEAP-15535</a>
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										If a stateful session bean tries to send a message to a topic while in a container managed transaction (CMT), the message send fails with the following message.
+									</p>
+									 
+<pre class="screen">SVR-ERROR: com.ibm.msg.client.jms.DetailedJMSException: JMSWMQ2007: Failed to send a message to destination '<span class="emphasis"><em>MDB_NAME</em></span> <span class="emphasis"><em>TOPIC_NAME</em></span>'</pre>
+									 <p>
+										The stack trace shows it to be caused by the following exception.
+									</p>
+									 
+<pre class="screen">com.ibm.mq.MQException: JMSCMQ0001: IBM MQ call failed with compcode '2' ('MQCC_FAILED') reason '2072' ('MQRC_SYNCPOINT_NOT_AVAILABLE')</pre>
+									 </td><td style="text-align: left" valign="top"> <p>
+										✔
+									</p>
+									 </td><td style="text-align: left" valign="top"> </td></tr></tbody></table></div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="deploy_configure_generic_jms_resource_adapter"/>Deploying a Generic JMS Resource Adapter</h1></div></div></div><p>
+					JBoss EAP can be configured to work with third-party JMS providers; however, not all JMS providers produce a JMS JCA resource adapter for integration with Java application platforms. This procedure covers the steps required to configure the generic JMS resource adapter included in JBoss EAP to connect to a JMS provider. In this procedure, Tibco EMS 8 is used as an example JMS provider. Other JMS providers may require different configuration.
+				</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						Before using the generic JMS resource adapter, check with the JMS provider to see if they have their own resource adapter that can be used with JBoss EAP. The generic JMS JCA resource adapter should only be used when a JMS provider does not provide its own resource adapter.
+					</p></div><p>
+					Before you can configure a generic resource adapter, you will need to do the following:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							Your JMS provider server must already be configured and ready for use. Any binaries required for the provider’s JMS implementation will be needed.
+						</li><li class="listitem"><p class="simpara">
+							You will need to know the values of the following JMS provider properties to be able to look up its JMS resources, such as connection factories, queues or topics.
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									<code class="literal">java.naming.factory.initial</code>
+								</li><li class="listitem">
+									<code class="literal">java.naming.provider.url</code>
+								</li><li class="listitem">
+									<code class="literal">java.naming.factory.url.pkgs</code>
+								</li></ul></div></li></ul></div><p>
+					In the example XML used in this procedure, these parameters are written as <code class="literal">PROVIDER_FACTORY_INITIAL</code>, <code class="literal">PROVIDER_URL</code>, and <code class="literal">PROVIDER_CONNECTION_FACTORY</code> respectively. Replace these placeholders with the JMS provider values for your environment.
+				</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configure_a_generic_jms_resource_adapter_for_use_with_a_third_party_jms_provider"/>Configure a Generic JMS Resource Adapter for Use with a Third-party JMS Provider</h2></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Create and configure the resource adapter module.
+							</p><p class="simpara">
+								Create a JBoss EAP module that contains all the libraries required to connect and communicate with the JMS provider. This module will be named <span class="emphasis"><em>org.jboss.genericjms.provider</em></span>.
+							</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+										Create the following directory structure: <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/modules/org/jboss/genericjms/provider/main</code>
+									</li><li class="listitem"><p class="simpara">
+										Copy the binaries required for the provider’s JMS implementation to <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/modules/org/jboss/genericjms/provider/main</code>.
+									</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+											For Tibco EMS, the binaries required are <code class="literal">tibjms.jar</code> and <code class="literal">tibcrypt.jar</code> from the Tibco installation’s <code class="literal">lib</code> directory.
+										</p></div></li><li class="listitem"><p class="simpara">
+										Create a <code class="literal">module.xml</code> file in <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/modules/org/jboss/genericjms/provider/main</code> as below, listing the JAR files from the previous steps as resources:
+									</p><pre class="programlisting">&lt;module xmlns="urn:jboss:module:1.5" name="org.jboss.genericjms.provider"&gt;
+  &lt;resources&gt;
+    &lt;!-- all jars required by the JMS provider, in this case Tibco --&gt;
+    &lt;resource-root path="tibjms.jar"/&gt;
+    &lt;resource-root path="tibcrypt.jar"/&gt;
+  &lt;/resources&gt;
+  &lt;dependencies&gt;
+    &lt;module name="javax.api"/&gt;
+    &lt;module name="javax.jms.api"/&gt;
+  &lt;/dependencies&gt;
+&lt;/module&gt;</pre></li><li class="listitem"><p class="simpara">
+										Add the module to the <code class="literal">ee</code> subsystem using the following CLI command:
+									</p><pre class="screen">/subsystem=ee:list-add(name=global-modules, value={"name" =&gt; "org.jboss.genericjms.provider", "slot" =&gt;"main"}</pre></li></ul></div></li><li class="listitem"><p class="simpara">
+								Create and configure a JNDI external context to the JMS provider.
+							</p><p class="simpara">
+								The JMS resources, such as connection factories and destinations, are looked up in the JMS provider. Add an external context in the JBoss EAP instance so that any <span class="emphasis"><em>local</em></span> lookup for this resource will automatically look up the resource on the remote JMS provider.
+							</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+									In this procedure, <code class="literal"><span class="emphasis"><em>EAP_HOME</em></span>/standalone/configuration/standalone-full.xml</code> is used as the JBoss EAP configuration file.
+								</p></div><p class="simpara">
+								Use the management CLI to create an external JNDI context and include its configuration properties. The properties in the example below should be replaced by the correct value to connect to the remote JMS provider. For example, some JMS providers, such as Tibco EMS, do not support the JNDI <code class="literal">lookup(Name)</code> method. In these cases, add the <code class="literal">org.jboss.as.naming.lookup.by.string</code> property with a value of <code class="literal">true</code> to work around this issue. Check the adapter’s documentation for information on required properties and their values.
+							</p><pre class="screen">/subsystem=naming/binding="java:global/remoteJMS":add(binding-type=external-context,module=org.jboss.genericjms.provider,class=javax.naming.InitialContext,environment=[java.naming.factory.initial=com.tibco.tibjms.naming.TibjmsInitialContextFactory,java.naming.provider.url=tcp://&lt;hostname&gt;:7222,org.jboss.as.naming.lookup.by.string=true])</pre><p class="simpara">
+								With the external context configured properly, any JNDI lookup to a resource starting with <code class="literal">java:global/remoteJMS/</code> will be done on the remote JMS provider. As an example, if a message-driven bean performs a JNDI lookup for <code class="literal">java:global/remoteJMS/Queue1</code>, the external context will connect to the remote JMS provider and perform a lookup for the <code class="literal">Queue1</code> resource.
+							</p><p class="simpara">
+								Alternatively, you can make a JNDI lookup to the remote server without using an <code class="literal">external-context</code> when looking up the JNDI name. To do so, use the CLI to create a new binding that references the <code class="literal">external-context</code>, as in the example below.
+							</p><pre class="screen">/subsystem=naming/binding=java\:\/jms\/queue\/myQueue:add(binding-type=lookup, lookup=java:global/remoteJMS/jms/queue/myQueue)</pre><p class="simpara">
+								In the example above, an application that does a JNDI lookup for <code class="literal">java:/jms/queue/myQueue</code> will locate the queue named <code class="literal">myQueue</code> on the remote server.
+							</p></li><li class="listitem"><p class="simpara">
+								Create the generic JMS resource adapter.
+							</p><p class="simpara">
+								Use the management CLI to create the resource adapter
+							</p><pre class="screen">/subsystem=resource-adapters/resource-adapter=generic-ra:add(module=org.jboss.genericjms,transaction-support=XATransaction)</pre></li><li class="listitem"><p class="simpara">
+								Configure the generic JMS resource adapter.
+							</p><p class="simpara">
+								Use the management CLI to configure the resource adapter’s <code class="literal">connection-definition</code> and other elements.
+							</p><pre class="screen">/subsystem=resource-adapters/resource-adapter=generic-ra/connection-definitions=tibco-cd:add(class-name=org.jboss.resource.adapter.jms.JmsManagedConnectionFactory, jndi-name=java:/jms/XAQCF)
+
+/subsystem=resource-adapters/resource-adapter=generic-ra/connection-definitions=tibco-cd/config-properties=ConnectionFactory:add(value=XAQCF)
+
+/subsystem=resource-adapters/resource-adapter=generic-ra/connection-definitions=tibco-cd/config-properties=JndiParameters:add(value="java.naming.factory.initial=com.tibco.tibjms.naming.TibjmsInitialContextFactory;java.naming.provider.url=tcp://&lt;hostname&gt;:7222")
+
+/subsystem=resource-adapters/resource-adapter=generic-ra/connection-definitions=tibco-cd:write-attribute(name=security-application,value=true)</pre></li><li class="listitem"><p class="simpara">
+								Configure the default message-driven bean pool in the <code class="literal">ejb3</code> subsystem to use the generic resource adapter.
+							</p><pre class="screen">/subsystem=ejb3:write-attribute(name=default-resource-adapter-name, value=generic-ra)</pre></li></ol></div><p>
+						The generic JMS resource adapter is now configured and ready for use. Below is an example of using the resource adapter when creating a new message-driven bean.
+					</p><div class="title"><strong>Example: Code Using the Generic Resource Adapter</strong></div><p>
+							
+</p><pre class="programlisting">@MessageDriven(name = "HelloWorldQueueMDB", activationConfig = {
+  // The generic JMS resource adapter requires the JNDI bindings
+  // for the actual remote connection factory and destination
+  @ActivationConfigProperty(propertyName = "connectionFactory", propertyValue = "java:global/remoteJMS/XAQCF"),
+  @ActivationConfigProperty(propertyName = "destination", propertyValue = "java:global/remoteJMS/Queue1"),
+  @ActivationConfigProperty(propertyName = "destinationType", propertyValue = "javax.jms.Queue"),
+  @ActivationConfigProperty(propertyName = "acknowledgeMode", propertyValue = "Auto-acknowledge") })
+  public class HelloWorldQueueMDB implements MessageListener {
+  public void onMessage(Message message) {
+  // called every time a message is received from the _Queue1_ queue on the JMS provider.
+  }
+}</pre><p>
+
+						</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+							When using the generic JMS resource adapter, ensure you set the session to be transacted, to avoid a potential <code class="literal">NullPointerException</code> error. The error occurs because the generic JMS resource adapter attempts processing of parameters, when the Java EE specification states that they are <span class="emphasis"><em>not</em></span> to be processed. This is accomplished by doing the following: <code class="literal">connection.createSession(true, Session.SESSION_TRANSACTED);</code>
+						</p></div><p>
+						You can also use the pooled connection factory from the resource adapter:
+					</p><pre class="programlisting">@Resource(lookup = "java:/jms/XAQCF")
+private ConnectionFactory cf;</pre><p>
+						It is not possible to inject a resource from an external context directly but it is possible to inject an external context and then perform a lookup. For example, a lookup for a queue deployed in a Tibco EMS broker would be as follows.
+					</p><pre class="programlisting">@Resource(lookup = "java:global/remoteJMS")
+private Context context;
+...
+Queue queue = (Queue) context.lookup("Queue1")</pre></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="using_the_resource_annotation"/>Using the Resource Annotation</h1></div></div></div><p>
+					Using the <code class="literal">@Resource</code> annotation, Enterprise Java Beans (EJBs) can directly inject Java Message Service (JMS) resources or connection factories. You can specify the following parameters using the <code class="literal">@Resource</code> annotations:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							<code class="literal">lookup</code>
+						</li><li class="listitem">
+							<code class="literal">name</code>
+						</li><li class="listitem">
+							<code class="literal">mappedName</code>
+						</li></ul></div><p>
+					To inject a resource, you must specify the Java Naming and Directory Interface (JNDI) name of the resource in one of these parameters.
+				</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="inject_JMS_resources"/>Injecting JMS Resources</h2></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Define your queue as shown below:
+							</p><pre class="programlisting">&lt;jms-queue name="OutQueue" entries="jms/queue/OutQueue java:jboss/exported/jms/queue/OutQueue"/&gt;</pre></li><li class="listitem"><p class="simpara">
+								Inject this queue by specifying its JNDI name in the <code class="literal">lookup</code>, <code class="literal">name</code>, or <code class="literal">mappedName</code> parameter of the <code class="literal">@Resource</code> annotation. For example:
+							</p><pre class="programlisting">@Resource(lookup = "java:jboss/exported/jms/queue/OutQueue")
+public Queue myOutQueue;</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="injecting_connection_factories"/>Injecting Connection Factories</h2></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Define your connection factory as shown below. The example shows a <code class="literal">JmsXA</code> pooled connection factory.
+							</p><pre class="programlisting">&lt;pooled-connection-factory name="activemq-ra" entries="java:/JmsXA java:jboss/DefaultJMSConnectionFactory" connectors="in-vm" transaction="xa"/&gt;</pre></li><li class="listitem"><p class="simpara">
+								Inject the default <code class="literal">activemq-ra</code> pooled connection factory as shown below:
+							</p><pre class="programlisting">@Resource(lookup = "java:/JmsXA")
+private ConnectionFactory cf;</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="the_limitations_and_known_issues_for_jms_resource_adapter"/>The Limitations and Known Issues for the Generic JMS Resource Adapter</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+								The generic JMS resource adapter relies on the JMS API to communicate with JMS servers. Because the JMS API does not provide a programmatic way to create the JMS resources, the following new features that are defined in the <a class="link" href="http://download.oracle.com/otn-pub/jcp/java_ee-7-fr-spec/JavaEE_Platform_Spec.pdf">Java™ Platform, Enterprise Edition (Java EE) Specification, v7</a> are not supported.
+							</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+										EE.5.18.4 JMS Connection Factory Resource Definition
+									</p><p class="simpara">
+										This is the ability for an application to define a JMS <code class="literal">ConnectionFactory</code> resource.
+									</p></li><li class="listitem"><p class="simpara">
+										EE.5.18.5 JMS Destination Definition
+									</p><p class="simpara">
+										This is the ability for an application to define a JMS <code class="literal">Destination</code> resource.
+									</p></li></ul></div></li></ul></div></div></div></div></body></html>
