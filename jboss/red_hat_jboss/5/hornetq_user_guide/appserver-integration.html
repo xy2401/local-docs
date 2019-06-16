@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 30. Application Server Integration and Java EE</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="appserver-integration">
+      ⁠</a>Chapter 30. Application Server Integration and Java EE</h1></div></div></div><div class="para">
+		Since HornetQ also provides a JCA adapter, it is also possible to integrate HornetQ as a JMS provider in other Java EE compliant app servers. For instructions on how to integrate a remote JCA adaptor into another application sever, please consult the other application server's instructions.
+	</div><div class="para">
+		A JCA Adapter basically controls the inflow of messages to Message-Driven Beans (MDBs) and the outflow of messages sent from other Java EE components, (for example, EJBs and Servlets).
+	</div><div class="para">
+		This section explains the basics behind configuring the different Java EE components in the AS.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring-mdbs">
+      ⁠</a>30.1. Configuring Message-Driven Beans</h1></div></div></div><div class="para">
+			Message delivery to an MDB using HornetQ is configured on the JCA Adapter in the<code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/jms-ra.rar/META-INF/ra.xml</code> file. By default this is configured to consume messages using an InVM connector from the instance of HornetQ running within the application server. If you need to adjust the configuration parameters, parameter details can be found in <a class="xref" href="appserver-integration.html#sect-Configuring_the_JCA_Adaptor">Section 30.4, “Configuring the JCA Adaptor”</a>.
+		</div><div class="para">
+			HornetQ provides standard configuration in the default installation so MDBs can reference the Resource Adapter destination and destination type.
+		</div><div class="para">
+			The <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/jms-ds.xml</code> data source file links destination and destination type configuration information in the <code class="filename">ra.xml</code> file using the <span class="markup">&lt;rar-name&gt;</span> directive.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139905807944832">
+      ⁠</a>30.1.1. Using Container-Managed Transactions</h2></div></div></div><div class="para">
+				When an MDB is using Container-Managed Transactions (CMT), the delivery of the message is done within the scope of a JTA transaction. The commit or rollback of this transaction is controlled by the container itself. If the transaction is rolled back then the message delivery semantics will kick in (by default, it will try to redeliver the message up to 10 times before sending to a DLQ). Using annotations this would be configured as follows:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">MessageDriven</span>(name = <span xmlns="" class="perl_String">"MDB_CMP_TxRequiredExample"</span>,
+<span xmlns="" class="line">​</span>  activationConfig =
+<span xmlns="" class="line">​</span>  {
+<span xmlns="" class="line">​</span>    @ActivationConfigProperty
+<span xmlns="" class="line">​</span>      (propertyName = <span xmlns="" class="perl_String">"destinationType"</span>, propertyValue = <span xmlns="" class="perl_String">"javax.jms.Queue"</span>),
+<span xmlns="" class="line">​</span>    @ActivationConfigProperty
+<span xmlns="" class="line">​</span>      (propertyName = <span xmlns="" class="perl_String">"destination"</span>, propertyValue = <span xmlns="" class="perl_String">"queue/testQueue"</span>)
+<span xmlns="" class="line">​</span>  })
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">TransactionManagement</span>(value= TransactionManagementType.<span xmlns="" class="perl_Function">CONTAINER</span>)
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">TransactionAttribute</span>(value= TransactionAttributeType.<span xmlns="" class="perl_Function">REQUIRED</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> MDB_CMP_TxRequiredExample <span xmlns="" class="perl_Keyword">implements</span> MessageListener
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">onMessage</span>(Message message)...
+<span xmlns="" class="line">​</span>}</pre><div class="para">
+				The <code class="literal">TransactionManagement</code> annotation tells the container to manage the transaction. The <code class="literal">TransactionAttribute</code> annotation tells the container that a JTA transaction is required for this MDB. Note that the only other valid value for this is <code class="literal">TransactionAttributeType.NOT_SUPPORTED</code> which tells the container that this MDB does not support JTA transactions and one should not be created.
+			</div><div class="para">
+				It is also possible to inform the container that it must rollback the transaction by calling <code class="literal">setRollbackOnly</code> on the <code class="literal">MessageDrivenContext</code>. The code for this would look something like:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>@Resource
+<span xmlns="" class="line">​</span>   MessageDrivenContextContext ctx;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">onMessage</span>(Message message)
+<span xmlns="" class="line">​</span>   {
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">try</span>
+<span xmlns="" class="line">​</span>      {
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Comment">//something here fails</span>
+<span xmlns="" class="line">​</span>      }
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">catch</span> (Exception e)
+<span xmlns="" class="line">​</span>      {
+<span xmlns="" class="line">​</span>         ctx.<span xmlns="" class="perl_Function">setRollbackOnly</span>();
+<span xmlns="" class="line">​</span>      }
+<span xmlns="" class="line">​</span>   }</pre><div class="para">
+				If you do not want the overhead of an XA transaction being created every time but you would still like the message delivered within a transaction (for example, you are only using a JMS resource) then you can configure the MDB to use a local transaction. This would be configured as such:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">MessageDriven</span>(name = <span xmlns="" class="perl_String">"MDB_CMP_TxLocalExample"</span>,
+<span xmlns="" class="line">​</span>  activationConfig =
+<span xmlns="" class="line">​</span>  {
+<span xmlns="" class="line">​</span>    @ActivationConfigProperty
+<span xmlns="" class="line">​</span>      (propertyName = <span xmlns="" class="perl_String">"destinationType"</span>, propertyValue = <span xmlns="" class="perl_String">"javax.jms.Queue"</span>),
+<span xmlns="" class="line">​</span>    @ActivationConfigProperty
+<span xmlns="" class="line">​</span>      (propertyName = <span xmlns="" class="perl_String">"destination"</span>, propertyValue = <span xmlns="" class="perl_String">"queue/testQueue"</span>),
+<span xmlns="" class="line">​</span>    @ActivationConfigProperty
+<span xmlns="" class="line">​</span>      (propertyName = <span xmlns="" class="perl_String">"useLocalTx"</span>, propertyValue = <span xmlns="" class="perl_String">"true"</span>)
+<span xmlns="" class="line">​</span>  })
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">TransactionManagement</span>(value = TransactionManagementType.<span xmlns="" class="perl_Function">CONTAINER</span>)
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">TransactionAttribute</span>(value = TransactionAttributeType.<span xmlns="" class="perl_Function">NOT_SUPPORTED</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> MDB_CMP_TxLocalExample <span xmlns="" class="perl_Keyword">implements</span> MessageListener
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">onMessage</span>(Message message)...
+<span xmlns="" class="line">​</span>}</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139905848709024">
+      ⁠</a>30.1.2. Using Bean-Managed Transactions</h2></div></div></div><div class="para">
+				Message-driven beans can also be configured to use Bean-Managed Transactions (BMT). In this case a User Transaction is created. This would be configured as follows:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">MessageDriven</span>(name = <span xmlns="" class="perl_String">"MDB_BMPExample"</span>,
+<span xmlns="" class="line">​</span>  activationConfig =
+<span xmlns="" class="line">​</span>    {
+<span xmlns="" class="line">​</span>      @ActivationConfigProperty
+<span xmlns="" class="line">​</span>        (propertyName = <span xmlns="" class="perl_String">"destinationType"</span>, propertyValue = <span xmlns="" class="perl_String">"javax.jms.Queue"</span>),
+<span xmlns="" class="line">​</span>      @ActivationConfigProperty
+<span xmlns="" class="line">​</span>        (propertyName = <span xmlns="" class="perl_String">"destination"</span>, propertyValue = <span xmlns="" class="perl_String">"queue/testQueue"</span>),
+<span xmlns="" class="line">​</span>      @ActivationConfigProperty
+<span xmlns="" class="line">​</span>        (propertyName = <span xmlns="" class="perl_String">"acknowledgeMode"</span>, propertyValue = <span xmlns="" class="perl_String">"Dups-ok-acknowledge"</span>)
+<span xmlns="" class="line">​</span>    })
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">TransactionManagement</span>(value= TransactionManagementType.<span xmlns="" class="perl_Function">BEAN</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> MDB_BMPExample <span xmlns="" class="perl_Keyword">implements</span> MessageListener
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">onMessage</span>(Message message)
+<span xmlns="" class="line">​</span>}</pre><div class="para">
+				When using Bean-Managed Transactions the message delivery to the MDB will occur outside the scope of the user transaction and use the acknowledge mode specified by the user with the <code class="literal">acknowledgeMode</code> property. There are only 2 acceptable values for this <code class="literal">Auto-acknowledge</code> and <code class="literal">Dups-ok-acknowledge</code>. Please note that because the message delivery is outside the scope of the transaction a failure within the MDB will not cause the message to be redelivered.
+			</div><div class="para">
+				A user would control the life cycle of the transaction something like the following:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>@Resource
+<span xmlns="" class="line">​</span>  MessageDrivenContext ctx;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">onMessage</span>(Message message)
+<span xmlns="" class="line">​</span>  {
+<span xmlns="" class="line">​</span>    UserTransaction tx;
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">try</span>
+<span xmlns="" class="line">​</span>    {
+<span xmlns="" class="line">​</span>      TextMessage textMessage = (TextMessage)message;
+<span xmlns="" class="line">​</span>      String text = textMessage.<span xmlns="" class="perl_Function">getText</span>();
+<span xmlns="" class="line">​</span>      UserTransaction tx = ctx.<span xmlns="" class="perl_Function">getUserTransaction</span>();
+<span xmlns="" class="line">​</span>      tx.<span xmlns="" class="perl_Function">begin</span>();
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">//do some stuff within the transaction</span>
+<span xmlns="" class="line">​</span>      tx.<span xmlns="" class="perl_Function">commit</span>();
+<span xmlns="" class="line">​</span>    }
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">catch</span> (Exception e)
+<span xmlns="" class="line">​</span>    {
+<span xmlns="" class="line">​</span>       tx.<span xmlns="" class="perl_Function">rollback</span>();
+<span xmlns="" class="line">​</span>    }
+<span xmlns="" class="line">​</span>  }</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139905873630144">
+      ⁠</a>30.1.3. Using Message Selectors with Message-Driven Beans</h2></div></div></div><div class="para">
+				It is also possible to use MDBs with message selectors. To do this simple define your message selector as follows:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">MessageDriven</span>(name = <span xmlns="" class="perl_String">"MDBMessageSelectorExample"</span>,
+<span xmlns="" class="line">​</span>  activationConfig =
+<span xmlns="" class="line">​</span>    {
+<span xmlns="" class="line">​</span>      @ActivationConfigProperty
+<span xmlns="" class="line">​</span>        (propertyName = <span xmlns="" class="perl_String">"destinationType"</span>, propertyValue = <span xmlns="" class="perl_String">"javax.jms.Queue"</span>),
+<span xmlns="" class="line">​</span>      @ActivationConfigProperty
+<span xmlns="" class="line">​</span>        (propertyName = <span xmlns="" class="perl_String">"destination"</span>, propertyValue = <span xmlns="" class="perl_String">"queue/testQueue"</span>),
+<span xmlns="" class="line">​</span>      @ActivationConfigProperty
+<span xmlns="" class="line">​</span>        (propertyName = <span xmlns="" class="perl_String">"messageSelector"</span>, propertyValue = <span xmlns="" class="perl_String">"color = 'RED'"</span>)
+<span xmlns="" class="line">​</span>    })
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">TransactionManagement</span>(value= TransactionManagementType.<span xmlns="" class="perl_Function">CONTAINER</span>)
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">TransactionAttribute</span>(value= TransactionAttributeType.<span xmlns="" class="perl_Function">REQUIRED</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> MDBMessageSelectorExample <span xmlns="" class="perl_Keyword">implements</span> MessageListener
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">onMessage</span>(Message message)....
+<span xmlns="" class="line">​</span>}</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139905873627312">
+      ⁠</a>30.1.4. High Availability in Message-driven Beans</h2></div></div></div><div class="para">
+				For message-driven beans to be compatible with High Availability (HA) environments, you must set an @ActivationConfigProperty relating to HA in the bean.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="important"><div class="admonition_header"><p><strong>Important</strong></p></div><div class="admonition"><div class="para">
+					Not all server profiles are enabled for clustering by default. Ensure the <span class="property">&lt;clustered&gt;true&lt;/clustered&gt;</span> directive is set in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code>. The Activation Property will cause a <code class="exceptionname">HornetQException</code> if the <span class="markup">&lt;clustered&gt;</span> directive is not correctly specified. For more information about Clustering, refer to <a class="xref" href="clusters.html">Chapter 36, <em>Clusters</em></a>.
+				</div></div></div><div class="para">
+				Add an activation property to the bean's <code class="code">activationConfig</code> block to make the MDB compatible with HA environments:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>activationConfig =
+<span xmlns="" class="line">​</span>    {
+<span xmlns="" class="line">​</span>     @ActivationConfigProperty
+<span xmlns="" class="line">​</span>        (propertyName = <span xmlns="" class="perl_String">"hA"</span>, propertyValue = <span xmlns="" class="perl_String">"true"</span>),
+<span xmlns="" class="line">​</span>    }</pre><div class="para">
+				For more information about High Availability, refer to <a class="xref" href="High_Availability_and_Fail_Over.html">Chapter 37, <em>High Availability and Fail-over</em></a>
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139905868355536">
+      ⁠</a>30.2. Sending Messages from within Java EE components</h1></div></div></div><div class="para">
+			The JCA adapter can also be used for sending messages. The Connection Factory to use is configured by default in the <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/jms-ds.xml</code> file and is mapped to <code class="literal">java:/JmsXA</code>.
+		</div><div class="para">
+			Using this from within a Java EE component specifies that message sending is done as part of the JTA transaction being used by the component. If message sending fails, the overall transaction is rolled back and the message is re-sent. Here is an example of this from within an MDB:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">MessageDriven</span>(name = <span xmlns="" class="perl_String">"MDBMessageSendTxExample"</span>,
+<span xmlns="" class="line">​</span>  activationConfig =
+<span xmlns="" class="line">​</span>    {
+<span xmlns="" class="line">​</span>      @ActivationConfigProperty
+<span xmlns="" class="line">​</span>        (propertyName = <span xmlns="" class="perl_String">"destinationType"</span>, propertyValue = <span xmlns="" class="perl_String">"javax.jms.Queue"</span>),
+<span xmlns="" class="line">​</span>      @ActivationConfigProperty
+<span xmlns="" class="line">​</span>        (propertyName = <span xmlns="" class="perl_String">"destination"</span>, propertyValue = <span xmlns="" class="perl_String">"queue/testQueue"</span>)
+<span xmlns="" class="line">​</span>    })
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">TransactionManagement</span>(value= TransactionManagementType.<span xmlns="" class="perl_Function">CONTAINER</span>)
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">TransactionAttribute</span>(value= TransactionAttributeType.<span xmlns="" class="perl_Function">REQUIRED</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> MDBMessageSendTxExample <span xmlns="" class="perl_Keyword">implements</span> MessageListener
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>   @<span xmlns="" class="perl_Function">Resource</span>(mappedName = <span xmlns="" class="perl_String">"java:/JmsXA"</span>)
+<span xmlns="" class="line">​</span>   ConnectionFactory connectionFactory;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>   @<span xmlns="" class="perl_Function">Resource</span>(mappedName = <span xmlns="" class="perl_String">"queue/replyQueue"</span>)
+<span xmlns="" class="line">​</span>   Queue replyQueue;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">onMessage</span>(Message message)
+<span xmlns="" class="line">​</span>   {
+<span xmlns="" class="line">​</span>      Connection conn = <span xmlns="" class="perl_Keyword">null</span>;
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">try</span>
+<span xmlns="" class="line">​</span>      {
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Comment">//Step 9. We know the client is sending a text message so we cast</span>
+<span xmlns="" class="line">​</span>         TextMessage textMessage = (TextMessage)message;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Comment">//Step 10. get the text from the message.</span>
+<span xmlns="" class="line">​</span>         String text = textMessage.<span xmlns="" class="perl_Function">getText</span>();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>         System.<span xmlns="" class="perl_Function">out</span>.<span xmlns="" class="perl_Function">println</span>(<span xmlns="" class="perl_String">"message "</span> + text);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>         conn = connectionFactory.<span xmlns="" class="perl_Function">createConnection</span>();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>         Session sess = conn.<span xmlns="" class="perl_Function">createSession</span>(<span xmlns="" class="perl_Keyword">false</span>, Session.<span xmlns="" class="perl_Function">AUTO_ACKNOWLEDGE</span>);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>         MessageProducer producer = sess.<span xmlns="" class="perl_Function">createProducer</span>(replyQueue);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>         producer.<span xmlns="" class="perl_Function">send</span>(sess.<span xmlns="" class="perl_Function">createTextMessage</span>(<span xmlns="" class="perl_String">"this is a reply"</span>));
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>      }
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">catch</span> (Exception e)
+<span xmlns="" class="line">​</span>      {
+<span xmlns="" class="line">​</span>         e.<span xmlns="" class="perl_Function">printStackTrace</span>();
+<span xmlns="" class="line">​</span>      }
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">finally</span>
+<span xmlns="" class="line">​</span>      {
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">if</span>(conn != <span xmlns="" class="perl_Keyword">null</span>)
+<span xmlns="" class="line">​</span>         {
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">try</span>
+<span xmlns="" class="line">​</span>            {
+<span xmlns="" class="line">​</span>               conn.<span xmlns="" class="perl_Function">close</span>();
+<span xmlns="" class="line">​</span>            }
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">catch</span> (JMSException e)
+<span xmlns="" class="line">​</span>            { 
+<span xmlns="" class="line">​</span>            }
+<span xmlns="" class="line">​</span>         }
+<span xmlns="" class="line">​</span>      }
+<span xmlns="" class="line">​</span>   }
+<span xmlns="" class="line">​</span>   }</pre><div class="para">
+			You can also use the JMS JCA adapter for sending messages from EJBs (including Session, Entity and Message-Driven Beans), Servlets (including JSPs), and custom MBeans.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139905854147712">
+      ⁠</a>30.3. MDB and Consumer pool size</h1></div></div></div><div class="para">
+			Most application servers, including JBoss, allow you to configure how many MDBs there are in a pool. It is important to understand that the <em class="parameter"><code>MaxPoolSize</code></em> parameter in the <code class="filename">ejb3-interceptors-aop.xml</code> file will <span class="emphasis"><em>not</em></span> have an effect on how many sessions or consumers are created because the Resource Adaptor implementation is not aware of the application server MDB implementation.
+		</div><div class="para">
+			For example, if you set the MDB <em class="parameter"><code>MaxPoolSize</code></em> to 1, 15 sessions or consumers are created (15 is the default). To limit how many sessions or consumers are created, set the <code class="literal">maxSession</code> parameter on the resource adapter, or through an <em class="parameter"><code>ActivationConfigProperty</code></em> annotation on the MDB.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">MessageDriven</span>(name = <span xmlns="" class="perl_String">"MDBMessageSendTxExample"</span>,
+<span xmlns="" class="line">​</span>  activationConfig =
+<span xmlns="" class="line">​</span>    {
+<span xmlns="" class="line">​</span>      @ActivationConfigProperty
+<span xmlns="" class="line">​</span>        (propertyName = <span xmlns="" class="perl_String">"destinationType"</span>, propertyValue = <span xmlns="" class="perl_String">"javax.jms.Queue"</span>),
+<span xmlns="" class="line">​</span>      @ActivationConfigProperty
+<span xmlns="" class="line">​</span>        (propertyName = <span xmlns="" class="perl_String">"destination"</span>, propertyValue = <span xmlns="" class="perl_String">"queue/testQueue"</span>),
+<span xmlns="" class="line">​</span>      @ActivationConfigProperty
+<span xmlns="" class="line">​</span>        (propertyName = <span xmlns="" class="perl_String">"maxSession"</span>, propertyValue = <span xmlns="" class="perl_String">"1"</span>)
+<span xmlns="" class="line">​</span>    })
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">TransactionManagement</span>(value= TransactionManagementType.<span xmlns="" class="perl_Function">CONTAINER</span>)
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">TransactionAttribute</span>(value= TransactionAttributeType.<span xmlns="" class="perl_Function">REQUIRED</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> MyMDB <span xmlns="" class="perl_Keyword">implements</span> MessageListener
+<span xmlns="" class="line">​</span>{ ....}
+</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-Configuring_the_JCA_Adaptor">
+      ⁠</a>30.4. Configuring the JCA Adaptor</h1></div></div></div><div class="para">
+			The Java Connector Architecture (JCA) Adapter is what allows HornetQ to be integrated with Java EE components such as MDBs and EJBs. It configures how components such as MDBs consume messages from the HornetQ server and also how components such as EJBs or Servlets can send messages.
+		</div><div class="para">
+			The HornetQ JCA adapter is deployed via the <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/jms-ra.rar</code> archive. The configuration of the adapter is found in this archive under <code class="literal">META-INF/ra.xml</code>.
+		</div><div class="para">
+			Because of the size of this file, it is included in <a class="xref" href="appe-ra_xml.html">Appendix B, <em>ra.xml HornetQ Resource Adapter File </em></a>if you need to reference it. You can also open this file from the specified directory and review it in conjunction with the following information.
+		</div><div class="para">
+			There are three main parts to this configuration, which are described in the following sections.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="orderedlist"><ol><li class="listitem"><div class="para">
+					<a class="xref" href="appserver-integration.html#sect-JCA_Global_Properties">Section 30.4.1, “JCA Global Properties”</a>
+				</div></li><li class="listitem"><div class="para">
+					<a class="xref" href="appserver-integration.html#sect-JCA_Outbound_Configuration">Section 30.4.2, “JCA Outbound Configuration”</a>
+				</div></li><li class="listitem"><div class="para">
+					<a class="xref" href="appserver-integration.html#sect-JCA_Inbound_Configuration">Section 30.4.3, “JCA Inbound Configuration”</a>
+				</div></li></ol></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-JCA_Global_Properties">
+      ⁠</a>30.4.1. JCA Global Properties</h2></div></div></div><div class="para">
+				The first element you see is <code class="literal">resourceadapter-class</code> which should be left unchanged. This is the HornetQ resource adapter class.
+			</div><div class="para">
+				After that there is a list of configuration properties. This will be where most of the configuration is done. The first two properties configure the transport used by the adapter and the rest configure the connection factory itself.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+					All connection factory properties will use the defaults if they are not provided, except for the <code class="literal">reconnectAttempts</code> which will default to -1. This signifies that the connection should attempt to reconnect on connection failure indefinitely. This is only used when the adapter is configured to connect to a remote server as an InVM connector can never fail.
+				</div></div></div><div class="para">
+				The following table explains what each property is for.
+			</div><div class="table"><a id="idm139905845984224">
+      ⁠</a><p class="title"><strong>Table 30.1. Global Configuration Properties</strong></p><div class="table-contents"><table xmlns:d="http://docbook.org/ns/docbook" class="lt-4-cols gt-14-rows" summary="Global Configuration Properties"><colgroup><col class="c1"/><col class="c2"/><col class="c3"/></colgroup><thead><tr><th> Property Name </th><th> Property Type </th><th> Property Description </th></tr></thead><tbody><tr><td> <code class="varname">ConnectorClassName</code> </td><td> String </td><td> The Connector class name (see <a class="xref" href="configuring-transports.html">Chapter 14, <em>Configuring the Transport</em></a> for more information) </td></tr><tr><td> <code class="varname">ConnectionParameters</code> </td><td> String </td><td> The transport configuration. These parameters must be in the form of <code class="literal">key1=val1;key2=val2;</code> and will be specific to the connector used </td></tr><tr><td> <code class="varname">useLocalTx</code> </td><td> boolean </td><td> True will enable local transaction optimization. </td></tr><tr><td> <code class="varname">UserName</code> </td><td> String </td><td> The user name to use when making a connection </td></tr><tr><td> <code class="varname">Password</code> </td><td> String </td><td> The password to use when making a connection </td></tr><tr><td> <code class="varname">BackupConnectorClassName</code> </td><td> String </td><td> The backup transport to use in case of failure of the live node </td></tr><tr><td> <code class="varname">BackupConnectionParameters</code> </td><td> String </td><td> The backup transport configuration parameters </td></tr><tr><td> <code class="varname">DiscoveryAddress</code> </td><td> String </td><td> The discovery group address to use to auto-detect a server </td></tr><tr><td> <code class="varname">DiscoveryPort</code> </td><td> Integer </td><td> The port to use for discovery </td></tr><tr><td> <code class="varname">DiscoveryRefreshTimeout</code> </td><td> Long </td><td> The timeout, in milliseconds, to refresh. </td></tr><tr><td> <code class="varname"> DiscoveryInitialWaitTimeout </code> </td><td> Long </td><td> The initial time to wait for discovery. </td></tr><tr><td> <code class="varname"> ConnectionLoadBalancingPolicyClassName</code> </td><td> String </td><td> The load balancing policy class to use. </td></tr><tr><td> <code class="varname">ConnectionTTL</code> </td><td> Long </td><td> The time to live (in milliseconds) for the connection. </td></tr><tr><td> <code class="varname">CallTimeout</code> </td><td> Long </td><td> the call timeout (in milliseconds) for each packet sent. </td></tr><tr><td> <code class="varname">DupsOKBatchSize</code> </td><td> Integer </td><td> the batch size (in bytes) between acknowledgments when using DUPS_OK_ACKNOWLEDGE mode </td></tr><tr><td> <code class="varname">TransactionBatchSize</code> </td><td> Integer </td><td> the batch size (in bytes) between acknowledgments when using a transactional session </td></tr><tr><td> <code class="varname">ConsumerWindowSize</code> </td><td> Integer </td><td> the window size (in bytes) for consumer flow control </td></tr><tr><td> <code class="varname">ConsumerMaxRate</code> </td><td> Integer </td><td> the fastest rate a consumer may consume messages per second </td></tr><tr><td> <code class="varname">ConfirmationWindowSize</code> </td><td> Integer </td><td> the window size (in bytes) for reattachment confirmations </td></tr><tr><td> <code class="varname">ProducerMaxRate</code> </td><td> Integer </td><td> the maximum rate of messages per second that can be sent </td></tr><tr><td> <code class="varname">MinLargeMessageSize</code> </td><td> Integer </td><td> the size (in bytes) before a message is treated as large </td></tr><tr><td> <code class="varname">BlockOnAcknowledge</code> </td><td> Boolean </td><td> whether or not messages are acknowledged synchronously </td></tr><tr><td> <code class="varname">BlockOnNonDurableSend</code> </td><td> Boolean </td><td> whether or not non-durable messages are sent synchronously </td></tr><tr><td> <code class="varname">BlockOnDurableSend</code> </td><td> Boolean </td><td> whether or not durable messages are sent synchronously </td></tr><tr><td> <code class="varname">AutoGroup</code> </td><td> Boolean </td><td> whether or not message grouping is automatically used </td></tr><tr><td> <code class="varname">PreAcknowledge</code> </td><td> Boolean </td><td> whether messages are pre acknowledged by the server before sending </td></tr><tr><td> <code class="varname">ReconnectAttempts</code> </td><td> Integer </td><td> maximum number of retry attempts, default for the resource adapter is -1 (infinite attempts) </td></tr><tr><td> <code class="varname">RetryInterval</code> </td><td> Long </td><td> the time (in milliseconds) to retry a connection after failing </td></tr><tr><td> <code class="varname">RetryIntervalMultiplier</code> </td><td> Double </td><td> multiplier to apply to successive retry intervals </td></tr><tr><td> <code class="varname">FailoverOnServerShutdown</code> </td><td> Boolean </td><td> If true client will reconnect to another server if available </td></tr><tr><td> <code class="varname">ClientID</code> </td><td> String </td><td> the pre-configured client ID for the connection factory </td></tr><tr><td> <code class="varname">ClientFailureCheckPeriod</code> </td><td> Long </td><td> the period (in ms) after which the client will consider the connection failed after not receiving packets from the server </td></tr><tr><td> <code class="varname">UseGlobalPools</code> </td><td> Boolean </td><td> whether or not to use a global thread pool for threads </td></tr><tr><td> <code class="varname">ScheduledThreadPoolMaxSize</code> </td><td> Integer </td><td> the size of the <span class="emphasis"><em>scheduled thread</em></span> pool </td></tr><tr><td> <code class="varname">ThreadPoolMaxSize</code> </td><td> Integer </td><td> the size of the thread pool </td></tr><tr><td> <code class="varname">SetupAttempts</code> </td><td> Integer </td><td> Number of attempts to setup a JMS connection (default is 10, -1 means to attempt infinitely). It is possible that the MDB is deployed before the JMS resources are available. In that case, the resource adapter will try to setup several times until the resources are available. This applies only for inbound connections </td></tr><tr><td> <code class="varname">SetupInterval</code> </td><td> Long </td><td> Interval in milliseconds between consecutive attempts to setup a JMS connection (default is 2000m). This applies only for inbound connections </td></tr></tbody></table></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-JCA_Outbound_Configuration">
+      ⁠</a>30.4.2. JCA Outbound Configuration</h2></div></div></div><div class="para">
+				The outbound configuration remains unchanged because it defines connection factories that are used by Java EE components. These Connection Factories can be defined inside a configuration file that matches the name <code class="literal">*-ds.xml</code>. A default <code class="literal">jms-ds.xml</code> configuration file is located in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/jms-ds.xml</code>. The connection factories defined in this file inherit their properties from the main <code class="literal">ra.xml</code> configuration but can also be overridden. The following example shows how to override them.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;tx-connection-factory&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;jndi-name&gt;</span>RemoteJmsXA<span xmlns="" class="perl_Keyword">&lt;/jndi-name&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;xa-transaction/&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;rar-name&gt;</span>jms-ra.rar<span xmlns="" class="perl_Keyword">&lt;/rar-name&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;connection-definition&gt;</span>
+<span xmlns="" class="line">​</span>        org.hornetq.ra.HornetQRAConnectionFactory
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/connection-definition&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;config-property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"SessionDefaultType"</span><span xmlns="" class="perl_Others"> type=</span><span xmlns="" class="perl_String">"String"</span><span xmlns="" class="perl_Keyword">&gt;</span>javax.jms.Topic
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/config-property&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;config-property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"ConnectorClassName"</span><span xmlns="" class="perl_Others"> type=</span><span xmlns="" class="perl_String">"String"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>        org.hornetq.core.remoting.impl.netty.NettyConnectorFactory
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/config-property&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;config-property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"ConnectionParameters"</span><span xmlns="" class="perl_Others"> type=</span><span xmlns="" class="perl_String">"String"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>        port=5445
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/config-property&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;max-pool-size&gt;</span>20<span xmlns="" class="perl_Keyword">&lt;/max-pool-size&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/tx-connection-factory&gt;</span></pre><div class="para">
+				In this example the connection factory is bound to JNDI with the name <code class="literal">RemoteJmsXA</code> and can be looked up in the usual way using JNDI or defined within the EJB or MDB as such:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Resource</span>(mappedName=<span xmlns="" class="perl_String">"java:/RemoteJmsXA"</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">private</span> ConnectionFactory connectionFactory;</pre><div class="para">
+				The <code class="literal">config-property</code> elements are what overrides those in the <code class="literal">ra.xml</code> configuration file. Any of the elements pertaining to the connection factory can be overridden here.
+			</div><div class="para">
+				The outbound configuration also defines additional properties in addition to the global configuration properties.
+			</div><div class="table"><a id="idm139905872618160">
+      ⁠</a><p class="title"><strong>Table 30.2. Outbound Configuration Properties</strong></p><div class="table-contents"><table xmlns:d="http://docbook.org/ns/docbook" class="lt-4-cols lt-7-rows" summary="Outbound Configuration Properties"><colgroup><col class="c1"/><col class="c2"/><col class="c3"/></colgroup><thead><tr><th> Property Name </th><th> Property Type </th><th> Property Description </th></tr></thead><tbody><tr><td> SessionDefaultType </td><td> String </td><td> the default session type </td></tr><tr><td> UseTryLock </td><td> Integer </td><td> try to obtain a lock within specified number of seconds. less than or equal to 0 disable this functionality </td></tr></tbody></table></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-JCA_Inbound_Configuration">
+      ⁠</a>30.4.3. JCA Inbound Configuration</h2></div></div></div><div class="para">
+				The inbound configuration should again remain unchanged. This controls what forwards messages onto MDBs. It is possible to override properties on the MDB by adding an activation configuration to the MDB itself. This could be used to configure the MDB to consume from a different server.
+			</div><div class="para">
+				The inbound configuration also defines additional properties in addition to the global configuration properties.
+			</div><div class="table"><a id="idm139905850449248">
+      ⁠</a><p class="title"><strong>Table 30.3. Inbound Configuration Properties</strong></p><div class="table-contents"><table xmlns:d="http://docbook.org/ns/docbook" class="lt-4-cols gt-7-rows" summary="Inbound Configuration Properties"><colgroup><col class="c1"/><col class="c2"/><col class="c3"/></colgroup><thead><tr><th> Property Name </th><th> Property Type </th><th> Property Description </th></tr></thead><tbody><tr><td> Destination </td><td> String </td><td> JNDI name of the destination </td></tr><tr><td> DestinationType </td><td> String </td><td> type of the destination, either <code class="literal">javax.jms.Queue</code> or <code class="literal">javax.jms.Topic</code> (default is javax.jms.Queue) </td></tr><tr><td> AcknowledgeMode </td><td> String </td><td> The Acknowledgment mode, either <code class="literal">Auto-acknowledge</code> or <code class="literal">Dups-ok-acknowledge</code> (default is Auto-acknowledge). <code class="literal">AUTO_ACKNOWLEDGE</code> and <code class="literal">DUPS_OK_ACKNOWLEDGE</code> are acceptable values. </td></tr><tr><td> MaxSession </td><td> Integer </td><td> Maximum number of session created by this inbound configuration (default is 15) </td></tr><tr><td> MessageSelector </td><td> String </td><td> the message selector of the consumer </td></tr><tr><td> SubscriptionDurability </td><td> String </td><td> Type of the subscription, either <code class="literal">Durable</code> or <code class="literal">NonDurable</code> </td></tr><tr><td> SubscriptionName </td><td> String </td><td> Name of the subscription </td></tr><tr><td> TransactionTimeout </td><td> Long </td><td> The transaction timeout in milliseconds (default is 0, the transaction does not timeout) </td></tr><tr><td> UseJNDI </td><td> Boolean </td><td> Whether or not use JNDI to look up the destination (default is true) </td></tr></tbody></table></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139905838632688">
+      ⁠</a>30.4.4. High Availability JNDI (HA-JNDI)</h2></div></div></div><div class="para">
+				If you are using JNDI to look-up JMS queues, topics and connection factories from a cluster of servers, it is likely you will want to use HA-JNDI so that your JNDI look-ups will continue to work if one or more of the servers in the cluster fail.
+			</div><div class="para">
+				HA-JNDI is a JBoss Application Server service which allows you to use JNDI from clients without them having to know the exact JNDI connection details of every server in the cluster. This service is only available if using a cluster of JBoss Application Server instances.
+			</div><div class="para">
+				To use it use the following properties when connecting to JNDI.
+			</div><pre class="programlisting">Hashtable&lt;String, String&gt; 
+  jndiParameters = new Hashtable&lt;String, String&gt;();
+jndiParameters.put("java.naming.factory.initial", 
+    "org.jnp.interfaces.NamingContextFactory");
+jndiParameters.put("java.naming.factory.url.pkgs=", 
+    "org.jboss.naming:org.jnp.interfaces");
+
+initialContext = new InitialContext(jndiParameters);</pre><div class="para">
+				For more information on using HA-JNDI see the Clustering section of the <em class="citetitle">Administration and Configuration Guide</em> for this release of JBoss Enterprise Application Platform.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="xa-recovery">
+      ⁠</a>30.4.5. XA Recovery</h2></div></div></div><div class="para">
+				<code class="literal">XA recovery</code> deals with system or application failures to ensure that resources of a transaction are applied consistently to all resources affected by the transaction, even if any of the application processes or the machine hosting them crash or lose network connectivity.
+			</div><div class="para">
+				XA Recovery is pre-configured in HornetQ from version 2.2.8.GA. No configuration is required and the service cannot be disabled.
+			</div><div class="para">
+				HornetQ takes advantage of JBoss Transactions to provide recovery of messaging resources. If messages are involved in a XA transaction, in the event of a server crash, the recovery manager will ensure that the transactions are recovered and the messages will either be committed or rolled back (depending on the transaction outcome) when the server is restarted.
+			</div><div class="para">
+				For more information on XA Recovery, refer to the JBoss Transactions documentation provided with this release of JBoss Enterprise Application Platform.
+			</div></div></div></div></body></html>

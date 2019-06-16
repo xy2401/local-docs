@@ -1,0 +1,786 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 4. EJB 3 Container</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="chap-Performance_Tuning_Guide-EJB_3_Container">
+      ⁠</a>Chapter 4. EJB 3 Container</h1></div></div></div><div class="para">
+		The EJB 3 container is the JBoss Enterprise Application Platform's implementation of the Java EE 5 specifications for EJB 3.0. It implements all the standard bean types described by the specification e.g. stateless session beans, stateful session beans, message driven beans, and entity beans. While these all share the same names as EJB 2.x components, they are now based on a POJO development model using annotations, or optionally deployment descriptors. There are various configuration parameters that will affect the throughput of your application depending on which of these beans you use. Each bean type will be discussed in this chapter, including configuration parameters that affect overall throughput and the inter-relationships between them.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-Performance_Tuning_Guide-Stateless_Session_Bean">
+      ⁠</a>4.1. Stateless Session Bean</h1></div></div></div><div class="para">
+		With stateless session beans, our implementation uses a pooling strategy to offer a “method ready” instance for use by the application. There are two types of pools that can be configured for use with stateless session beans:
+	</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+				ThreadLocalPool
+			</div></li><li class="listitem"><div class="para">
+				StrictMaxPool
+			</div></li></ul></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-Performance_Tuning_Guide-Stateless_Session_Bean-ThreadLocalPool">
+      ⁠</a>4.1.1. ThreadLocalPool</h2></div></div></div><div class="para">
+			The ThreadLocalPool is a pool of instances in a thread local variable and is the default pool type. It's local to each execution thread within the platform that executes methods on a stateless session bean. The ThreadLocalPool is derived from an unlimited pool implementation, so there is no limit to the number of instances that can be in the pool. The actual number of instances is dependent on other parameters. For each thread that executes methods on a stateless session bean within your application, the pool size of the ThreadlocalPool is the number of unique stateless sessions. Since there is a pool on each thread, the actual number of instances is the number of stateless sessions beans in your deployments multiplied by the number of threads that execute methods on those beans. This approach has a configuration advantage because the size of the pool is changed dynamically with changes to the application - e.g. the adding or removing of stateless session beans over time.
+		</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-Performance_Tuning_Guide-Stateless_Session_Bean-StrictMaxPool">
+      ⁠</a>4.1.2. StrictMaxPool</h2></div></div></div><div class="para">
+			StrictMaxPool is the other pool implementation, a single pool used across all execution threads, that contains instances of stateless session beans. It has a maximum size so if there are no available instances in the pool for a thread to execute, the calling thread will block and wait until there is an available instance. If a StrictMaxPool is used for stateless session beans and it's not sized correctly, this creates a bottleneck. In some circumstances this might be used deliberately to limit the rate of transactions but it's not recommended.
+		</div><div class="para">
+			If there are no available instances in the pool at the time a call is made, the calling thread will be blocked but only for a certain amount of time (which can vary depending on the configuration). If that time period is exceeded, the error message below will be logged, confirming that the pool is too small. This situation may not be obvious but can result in significant performance degradation. When using the StrictMaxPool, correct sizing is critical and this is covered in the next section.
+		</div><pre class="screen">
+javax.ejb.EJBException: Failed to acquire the pool semaphore, strictTimeout=10000
+</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-Performance_Tuning_Guide-Stateless_Session_Bean-Pool_Sizing">
+      ⁠</a>4.1.3. Pool Sizing</h2></div></div></div><div class="para">
+			It's recommended to set the size of the pool equal to the maximum number of concurrent requests. Confirming the maximum can best be done by monitoring statistics using the JMX console. In this example the maximum size of the pool is 8,000, which is quite large based on the other data that is shown. The CreateCount metric shows that the platform created 65 beans for the pool, and that 7,959 is the current available count. This means at that moment, there are 41 instances of the bean in use.
+		</div><div class="figure"><a id="figu-Performance_Tuning_Guide-Pool_Sizing-JMX_Console_JMX_MBean_View">
+      ⁠</a><div class="figure-contents"><div class="mediaobject"><img src="images/img-jmx_console_mbean_view.png" width="444" alt="JMX Console - JMX MBean View"/></div></div><p class="title"><strong>Figure 4.1. JMX Console - JMX MBean View</strong></p></div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+				The statistics presented in the JMX console must be manually refreshed and, because of its implementation, are not guaranteed to be accurate but should be used as a guide only.
+			</div></div></div><div class="para">
+			There is no absolute "best" pool implementation because much depends on the application and its deployment. The recommended method of deciding between the two is to test both with your application and infrastructure. For StrictMaxPool it's critical that the pool's usage be monitored to ensure that it's large enough, otherwise performance statistics will be skewed.
+		</div><div class="para">
+			Stateless session beans are configured in the file <code class="filename">ejb3-interceptors-aop.xml</code>, which is located in the directory: <code class="filename">JBOSS_EAP_DIST/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy</code>. The relevant sections are titled “Stateless Bean” and “JACC Stateless Bean”. Stateless Bean is a basic, stateless bean while JACC Stateless Bean provides for permission classes to satisfy the Java EE authorization model. Note that the <code class="literal">minimal</code> configuration does <span class="emphasis"><em>not</em></span> include the EJB 3 container.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+				Since for ThreadLocalPool there is no limit to the number of instances that can be in the pool, the maxSize and timeout parameters are irrelevant.
+			</div></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-Performance_Tuning_Guide-Local_EJB3_calls">
+      ⁠</a>4.1.4. Local EJB3 Calls</h2></div></div></div><div class="para">
+			When an application uses a remote EJB3 interface the call is serialized and deserialized by default because this is a requirement of network communication. If the EJB is running in the same JVM as the client calling it, all communications are local so there's no need for serialization or deserialization. To avoid the CPU load involved and so improve the application's responsiveness, enable the system property org.jboss.ejb3.IsLocalInterceptor.passByRef to true, for example: add <code class="literal">-Dorg.jboss.ejb3.remoting.IsLocalInterceptor.passByRef=true</code> to JAVA_OPTS in the server's <code class="filename">run.conf</code> configuration file.
+		</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-Performance_Tuning_Guide-Stateful_Session_Bean">
+      ⁠</a>4.2. Stateful Session Bean</h1></div></div></div><div class="para">
+		As a stateful component, stateful session beans require a different implementation from the container. First, because they maintain state, that state is associated exclusively with one client, so there is only one instance per client. Second, because they maintain state and are tied to one client, the container must prevent any concurrent modification to that state. Third, because they maintain state, that state has to participate in replication for a clustered environment. Finally, if the instance is not accessed in a period of time, and the bean is not canceled, the state may be passivated to disk. All these factors play a role in the throughput that can be achieved when using stateful session beans. It's important to choose the right state management solution for your application. Stateful session beans can be useful, especially where the number of concurrent users is not too large- i.e. into millions.
+	</div><div class="para">
+		To help with understanding the difference that a stateless vs. stateful approach can have, consider a real-life situation where a stateless approach was the imposed standard. In this situation there was an entire set of services in the application that looked-up data for users for use in maintenance tasks, or placing orders, etc. In almost all cases, these “look-ups” would return more data than the user could effectively deal with, and there was logic in the client to page through the list. As it paged through the list, if it needed to get more data than was on the client at that time, it called the server again. When it did this it actually passed a row number to the server to say, starting at this row number, return back the next set of rows. This made the queries very complex, as the queries themselves had to scroll through the data and return the correct set. Of course the user could page down through, but also back up again, and this process was repeated many times in certain cases. So, the design was stateless, but the load it actually exacted on the database was extraordinarily high, and the response time of the services themselves suffered. Users complained of poor response times as well. To solve this issue the services were made stateful (with one instance per client), the paging logic was removed from the queries themselves, and scrolled through the data in memory as the client paged through the rows. All queries were limited to a maximum number of rows, because returning more than that meant that the search criteria for the look-up should be expanded to narrow down the result set to make it usable for the end user anyway. The results of the change to a stateful approach were a significant decrease in database load and an improvement in response times. This is a good example of how stateful session beans can be used, and used effectively.
+	</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-Performance_Tuning_Guide-Stateful_Session_Bean-Stateful_Configuration">
+      ⁠</a>4.2.1. Stateful Configuration</h2></div></div></div><div class="para">
+			There are two aspects of stateful session beans to be considered: the underlying cache that supports the life-cycle of the bean and replication of the bean's state.
+		</div><div class="para">
+			In the same file that configures HTTP session replication is the configuration for stateful session bean replication. The configuration file is <code class="filename">jboss-cache-manager.sar</code>, in the directory <code class="filename">JBOSS_EAP_DIST/jboss-as/server/<em class="replaceable">PROFILE</em>/deploy/cluster/jboss-cache-manager.sar/META-INF</code>. Note that the <code class="literal">default</code>, <code class="literal">standard</code> and <code class="literal">minimal</code> configurations do not have the clustering configuration, nor the clustering code deployed. In this file is an entry called sfsb-cache, as seen below:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- Standard cache used for EJB3 SFSB caching --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;entry&gt;&lt;key&gt;</span>sfsb-cache<span xmlns="" class="perl_Keyword">&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;value&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"StandardSFSBCacheConfig"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.Configuration"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!--  No transaction manager lookup --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- Name of cluster. Needs to be the same for all members --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"clusterName"</span><span xmlns="" class="perl_Keyword">&gt;</span>${jboss.partition.name:DefaultPartition}-SFSBCache<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- Use a UDP (multicast) based stack. Need JGroups flow control (FC)</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">   because we are using asynchronous replication. --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"multiplexerStack"</span><span xmlns="" class="perl_Keyword">&gt;</span>${jboss.default.jgroups.stack:udp}<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"fetchInMemoryState"</span><span xmlns="" class="perl_Keyword">&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"nodeLockingScheme"</span><span xmlns="" class="perl_Keyword">&gt;</span>PESSIMISTIC<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"isolationLevel"</span><span xmlns="" class="perl_Keyword">&gt;</span>REPEATABLE_READ<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+</pre><div class="para">
+			The two most important configuration parameters are the node locking scheme and isolation level, which are analogous to databases. Pessimistic locking assumes that multiple clients should not own the lock on the data, in this case the data in the cache, at the same time. The isolation level is similar to the concept in database management systems. Since the container above this cache already prevents more than one client modifying the state of a bean, changing the node locking scheme provides no advantage.
+		</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-Performance_Tuning_Guide-Stateful_Session_Bean-Full_Replication">
+      ⁠</a>4.2.2. Full Replication</h2></div></div></div><div class="para">
+			As we discussed in HTTP session replication, full replication is the default, and it will perform just fine in two-node clusters. State in stateful session beans tends to be even more complex than state in the HTTP session, so use caution in using full replication for stateful session beans than for the HTTP session. If buddy replication is used for either HTTP sessions or stateful session beans, and the web tier of the platform (servlet container) is not separated from the rest of the platform, it is good practice to use the same method for both. Even if you can get away with full replication on HTTP sessions, your use of stateful session beans may drive you towards buddy replication.
+		</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-Performance_Tuning_Guide-Stateful_Session_Bean-Buddy_Replication">
+      ⁠</a>4.2.3. Buddy Replication</h2></div></div></div><div class="para">
+			Again, as we discussed with HTTP session replication, buddy replication is available for stateful session beans as well. The configuration file for buddy replication is <code class="filename">jboss-cache-manager-jboss-beans.xml</code>, in the directory <code class="filename">JBOSS_EAP_DIST/jboss-as/server/<em class="replaceable">PROFILE</em>/deploy/cluster/jboss-cache-manager.sar/META-INF</code>. Note that the <code class="literal">default</code>, <code class="literal">standard</code> and <code class="literal">minimal</code> configurations do not have the clustering configuration, nor the clustering code deployed. To configure buddy replication for stateful session beans, change the buddyReplicationConfig's <code class="literal">property</code> to <em class="replaceable">true</em>, as in the following extract.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- Standard cache used for EJB3 SFSB caching --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;entry&gt;&lt;key&gt;</span>sfsb-cache<span xmlns="" class="perl_Keyword">&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;value&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"StandardSFSBCacheConfig"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.Configuration"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    ...
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"buddyReplicationConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.BuddyReplicationConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Comment">&lt;!--  Just set to true to turn on buddy replication --&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"enabled"</span><span xmlns="" class="perl_Keyword">&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+</pre></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-Performance_Tuning_Guide-Remote_EJB_Clients">
+      ⁠</a>4.3. Remote EJB Clients</h1></div></div></div><div class="para">
+		The configuration options discussed so far apply to both local and remote clients, but there are additional configuration options that needs to be considered where remote clients are concerned: <code class="literal">maxPoolSize</code> and <code class="literal">clientMaxPoolSize</code>. Local clients use the local interface of stateless and stateful session beans, so the execution of those methods is done on the incoming connectors' thread pool. Remote clients call the remote interfaces of stateless and stateful session beans, interacting with the platform's remoting solution. It accepts connections from remote clients, marshals the arguments and calls the remote interface of the corresponding bean, whether that is a stateless or stateful session bean. Note that the <code class="literal">minimal</code> configuration does <span class="emphasis"><em>not</em></span> have the remoting service deployed.
+	</div><div class="para">
+		The configuration file is <code class="filename">remoting-jboss-beans.xml</code>, in the directory <code class="filename">JBOSS_EAP_DIST/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy</code>, an extract of which is below:
+	</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- Parameters visible only to server --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"serverParameters"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;map</span><span xmlns="" class="perl_Others"> keyClass=</span><span xmlns="" class="perl_String">"java.lang.String"</span><span xmlns="" class="perl_Others"> valueClass=</span><span xmlns="" class="perl_String">"java.lang.String"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Comment">&lt;!-- Selected optional parameters: --&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Comment">&lt;!-- Maximum number of worker threads on the      --&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Comment">&lt;!-- server (socket transport).  Defaults to 300. --&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Comment">&lt;!--entry&gt;&lt;key&gt;maxPoolSize&lt;/key&gt; &lt;value&gt;500&lt;/value&gt;&lt;/entry--&gt;</span>
+<span xmlns="" class="line">​</span>       <span xmlns="" class="perl_Comment">&lt;!-- Number of seconds after which an idle worker thread will be    --&gt;</span>
+<span xmlns="" class="line">​</span>       <span xmlns="" class="perl_Comment">&lt;!-- purged (socket transport).  By default purging is not enabled. --&gt;</span>
+<span xmlns="" class="line">​</span>       <span xmlns="" class="perl_Comment">&lt;!--entry&gt;&lt;key&gt;idleTimeout&lt;/key&gt; &lt;value&gt;60&lt;/value&gt;&lt;/entry--&gt;</span>
+<span xmlns="" class="line">​</span>       <span xmlns="" class="perl_Keyword">&lt;/map&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+</pre><div class="para">
+		The most important parameter here is the <code class="literal">maxPoolSize</code> parameter which specifies the number of worker threads that will be used to execute the remote calls. The comments state that the default is 300, which is quite large, but that depends on the number of remote clients, their request rate, and the corresponding response times. Just like any other connector, the number of clients calling the server, their request rate, and the corresponding response times need to be taken into account to size the pool correctly. One way to determine this is to monitor the statistics on the client to see how many invocations occur. For example, if the remote client is a stateless session bean on another server, the JMX console contains invocation statistics that could be examined to determine how many concurrent calls are coming from that client. If there are many remote servers acting as clients then statistics have to be obtained from each remote client. To change the pool size, uncomment the line and set the value.
+	</div><div class="para">
+		Consider the opposite case, where the client is the local server, calling another remote server. There is a matching pool parameter called <code class="literal">clientMaxPoolSize</code>, specified in the same configuration file as above:
+	</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- Maximum number of connections in client invoker's    --&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Comment">&lt;!-- connection pool (socket transport).  Defaults to 50. --&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Comment">&lt;!--entry&gt;&lt;key&gt;clientMaxPoolSize&lt;/key&gt; &lt;value&gt;20&lt;/value&gt;&lt;/entry--&gt;</span>
+</pre><div class="para">
+		In this example the parameter is present but commented so the default value of 50 applies. To change the value, uncomment the line and change the value to the desired value.
+	</div><div class="para">
+		To determine the required value it's necessary to understand how many concurrent calls are being made to remote beans. Depending on the method used, there is some monitoring you can do. For example, if the remote bean invocations are being made from a local stateless session bean the JMX console statistics can be used. Included are the statistics for that stateless session's bean and concurrentCalls value to see how many concurrent invocations are being made, as in the following example:
+	</div><div class="figure"><a id="figu-Performance_Tuning_Guide-Remote_EJB_Clients-JMX_Console_JMX_MBean_View">
+      ⁠</a><div class="figure-contents"><div class="mediaobject"><img src="images/img-jmx_console_mbean_view.png" width="444" alt="JMX Console - JMX MBean View"/></div></div><p class="title"><strong>Figure 4.2. JMX Console - JMX MBean View</strong></p></div><div class="para">
+		The screenshot shows the attribute <code class="literal">InvokeStats</code> and it has an attribute value that shows the InvocationStatistics class, and the value concurrentCalls equals 14. This could give you a hint about how many client connections need to be available in the pool.
+	</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-Performance_Tuning_Guide-CachedConnectionManager">
+      ⁠</a>4.4. CachedConnectionManager</h1></div></div></div><div class="para">
+		The servlet container chapter described the cached connection manager, what it does, and how you can remove it. This section shows how to remove it from the EJB 3 container, and a short note about how you can remove it from the old EJB 2.x container as well. Note that the <code class="literal">minimal</code>configuration does <span class="emphasis"><em>not</em></span> contain the EJB 3 container.
+	</div><div class="para">
+		The configuration for the cached connection manager, in the EJB 3 container, is <code class="filename">ejb3-interceptors-aop.xml</code>, in the directory: <code class="filename">JBOSS_EAP_DIST/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy</code>.
+	</div><div class="para">
+		To remove the cached connection manager, comment or remove the following two lines from the configuration file.
+	</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;interceptor</span><span xmlns="" class="perl_Others"> factory=</span><span xmlns="" class="perl_String">"org.jboss.ejb3.connectionmanager.CachedConnectionInterceptorFactory"</span><span xmlns="" class="perl_Others"> scope=</span><span xmlns="" class="perl_String">"PER_CLASS"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;interceptor-ref</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"org.jboss.ejb3.connectionmanager.CachedConnectionInterceptorFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+</pre><div class="para">
+		The configuration of the EJB 2.x container is in <code class="filename">standardjboss.xml</code>, in the directory: <code class="filename">JBOSS_EAP_DIST/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/conf</code>. Note that the <code class="literal">minimal</code> configuration, does <span class="emphasis"><em>not</em></span> contain the EJB 2.x container.
+	</div><div class="para">
+		To remove the cached connection manager, comment or remove the following line from each container configuration (there are many in the file).
+	</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;interceptor&gt;</span>org.jboss.resource.connectionmanager.CachedConnectionInterceptor<span xmlns="" class="perl_Keyword">&lt;/interceptor&gt;</span>
+</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-Performance_Tuning_Guide-Entity_Beans">
+      ⁠</a>4.5. Entity Beans</h1></div></div></div><div class="para">
+		Entity beans are avoided by some because of historical issues with EJB 1 and EJB 2 but with EJB 3 their use is rising. In discussing how to get the best possible throughout while using entity beans, there are four topics to cover:
+	</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+				second-level cache
+			</div></li><li class="listitem"><div class="para">
+				prepared statements
+			</div></li><li class="listitem"><div class="para">
+				batch inserts
+			</div></li><li class="listitem"><div class="para">
+				batching database operations
+			</div></li></ul></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-Performance_Tuning_Guide-Entity_Beans-Second_level_cache">
+      ⁠</a>4.5.1. Second level cache</h2></div></div></div><div class="para">
+			As Hibernate is the JPA provider, entity beans in EJB 3 sit on top of Hibernate. This is in stark contrast to the old EJB 2.x entities, which had their own complete implementation apart from Hibernate. In fact, Hibernate, and other object relational mapping (ORM) frameworks were the inspiration for JPA and EJB 3 entities. Since Hibernate is the underlying implementation, we have a second level cache that we can utilize, just as if we were using Hibernate directly instead of entities. Hibernate's second level cache has gone through some evolution over the years, and has improved with each release. The JBoss Cache implementation as the second level cache, has some very useful features, and the default configuration for EJB 3 entities is very good. To enable the use of the second level cache for entities in an EJB3 application, persistence units are defined in the <code class="filename">persistence.xml</code> file that is packaged with an application. Here is an extract from <code class="filename">persistence.xml</code>:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;persistence</span><span xmlns="" class="perl_Others"> xmlns=</span><span xmlns="" class="perl_String">"http://java.sun.com/xml/ns/persistence"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">   xmlns:xsi=</span><span xmlns="" class="perl_String">"http://www.w3.org/2001/XMLSchema-instance"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">   xsi:schemaLocation=</span><span xmlns="" class="perl_String">"http://java.sun.com/xml/ns/persistence http://java.sun.com/xml/ns/persistence/persistence_1_0.xsd"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">   version=</span><span xmlns="" class="perl_String">"1.0"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;persistence-unit</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"services"</span><span xmlns="" class="perl_Others"> transaction-type=</span><span xmlns="" class="perl_String">"JTA"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;provider&gt;</span>org.hibernate.ejb.HibernatePersistence<span xmlns="" class="perl_Keyword">&lt;/provider&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;jta-data-source&gt;</span>java:/MySqlDS<span xmlns="" class="perl_Keyword">&lt;/jta-data-source&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;properties&gt;</span>
+<span xmlns="" class="line">​</span>           <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.region.factory_class"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"org.hibernate.cache.jbc2.JndiMultiplexedJBossCacheRegionFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>           <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.region.jbc2.cachefactory"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"java:CacheManager"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>           <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.use_second_level_cache"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>           <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.use_query_cache"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"false"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>           <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.use_minimal_puts"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>           <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.region.jbc2.cfg.entity"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"mvcc-entity"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>           <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.region_prefix"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"services"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;/properties&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/persistence-unit&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/persistence&gt;</span></pre><div class="para">
+			The configuration parameters relevant to the second level cache are:
+		</div><div class="para">
+			<code class="literal">hibernate.cache.region.factory_class</code> specifies the cache factory to be used by the underlying Hibernate session factory, in this example JndiMultiplexedJBossCacheRegionFactory. This factory implementation creates a single cache for all types of data that can be cached (entities, collections, query results and timestamps). With other options you can create caches that are tailored to each type of data, in separate cache instances. In this example, there is only one cache instance, and only entities and collections are cached. The second important parameter above is the hibernate.cache.use_second_level_cache, which is set to true, enabling the cache. The query cache is disabled with hibernate.cache.use_query_cache set to false.
+		</div><div class="para">
+			<code class="literal">hibernate.cache.use_minimal_puts</code>, set to true, specifies the behavior of writes to the cache. It minimizes the writes to the cache at the expense of more reads, the default for a clustered cache.
+		</div><div class="para">
+			<code class="literal">hibernate.cache.region.jbc2.cfg.entity</code> specifies the underlying JBoss Cache configuration, in this case the multiversion concurrency control (MVCC) entity cache (mvcc-entity).
+		</div><div class="para">
+			<code class="literal">hibernate.cache.region_prefix</code> is set to the same name as the persistent unit itself. Specifying a name here is optional, but if you do not specify a name, a long default name is generated. The mvcc-entity configuration is in the file <code class="filename">jboss-cache-manager-jboss-beans.xml</code>, in the directory: <code class="filename">JBOSS_EAP_DIST/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/cluster/jboss-cache-manager.sar/META-INF</code>. Note that the <code class="literal">default</code>, <code class="literal">standard</code> and <code class="literal">minimal</code> configurations do not have the JBoss Cache configured or deployed.
+		</div><div class="para">
+			Below is an extract from the configuration of the MVCC cache:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- A config appropriate for entity/collection caching that uses MVCC locking --&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;entry&gt;&lt;key&gt;</span>mvcc-entity<span xmlns="" class="perl_Keyword">&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;value&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"MVCCEntityCache"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.Configuration"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- Node locking scheme --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"nodeLockingScheme"</span><span xmlns="" class="perl_Keyword">&gt;</span>MVCC<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- READ_COMMITTED is as strong as necessary for most</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     2nd Level Cache use cases. --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"isolationLevel"</span><span xmlns="" class="perl_Keyword">&gt;</span>READ_COMMITTED<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"useLockStriping"</span><span xmlns="" class="perl_Keyword">&gt;</span>false<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- Mode of communication with peer caches.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     INVALIDATION_SYNC is highly recommended as the mode for use</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     with entity and collection caches.     --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"cacheMode"</span><span xmlns="" class="perl_Keyword">&gt;</span>INVALIDATION_SYNC<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.EvictionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"wakeupInterval"</span><span xmlns="" class="perl_Keyword">&gt;</span>5000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Comment">&lt;!--  Overall default --&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"defaultEvictionRegionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.EvictionRegionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>               <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"regionName"</span><span xmlns="" class="perl_Keyword">&gt;</span>/<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>               <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                  <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.eviction.LRUAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Comment">&lt;!-- Evict LRU node once we have more than this number of nodes --&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"maxNodes"</span><span xmlns="" class="perl_Keyword">&gt;</span>500000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Comment">&lt;!-- And, evict any node that hasn't been accessed in this many seconds --&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"timeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>7200<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Comment">&lt;!-- Do not evict a node that's been accessed within this many seconds.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">                             Set this to a value greater than your max expected transaction length. --&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"minTimeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>300<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                  <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>               <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+</pre><div class="para">
+			In the configuration above, the following parameters are of particular interest in tuning the cache:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					isolationLevel
+				</div></li><li class="listitem"><div class="para">
+					cacheMode
+				</div></li><li class="listitem"><div class="para">
+					maxNodes
+				</div></li><li class="listitem"><div class="para">
+					timeToLiveSeconds
+				</div></li><li class="listitem"><div class="para">
+					minTimeToLiveSeconds
+				</div></li></ul></div><div class="para">
+			<code class="literal">isolationLevel</code> is similar to database isolation level for transactions. JBoss Cache is fully transactional and can participate as a full resource in transactions, so that stale data is not stored in the cache. Some applications may not be affected by stale data in a cache so configuration can vary accordingly. The default is READ_COMMITTED, which is the same as in the example data source configuration for the database connection pool. It's recommended to set this the same as in the data source to avoid odd behavior in the application. JBoss Cache supports the following isolation levels:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					NONE
+				</div></li><li class="listitem"><div class="para">
+					READ_UNCOMMITTED
+				</div></li><li class="listitem"><div class="para">
+					READ_COMMITTED
+				</div></li><li class="listitem"><div class="para">
+					REPEATABLE_READ
+				</div></li><li class="listitem"><div class="para">
+					SERIALIZABLE
+				</div></li></ul></div><div class="para">
+			The default is REPEATABLE_READ, which is used in the example configuration.
+		</div><div class="para">
+			<code class="literal">cacheMode</code> specifies that across the cluster, cached entities will be invalidated on other nodes, so that another node does not return a different value. Invalidation is done in a synchronous manner, which ensures that the cache is in a correct state when the invalidation request completes. This is very important for caches when in a cluster, and is the recommended setting. Replication, instead of invalidation, is an option, but is much more expensive and limits scalability, possibly preventing caching from being effective in providing increased throughput. In this example, <code class="literal">cacheMode</code> is set to INVALIDATION_SYNC.
+		</div><div class="para">
+			The following three parameters - <code class="literal">maxNodes</code>, <code class="literal">timeToLiveSeconds</code>, and <code class="literal">minTimeToLiveSeconds</code> - define the size of the cache and how long things live in the cache.
+		</div><div class="para">
+			<code class="literal">maxNodes</code> specifies the maximum number of nodes that can be in the cache at any one time. The default for <code class="literal">maxNodes</code> is 10,000, which is quite small, and in the example configuration it was set to 500,000. Deciding how large to make this value depends on the entities being cached, the access pattern of those entities, and how much memory is available to use. If the cache uses too much memory, other platform components could be starved of resources and so performance may be degraded. If the cache is too small, not enough entities may be stored in the cache to be of benefit.
+		</div><div class="para">
+			<code class="literal">timeToLiveSeconds</code> specifies how long something remains in the cache before it becomes eligible to be evicted. The default value is 1,000 seconds or about 17 minutes, which is a quite short duration. Understanding the access and load pattern is important. Some applications have very predictable load patterns, where the majority of the load occurs at certain times of day, and lasts a known duration. Tailoring the time that entities stay in the cache towards that pattern helps tune performance.
+		</div><div class="para">
+			<code class="literal">minTimeToLive</code> sets the minimum amount of time an entity will remain in the cache, the default being 120 seconds, or two minutes. This parameter should be set to equal or greater than the maximum transaction timeout value, otherwise it's possible for a cached entity to be evicted from the cache before the transaction completes.
+		</div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="sect-Performance_Tuning_Guide-Second_level_cache-Marking_entities_to_be_cached">
+      ⁠</a>4.5.1.1. Marking entities to be cached</h3></div></div></div><div class="para">
+				The @Cache annotation is added on an entity bean you want to cache and it takes one argument: CacheConcurrencyStrategy. The @Cache annotation requires the following two imports:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						import org.hibernate.annotations.Cache;
+					</div></li><li class="listitem"><div class="para">
+						import org.hibernate.annotations.CacheConcurrencyStrategy;
+					</div></li></ul></div><div class="para">
+				The @Cache annotation looks like the following in the entity code: @Cache(usage = CacheConcurrencyStrategy.<em class="replaceable">READ_ONLY</em>) where the CacheConcurrentyStrategy can be:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						NONE
+					</div></li><li class="listitem"><div class="para">
+						NONSTRICT_READ_WRITE
+					</div></li><li class="listitem"><div class="para">
+						READ_ONLY
+					</div></li><li class="listitem"><div class="para">
+						TRANSACTIONAL
+					</div></li></ul></div><div class="para">
+				Of these options, only two strategies are relevant to JBoss Cache as the second level cache provider: READ_ONLY, and TRANSACTIONAL.
+			</div><div class="para">
+				<code class="literal">READ_ONLY</code> guarantees that the entity will never change while the application is running. This allows the use of read only semantics, which is by far the most optimal performing cache concurrency strategy.
+			</div><div class="para">
+				<code class="literal">TRANSACTIONAL</code> allows the use of database ACID semantics on entities in the cache. Anything to be cached while the application is running should be marked TRANSACTIONAL. Avoid caching entities that are likely to be updated frequently. If an entity is updated too frequently, caching can actually increase overhead and so slow throughput. Each update sends an invalidation request across the cluster, so that the state is correctly maintained as well, so the overhead affects every node, not only the node where the update occurs.
+			</div><div class="para">
+				Starting with the JBoss Cache 3.x series, which made its debut in EAP 5.0.0, we have a transactional cache that uses MVCC. Also, the mvcc-entity configuration we looked at earlier is the default for entities with the platform. MVCC is a well-known algorithm that allows updates to be in process, but not blocking other transactions from reading the data. So writers (updates) do not block readers from reading a consistent image of the data. This is very important for concurrency, as it's not a pessimistic lock that will block anyone from reading the data. For the window of time that a transaction may be updating a particular entity, other transactions in flight that are readers of that entity will not block, and get a consistent image of the data for their use, until, of course, the transaction commits. This provides a level of scalability that was non-existent in any second level cache providers until JBoss Cache 3.x introduced it (at least for updates). Of course, multiple updates in different transactions to the same entity will still block. Once again the read/write ratios are extremely important to getting good throughput with any entities that are cached and can be updated while the application is running.
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-Performance_Tuning_Guide-Entity_Beans-Prepared_Statements">
+      ⁠</a>4.5.2. Prepared Statements</h2></div></div></div><div class="para">
+			When using the JPA annotations for queries, the result is prepared statements that will be executed against the database. Prepared statements have two phases for execution: preparation of the statement, and execution of the statement. Statement preparation involves significant CPU load so to improve throughput prepared statements can be cached. Statements can be cached either via the JDBC driver or configuration of the data source. The method recommended here is to configure the data source because it works whether or not the JDBC driver provides for caching of prepared statements. For example, the MySQL JDBC driver's prepared statement caching is done on a connection by connection basis. In the case of many connections, this implementation takes up considerably more memory, also each prepared statement must be cached for each connection in the pool.
+		</div><div class="para">
+			To enable caching of prepared statement, add the following two lines to the data source configuration file, a file with the pattern *-ds.xml (where the * is usually your database, such as oracle, mysql, db2, etc.) in the directory: <code class="filename">JBOSS_EAP_DIST/jboss-as/server/<em class="replaceable">PROFILE</em>/deploy</code>. Note that the <code class="literal">minimal</code> configuration does <span class="emphasis"><em>not</em></span> support data sources.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;prepared-statement-cache-size&gt;</span>100<span xmlns="" class="perl_Keyword">&lt;/prepared-statement-cache-size&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;shared-prepared-statements&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/shared-prepared-statements&gt;</span>
+</pre><div class="para">
+			The first line enables the prepared statement cache and sets the size of the cache. This should be large enough to hold all the prepared statements across any and all deployed applications using this particular data source (multiple data sources can be configured). The second line states that if two requests are executed in the same transaction the prepared statement cache should return the same statement. This will avoid the use of CPU cycles in preparing the same statements over and over again, increasing throughput and decreasing response times. The actual improvement will vary according to specific circumstances but is well worth the effort.
+		</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-Performance_Tuning_Guide-Entity_Beans-Batch_Inserts">
+      ⁠</a>4.5.3. Batch Inserts</h2></div></div></div><div class="para">
+			Batch inserts is the ability to send a set of inserts to a single table, once to the database as a single insert statement instead of individual statements. This method improves latency, and data insert times. These improvements occur not only with batch processing, loading large quantities of data, but also with OLTP workloads.
+		</div><div class="para">
+			The following is an example of regular inserts:
+		</div><pre class="programlisting">
+INSERT INTO EJB3.OrderLine (OrderId, LineNumber, ProductId, Quantity, Price, ExtendedPrice) VALUES("67ef590kalk4568901thbn7190akioe1", 1, 25, 10, 1.00, 10.00);
+INSERT INTO EJB3.OrderLine (OrderId, LineNumber, ProductId, Quantity, Price, ExtendedPrice) VALUES("67ef590kalk4568901thbn7190akioe1", 2, 16, 1, 1.59, 1.59);
+INSERT INTO EJB3.OrderLine (OrderId, LineNumber, ProductId, Quantity, Price, ExtendedPrice) VALUES("67ef590kalk4568901thbn7190akioe1", 3, 55, 5, 25.00, 125.00);
+INSERT INTO EJB3.OrderLine (OrderId, LineNumber, ProductId, Quantity, Price, ExtendedPrice) VALUES("67ef590kalk4568901thbn7190akioe1", 4, 109, 1, 29.98, 29.98);
+</pre><div class="para">
+			The following is an example of batch inserts:
+		</div><pre class="programlisting">
+INSERT INTO EJB3.OrderLine (OrderId, LineNumber, ProductId, Quantity, Price, ExtendedPrice) VALUES("67ef590kalk4568901thbn7190akioe1", 1, 25, 10, 1.00, 10.00)
+ , ("67ef590kalk4568901thbn7190akioe1", 2, 16, 1, 1.59, 1.59)
+ , ("67ef590kalk4568901thbn7190akioe1", 3, 55, 5, 25.00, 125.00)
+ , ("67ef590kalk4568901thbn7190akioe1", 4, 109, 1, 29.98, 29.98);
+</pre><div class="para">
+			Before discussing how to enable this behavior from an EJB 3 application using Hibernate, the example data model above needs further explanation. The primary key of the EJB3.OrderLine table is the OrderId, and the LineNumber. Originally, the entity Order and OrderLine had a MySQL auto increment column as the OrderId, and the primary key of Order, and the first half of the primary key of the OrderLine entity. The SQL syntax for normal inserts is unaffected by this, as Hibernate does not need to know the primary key value ahead of time. In fact, the order in which those SQL statements are sent to the database does not matter. With batch inserts, since we want to send them all over as one set, and eventually as one SQL statement, Hibernate needs to know the primary key ahead of time. This is for the simple reason that Hibernate pushes each "persist" request from an EJB 3 application into an action queue, and there may be inserts to various tables interleaved in a single transaction. Hibernate has to sort the inserts by primary key in order to batch them at all. An auto increment column value is only known after the insert, so this will fail. Therefore the model has to use a primary key that can be known prior to being inserted into the database. A generated value can be used as the primary key, but the generation strategy used must allow it to be retrieved via JDBC before the inserts are flushed to the database. IDENTITY cannot be used as a primary key generation strategy, but TABLE, SEQUENCE and UUID can be used. It's important to know that when Hibernate performs sorting to get the insert statements batched together it uses the hash code value of the entity so it's imperative that the hash code method is properly defined.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+				UUID is a Hibernate-specific key generation technique and is not in the JPA or JPA 2 specification so code will not be portable if it is used.
+			</div></div></div><div class="para">
+			The following code sample illustrates batch processing. It's an extract of the Order performance application, and inserts reference data that is needed for the test runs.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">TransactionTimeout</span>(<span xmlns="" class="perl_Float">4800</span>)
+<span xmlns="" class="line">​</span> <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">createInventories</span>(<span xmlns="" class="perl_DataType">int</span> batchSize) <span xmlns="" class="perl_Keyword">throws</span> CreateDataException {
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">if</span>(<span xmlns="" class="perl_Function">numberOfInventoryRecords</span>() &gt; <span xmlns="" class="perl_Float">0</span>) {
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">throw</span> <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">CreateDataException</span>(<span xmlns="" class="perl_String">"Inventory already exists!"</span>);
+<span xmlns="" class="line">​</span>}
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_DataType">int</span> rowsToFlush = <span xmlns="" class="perl_Float">0</span>, totalRows = <span xmlns="" class="perl_Float">0</span>;
+<span xmlns="" class="line">​</span>Random quantity = <span xmlns="" class="perl_Keyword">new</span> Random(System.<span xmlns="" class="perl_Function">currentTimeMillis</span>());
+<span xmlns="" class="line">​</span>List&lt;Product&gt; products = productManager.<span xmlns="" class="perl_Function">findAllProducts</span>();
+<span xmlns="" class="line">​</span>List&lt;DistributionCenter&gt; distributionCenters =      distributionCenterManager.<span xmlns="" class="perl_Function">findAllDistributionCenters</span>();
+<span xmlns="" class="line">​</span>InventoryPK inventoryPk = <span xmlns="" class="perl_Keyword">null</span>;
+<span xmlns="" class="line">​</span>Inventory inventory = <span xmlns="" class="perl_Keyword">null</span>;
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">for</span>(Product product: products) {
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">for</span>(DistributionCenter distributionCenter: distributionCenters) {
+<span xmlns="" class="line">​</span>      inventoryPk = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">InventoryPK</span>();
+<span xmlns="" class="line">​</span>      inventory = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">Inventory</span>();
+<span xmlns="" class="line">​</span>inventoryPk.<span xmlns="" class="perl_Function">setProductId</span>(product.<span xmlns="" class="perl_Function">getProductId</span>());
+<span xmlns="" class="line">​</span>inventoryPk.<span xmlns="" class="perl_Function">setDistributionCenterId</span>(distributionCenter.<span xmlns="" class="perl_Function">getDistributionCenterId</span>());
+<span xmlns="" class="line">​</span>inventory.<span xmlns="" class="perl_Function">setPrimaryKey</span>(inventoryPk);
+<span xmlns="" class="line">​</span>inventory.<span xmlns="" class="perl_Function">setQuantityOnHand</span>(quantity.<span xmlns="" class="perl_Function">nextInt</span>(<span xmlns="" class="perl_Float">25000</span>));
+<span xmlns="" class="line">​</span>inventory.<span xmlns="" class="perl_Function">setBackorderQuantity</span>(<span xmlns="" class="perl_Float">0</span>);
+<span xmlns="" class="line">​</span>inventory.<span xmlns="" class="perl_Function">setVersion</span>(<span xmlns="" class="perl_Float">1</span>);
+<span xmlns="" class="line">​</span>batchEntityManager.<span xmlns="" class="perl_Function">persist</span>(inventory);
+<span xmlns="" class="line">​</span>rowsToFlush++;
+<span xmlns="" class="line">​</span>totalRows++;
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">if</span>(rowsToFlush == batchSize) {
+<span xmlns="" class="line">​</span>      batchEntityManager.<span xmlns="" class="perl_Function">flush</span>();
+<span xmlns="" class="line">​</span>      rowsToFlush = <span xmlns="" class="perl_Float">0</span>;
+<span xmlns="" class="line">​</span>      batchEntityManager.<span xmlns="" class="perl_Function">clear</span>();
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">if</span>(log.<span xmlns="" class="perl_Function">isTraceEnabled</span>()) {
+<span xmlns="" class="line">​</span>         log.<span xmlns="" class="perl_Function">trace</span>(<span xmlns="" class="perl_String">"Just flushed "</span> + batchSize + <span xmlns="" class="perl_String">" rows to the database."</span>);
+<span xmlns="" class="line">​</span>         log.<span xmlns="" class="perl_Function">trace</span>(<span xmlns="" class="perl_String">"Total rows flushed is "</span> + totalRows);
+<span xmlns="" class="line">​</span>      }
+<span xmlns="" class="line">​</span>      }
+<span xmlns="" class="line">​</span>    }
+<span xmlns="" class="line">​</span>}
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">return</span>;
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+			The method is annotated with a TransactionTimeout annotation that specifies a longer transaction timeout value, because the default of 300 seconds is too short in this instance. The method takes a single parameter called batchSize which allows tuning of the batch insert size. This is good practice because it allows different batch insert sizes to be tested to optimize the results. After creating the inventory entity, persist is called on the entity manager. The code that follows is significant in demonstrating the batch processing method.
+		</div><div class="para">
+			After calling persist a check is made to confirm that the number of entities or rows persisted is equal to the batchSize parameter. If so, the entity manager's flush method is called. Since this is a single large transaction, the normal Hibernate behavior is to flush everything on the transaction commit, or when the JDBC batch size has been reached. To flush a specific number of rows, instead of letting Hibernate decide, an explicit call to flush is made. Note that Hibernate will flush at two intervals: at the commit of the transaction and when it gets to the JDBC batch size parameter. So there's no need to explicitly call flush at all, instead set the JDBC batch size parameter and avoid the batch size parameter altogether. In this case the batch size parameter was explicitly set to the maximum once, then different batch sizes less than or equal to the JDBC batch size parameter were tested. This could be simpler, but the alternative would be to change the Hibernate configuration and redeploy the application in between tests. The Hibernate JDBC batch size parameter (hibernate.jdbc.batch_size) is specified in the properties values of <code class="filename">persistence.xml</code> for the persistence unit of the application entities.
+		</div><div class="para">
+			The parameter hibernate.order_inserts tells Hibernate to order the inserts by the primary key (using the entities hash code value actually). If entities use a generated primary key, you need to make sure that fetching generated key values is enabled, but this is enabled in Hibernate by default.
+		</div><div class="para">
+			Below is an extract from the configuration file with both these parameters set:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;persistence-unit</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"batch-services"</span><span xmlns="" class="perl_Others"> transaction-type=</span><span xmlns="" class="perl_String">"JTA"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;provider&gt;</span>org.hibernate.ejb.HibernatePersistence<span xmlns="" class="perl_Keyword">&lt;/provider&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;jta-data-source&gt;</span>java:/MySqlDS<span xmlns="" class="perl_Keyword">&lt;/jta-data-source&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;properties&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.hbm2ddl.auto"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"none"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.default_catalog"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"EJB3"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.dialect"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"org.hibernate.dialect.MySQL5InnoDBDialect"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.order_updates"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.order_inserts"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.jdbc.batch_versioned_data"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.jdbc.fetch_size"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"50000"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.jdbc.batch_size"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"50000"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.default_batch_fetch_size"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"50000"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.connection.release_mode"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"auto"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/properties&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/persistence-unit&gt;</span>
+</pre><div class="para">
+			The following code sample illustrates OLTP. It creates an Order which contains OrderLines (has-a relationship in the object model). The OrderLine entities can be batch inserted, as what is passed into this method is the Order object with its OrderLine collection.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> Order <span xmlns="" class="perl_Function">createOrder</span>(Customer customer
+<span xmlns="" class="line">​</span>   , List&lt;OrderLine&gt; orderLines
+<span xmlns="" class="line">​</span>   , BigDecimal totalOrderAmount) {
+<span xmlns="" class="line">​</span>   String addressLine2 = customer.<span xmlns="" class="perl_Function">getAddressLine2</span>();
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">if</span> (addressLine2 == <span xmlns="" class="perl_Keyword">null</span>) {
+<span xmlns="" class="line">​</span>          addressLine2 = <span xmlns="" class="perl_String">""</span>;
+<span xmlns="" class="line">​</span>   }
+<span xmlns="" class="line">​</span>   Address shippingAddress = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">Address</span>();
+<span xmlns="" class="line">​</span>   shippingAddress.<span xmlns="" class="perl_Function">setAddressLine1</span>(customer.<span xmlns="" class="perl_Function">getAddressLine1</span>());
+<span xmlns="" class="line">​</span>   shippingAddress.<span xmlns="" class="perl_Function">setAddressLine2</span>(addressLine2);
+<span xmlns="" class="line">​</span>   shippingAddress.<span xmlns="" class="perl_Function">setCity</span>(customer.<span xmlns="" class="perl_Function">getCity</span>());
+<span xmlns="" class="line">​</span>   shippingAddress.<span xmlns="" class="perl_Function">setState</span>(customer.<span xmlns="" class="perl_Function">getState</span>());
+<span xmlns="" class="line">​</span>   shippingAddress.<span xmlns="" class="perl_Function">setZipCode</span>(customer.<span xmlns="" class="perl_Function">getZipCode</span>());
+<span xmlns="" class="line">​</span>   shippingAddress.<span xmlns="" class="perl_Function">setZipCodePlusFour</span>(customer.<span xmlns="" class="perl_Function">getZipCodePlusFour</span>());
+<span xmlns="" class="line">​</span>  Order newOrder = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">Order</span>();
+<span xmlns="" class="line">​</span>  newOrder.<span xmlns="" class="perl_Function">setCustomerId</span>(customer.<span xmlns="" class="perl_Function">getCustomerId</span>());
+<span xmlns="" class="line">​</span>  newOrder.<span xmlns="" class="perl_Function">setDistributionCenterId</span>(customer.<span xmlns="" class="perl_Function">getDistributionCenterId</span>());
+<span xmlns="" class="line">​</span>  newOrder.<span xmlns="" class="perl_Function">setShippingAddressLine1</span>(shippingAddress.<span xmlns="" class="perl_Function">getAddressLine1</span>());
+<span xmlns="" class="line">​</span>  newOrder.<span xmlns="" class="perl_Function">setShippingAddressLine2</span>(shippingAddress.<span xmlns="" class="perl_Function">getAddressLine2</span>());
+<span xmlns="" class="line">​</span>  newOrder.<span xmlns="" class="perl_Function">setShippingCity</span>(shippingAddress.<span xmlns="" class="perl_Function">getCity</span>());
+<span xmlns="" class="line">​</span>  newOrder.<span xmlns="" class="perl_Function">setShippingState</span>(shippingAddress.<span xmlns="" class="perl_Function">getState</span>());
+<span xmlns="" class="line">​</span>  newOrder.<span xmlns="" class="perl_Function">setShippingZipCode</span>(shippingAddress.<span xmlns="" class="perl_Function">getZipCode</span>());
+<span xmlns="" class="line">​</span>  newOrder.<span xmlns="" class="perl_Function">setShippingZipCodePlusFour</span>(shippingAddress.<span xmlns="" class="perl_Function">getZipCodePlusFour</span>());
+<span xmlns="" class="line">​</span>  newOrder.<span xmlns="" class="perl_Function">setTotalOrderAmount</span>(totalOrderAmount);
+<span xmlns="" class="line">​</span>  newOrder.<span xmlns="" class="perl_Function">setOrderDate</span>(<span xmlns="" class="perl_Keyword">new</span> Date());
+<span xmlns="" class="line">​</span>  newOrder.<span xmlns="" class="perl_Function">setCustomer</span>(customer);
+<span xmlns="" class="line">​</span>  entityManager.<span xmlns="" class="perl_Function">persist</span>(newOrder);
+<span xmlns="" class="line">​</span>  String orderId = newOrder.<span xmlns="" class="perl_Function">getOrderId</span>();
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">for</span> (OrderLine orderLine: orderLines) {
+<span xmlns="" class="line">​</span>         orderLine.<span xmlns="" class="perl_Function">getOrderLinePK</span>().<span xmlns="" class="perl_Function">setOrderId</span>(orderId);
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>  newOrder.<span xmlns="" class="perl_Function">setOrderLines</span>(orderLines);
+<span xmlns="" class="line">​</span>  entityManager.<span xmlns="" class="perl_Function">persist</span>(newOrder);
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">return</span> newOrder;
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+			Note there is no call to the entity manager's flush method. Everything is accomplished through the persistence unit's Hibernate configuration, which is as follows:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;persistence-unit</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"services"</span><span xmlns="" class="perl_Others"> transaction-type=</span><span xmlns="" class="perl_String">"JTA"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;provider&gt;</span>org.hibernate.ejb.HibernatePersistence<span xmlns="" class="perl_Keyword">&lt;/provider&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;jta-data-source&gt;</span>java:/MySqlDS<span xmlns="" class="perl_Keyword">&lt;/jta-data-source&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;properties&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.hbm2ddl.auto"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"none"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.default_catalog"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"EJB3"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.dialect"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"org.hibernate.dialect.MySQL5InnoDBDialect"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.order_updates"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.order_inserts"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.jdbc.batch_versioned_data"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.jdbc.fetch_size"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"500"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.jdbc.batch_size"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"500"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.default_batch_fetch_size"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"16"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.connection.release_mode"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"auto"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.region.factory_class"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"org.hibernate.cache.jbc2.JndiMultiplexedJBossCacheRegionFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.region.jbc2.cachefactory"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"java:CacheManager"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.use_second_level_cache"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.use_query_cache"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"false"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.use_minimal_puts"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.region.jbc2.cfg.entity"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"mvcc-entity"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.region_prefix"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"services"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/properties&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/persistence-unit&gt;</span>
+</pre><div class="para">
+			The same two configuration parameters for Hibernate are used, where the inserts are ordered, and the JDBC batch size is set. In this case, an order that has up to 500 line items could be batched. Because OrderLine entities are persisted and the transaction will commit upon exiting the createOrder method, there is no need to do anything further. Of course, the data model changes to use a generated key strategy that can be known prior to the inserts being executed is important. Finally, there's a database-specific configuration parameter required to make this work just as you want.
+		</div><div class="para">
+			With the MySQL JDBC driver a connection property must be set to enable the driver to detect inserts to the same table that can be combined into a single insert statement: rewriteBatchedStatements. Since Hibernate will send the inserts it's batching using the JDBC method executeBatch, the JDBC driver can rewrite the multiple insert statements into a single insert statement as illustrated at the top of the article. This property must be specified with a value of <code class="literal">true</code>, and you can do this through setting the connection property in the data source XML file for MySQL as such:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;datasources&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;local-tx-datasource&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;jndi-name&gt;</span>MySqlDS<span xmlns="" class="perl_Keyword">&lt;/jndi-name&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;connection-url&gt;</span>jdbc:mysql://localhost:3306/EJB3<span xmlns="" class="perl_Keyword">&lt;/connection-url&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;driver-class&gt;</span>com.mysql.jdbc.Driver<span xmlns="" class="perl_Keyword">&lt;/driver-class&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;user-name&gt;</span>username<span xmlns="" class="perl_Keyword">&lt;/user-name&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;password&gt;</span>password<span xmlns="" class="perl_Keyword">&lt;/password&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;exception-sorter-class-name&gt;</span>org.jboss.resource.adapter.jdbc.vendor.MySQLExceptionSorter<span xmlns="" class="perl_Keyword">&lt;/exception-sorter-class-name&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;min-pool-size&gt;</span>400<span xmlns="" class="perl_Keyword">&lt;/min-pool-size&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;max-pool-size&gt;</span>450<span xmlns="" class="perl_Keyword">&lt;/max-pool-size&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Comment">&lt;!-- The transaction isolation level must be read committed for optimitic locking to work properly --&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;transaction-isolation&gt;</span>TRANSACTION_READ_COMMITTED<span xmlns="" class="perl_Keyword">&lt;/transaction-isolation&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;connection-property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"rewriteBatchedStatements"</span><span xmlns="" class="perl_Keyword">&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/connection-property&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Comment">&lt;!-- corresponding type-mapping in the standardjbosscmp-jdbc.xml (optional) --&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;metadata&gt;</span>
+<span xmlns="" class="line">​</span>                 <span xmlns="" class="perl_Keyword">&lt;type-mapping&gt;</span>mySQL<span xmlns="" class="perl_Keyword">&lt;/type-mapping&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;/metadata&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/local-tx-datasource&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/datasources&gt;</span>
+</pre><div xmlns:d="http://docbook.org/ns/docbook" class="warning"><div class="admonition_header"><p><strong>Warning</strong></p></div><div class="admonition"><div class="para">
+				MYSQL has a default maximum for SQL statement size, and depending on the number of columns, column types, and values, you could exceed that limit. The limit is 1MB, but can be made larger if necessary by setting max_allowed_packet variable in my.cnf. It takes as its value the number of megabytes such as 2MB, or 16MB, etc. If you are dealing with BLOB, or other large data for the values of the columns, keep this limit in mind.
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="sect-Performance_Tuning_Guide-Entity_Beans-Batch_Inserts-Testing_and_Results">
+      ⁠</a>4.5.3.1. Batch Processing; Tests And Results</h3></div></div></div><div class="para">
+				Below are the parameters and results of a series of performance test conducted to illustrate the effectiveness of the examples above.
+			</div><div class="para">
+				Each set of tests has an in-context result comment and there is a <span class="emphasis"><em>Conclusions</em></span> overview at the end of the section.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<a class="xref" href="chap-Performance_Tuning_Guide-EJB_3_Container.html#sect-Performance_Tuning_Guide-Entity_Beans-Batch_Inserts-Testing_and_Results-Batch_Processing">Example 4.1, “Batch Processing Test”</a>
+					</div></li><li class="listitem"><div class="para">
+						<a class="xref" href="chap-Performance_Tuning_Guide-EJB_3_Container.html#sect-Performance_Tuning_Guide-Entity_Beans-Batch_Inserts-Testing_and_Results-OLTP_Basline">Example 4.2, “OLTP Baseline Testing”</a>
+					</div></li><li class="listitem"><div class="para">
+						<a class="xref" href="chap-Performance_Tuning_Guide-EJB_3_Container.html#sect-Performance_Tuning_Guide-Entity_Beans-Batch_Inserts-Testing_and_Results-OLTP_Hibernate">Example 4.3, “OLTP Hibernate Batch Processing Test”</a>
+					</div></li><li class="listitem"><div class="para">
+						<a class="xref" href="chap-Performance_Tuning_Guide-EJB_3_Container.html#sect-Performance_Tuning_Guide-Entity_Beans-Batch_Inserts-Testing_and_Results-OLTP_Hibernate_and_MySQL">Example 4.4, “OLTP Hibernate and MySQL Batch Processing Test”</a>
+					</div></li><li class="listitem"><div class="para">
+						<a class="xref" href="chap-Performance_Tuning_Guide-EJB_3_Container.html#sect-Performance_Tuning_Guide-Entity_Beans-Batch_Inserts-Testing_and_Results-Higher_Items_Baseline">Example 4.5, “Higher Line Items Baseline Test”</a>
+					</div></li><li class="listitem"><div class="para">
+						<a class="xref" href="chap-Performance_Tuning_Guide-EJB_3_Container.html#sect-Performance_Tuning_Guide-Entity_Beans-Batch_Inserts-Testing_and_Results-Higher_Items_Hibernate">Example 4.6, “Higher Line Items Hibernate Batch Processing Test”</a>
+					</div></li><li class="listitem"><div class="para">
+						<a class="xref" href="chap-Performance_Tuning_Guide-EJB_3_Container.html#sect-Performance_Tuning_Guide-Entity_Beans-Batch_Inserts-Testing_and_Results-Higher_Items_Hibernate_and_MySQL">Example 4.7, “Higher Line Items Hibernate And MySQL Batch Processing Test”</a>
+					</div></li></ul></div><div class="example"><a id="sect-Performance_Tuning_Guide-Entity_Beans-Batch_Inserts-Testing_and_Results-Batch_Processing">
+      ⁠</a><p class="title"><strong>Example 4.1. Batch Processing Test</strong></p><div class="example-contents"><div class="para">
+					Testing performed with the reference data load function of the Order performance application.
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><p class="title"><strong>Test Parameters</strong></p><ul><li class="listitem"><div class="para">
+							Environment:
+						</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+									Quad-core Intel i7
+								</div></li><li class="listitem"><div class="para">
+									8 GB of RAM
+								</div></li><li class="listitem"><div class="para">
+									MySQL database
+								</div></li><li class="listitem"><div class="para">
+									JBoss Enterprise Application Platform <code class="literal">production</code> profile.
+								</div></li></ul></div></li><li class="listitem"><div class="para">
+							Table Contents:
+						</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+									41,106 rows
+								</div></li><li class="listitem"><div class="para">
+									250,000 products
+								</div></li><li class="listitem"><div class="para">
+									6.25 million inventory records
+								</div></li><li class="listitem"><div class="para">
+									2 thousand suppliers
+								</div></li><li class="listitem"><div class="para">
+									1.25 million supplier inventory records
+								</div></li><li class="listitem"><div class="para">
+									2 million rows for customers and pricing methods.
+								</div></li></ul></div></li><li class="listitem"><div class="para">
+							Batching enabled in Hibernate.
+						</div></li><li class="listitem"><div class="para">
+							Batch insert size of 10,000 rows.
+						</div></li><li class="listitem"><div class="para">
+							<span class="emphasis"><em>MySQL Batching</em></span> refers to the <em class="parameter"><code>rewriteBatchedStatements</code></em> parameter (which is set in <code class="filename">mysql-ds.xml</code>).
+						</div></li></ul></div></div></div><div class="table"><a id="idm139629683144368">
+      ⁠</a><p class="title"><strong>Table 4.1. Batch Processing Test Results</strong></p><div class="table-contents"><table xmlns:d="http://docbook.org/ns/docbook" class="lt-4-cols lt-7-rows" summary="Batch Processing Test Results"><colgroup><col/><col/></colgroup><thead><tr><th> MySQL Batching </th><th> Throughput (rows per second) </th></tr></thead><tfoot><tr><th> <span class="bold bold"><strong>Result</strong></span> </th><th> 487.7% increase in throughput. </th></tr></tfoot><tbody><tr><td> <span class="bold bold"><strong>Off</strong></span> </td><td> 6,734.01 </td></tr><tr><td> <span class="bold bold"><strong>On</strong></span> </td><td> 39,575.75 </td></tr></tbody></table></div></div><div class="example"><a id="sect-Performance_Tuning_Guide-Entity_Beans-Batch_Inserts-Testing_and_Results-OLTP_Basline">
+      ⁠</a><p class="title"><strong>Example 4.2. OLTP Baseline Testing</strong></p><div class="example-contents"><div class="para">
+					Three tests were run against the OLTP example. This test does not use any batching features and thus sets the baseline for further tests.
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><p class="title"><strong>Test Parameters</strong></p><ul><li class="listitem"><div class="para">
+							Environment:
+						</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+									Quad-core Intel i7
+								</div></li><li class="listitem"><div class="para">
+									8 GB of RAM
+								</div></li><li class="listitem"><div class="para">
+									MySQL database
+								</div></li><li class="listitem"><div class="para">
+									JBoss Enterprise Application Platform <code class="literal">production</code> profile.
+								</div></li></ul></div></li><li class="listitem"><div class="para">
+							The composite benchmark is run with randomly created orders with 1 to 9 order line items. The average is around 4.5 to 5 order line items per order. This mimics a real world scenario.
+						</div></li><li class="listitem"><div class="para">
+							Batch processing <span class="bold bold"><strong>off</strong></span>.
+						</div></li><li class="listitem"><div class="para">
+							<em class="parameter"><code>rewriteBatchedStatements</code></em> parameter <span class="bold bold"><strong>unset</strong></span> in <code class="filename">mysql-ds.xml</code>.
+						</div></li></ul></div></div></div><div class="table"><a id="idm139629637200192">
+      ⁠</a><p class="title"><strong>Table 4.2. OLTP Baseline Results</strong></p><div class="table-contents"><table xmlns:d="http://docbook.org/ns/docbook" class="lt-4-cols lt-7-rows" summary="OLTP Baseline Results"><colgroup><col/><col/></colgroup><thead><tr><th> Order Inserts </th><th> Throughput (orders per second). </th></tr></thead><tfoot><tr><th> <span class="bold bold"><strong>Result</strong></span> </th><th> Single item orders have the highest throughput, with five and nine following respectively. </th></tr></tfoot><tbody><tr><td> 10,000 order inserts with a single order line item </td><td> 45.80 </td></tr><tr><td> 10,000 order inserts with five order line items </td><td> 43.96 </td></tr><tr><td> 10,000 order inserts with nine order line items </td><td> 43.14 </td></tr></tbody></table></div></div><div class="example"><a id="sect-Performance_Tuning_Guide-Entity_Beans-Batch_Inserts-Testing_and_Results-OLTP_Hibernate">
+      ⁠</a><p class="title"><strong>Example 4.3. OLTP Hibernate Batch Processing Test</strong></p><div class="example-contents"><div class="para">
+					The second OLTP test was run with Hibernate batching switched on. All other parameters stayed the same as the previous test.
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><p class="title"><strong>Test Parameters</strong></p><ul><li class="listitem"><div class="para">
+							Environment:
+						</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+									Quad-core Intel i7
+								</div></li><li class="listitem"><div class="para">
+									8 GB of RAM
+								</div></li><li class="listitem"><div class="para">
+									MySQL database
+								</div></li><li class="listitem"><div class="para">
+									JBoss Enterprise Application Platform <code class="literal">production</code> profile.
+								</div></li></ul></div></li><li class="listitem"><div class="para">
+							The composite benchmark is run with randomly created orders with 1 to 9 order line items. The average is around 4.5 to 5 order line items per order. This mimics a real world scenario.
+						</div></li><li class="listitem"><div class="para">
+							Hibernate batch processing <span class="bold bold"><strong>on</strong></span>.
+						</div></li><li class="listitem"><div class="para">
+							MySQL batching (<em class="parameter"><code>rewriteBatchedStatements</code></em>) <span class="bold bold"><strong>unset</strong></span> in <code class="filename">mysql-ds.xml</code>.
+						</div></li></ul></div></div></div><div class="table"><a id="idm139629639084432">
+      ⁠</a><p class="title"><strong>Table 4.3. OLTP Hibernate Batch Processing Results</strong></p><div class="table-contents"><table xmlns:d="http://docbook.org/ns/docbook" class="lt-4-cols lt-7-rows" summary="OLTP Hibernate Batch Processing Results"><colgroup><col/><col/></colgroup><thead><tr><th> Order Inserts </th><th> Throughput (orders per second). </th></tr></thead><tfoot><tr><th> Result </th><th> Ordering the inserts lowered throughput slightly; differences range from .24 to .36 orders per second. </th></tr></tfoot><tbody><tr><td> 10,000 order inserts with a single order line item </td><td> 45.64 </td></tr><tr><td> 10,000 order inserts with five order line items </td><td> 43.62 </td></tr><tr><td> 10,000 order inserts with nine order line items </td><td> 42.78 </td></tr></tbody></table></div></div><div class="example"><a id="sect-Performance_Tuning_Guide-Entity_Beans-Batch_Inserts-Testing_and_Results-OLTP_Hibernate_and_MySQL">
+      ⁠</a><p class="title"><strong>Example 4.4. OLTP Hibernate and MySQL Batch Processing Test</strong></p><div class="example-contents"><div class="para">
+					The third OLTP test enabled both Hibernate and MySQL batching features.
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><p class="title"><strong>Test Parameters</strong></p><ul><li class="listitem"><div class="para">
+							Environment:
+						</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+									Quad-core Intel i7
+								</div></li><li class="listitem"><div class="para">
+									8 GB of RAM
+								</div></li><li class="listitem"><div class="para">
+									MySQL database
+								</div></li><li class="listitem"><div class="para">
+									JBoss Enterprise Application Platform <code class="literal">production</code> profile.
+								</div></li></ul></div></li><li class="listitem"><div class="para">
+							The composite benchmark is run with randomly created orders with 1 to 9 order line items. The average is around 4.5 to 5 order line items per order. This mimics a real world scenario.
+						</div></li><li class="listitem"><div class="para">
+							Hibernate batch processing <span class="bold bold"><strong>on</strong></span>.
+						</div></li><li class="listitem"><div class="para">
+							MySQL batching (<em class="parameter"><code>rewriteBatchedStatements</code></em>) <span class="bold bold"><strong>on</strong></span> in <code class="filename">mysql-ds.xml</code>.
+						</div></li></ul></div></div></div><div class="table"><a id="idm139629639108464">
+      ⁠</a><p class="title"><strong>Table 4.4. OLTP Hibernate and MySQL Batch Processing Results</strong></p><div class="table-contents"><table xmlns:d="http://docbook.org/ns/docbook" class="lt-4-cols lt-7-rows" summary="OLTP Hibernate and MySQL Batch Processing Results"><colgroup><col/><col/></colgroup><thead><tr><th> Order Inserts </th><th> Throughput (orders per second). </th></tr></thead><tfoot><tr><th> Result </th><th> <div class="para">
+							An increase in throughput ranging from .21 to .63 orders per second, with nine line item orders showing the highest improvement.
+						</div>
+						 <div class="para">
+							Five line item orders show a .66% improvement over the baseline and nine line item orders show a 1.46% improvement.
+						</div>
+						 </th></tr></tfoot><tbody><tr><td> 10,000 order inserts with a single order line item </td><td> 46.11 </td></tr><tr><td> 10,000 order inserts with five order line items </td><td> 44.25 </td></tr><tr><td> 10,000 order inserts with nine order line items </td><td> 43.77 </td></tr></tbody></table></div></div><div class="example"><a id="sect-Performance_Tuning_Guide-Entity_Beans-Batch_Inserts-Testing_and_Results-Higher_Items_Baseline">
+      ⁠</a><p class="title"><strong>Example 4.5. Higher Line Items Baseline Test</strong></p><div class="example-contents"><div class="para">
+					Some addition testing was performed using higher line item numbers. This test does not use any batching features and thus sets the baseline for further tests.
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><p class="title"><strong>Test Parameters</strong></p><ul><li class="listitem"><div class="para">
+							Environment:
+						</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+									Quad-core Intel i7
+								</div></li><li class="listitem"><div class="para">
+									8 GB of RAM
+								</div></li><li class="listitem"><div class="para">
+									MySQL database
+								</div></li><li class="listitem"><div class="para">
+									JBoss Enterprise Application Platform <code class="literal">production</code> profile.
+								</div></li></ul></div></li><li class="listitem"><div class="para">
+							The composite benchmark is run with randomly created orders with 1 to 9 order line items. The average is around 4.5 to 5 order line items per order. This mimics a real world scenario.
+						</div></li><li class="listitem"><div class="para">
+							Hibernate batch processing <span class="bold bold"><strong>off</strong></span>.
+						</div></li><li class="listitem"><div class="para">
+							MySQL batching (<em class="parameter"><code>rewriteBatchedStatements</code></em>) <span class="bold bold"><strong>unset</strong></span> in <code class="filename">mysql-ds.xml</code>.
+						</div></li></ul></div></div></div><div class="table"><a id="idm139629677201856">
+      ⁠</a><p class="title"><strong>Table 4.5. Higher Line Items Baseline Results</strong></p><div class="table-contents"><table xmlns:d="http://docbook.org/ns/docbook" class="lt-4-cols lt-7-rows" summary="Higher Line Items Baseline Results"><colgroup><col/><col/></colgroup><thead><tr><th> Order Inserts </th><th> Throughput (orders per second). </th></tr></thead><tfoot><tr><th> Result </th><th> Because 15 and 20 line items orders take much longer, the server can process even more single line item orders. </th></tr></tfoot><tbody><tr><td> 10,000 order inserts with a single order line item </td><td> 53.34 </td></tr><tr><td> 10,000 order inserts with 15 order line items </td><td> 31.25 </td></tr><tr><td> 10,000 order inserts with 20 order line items </td><td> 30.09 </td></tr></tbody></table></div></div><div class="example"><a id="sect-Performance_Tuning_Guide-Entity_Beans-Batch_Inserts-Testing_and_Results-Higher_Items_Hibernate">
+      ⁠</a><p class="title"><strong>Example 4.6. Higher Line Items Hibernate Batch Processing Test</strong></p><div class="example-contents"><div class="para">
+					In this test, Hibernate's batching feature is enabled. All other parameters (including higher line items) remain the same.
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><p class="title"><strong>Test Parameters</strong></p><ul><li class="listitem"><div class="para">
+							Environment:
+						</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+									Quad-core Intel i7
+								</div></li><li class="listitem"><div class="para">
+									8 GB of RAM
+								</div></li><li class="listitem"><div class="para">
+									MySQL database
+								</div></li><li class="listitem"><div class="para">
+									JBoss Enterprise Application Platform <code class="literal">production</code> profile.
+								</div></li></ul></div></li><li class="listitem"><div class="para">
+							The composite benchmark is run with randomly created orders with 1 to 9 order line items. The average is around 4.5 to 5 order line items per order. This mimics a real world scenario.
+						</div></li><li class="listitem"><div class="para">
+							Hibernate batch processing <span class="bold bold"><strong>on</strong></span>.
+						</div></li><li class="listitem"><div class="para">
+							MySQL batching (<em class="parameter"><code>rewriteBatchedStatements</code></em>) <span class="bold bold"><strong>unset</strong></span> in <code class="filename">mysql-ds.xml</code>.
+						</div></li></ul></div></div></div><div class="table"><a id="idm139629686812000">
+      ⁠</a><p class="title"><strong>Table 4.6. Higher Line Items Hibernate Batch Processing Results</strong></p><div class="table-contents"><table xmlns:d="http://docbook.org/ns/docbook" class="lt-4-cols lt-7-rows" summary="Higher Line Items Hibernate Batch Processing Results"><colgroup><col/><col/></colgroup><thead><tr><th> Order Inserts </th><th> Throughput (orders per second). </th></tr></thead><tfoot><tr><th> Result </th><th> <div class="para">
+							Single line item orders showed a 2.79% increase (an extra 1.49 orders per second).
+						</div>
+						 <div class="para">
+							15 line item orders increased by .06 orders per second and the twenty line item orders decreased by .03 orders per second. These results are within the expected margin of test variations.
+						</div>
+						 </th></tr></tfoot><tbody><tr><td> 10,000 order inserts with a single order line item </td><td> 54.83 </td></tr><tr><td> 10,000 order inserts with fifteen order line items </td><td> 31.31 </td></tr><tr><td> 10,000 order inserts with twenty order line items </td><td> 30.06 </td></tr></tbody></table></div></div><div class="example"><a id="sect-Performance_Tuning_Guide-Entity_Beans-Batch_Inserts-Testing_and_Results-Higher_Items_Hibernate_and_MySQL">
+      ⁠</a><p class="title"><strong>Example 4.7. Higher Line Items Hibernate And MySQL Batch Processing Test</strong></p><div class="example-contents"><div class="para">
+					In this last test, both the Hibernate and MySQL batching features are tested using higher line items.
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><p class="title"><strong>Test Parameters</strong></p><ul><li class="listitem"><div class="para">
+							Environment:
+						</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+									Quad-core Intel i7
+								</div></li><li class="listitem"><div class="para">
+									8 GB of RAM
+								</div></li><li class="listitem"><div class="para">
+									MySQL database
+								</div></li><li class="listitem"><div class="para">
+									JBoss Enterprise Application Platform <code class="literal">production</code> profile.
+								</div></li></ul></div></li><li class="listitem"><div class="para">
+							The composite benchmark is run with randomly created orders with 1 to 9 order line items. The average is around 4.5 to 5 order line items per order. This mimics a real world scenario.
+						</div></li><li class="listitem"><div class="para">
+							Hibernate batch processing <span class="bold bold"><strong>on</strong></span>.
+						</div></li><li class="listitem"><div class="para">
+							MySQL batching (<em class="parameter"><code>rewriteBatchedStatements</code></em>) <span class="bold bold"><strong>on</strong></span> in <code class="filename">mysql-ds.xml</code>.
+						</div></li></ul></div></div></div><div class="table"><a id="idm139629634614816">
+      ⁠</a><p class="title"><strong>Table 4.7. Higher Line Items Hibernate And MySQL Batch Processing Results</strong></p><div class="table-contents"><table xmlns:d="http://docbook.org/ns/docbook" class="lt-4-cols lt-7-rows" summary="Higher Line Items Hibernate And MySQL Batch Processing Results"><colgroup><col/><col/></colgroup><thead><tr><th> Order Inserts </th><th> Throughput (orders per second). </th></tr></thead><tfoot><tr><th> Result </th><th> <div class="para">
+							Single line orders showed a 13.97% increase, 15 line item orders showed an increase of 19.65% and 20 line item orders increased by 18.05%.
+						</div>
+						 </th></tr></tfoot><tbody><tr><td> 10,000 order inserts with a single order line item </td><td> 60.79 </td></tr><tr><td> 10,000 order inserts with fifteen order line items </td><td> 37.39 </td></tr><tr><td> 10,000 order inserts with twenty order line items </td><td> 35.52 </td></tr></tbody></table></div></div><h5><a id="idm139629698121488">
+      ⁠</a>Conclusions</h5><div class="para">
+				For OLTP workloads, if you have situations where you are regularly going to insert tens of rows that could be batch inserted, you should consider batch insertion. Of course, this requires the JDBC driver to have the same capability as the MySQL JDBC driver to convert the multiple inserts into a single insert.
+			</div><div class="para">
+				The fact that throughput improvement was found in the smaller test is significant, considering that there were other queries being executed. The customer must be found for each order to be processed, which requires a three-way join from customer to pricing method to distribution center. Each line item looks up its product cost information as well, and then the line items are priced, and a total is calculated for the entire order.
+			</div><div class="para">
+				So, the insert does not dominate the time, which is a significant factor in any decision to use these settings for an application. Batch inserts clearly offer an advantage for batch operations but it is not clear if it can also improve OLTP.
+			</div><div class="para">
+				It is necessary to understand the typical cases for how many times you have enough rows involved in an insert that can be converted to a batch insert, and how much of the overall processing time the inserts are versus the rest of the processing.
+			</div><div class="para">
+				Additionally, batch inserts are much more efficient in database operations, so while you may not get direct benefit in the response time of transactions, that gained efficiency on the database may allow other processing to be better served.
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-Performance_Tuning_Guide-Entity_Beans-Batching_Database_Operations">
+      ⁠</a>4.5.4. Batching Database Operations</h2></div></div></div><div class="para">
+			Hibernate has long had the ability to batch database operations, within the context of each transaction. The concept is to reduce the latency between the application platform and the database server. If each and every query is sent to the database individually, latency is increased because of the sheer number of round trips to and from the database. Batching of database operations can be used in any application that uses Hibernate as the persistence mechanism.
+		</div><div class="para">
+			There are two Hibernate parameters that control the behavior of batching database operations:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					hibernate.jdbc.fetch_size
+				</div></li><li class="listitem"><div class="para">
+					hibernate.jdbc.batch_size
+				</div></li></ul></div><div class="para">
+			Both of these options set properties within the JDBC driver. In the first case, <code class="literal">hibernate.jdbc.fetch_size</code> sets the statement's fetch size within the JDBC driver, that is the number of rows fetched when there is more than a one row result on select statements. In the second case, <code class="literal">hibernate.jdbc.batch_size</code> determines the number of updates (inserts, updates and deletes) that are sent to the database at one time for execution. This parameter is necessary to do batch inserts, but must be coupled with the ordered inserts parameter and the JDBC driver's capability to rewrite the inserts into a batch insert statement.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="warning"><div class="admonition_header"><p><strong>Warning</strong></p></div><div class="admonition"><div class="para">
+				Ordering inserts and updates only helps improve performance if the JDBC driver can rewrite the statements and should not be used unless the JDBC driver has that capability.
+			</div></div></div><div class="para">
+			Determining the correct values to be assigned to each of these parameters requires analysis of each application's behavior when transacting with its database. The following sections examine differences in performance of the test application with differing values for each parameter.
+		</div><div class="para">
+			The first parameter examined is <code class="literal">hibernate.jdbc.fetch_size</code>. In the example application, there are queries that return a single row, queries that return 3 rows, and one query that can return up to 500 rows. In the last case, the query itself is actually limited through the API to 500 rows, although there can be many more rows than that that could satisfy the query. The other interesting thing to consider is the fact that the query that could return 500 rows is executed in a stateful session bean. When the query is executed, only 20 rows of data, of the total matching rows, are returned at one time to the client. If the client found what they wanted, and does not page further through the result set, only those first 20 rows (or fewer rows, if the query returns less than 20) will ever be used from the result set. Taking that into account, fetch_size values of 20 and 500 were tested. In tests, 20 gave the best result, with 500 actually being slightly slower. Twenty was also faster than the default of 1. In the case of 20 versus 500, 20 provided 1.73% more throughput while in the case of 20 vs. 1, 20 provided 2.33% more throughput. Aligning the value with the query that can return upwards of 500 rows, and paginating the results 20 rows at a time was the most effective. Thorough analysis of the queries in the application and the frequency with which those queries are executed is necessary to size this correctly.
+		</div><div class="para">
+			The application referred to throughout this book consists of two parts: a batch processing piece that creates reference data and an OLTP piece that processes business transactions using the reference data. In regards to these two parameters, they have very distinct needs so the challenge is how to meet the needs of both. One solution is to have multiple persistence units within a single application, which in turn means the application can have multiple entity managers, each with a different configuration. The norm is to have different entities within the different persistence units but while this is the norm, it is not prohibited to have the same entities in different persistence units. However you cannot use the same entities in multiple persistence units and their respective entities' managers at the same time. Because the batch processing of the application has to be run first to create the reference data, and the OLTP part run second (and independently of the batch processing) two persistence units could be defined with their respective entities managers and the same entities in both. That was highly convenient for the example application but in the real world that may not be possible. Instead, you may have to divide up batch processing and OLTP processing into different application deployments if they have the same entities. To illustrate this, here is the application's persistence.xml:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;persistence</span><span xmlns="" class="perl_Others"> xmlns=</span><span xmlns="" class="perl_String">"http://java.sun.com/xml/ns/persistence"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">               xmlns:xsi=</span><span xmlns="" class="perl_String">"http://www.w3.org/2001/XMLSchema-instance"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">               xsi:schemaLocation=</span><span xmlns="" class="perl_String">"http://java.sun.com/xml/ns/persistence http://java.sun.com/xml/ns/persistence/persistence_1_0.xsd"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">               version=</span><span xmlns="" class="perl_String">"1.0"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                <span xmlns="" class="perl_Keyword">&lt;persistence-unit</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"services"</span><span xmlns="" class="perl_Others"> transaction-type=</span><span xmlns="" class="perl_String">"JTA"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                    <span xmlns="" class="perl_Keyword">&lt;provider&gt;</span>org.hibernate.ejb.HibernatePersistence<span xmlns="" class="perl_Keyword">&lt;/provider&gt;</span>
+<span xmlns="" class="line">​</span>                    <span xmlns="" class="perl_Keyword">&lt;jta-data-source&gt;</span>java:/MySqlDS<span xmlns="" class="perl_Keyword">&lt;/jta-data-source&gt;</span>
+<span xmlns="" class="line">​</span>                    <span xmlns="" class="perl_Keyword">&lt;properties&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.hbm2ddl.auto"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"none"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.default_catalog"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"EJB3"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.dialect"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"org.hibernate.dialect.MySQL5InnoDBDialect"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.order_inserts"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.default_batch_fetch_size"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"20"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.jdbc.fetch_size"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"20"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.jdbc.batch_size"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"20"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                    <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.region.factory_class"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"org.hibernate.cache.jbc2.JndiMultiplexedJBossCacheRegionFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                    <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.region.jbc2.cachefactory"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"java:CacheManager"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                    <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.use_second_level_cache"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                    <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.use_query_cache"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"false"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                    <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.use_minimal_puts"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                    <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.region.jbc2.cfg.entity"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"mvcc-entity"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                    <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.region_prefix"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"services"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                    <span xmlns="" class="perl_Keyword">&lt;/properties&gt;</span>
+<span xmlns="" class="line">​</span>                <span xmlns="" class="perl_Keyword">&lt;/persistence-unit&gt;</span>
+<span xmlns="" class="line">​</span>                <span xmlns="" class="perl_Keyword">&lt;persistence-unit</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"batch-services"</span><span xmlns="" class="perl_Others"> transaction-type=</span><span xmlns="" class="perl_String">"JTA"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                      <span xmlns="" class="perl_Keyword">&lt;provider&gt;</span>org.hibernate.ejb.HibernatePersistence<span xmlns="" class="perl_Keyword">&lt;/provider&gt;</span>
+<span xmlns="" class="line">​</span>                      <span xmlns="" class="perl_Keyword">&lt;jta-data-source&gt;</span>java:/MySqlDS<span xmlns="" class="perl_Keyword">&lt;/jta-data-source&gt;</span>
+<span xmlns="" class="line">​</span>                      <span xmlns="" class="perl_Keyword">&lt;properties&gt;</span>
+<span xmlns="" class="line">​</span>                          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.hbm2ddl.auto"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"none"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.default_catalog"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"EJB3"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.order_inserts"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.jdbc.fetch_size"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"50000"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.jdbc.batch_size"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"50000"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.dialect"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"org.hibernate.dialect.MySQL5InnoDBDialect"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.use_second_level_cache"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"false"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                      <span xmlns="" class="perl_Keyword">&lt;/properties&gt;</span>
+<span xmlns="" class="line">​</span>                <span xmlns="" class="perl_Keyword">&lt;/persistence-unit&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/persistence&gt;</span>
+</pre><div class="para">
+			In this example, two persistence units are created: services and batch-services. The OLTP processing, "services", is configured with relatively small fetch and batch sizes. The batch processing, "batch-services", is configured with large fetch and batch sizes. There is no entity caching in the batch processing because its unnecessary, while there is an entity cache defined for the OLTP side of things. This is a very convenient and powerful feature of JPA.
+		</div><div class="para">
+			For the second parameter, <code class="literal">hibernate.jdbc.batch_size</code>, the Hibernate documentation recommends a value of between 5 and 30 but this value depends upon the application's needs. The Hibernate documentation's recommendation is suitable for most OLTP-like applications. If you examine insert and update queries within the application, you can make a determination of how many rows are inserted and updated across the set. If inserts or updates occur no more than one row at a time, then leaving it unspecified is suitable. If inserts and/or updates affects many rows at a time, in a single transaction, then setting this is very important. If batch inserts are not required, and the aim is to send all the updates in as few trips to the database as possible, you should size it according to what is really happening in the application. If the largest transaction you have is inserting and updating 20 rows, then set it 20, or perhaps a little larger to accommodate any future changes that might take place.
+		</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-Performance_Tuning_Guide-Message_Driven_Beans">
+      ⁠</a>4.6. Message Driven Beans</h1></div></div></div><div class="para">
+		Message driven beans (MDB) are an EJB 3 bean type that is invoked from a message, specifically from a JMS message. There are three areas of concern when tuning for message driven beans. The first is the number of sessions to be run in parallel. The second is the pool size for the beans themselves. This pool is similar to the pool for stateless session beans, but is related to the session parameter. The third is thread pooling, discussion of which is deferred to the JCA chapter.
+	</div><div class="para">
+		The number of sessions is the number of actual message driven beans which will be waiting on the same queue and/or topic. Assume a queue is defined, and ten messages are to be processed from that queue at the same time, requiring ten sessions. In the EJB 3 world, this can be achieved through an annotation on the bean implementation itself. In fact, there are two parameters within the annotation: maxSessions and minSessions. The annotation itself is the standard EJB 3 MDB of: @ActivationConfigProperty(propertyName, propertyValue)
+	</div><div class="para">
+		So, within the MDB, the minimum and maximum number of sessions can be specified, giving the opportunity to control how many instances will process messages from a given queue at one time. Refer to the following example:
+	</div><pre class="programlisting">@MessageDriven(activationConfig = {
+        @ActivationConfigProperty(propertyName="destinationType"
+        , propertyValue="javax.jms.Queue"),
+        @ActivationConfigProperty(propertyName="destination"
+        , propertyValue="queue/replenish")
+        @ActivationConfigProperty(propertyName=”minSessions”
+        , propertyValue=”25”)
+        @ActivationConfigProperty(propertyName=”maxSessions”
+        , propertyValue=”50”)
+})</pre><div class="para">
+		In this example two activation configuration properties are defined, specifying the minimum and maximum number of sessions. The minimum defines that there should always be that number of instances of the MDB in the pool, in the method ready state (ready to receive messages). The maximum specifies there can be up to that many processing messages, so if there are messages waiting and all of the instances are busy, the pool can grow from the minimum to the maximum. In this example there can be up to fifty instances of the MDB in the pool, processing messages. The “pool” parameter mentioned here is highly interrelated to the minimum and maximum number of sessions.
+	</div><div class="para">
+		Just as there are pools for stateless sessions beans, there is also an instance pool for message driven beans. In this case though, there is really only one pool type that can be used: StrictMaxPool. The reason why StrictMaxPool is the only option for message driven beans is simply the nature of the bean type. Having an unbounded number of message driven beans processing messages could present problems. Many systems that use messaging process millions upon millions of messages, and it's not scalable to keep increasing the number of instances to process everything in parallel. Also it's really not possible because the default for maxSessions parameter is 15.
+	</div><div class="para">
+		There's a relationship between the pool and the sessions parameters: maxSessions and minSessions. Assume that the number of maxSessions is set to a number larger than the default of 15, perhaps 50, but the default pool size to hold the instances of the MDB is only 15. Only 15 instances will process messages at once, not the 50 as might be expected. The reason for only getting 15 is that the default pool size (as defined in the configuration file) is 15, like the default maxSessions. So changing the maxSessions does not actually help unless the pool's configuration is changed to match. The pool's configuration is specified in the same file as for stateless sessions beans: <code class="filename">ejb3-interceptors-aop.xml</code>, in the directory <code class="filename">JBOSS_EAP_DIST/jboss-as/server/<em class="replaceable">PROFILE</em>/deploy</code>. Note that the <code class="literal">minimal</code> configuration does not contain the EJB 3 container.
+	</div><div class="para">
+		Below is an example of this file:
+	</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;domain</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"Message Driven Bean"</span><span xmlns="" class="perl_Others"> extends=</span><span xmlns="" class="perl_String">"Intercepted Bean"</span><span xmlns="" class="perl_Others"> inheritBindings=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;bind</span><span xmlns="" class="perl_Others"> pointcut=</span><span xmlns="" class="perl_String">"execution(public * *-&gt;*(..))"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                 <span xmlns="" class="perl_Keyword">&lt;interceptor-ref</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"org.jboss.ejb3.security.AuthenticationInterceptorFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                 <span xmlns="" class="perl_Keyword">&lt;interceptor-ref</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"org.jboss.ejb3.security.RunAsSecurityInterceptorFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;/bind&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;bind</span><span xmlns="" class="perl_Others"> pointcut=</span><span xmlns="" class="perl_String">"execution(public * *-&gt;*(..))"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                 <span xmlns="" class="perl_Keyword">&lt;interceptor-ref</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"org.jboss.ejb3.tx.CMTTxInterceptorFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                 <span xmlns="" class="perl_Keyword">&lt;interceptor-ref</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"org.jboss.ejb3.stateless.StatelessInstanceInterceptor"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                 <span xmlns="" class="perl_Keyword">&lt;interceptor-ref</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"org.jboss.ejb3.tx.BMTTxInterceptorFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                 <span xmlns="" class="perl_Keyword">&lt;interceptor-ref</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"org.jboss.ejb3.AllowedOperationsInterceptor"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                 <span xmlns="" class="perl_Keyword">&lt;interceptor-ref</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"org.jboss.ejb3.entity.TransactionScopedEntityManagerInterceptor"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>                 <span xmlns="" class="perl_Comment">&lt;!-- interceptor-ref name="org.jboss.ejb3.interceptor.EJB3InterceptorsFactory"/ --&gt;</span>
+<span xmlns="" class="line">​</span>                 <span xmlns="" class="perl_Keyword">&lt;stack-ref</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"EJBInterceptors"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;/bind&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;annotation</span><span xmlns="" class="perl_Others"> expr=</span><span xmlns="" class="perl_String">"class(*) AND !class(@org.jboss.ejb3.annotation.Pool)"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                 @org.jboss.ejb3.annotation.Pool (value="StrictMaxPool", maxSize=15, timeout=10000)
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;/annotation&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/domain&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;domain</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"Consumer Bean"</span><span xmlns="" class="perl_Others"> extends=</span><span xmlns="" class="perl_String">"Intercepted Bean"</span><span xmlns="" class="perl_Others"> inheritBindings=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>       <span xmlns="" class="perl_Keyword">&lt;bind</span><span xmlns="" class="perl_Others"> pointcut=</span><span xmlns="" class="perl_String">"execution(public * *-&gt;*(..))"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Keyword">&lt;interceptor-ref</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"org.jboss.ejb3.security.RunAsSecurityInterceptorFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>       <span xmlns="" class="perl_Keyword">&lt;/bind&gt;</span>
+<span xmlns="" class="line">​</span>       <span xmlns="" class="perl_Keyword">&lt;bind</span><span xmlns="" class="perl_Others"> pointcut=</span><span xmlns="" class="perl_String">"execution(public * *-&gt;*(..))"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Keyword">&lt;interceptor-ref</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"org.jboss.ejb3.tx.CMTTxInterceptorFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Keyword">&lt;interceptor-ref</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"org.jboss.ejb3.stateless.StatelessInstanceInterceptor"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Keyword">&lt;interceptor-ref</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"org.jboss.ejb3.tx.BMTTxInterceptorFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Keyword">&lt;interceptor-ref</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"org.jboss.ejb3.AllowedOperationsInterceptor"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Keyword">&lt;interceptor-ref</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"org.jboss.ejb3.entity.TransactionScopedEntityManagerInterceptor"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>       <span xmlns="" class="perl_Keyword">&lt;/bind&gt;</span>
+<span xmlns="" class="line">​</span>       <span xmlns="" class="perl_Keyword">&lt;bind</span><span xmlns="" class="perl_Others"> pointcut=</span><span xmlns="" class="perl_String">"execution(public * *-&gt;*(..)) AND (has(* *-&gt;@org.jboss.ejb3.annotation.CurrentMessage(..)) OR hasfield(* *-&gt;@org.jboss.ejb3.annotation.CurrentMessage))"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Keyword">&lt;interceptor-ref</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"org.jboss.ejb3.mdb.CurrentMessageInjectorInterceptorFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>       <span xmlns="" class="perl_Keyword">&lt;/bind&gt;</span>
+<span xmlns="" class="line">​</span>       <span xmlns="" class="perl_Keyword">&lt;bind</span><span xmlns="" class="perl_Others"> pointcut=</span><span xmlns="" class="perl_String">"execution(public * *-&gt;*(..))"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Comment">&lt;!-- interceptor-ref name="org.jboss.ejb3.interceptor.EJB3InterceptorsFactory"/ --&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Keyword">&lt;stack-ref</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"EJBInterceptors"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>       <span xmlns="" class="perl_Keyword">&lt;/bind&gt;</span>
+<span xmlns="" class="line">​</span>       <span xmlns="" class="perl_Keyword">&lt;annotation</span><span xmlns="" class="perl_Others"> expr=</span><span xmlns="" class="perl_String">"class(*) AND !class(@org.jboss.ejb3.annotation.Pool)"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>              @org.jboss.ejb3.annotation.Pool (value="StrictMaxPool", maxSize=15, timeout=10000)
+<span xmlns="" class="line">​</span>       <span xmlns="" class="perl_Keyword">&lt;/annotation&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/domain&gt;</span>
+</pre><div class="para">
+		In this example are four important settings. First is the definition of the message driven bean. Second is the StrictMaxPool configuration, with the default value of 15, the same default value for the maxSessions parameter. The next two are the same, except for something called a consumer bean. Consumer beans are a JBoss-specific implementation, not Java EE compliant, that gives all the functionality of the message driven bean, but does so without having to implement the MessageListener interface, and is a pure POJO model like stateless and stateful session beans. It brings the EJB 3 POJO model to asynchronous processing, without the old EJB 2.x model that was carried over for message driven beans. Of course, if this option is used, the application will not be portable, so use at your own risk.
+	</div><div class="para">
+		The maxSize parameter on the StrictMaxPool needs to be the same as the maxSessions set on the bean itself. If they are <span class="emphasis"><em>not</em></span> set to the same value, strange behavior occurs. When the queue has more messages than either the maxSessions or maxSize value, messages up to the maxSessions' value will be processed, then the number of messages next processed is the difference between maxSessions and maxSize, with this cycle repeating. To illustrate this, maxSessions is set to 25, the pool size left at the default of 15. When messages are being processed the number of instances will alternate between 15 and 10, which is the difference between the maxSessions and the maxSize parameters. So 15 messages will be processed, then 10, then 15, then 10, repeating until the number of messages drops to 15 or below. Keeping these two parameters in sync is important to get the desired behavior.
+	</div><div class="para">
+		Determining the "right" value for number of sessions is dependent on the rate of incoming messages, processing time it takes to process each message, and the requirement for how long it should take to process messages. It may be best for some applications to throttle the message processing rate and allow the queue to grow over time, or at least during peak times, allowing the processing to catch up, and eventually drain the queue when the incoming rate drops. For other applications it may be best to match the processing rate to the incoming rate. In either case calculating the right value is based on the number of incoming messages over a given period of time and how long does it take to process each message. Unfortunately there's no strict mathematical formula as there will not be perfectly linear scalability when processing in parallel, and scalability will vary by hardware, OS, persistence mechanism (in the case of persistent messages), JVM version and even the version of EAP, and which messaging provider you would use. As mentioned earlier, EAP 5.1.x has two messaging providers which, although they provide the same JMS API work with the same MDB implementation, are very different under the covers. One uses a database for persistent messages and the other a file journal, which is by far the biggest difference. That difference is huge in regards to scalability, and can have a profound effect on the number of MDB instances required. There is no substitute for load testing to get this parameter right for your environment.
+	</div></div></div></body></html>

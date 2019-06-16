@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 4. Troubleshooting and optimizing mod_jk</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="Apache_HTTP_Troubleshooting">
+      ⁠</a>Chapter 4. Troubleshooting and optimizing mod_jk</h1></div></div></div><div class="para">
+		While optimizing the configuration in Apache HTTP Server, mod_jk, mod_proxy, mod_cluster and JBoss Enterprise Application Platform typically resolves any and all problems and errors in load balancing, there are exceptions (such as long running servlets that require additional optimization).
+	</div><div class="para">
+		In most cases, a correctly tuned configuration is the catch all for mod_jk issues. This section discusses some problems and how the configuration can be improved to avoid them.
+	</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><p class="title"><strong>Optimization Considerations</strong></p><ul><li class="listitem"><div class="para">
+				Ensure you are on the latest supported component versions.
+			</div></li><li class="listitem"><div class="para">
+				Ensure the relevant configurations are tuned correctly. The Red Hat Global Support Services staff can use interactive tools to assist you with tailored configuration settings. Find the appropriate contact details at <a href="https://access.redhat.com/support/">https://access.redhat.com/support/</a>.
+			</div></li></ul></div><div class="para">
+		If optimizing the configuration does not resolve the issue the problem is most likely on the JBoss/JVM side. Refer to <a class="xref" href="Apache_HTTP_Troubleshooting.html#proc-Apache_HTTP_Troubleshooting-Diagnostics-JVM">Procedure 4.5, “JBoss/JVM Problems”</a> for advice about these issues.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Apache_HTTP_Troubleshooting-Common">
+      ⁠</a>4.1. Common Problems</h1></div></div></div><div class="para">
+			The list below outlines some common configuration problems. Ensuring your implementation is not subject to one of these may assist to resolve your issue.
+		</div><div class="para">
+			Specific errors and general performance issues are discussed later in this section.
+		</div><div class="variablelist"><p class="title"><strong>Common Configuration Issues</strong></p><dl class="variablelist"><dt><span class="term"><code class="filename">JkShmFile</code> on a NFS share</span></dt><dd><div class="para">
+						Placing the <code class="filename">JkShmFile</code> on a NFS share can cause unexplained pauses in mod_jk and odd behavior. It is strongly recommended that the <code class="filename">JkShmFile</code> always be placed on local storage to avoid problems.
+					</div></dd><dt><span class="term">A firewall between Apache HTTP Server and JBoss Enterprise Application Platform</span></dt><dd><div class="para">
+						If there is a firewall between Apache HTTP Server and JBoss Enterprise Application Platform and no <em class="parameter"><code>socket_keepalive</code></em> parameter is set, the firewall can close connections unexpectedly.
+					</div></dd><dt><span class="term"><em class="parameter"><code>MaxClients</code></em> higher than <em class="parameter"><code>maxThreads</code></em></span></dt><dd><div class="para">
+						Setting the <em class="parameter"><code>MaxClients</code></em> parameter in Apache HTTP Server higher than the <em class="parameter"><code>maxThreads</code></em> setting in JBoss (with a high load on the server) will result in Apache HTTP Server overwhelming the JBoss instance with threads which will cause hung and/or dropped connections.
+					</div></dd><dt><span class="term">No <em class="parameter"><code>connectionTimeout</code></em> parameter set</span></dt><dd><div class="para">
+						The <em class="parameter"><code>connectionTimeout</code></em> parameter set in JBoss is required for proper maintenance of old connections.
+					</div></dd><dt><span class="term">No <em class="parameter"><code>CPing</code></em>/<em class="parameter"><code>CPong</code></em> set</span></dt><dd><div class="para">
+						The <em class="parameter"><code>CPing</code></em>/<em class="parameter"><code>CPong</code></em> property in mod_jk is the most important worker property setting, allowing mod_jk to test and detect faulty connections. Not setting this parameter can lead to bad connections not being detected as quickly which can lead to web requests behaving as if 'hung'.
+					</div></dd><dt><span class="term">Running an old version of mod_jk.</span></dt><dd><div class="para">
+						There are known issues with sticky sessions in versions prior to <span class="bold bold"><strong>mod_jk 1.2.27</strong></span>.
+					</div></dd><dt><span class="term">Running an older version of EAP.</span></dt><dd><div class="para">
+						There is a bug in EAP 4.2 base and EAP 4.2 CP01 which causes sockets to be left in the CLOSE_WAIT state, thus causing the appearance of hung requests again. This issue has been reported and fixed https://jira.jboss.org/jira/browse/JBPAPP-366
+					</div></dd><dt><span class="term">Unresponsive back end server</span></dt><dd><div class="para">
+						<code class="literal">java.lang.OutOfMemoryError</code> errors or high pause times can cause the back end server to become unresponsive.
+					</div></dd></dl></div><div class="para">
+			All of the problems listed above are typically resolved after optimizing the configuration in Apache HTTP Server, mod_jk, and JBoss.
+		</div><div class="variablelist"><p class="title"><strong>Common Errors</strong></p><dl class="variablelist"><dt><span class="term">"CPing/CPong" Errors</span></dt><dd><div class="para">
+						Presents with errors like the following:
+					</div><pre class="programlisting">[info] ajp_handle_cping_cpong::jk_ajp_common.c (865): timeout in reply cpong
+...
+[error] ajp_connect_to_endpoint::jk_ajp_common.c (957): (nodeA) cping/cpong after connecting to the backend server failed (errno=110)
+[error] ajp_send_request::jk_ajp_common.c (1507): (nodeA) connecting to backend failed. Tomcat is probably not started or is listening on the  wrong port (errno=110)
+</pre><div class="para">
+						These CPing/CPong messages do not indicate a problem with mod_jk at all, they indicate that JBoss did not respond in the defined CPing/CPong time.
+					</div><div class="para">
+						This is seen many times when there is high load on the JVM JBoss is running on causing high garbage collection or potentially thread contention. It could also be that the JBoss instance is overloaded, or even that a firewall is blocking the connection or there are network issues.
+					</div><div class="para">
+						The following workflow may assist to correct these type of issues:
+					</div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><a id="proc-Apache_HTTP_Troubleshooting-Diagnostics-cping">
+      ⁠</a><p class="title"><strong>Procedure 4.1. Resolving "CPing/CPong" Errors</strong></p><ol class="1"><li class="step"><div class="para">
+								Optimize your Apache HTTP Server and JBoss Enterprise Application Platform configuration. You can contact Red Hat's Global Support Services for assistance with this.
+							</div><div class="para">
+								If this does not resolve the issue, proceed to <span class="bold bold"><strong>Step 2</strong></span>
+							</div></li><li class="step"><div class="para">
+								Confirm that there is no firewall blocking or dropping the AJP connections.
+							</div></li></ol></div></dd><dt><span class="term">"Tomcat is down" Errors</span></dt><dd><div class="para">
+						Presents with errors like the following:
+					</div><div xmlns:d="http://docbook.org/ns/docbook" class="orderedlist"><ol><li class="listitem"><pre class="programlisting">[error] ajp_get_reply::jk_ajp_common.c (2020): (node1) Timeout with waiting reply from tomcat. Tomcat is down, stopped or network problems (errno=110)</pre><div class="para">
+								The above error means that JBoss did not respond in the configured reply_timeout time. The solution can be one (or both) of the following:
+							</div><div class="orderedlist"><ol class="loweralpha"><li class="listitem"><div class="para">
+										Increase the reply_timeout.
+									</div></li><li class="listitem"><div class="para">
+										Verify there are no garbage collection issues/long pause times in JBoss that may prevent the request from responding thus causing that error.
+									</div></li></ol></div></li><li class="listitem"><pre class="programlisting">[Fri May 25 11:53:37 2012][11159:3086420192] [debug] init_ws_service::mod_jk.c (977): Service protocol=HTTP/1.1 method=POST ssl=false host=(null) addr=127.0.0.1 name=localhost port=80 auth=(null) user=(null) laddr=127.0.0.1 raddr=127.0.0.1 uri=/foo/bar
+...
+[Fri May 25 11:58:39 2012][11159:3086420192] [debug] jk_shutdown_socket::jk_connect.c (681): About to shutdown socket 17
+[Fri May 25 11:58:39 2012][11159:3086420192] [debug] jk_shutdown_socket::jk_connect.c (689): Failed sending SHUT_WR for socket 17
+[Fri May 25 11:58:39 2012][11159:3086420192] [info] ajp_connection_tcp_get_message::jk_ajp_common.c (1150): (node1) can not receive the response header message from tomcat, network problems or tomcat (127.0.0.1:8009) is down (errno=104)
+[Fri May 25 11:58:39 2012][11159:3086420192] [error] ajp_get_reply::jk_ajp_common.c (1962): (node1) Tomcat is down or refused connection. No response has been sent to the client (yet)</pre><div class="para">
+								The above error likely means that JBoss Enterprise Application Platform did not respond within the configured core Apache HTTP Server timeout period.
+							</div><div class="para">
+								Note that with these messages the <code class="code">[11159:3086420192]</code> portion of the message serves as an identifier for the connection/request in question. Therefore tracing back from the point of the error in logs can help clarify the activity around the connection/request that lead to the error.
+							</div><div class="para">
+								In this case, that helps clarify that the error was experienced five minutes after the response was sent to JBoss, which likely points to a five minute timeout (this is Apache HTTP Server's Timeout directive default if not specified). If the Timeout is interrupting mod_jk requests, then it should be increased from the current value to allow for the maximum acceptable response time.
+							</div><div class="procedure"><a id="proc-Apache_HTTP_Troubleshooting-Diagnostics-tomcat">
+      ⁠</a><p class="title"><strong>Procedure 4.2. Resolving "Tomcat is down" Errors</strong></p><ol class="1"><li class="step"><div class="para">
+										Optimize your Apache HTTP Server and JBoss Enterprise Application Platform configuration. You can contact Red Hat's Global Support Services for assistance with this.
+									</div><div class="para">
+										If this does not resolve the issue, proceed to <span class="bold bold"><strong>Step 2</strong></span>
+									</div></li><li class="step"><div class="para">
+										Confirm that there is no firewall blocking or dropping the AJP connections.
+									</div></li></ol></div></li></ol></div></dd><dt><span class="term">General Performance Issues</span></dt><dd><div class="para">
+						Presents with errors like the following:
+					</div><pre class="programlisting">ERROR [org.apache.coyote.ajp.AjpMessage] (ajp-192.168.0.101-8001-13) Invalid message received with signature 12336
+</pre><div class="para">
+						The above exception when using mod_jk in JBoss Web typically indicates a non AJP request sent to the AJP connector.
+					</div><div class="para">
+						Workflows that may assist in resolving these kinds of issues is below:
+					</div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><a id="proc-Apache_HTTP_Troubleshooting-Diagnostics-General">
+      ⁠</a><p class="title"><strong>Procedure 4.3. General Performance Problems</strong></p><ol class="1"><li class="step"><div class="para">
+								Optimize your Apache HTTP Server and JBoss Enterprise Application Platform configuration. You can contact Red Hat's Global Support Services for assistance with this.
+							</div><div class="para">
+								If this does not resolve the issue, proceed to <span class="bold bold"><strong>Step 2</strong></span>
+							</div></li><li class="step"><div class="para">
+								Gather garbage collection logs for analysis.
+							</div><div class="para">
+								If the logs show long garbage collection pause times then you should optimize the Java Virtual Machine to reduce the garbage collection pauses and gather/recheck updated logs. Refer to <a href="https://access.redhat.com/knowledge/solutions/19932">https://access.redhat.com/knowledge/solutions/19932</a> (Red Hat account required) for more information.
+							</div><div class="para">
+								If this is not the case, or did not resolve the issue, try <span class="bold bold"><strong>Step 3</strong></span>, <span class="bold bold"><strong>Step 4</strong></span> and/or <span class="bold bold"><strong>Step 5</strong></span> until your issue is resolved.
+							</div></li><li class="step"><div class="para">
+								Determine how long the longest request should take. Factor in transaction times. You may need to increase the <em class="parameter"><code>reply_timeout</code></em> to resolve the problem.
+							</div><div class="para">
+								If this does not resolve the issue, continue to <span class="bold bold"><strong>Step 4</strong></span>.
+							</div></li><li class="step"><div class="para">
+								Determine if your current environment can handle the given load. If not, you may need to upgrade or add more machines.
+							</div><div class="para">
+								If this does not resolve the issue, continue to <span class="bold bold"><strong>Step 5</strong></span>.
+							</div></li><li class="step"><div class="para">
+								Confirm that there is no firewall blocking or dropping the AJP connections.
+							</div></li></ol></div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><a id="proc-Apache_HTTP_Troubleshooting-Diagnostics-503">
+      ⁠</a><p class="title"><strong>Procedure 4.4. 503 Errors</strong></p><ol class="1"><li class="step"><div class="para">
+								Optimize your Apache HTTP Server and JBoss Enterprise Application Platform configuration. You can contact Red Hat's Global Support Services for assistance with this.
+							</div><div class="para">
+								If this does not resolve the issue, proceed to <span class="bold bold"><strong>Step 2</strong></span>
+							</div></li><li class="step"><div class="para">
+								Gather garbage collection logs for analysis.
+							</div><div class="para">
+								If the logs show long garbage collection pause times then you should optimize the Java Virtual Machine to reduce the garbage collection pauses and gather/recheck updated logs. Refer to <a href="https://access.redhat.com/knowledge/solutions/19932">https://access.redhat.com/knowledge/solutions/19932</a> (Red Hat account required) for more information.
+							</div><div class="para">
+								If this is not the case, or does not resolve the issue, continue to <span class="bold bold"><strong>Step 3</strong></span>
+							</div></li><li class="step"><div class="para">
+								Determine how long the longest request should take. Factor in transaction times. You may need to increase the <em class="parameter"><code>reply_timeout</code></em> to resolve the issue.
+							</div><div class="para">
+								If this does not resolve the issue, move on to <span class="bold bold"><strong>Step 4</strong></span>.
+							</div></li><li class="step"><div class="para">
+								Determine if your current environment can handle the given load. If not, you may need to upgrade or add more machines.
+							</div></li></ol></div></dd><dt><span class="term">JBoss/JVM-related Issues</span></dt><dd><div class="para">
+						May present with errors like:
+					</div><pre class="programlisting">[error] service::jk_lb_worker.c (1473): All tomcat instances failed, no more workers left
+</pre><div class="para">
+						If Apache HTTP Server and JBoss Enterprise Application Platform are optimized and you still receive "no more workers left" this typically indicates an issue on the JBoss/JVM side. A number of JVM-related problems could lead to mod_jk not being able to get a connection to JBoss in the configured timeouts, thus causing the worker to go into the error state and producing this message.
+					</div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><a id="proc-Apache_HTTP_Troubleshooting-Diagnostics-JVM">
+      ⁠</a><p class="title"><strong>Procedure 4.5. JBoss/JVM Problems</strong></p><ol class="1"><li class="step"><div class="para">
+								Enable garbage collection logging.
+							</div><ol class="substeps a"><li class="step"><div class="para">
+										For UNIX based systems, the options should be placed in <code class="filename">run.conf</code>, not <code class="filename">run.sh</code>. The <code class="filename">run.conf</code> in the server configuration directory (e.g. <code class="filename">&lt;JBOSS_HOME&gt;<em class="replaceable"/>/server/<em class="replaceable">&lt;PROFILE&gt;</em>/run.conf</code>) takes precedence over the <code class="filename">run.conf</code> in the <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/bin</code> directory (except in JBoss EAP 5.0.0 due to a regression fixed in version 5.0.1).
+									</div></li><li class="step"><div class="para">
+										For Windows, the options need to be added to <code class="filename">run.bat</code>, as it does not read <code class="filename">run.conf</code>.
+									</div></li><li class="step"><div class="para">
+										Check <code class="filename">boot.log</code> to see the value of the <em class="parameter"><code>user.dir</code></em> environment variable (e.g. <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/bin</code>), the default location for garbage collection logging when no path is provided. If you are running multiple instances of JBoss against the same directory like so:
+									</div><pre class="programlisting">./run.sh -c node1 -b 127.0.0.1 -Djboss.messaging.ServerPeerID=1
+./run.sh -c node2 -b 127.0.0.1 -Djboss.messaging.ServerPeerID=2 -Djboss.service.binding.set=ports-01</pre></li><li class="step"><div class="para">
+										Then for the <code class="filename">gc.log</code> files to be properly separated you will need to make sure each <em class="replaceable">&lt;PROFILE&gt;</em> has a unique <code class="filename">run.conf</code> with the JVM_OPTS specific to that <em class="replaceable">&lt;PROFILE&gt;</em>.
+									</div><div class="para">
+										For example node1 will contain a <em class="replaceable">&lt;JBOSS_HOME&gt;</em>/server/node1/run.conf with contents:
+									</div><pre class="programlisting">JAVA_OPTS="$JAVA_OPTS -verbose:gc -Xloggc:gc_node1.log -XX:+PrintGCDetails -XX:+PrintGCDateStamps"</pre></li><li class="step"><div class="para">
+										And <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/server/node2/run.conf</code> with contents:
+									</div><pre class="programlisting">JAVA_OPTS="$JAVA_OPTS -verbose:gc -Xloggc:gc_node2.log -XX:+PrintGCDetails -XX:+PrintGCDateStamps"</pre><div class="important"><div class="admonition_header"><p><strong>Important</strong></p></div><div class="admonition"><div class="para">
+											<span class="bold bold"><strong><code class="filename">gc.log</code> is recreated every time JBoss starts.</strong></span>
+										</div><div class="para">
+											Be sure to back up <code class="filename">gc.log</code> if you are restarting the server. Alternatively you may be able to add a timestamp to the file name depending on the OS and/or shell. For example, with OpenJDK or Oracle/Sun JDK on Linux: -Xloggc:gc.log.`date +%Y%m%d%H%M%S`.
+										</div></div></div></li><li class="step"><div class="para">
+										On Windows, you can use
+									</div><pre class="programlisting">for /f "tokens=2-4 delims=/ " %%a in ('date /t') do (set mydate=%%c-%%a-%%b)
+for /f "tokens=1-2 delims=/:" %%a in ("%TIME%") do (set mytime=%%a%%b)
+set "JAVA_OPTS=%JAVA_OPTS% -Xloggc:C:/log/gv.log.%mydate%_%mytime%</pre></li></ol></li><li class="step"><div class="para">
+								For the time period when there are slowdowns, hangs, or errors, gather the following data:
+							</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+										Garbage collection logs. Follow <a class="xref" href="Apache_HTTP_Troubleshooting.html#proc-Apache_HTTP_Troubleshooting-Diagnostics-JVM">Procedure 4.5, “JBoss/JVM Problems”</a>.
+									</div></li><li class="listitem"><div class="para">
+										High CPU data coupled with thread dumps (depending upon platform):
+									</div><div class="para">
+										The links below can assist in gathering Java thread data. A Red Hat subscription is required.
+									</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+												CPU utilization by Java threads on Linux/Solaris: <a href="https://access.redhat.com/knowledge/node/46596">https://access.redhat.com/knowledge/node/46596</a>.
+											</div></li><li class="listitem"><div class="para">
+												CPU utilization by Java threads on Windows: <a href="https://access.redhat.com/knowledge/node/46598">https://access.redhat.com/knowledge/node/46598</a>.
+											</div></li></ul></div></li><li class="listitem"><div class="para">
+										For cases where the Java application is an application server, gather log files:
+									</div><div class="para">
+										<span class="bold bold"><strong>In JBoss:</strong></span>
+									</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+												<code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/server/<em class="replaceable">&lt;PROFILE&gt;</em>/log/server.log</code>
+											</div></li><li class="listitem"><div class="para">
+												<code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/server/<em class="replaceable">&lt;PROFILE&gt;</em>/log/boot.log</code>
+											</div></li></ul></div><div class="para">
+										<span class="bold bold"><strong>In Tomcat:</strong></span>
+									</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+												<code class="filename">catalina.out</code>
+											</div></li></ul></div></li></ul></div></li><li class="step"><div class="para">
+								Determine if the CPU utilization is caused by the JVM (Java application). Here, you want to validate that a Java process is indeed using an unexpected amount of CPU.
+							</div><div class="para">
+								The Java thread data gathered in the first step should help identify this.
+							</div></li><li class="step"><div class="para">
+								Assuming a Java process is identified as the cause of high CPU, the most common cause is java Garbage collection. Determine if the high CPU is caused by Java garbage collection by analyzing the garbage collection for long pause times and/or low throughput overall at the time of the issue.
+							</div><div class="para">
+								To find the garbage collection logging related to the issue, it is necessary to determine the number of seconds after JVM startup that the issue happens (that is the typical format of garbage collection logging timestamps). To determine the time elapsed, you can use the first timestamp in the high CPU data gathered and the first timestamp in the console log, <code class="filename">boot.log</code> (JBoss), <code class="filename">server.log</code> (JBoss), or <code class="filename">catalina.out</code> (Tomcat.)
+							</div><div class="para">
+								If you see long pause times and/or low throughput overall, refer to the following Knowledge Base article (Red Hat subscription required) <a href="https://access.redhat.com/knowledge/node/19932">https://access.redhat.com/knowledge/node/19932</a>.
+							</div></li><li class="step"><div class="para">
+								If Garbage collection is not responsible for the high CPU, use the thread dump information gathered when validating CPU information to identify the threads.
+							</div></li></ol></div></dd></dl></div><div class="para">
+			One area that is not a direct consequence of an unoptimized mod_jk configuration but can still cause issues with mod_jk is JVM and garbage collection related problems. When there are high pause times and the JVM is not optimized for the app server, the pause times can cause mod_jk issues even when mod_jk is tuned. 
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Apache_HTTP_Troubleshooting-Diagnostics">
+      ⁠</a>4.2. General Diagnostics</h1></div></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><ol class="1"><li class="step"><div class="para">
+					Verify the back end server is responsive by making a direct request to it.
+				</div></li><li class="step"><div class="para">
+					Monitor high load using one of the following methods:
+				</div><div class="variablelist"><dl class="variablelist"><dt><span class="term">Twiddle</span></dt><dd><div class="procedure"><ol class="1"><li class="step"><div class="para">
+										Locate the appropriate <code class="filename">Twiddle</code> script for your environment (<code class="filename">twiddle.sh</code>, <code class="filename">twiddle.bat</code> or <code class="filename">twiddle.jar</code>) in the <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/bin/</code> directory.
+									</div></li><li class="step"><div class="para">
+										Run the following command:
+									</div><pre class="programlisting"><em class="replaceable">&lt;TWIDDLE&gt;</em> -u admin -p password get "jboss.web:name=ajp-127.0.0.1-8009,type=ThreadPool"
+</pre><div class="para">
+										Use the script appropriate to your operating system and environment .
+									</div><div class="para">
+										Twiddle may need to be modified for each specific environment, but the above will work in a default JBoss instance where no ports have been changed and JBoss is starting on the localhost.
+									</div></li></ol></div></dd><dt><span class="term">JMX Console</span></dt><dd><div class="procedure"><ol class="1"><li class="step"><div class="para">
+										Navigate to <code class="uri">http://localhost:8080/jmx-console</code>.
+									</div></li><li class="step"><div class="para">
+										Find the <code class="literal">jboss.web</code> section.
+									</div></li><li class="step"><div class="para">
+										Click on <code class="literal">name=ajp-localhost/127.0.0.1-8009,type=ThreadPool</code> (or whichever AJP <em class="parameter"><code>ThreadPool</code></em> matches your environment)
+									</div></li><li class="step"><div class="para">
+										Investigate the <em class="parameter"><code>currentThreadsBusy</code></em> attribute. If this attribute is reaching the <em class="parameter"><code>maxThreads</code></em> there will be a problem as JBoss Web is reaching the defined <em class="parameter"><code>ThreadPool</code></em> capacity.
+									</div></li></ol></div></dd></dl></div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139711975841424">
+      ⁠</a>4.3. Getting Further Help</h1></div></div></div><div class="para">
+			If none of the above information resolves your issue you can contact the Global Support Services staff for assistance.
+		</div><div class="para">
+			You can find the appropriate contact details at <a href="https://access.redhat.com/support/">https://access.redhat.com/support/</a>.
+		</div><div class="para">
+			Please gather the following information prior to your call.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					JBoss EAP <code class="filename">boot.log</code>.
+				</div></li><li class="listitem"><div class="para">
+					Apache HTTP Server's <code class="filename">httpd.conf</code> and the <code class="filename">httpd-mpm.conf</code> file (if it exists).
+				</div></li><li class="listitem"><div class="para">
+					mod_jk's <code class="filename">workers.properties</code>.
+				</div></li><li class="listitem"><div class="para">
+					mod_jk's <code class="filename">mod_jk.conf</code>.
+				</div></li><li class="listitem"><div class="para">
+					<code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/JBOSSWEB/server.xml</code>
+				</div></li><li class="listitem"><div class="para">
+					<code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/JBOSSWEB/META-INF/jboss-service.xml</code>
+				</div></li><li class="listitem"><div class="para">
+					The output of running <code class="command">httpd -V</code> on Apache HTTP Server (<code class="command">httpd -V &gt; httpd.out</code>, for example).
+				</div><div class="para">
+					Note the capital "<code class="command">V</code>". A lowercase "<code class="command">v</code>" will not produced the desired output.
+				</div></li><li class="listitem"><div class="para">
+					Version of Apache HTTP Server or the JBoss Enterprise Web Server.
+				</div></li><li class="listitem"><div class="para">
+					<code class="filename">/etc/sysconfig/httpd</code>
+				</div></li></ul></div></div></div></body></html>

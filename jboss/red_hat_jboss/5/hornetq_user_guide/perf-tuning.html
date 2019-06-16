@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 43. Performance Tuning</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="perf-tuning">
+      ⁠</a>Chapter 43. Performance Tuning</h1></div></div></div><div class="para">
+		In this chapter we will discuss how to tune HornetQ for optimum performance.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139905871147936">
+      ⁠</a>43.1. Tuning Persistence</h1></div></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					Put the message journal on its own physical volume. For example, if the disk is shared with a transaction coordinator, database, or other journals which are also reading and writing from the disk, these may greatly reduce performance because the disk head may be skipping between the different files. One advantage of an append only journal is that disk head movement is minimized - this advantage is destroyed if the disk is shared. If using paging or large messages, ideally, ensure that they are put on separate volumes.
+				</div></li><li class="listitem"><div class="para">
+					Minimum number of journal files. Set <code class="literal">journal-min-files</code> to a number of files that would fit the average sustainable rate. For example, if new files are being created on the journal data directory too often and lots of data is being persisted, increase the minimum number of files, this way the journal would reuse more files instead of creating new data files.
+				</div></li><li class="listitem"><div class="para">
+					Journal file size. The journal file size should be aligned to the capacity of a cylinder on the disk. The default value 10MiB should be enough on most systems.
+				</div></li><li class="listitem"><div class="para">
+					Use AIO journal. If using Linux, try to keep the journal type as AIO. AIO will scale better than Java NIO.
+				</div></li><li class="listitem"><div class="para">
+					Tune <code class="literal">journal-buffer-timeout</code>. The timeout can be increased to increase throughput at the expense of latency.
+				</div></li><li class="listitem"><div class="para">
+					If running AIO, it may be possible to increase performance by increasing <code class="literal">journal-max-io</code>. DO NOT change this parameter if running NIO.
+				</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139905850409120">
+      ⁠</a>43.2. Tuning JMS</h1></div></div></div><div class="para">
+			Optimization is possible in the following areas when using the JMS API:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					Disable message id. Use the <code class="literal">setDisableMessageID()</code> method on the <code class="literal">MessageProducer</code> class to disable message ids if not needed. This decreases the size of the message and also avoids the overhead of creating a unique ID.
+				</div></li><li class="listitem"><div class="para">
+					Disable message time stamp. Use the <code class="literal">setDisableMessageTimeStamp()</code> method on the <code class="literal">MessageProducer</code> class to disable message timestamps not required.
+				</div></li><li class="listitem"><div class="para">
+					Avoid <code class="literal">ObjectMessage</code>. <code class="literal">ObjectMessage</code> is convenient but it comes at a cost. The body of a <code class="literal">ObjectMessage</code> uses Java serialization to serialize it to bytes. The Java serialized form of even small objects is verbose, resulting in increased server traffic, also Java serialization is slow in comparison to custom marshaling techniques. Only use <code class="literal">ObjectMessage</code> if one of the other message types are unsuitable (for example, if the type of payload is unknown until run-time).
+				</div></li><li class="listitem"><div class="para">
+					Avoid <code class="literal">AUTO_ACKNOWLEDGE</code>. <code class="literal">AUTO_ACKNOWLEDGE</code> mode requires an acknowledgment to be sent from the server for each message received on the client, this means more traffic on the network. If possible, use <code class="literal">DUPS_OK_ACKNOWLEDGE</code>, or use <code class="literal">CLIENT_ACKNOWLEDGE</code> or a transacted session and batch up many acknowledgments with one acknowledge/commit.
+				</div></li><li class="listitem"><div class="para">
+					Avoid durable messages. By default JMS messages are durable. If really durable messages are not required, set the messages to be non-durable. Durable messages incur much more overhead in persisting them to storage.
+				</div></li><li class="listitem"><div class="para">
+					Batch many sends or acknowledgments in a single transaction. HornetQ will only require a network round trip on the commit, not on every send or acknowledgment.
+				</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139905848759344">
+      ⁠</a>43.3. Other Tunings</h1></div></div></div><div class="para">
+			There are various other places in HornetQ where tuning can be performed:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					Use Asynchronous Send Acknowledgments. To send durable messages non transactionally and a guarantee is required that they have reached the server by the time the call to send() returns, do not set durable messages to be sent blocking, rather use asynchronous send acknowledgments to get the acknowledgments of send back in a separate stream. Refer to <a class="xref" href="send-guarantees.html">Chapter 18, <em>Guarantees of sends and commits</em></a> for more information on this.
+				</div></li><li class="listitem"><div class="para">
+					Use pre-acknowledge mode. With pre-acknowledge mode, messages are acknowledged <code class="literal">before</code> being sent to the client. This reduces the amount of acknowledgment traffic being transmitted. For more information on this, refer to <a class="xref" href="pre-acknowledge.html">Chapter 27, <em>Pre-Acknowledge Mode</em></a>.
+				</div></li><li class="listitem"><div class="para">
+					Disable persistence. If message persistence is not required, turn it off altogether by setting <code class="literal">persistence-enabled</code> to false in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code>.
+				</div></li><li class="listitem"><div class="para">
+					Sync transactions lazily. Setting <code class="literal">journal-sync-transactional</code> to <code class="literal">false</code> in <code class="literal">hornetq-configuration.xml</code> gives better transactional persistent performance at the expense of some possibility of loss of transactions on failure. Refer to <a class="xref" href="send-guarantees.html">Chapter 18, <em>Guarantees of sends and commits</em></a> for more information.
+				</div></li><li class="listitem"><div class="para">
+					Sync non transactional lazily. Setting <code class="literal">journal-sync-non-transactional</code> to <code class="literal">false</code> in <code class="literal">hornetq-configuration.xml</code> can provide better non-transactional persistent performance at the expense of some possibility of loss of durable messages on failure. Refer to <a class="xref" href="send-guarantees.html">Chapter 18, <em>Guarantees of sends and commits</em></a> for more information.
+				</div></li><li class="listitem"><div class="para">
+					Send messages non blocking. Setting <code class="literal">block-on-durable-send</code> and <code class="literal">block-on-non-durable-send</code> to <code class="literal">false</code> in <code class="filename"><em class="replaceable">JBOSS_DIST</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-jms.xml</code> (if using JMS and JNDI) or directly on the ClientSessionFactory. It is therefore not required to wait an entire network round trip for every message sent. Refer to <a class="xref" href="send-guarantees.html">Chapter 18, <em>Guarantees of sends and commits</em></a> for more information.
+				</div></li><li class="listitem"><div class="para">
+					For very fast consumers, increase consumer-window-size. This effectively disables consumer flow control.
+				</div></li><li class="listitem"><div class="para">
+					Socket NIO vs Socket Old IO. By default HornetQ uses old (blocking) on the server and the client side (Refer to <a class="xref" href="configuring-transports.html">Chapter 14, <em>Configuring the Transport</em></a> for more information). NIO is much more scalable but can give some latency hit compared to old blocking IO. To be able to service many thousands of connections on the server, then ensure the use of NIO on the server. However, for fewer connections on the server, retaining the old IO for the server acceptors may gain a small performance advantage.
+				</div></li><li class="listitem"><div class="para">
+					Use the core API not JMS. Using the JMS API will have slightly lower performance than using the core API, since all JMS operations need to be translated into core operations before the server can handle them. If using the core API, try to use methods that take <code class="literal">SimpleString</code> as much as possible. <code class="literal">SimpleString</code>, unlike <code class="literal">java.lang.String</code> does not require copying before it is transmitted, so if you re-use <code class="literal">SimpleString</code> instances between calls, some unnecessary copying can be avoided.
+				</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139905848374816">
+      ⁠</a>43.4. Tuning Transport Settings</h1></div></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					TCP buffer sizes. Fast networks and fast machines may get a performance boost by increasing the TCP send and receive buffer sizes. Refer to <a class="xref" href="configuring-transports.html">Chapter 14, <em>Configuring the Transport</em></a> for more information.
+				</div><div class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+						Note that some operating systems like later versions of Linux include TCP auto-tuning and setting TCP buffer sizes manually can prevent auto-tune from working and actually give you worse performance!
+					</div></div></div></li><li class="listitem"><div class="para">
+					Increase limit on file handles on the server. If a lot of concurrent connections on the servers is expected, or if clients are rapidly opening and closing connections, ensure that the user running the server has permission to create sufficient file handles.
+				</div><div class="para">
+					This varies from operating system to operating system. On Linux systems, increase the number of allowable open file handles in the file <code class="literal">/etc/security/limits.conf</code>, for example. add the lines
+				</div><pre class="programlisting">
+serveruser     soft    nofile  20000
+serveruser     hard    nofile  20000
+</pre><div class="para">
+					This would allow up to 20 000 file handles to be open by the user <code class="literal">serveruser</code>.
+				</div></li><li class="listitem"><div class="para">
+					Use <code class="literal">batch-delay</code> and set <code class="literal">direct-deliver</code> to false for the best throughput for very small messages. HornetQ comes with a pre-configured connector/acceptor pair (<code class="literal">netty-throughput</code>) in<code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code> and JMS connection factory (<code class="literal">ThroughputConnectionFactory</code>) in <code class="filename"><em class="replaceable">JBOSS_DIST</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-jms.xml</code> which can be used to give the very best throughput, especially for small messages. Refer to <a class="xref" href="configuring-transports.html">Chapter 14, <em>Configuring the Transport</em></a> for more information.
+				</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139905868902080">
+      ⁠</a>43.5. Avoiding Anti-Patterns</h1></div></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					Re-use connections, sessions, consumers, and producers. Probably the most common messaging anti-pattern observed, is users who create a new connection, session, or producer for every message sent, or every message consumed. This is a poor use of resources. Always reuse these objects as they take time to create and may involve several network round trips.
+				</div><div class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+						Some popular libraries such as the Spring JMS Template are known to use these anti-patterns. If using Spring JMS Template, it is possibly a cause for poor performance and not HornetQ. The Spring JMS Template can only safely be used in an app server which caches JMS sessions (for example. using JCA), and only then for sending messages. It cannot be safely be used for synchronously consuming messages, even in an app server.
+					</div></div></div></li><li class="listitem"><div class="para">
+					Avoid fat messages. Verbose formats such as XML result in increased server transmission load and performance will suffer as result. Avoid XML in message bodies if possible.
+				</div></li><li class="listitem"><div class="para">
+					Do not create temporary queues for each request. This common anti-pattern involves the temporary queue request-response pattern. With the temporary queue request-response pattern a message is sent to a target and a reply-to header is set with the address of a local temporary queue. When the recipient receives the message they process it then send back a response to the address specified in the reply-to. A common mistake made with this pattern is to create a new temporary queue on each message sent. This will drastically reduce performance. Instead the temporary queue should be re-used for many requests.
+				</div></li><li class="listitem"><div class="para">
+					Do not use Message-Driven Beans unnecessarily. MDB usage greatly increases the code path for each message received compared to a straightforward message consumer, as a lot of extra application server code is executed. Before using MDBs, investigate the use of a normal message consumer to complete the task.
+				</div></li></ul></div></div></div></body></html>

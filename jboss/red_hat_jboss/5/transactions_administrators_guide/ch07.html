@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 7. Resource Recovery in JBoss Transaction Service</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="idm140412717297232">
+      ⁠</a>Chapter 7. Resource Recovery in JBoss Transaction Service</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140412727877568">
+      ⁠</a>7.1. Introduction</h1></div></div></div><div class="para">
+			JBoss Transaction Service is a crash tolerant transaction manager. When enlisting XAResources such as JDBC connections defined with &lt;xa-datasource&gt;, or JMS connections using JBoss Messaging in a 2-phase transaction, JBoss Transaction Service keeps a transaction log that allows recovery if the application server crashes during a transaction. If an appropriate recovery module is configured, most failed transactions can be recovered automatically when all resources become available again.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140412715560240">
+      ⁠</a>7.2. Assumptions</h1></div></div></div><div class="para">
+			The configuration options mentioned here are contained by default in the <code class="filename">jbossts-properties.xml</code> file, located in your server configuration's <code class="filename">conf</code> directory. For a server installed at <em class="replaceable">JBOSS_HOME</em> using the <em class="replaceable">default</em> configuration, the correct file path is: <code class="code"> <code class="filename"><em class="replaceable">JBOSS_HOME</em>/server/<em class="replaceable">default</em>/conf/jbossts-properties.xml</code> </code>
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140412742839920">
+      ⁠</a>7.3. Cluster Notes</h1></div></div></div><div class="para">
+			Each application server instance is responsible for recovering transactions it was coordinating. Commonly, a single database serves multiple application servers, and thus participates in transactions from multiple coordinators. During recovery, JBoss Transaction Service requests a list of in-doubt transactions which it can potentially recover, from each application server. The database returns <span class="emphasis"><em>all</em></span> in-doubt transactions, including ones that may not have been coordinated by a given instance. To effectively separate each node's transactions, you must configure a unique node id for each application server instance that shares a common database, by setting a unique value for the following property:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"com.arjuna.ats.arjuna.xa.nodeIdentifier"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"1"</span><span xmlns="" class="perl_Keyword">/&gt;</span></pre><div class="para">
+			You also need an element that indicates what node needs the recovery. This needs to match the <code class="varname">nodeIdentifier</code> configured above.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"com.arjuna.ats.jta.xaRecoveryNode"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"1"</span><span xmlns="" class="perl_Keyword">/&gt;</span></pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140412724333136">
+      ⁠</a>7.4. Recovery Modules</h1></div></div></div><div class="para">
+			Each XA resource for which recovery is desired needs a corresponding recovery module configured in the "jta" section of <code class="filename">jbossjta-properties.xml</code>. Each recovery module must extend <code class="methodname">com.arjuna.ats.jta.recovery.XAResourceRecovery</code>. We provide implementations for JDBC and JMS XA resources.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140412683146032">
+      ⁠</a>7.4.1. JDBC Recovery</h2></div></div></div><div class="para">
+				JBoss Enterprise Application Platform now includes recovery auto-registration in the JCA. Thus, the <span class="property">AppServerJDBCXARecovery</span> which was used in previous releases is disabled by default, and will be removed entirely from future releases of the Platform.
+			</div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="idm140412720601280">
+      ⁠</a>7.4.1.1. Vendor-Specific Database Information</h3></div></div></div><div class="variablelist"><dl class="variablelist"><dt><span class="term">Oracle</span></dt><dd><div class="para">
+								If Oracle is configured incorrectly, you will experience the following error in your log files:
+							</div><pre class="screen">WARN  [com.arjuna.ats.jta.logging.loggerI18N] [com.arjuna.ats.internal.jta.recovery.xarecovery1] Local XARecoveryModule.xaRecovery  got XA exception javax.transaction.xa.XAException, XAException.XAER_RMERR</pre><div class="para">
+								To resolve this error, be sure that the Oracle user has access to the appropriate tables to accomplish the recovery:
+							</div><pre class="screen">GRANT SELECT ON sys.dba_pending_transactions TO <em class="replaceable">user</em>;
+GRANT SELECT ON sys.pending_trans$ TO <em class="replaceable">user</em>;
+GRANT SELECT ON sys.dba_2pc_pending TO <em class="replaceable">user</em>;
+GRANT EXECUTE ON sys.dbms_xa TO <em class="replaceable">user</em>;</pre><div class="para">
+								The above assumes that <em class="replaceable">user</em> is the user defined to connect from JBoss to Oracle. It also assumes that either Oracle 10g R2 (patched for bug 5945463) or 11g is in use. If an unpatched version prior to 11g is used then change the last GRANT EXECUTE to:
+							</div><pre class="screen">GRANT EXECUTE ON sys.dbms_system TO <em class="replaceable">user</em>;</pre></dd><dt><span class="term">PostgreSQL</span></dt><dd><div class="para">
+								See the PostgreSQL documentation for instructions on enabling prepared (i.e. XA) transactions. Version 8.4-701 of PostgreSQL's JDBC driver has a bug in <code class="systemitem">org.postgresql.xa.PGXAConnection</code> which breaks recovery in certain situations. This is fixed in newer versions.
+							</div></dd><dt><span class="term">MySQL</span></dt><dd><div class="para">
+								Based on <a href="http://bugs.mysql.com/bug.php?id=12161">http://bugs.mysql.com/bug.php?id=12161</a>, XA transaction recovery does not appear to be possible using MySQL. This is scheduled to be addressed in MySQL 6.1. See also JBPAPP-2576 in the release notes for JBoss Enterprise Application Platform 5.
+							</div></dd><dt><span class="term">DB2</span></dt><dd><div class="para">
+								DB2 expects <code class="systemitem">XAResource.recover</code> calls only during designated resynchronization stage which occurs when application server is restarted after crash/failure. This is a design flaw in DB2, and out of the scope of this documentation.
+							</div></dd></dl></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140412716503648">
+      ⁠</a>7.4.2. JMS Recovery</h2></div></div></div><div class="para">
+				Refer to the JBoss Messaging Guide for recovery as it relates to Messaging. These guides are available in the suite of documentation for the Enterprise Application Platform, on <a href="http://docs.redhat.com">http://docs.redhat.com</a>..
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140412716498896">
+      ⁠</a>7.5. JMS Clustering Notes</h1></div></div></div><div class="para">
+			When one node in JBoss Messaging cluster goes down, its buddy in the cluster loads all of the dead server's messages from the database.
+		</div><div class="para">
+			If the dead node was performing an XA transaction when it went down, the transaction log may have been written but the associated messages may move to another server in the cluster.
+		</div><div class="para">
+			When the dead server comes back to life, the recovery manager may try to recover the transactions stored in the transaction log. If the messages have been moved to another server, it is impossible to acquire the proper XAResource from the local JMS provider, because the associated messages are no longer on that server. The result is that JBoss Transaction Service returns:
+		</div><pre class="screen">Could not find new XAResource to use for recovering non-serializable XAResource</pre><div class="para">
+			To resolve this, add a JMS provider and a Recovery Manager for each node in the cluster. For example, if the cluster had three nodes, add this to <code class="filename">jbossts-properties.xml</code>:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"com.arjuna.ats.jta.recovery.XAResourceRecovery.JBMESSAGINGREMOTE1"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">          value=</span><span xmlns="" class="perl_String">"org.jboss.jms.server.recovery.MessagingXAResourceRecovery;java:/RemoteJMSProvider1"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>   
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"com.arjuna.ats.jta.recovery.XAResourceRecovery.JBMESSAGINGREMOTE2"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">          value=</span><span xmlns="" class="perl_String">"org.jboss.jms.server.recovery.MessagingXAResourceRecovery;java:/RemoteJMSProvider2"</span><span xmlns="" class="perl_Keyword">/&gt;</span></pre><div class="para">
+			The remote providers are configured in <code class="filename"><em class="replaceable">JBOSS_HOME</em>/server/default/deploy/jms-ds.xml</code>:
+		</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;mbean</span><span xmlns="" class="perl_Others"> code=</span><span xmlns="" class="perl_String">"org.jboss.jms.jndi.JMSProviderLoader"</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"jboss.jms:service=JMSProviderLoader,name=RemoteJMSProvider"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"ProviderName"</span><span xmlns="" class="perl_Keyword">&gt;</span>MyRemoteJMSProvider<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"ProviderAdapterClass"</span><span xmlns="" class="perl_Keyword">&gt;</span>org.jboss.jms.jndi.JNDIProviderAdapter<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"FactoryRef"</span><span xmlns="" class="perl_Keyword">&gt;</span>XAConnectionFactory<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"QueueFactoryRef"</span><span xmlns="" class="perl_Keyword">&gt;</span>XAConnectionFactory<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"TopicFactoryRef"</span><span xmlns="" class="perl_Keyword">&gt;</span>XAConnectionFactory<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"Properties"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      java.naming.factory.initial=org.jnp.interfaces.NamingContextFactory
+<span xmlns="" class="line">​</span>      java.naming.factory.url.pkgs=org.jboss.naming:org.jnp.interfaces
+<span xmlns="" class="line">​</span>      java.naming.provider.url=192.168.1.172:1099
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/mbean&gt;</span>
+</pre><div class="para">
+			<div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+					The <span class="property">java.naming.provider.url</span> should resolve to the IP address and port of the remote JMS instance.
+				</div></div></div>
+			 The JNDI properties are configured to connect to the remote nodes in the cluster. Add providers and recovery managers to each node in the cluster for all the other nodes of the cluster in order to get proper recovery.
+		</div></div></div></body></html>

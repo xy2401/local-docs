@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 8. Cache Modes and Clustering</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="clustering">
+      ⁠</a>Chapter 8. Cache Modes and Clustering</h1></div></div></div><div class="para">
+		This chapter talks about aspects around clustering JBoss Cache.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140486313783920">
+      ⁠</a>8.1. Cache Replication Modes</h1></div></div></div><div class="para">
+			JBoss Cache can be configured to be either local (standalone) or clustered. If in a cluster, the cache can be configured to replicate changes, or to invalidate changes. A detailed discussion on this follows.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486320238352">
+      ⁠</a>8.1.1. Local Mode</h2></div></div></div><div class="para">
+				Local caches do not join a cluster and do not communicate with other caches in a cluster. The dependency on the JGroups library is still there, although a JGroups channel is not started.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486328716432">
+      ⁠</a>8.1.2. Replicated Caches</h2></div></div></div><div class="para">
+				Replicated caches replicate all changes to some or all of the other cache instances in the cluster. Replication can either happen after each modification (no transactions or batches), or at the end of a transaction or batch.
+			</div><div class="para">
+				Replication can be synchronous or asynchronous. Use of either one of the options is application dependent. Synchronous replication blocks the caller (e.g. on a <code class="literal">put()</code> ) until the modifications have been replicated successfully to all nodes in a cluster. Asynchronous replication performs replication in the background (the <code class="literal">put()</code> returns immediately). JBoss Cache also offers a replication queue, where modifications are replicated periodically (i.e. interval-based), or when the queue size exceeds a number of elements, or a combination thereof. A replication queue can therefore offer much higher performance as the actual replication is performed by a background thread.
+			</div><div class="para">
+				Asynchronous replication is faster (no caller blocking), because synchronous replication requires acknowledgments from all nodes in a cluster that they received and applied the modification successfully (round-trip time). However, when a synchronous replication returns successfully, the caller knows for sure that all modifications have been applied to all cache instances, whereas this is not be the case with asynchronous replication. With asynchronous replication, errors are simply written to a log. Even when using transactions, a transaction may succeed but replication may not succeed on all cache instances.
+			</div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="replication.tx">
+      ⁠</a>8.1.2.1. Replicated Caches and Transactions</h3></div></div></div><div class="para">
+					When using transactions, replication only occurs at the transaction boundary - i.e., when a transaction commits. This results in minimizing replication traffic since a single modification is broadcast rather than a series of individual modifications, and can be a lot more efficient than not using transactions. Another effect of this is that if a transaction were to roll back, nothing is broadcast across a cluster.
+				</div><div class="para">
+					Depending on whether you are running your cluster in asynchronous or synchronous mode, JBoss Cache will use either a single phase or <a href="http://en.wikipedia.org/wiki/Two-phase_commit_protocol">two-phase commit</a> protocol, respectively.
+				</div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="idm140486348631152">
+      ⁠</a>8.1.2.1.1. One Phase Commits</h4></div></div></div><div class="para">
+						Used when your cache mode is REPL_ASYNC. All modifications are replicated in a single call, which instructs remote caches to apply the changes to their local in-memory state and commit locally. Remote errors/rollbacks are never fed back to the originator of the transaction since the communication is asynchronous.
+					</div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="idm140486317471648">
+      ⁠</a>8.1.2.1.2. Two Phase Commits</h4></div></div></div><div class="para">
+						Used when your cache mode is REPL_SYNC. Upon committing your transaction, JBoss Cache broadcasts a prepare call, which carries all modifications relevant to the transaction. Remote caches then acquire local locks on their in-memory state and apply the modifications. Once all remote caches respond to the prepare call, the originator of the transaction broadcasts a commit. This instructs all remote caches to commit their data. If any of the caches fail to respond to the prepare phase, the originator broadcasts a rollback.
+					</div><div class="para">
+						Note that although the prepare phase is synchronous, the commit and rollback phases are asynchronous. This is because <a href="http://java.sun.com/products/jta/">Sun's JTA specification </a> does not specify how transactional resources should deal with failures at this stage of a transaction; and other resources participating in the transaction may have indeterminate state anyway. As such, we do away with the overhead of synchronous communication for this phase of the transaction. That said, they can be forced to be synchronous using the <code class="literal">SyncCommitPhase</code> and <code class="literal">SyncRollbackPhase</code> configuration attributes.
+					</div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="br">
+      ⁠</a>8.1.2.2. Buddy Replication</h3></div></div></div><div class="para">
+					Buddy Replication allows you to suppress replicating your data to all instances in a cluster. Instead, each instance picks one or more 'buddies' in the cluster, and only replicates to these specific buddies. This greatly helps scalability as there is no longer a memory and network traffic impact every time another instance is added to a cluster.
+				</div><div class="para">
+					One of the most common use cases of Buddy Replication is when a replicated cache is used by a servlet container to store HTTP session data. One of the pre-requisites to buddy replication working well and being a real benefit is the use of <span class="emphasis"><em>session affinity </em></span> , more casually known as <span class="emphasis"><em>sticky sessions </em></span> in HTTP session replication speak. What this means is that if certain data is frequently accessed, it is desirable that this is always accessed on one instance rather than in a round-robin fashion as this helps the cache cluster optimize how it chooses buddies, where it stores data, and minimizes replication traffic.
+				</div><div class="para">
+					If this is not possible, Buddy Replication may prove to be more of an overhead than a benefit.
+				</div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="idm140486336944944">
+      ⁠</a>8.1.2.2.1. Selecting Buddies</h4></div></div></div><div class="figure"><a id="idm140486336944144">
+      ⁠</a><div class="figure-contents"><div class="mediaobject"><img src="images/BuddyReplication.png" alt="BuddyLocator"/></div></div><p class="title"><strong>Figure 8.1. BuddyLocator</strong></p></div><div class="para">
+						Buddy Replication uses an instance of a <code class="literal">BuddyLocator</code> which contains the logic used to select buddies in a network. JBoss Cache currently ships with a single implementation, <code class="literal">NextMemberBuddyLocator</code>, which is used as a default if no implementation is provided. The <code class="literal">NextMemberBuddyLocator</code> selects the next member in the cluster, as the name suggests, and guarantees an even spread of buddies for each instance.
+					</div><div class="para">
+						The <code class="literal">NextMemberBuddyLocator</code> takes in 2 parameters, both optional. 
+						<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+									<code class="literal">numBuddies</code> - specifies how many buddies each instance should pick to back its data onto. This defaults to 1.
+								</div></li><li class="listitem"><div class="para">
+									<code class="literal">ignoreColocatedBuddies</code> - means that each instance will <span class="emphasis"><em>try</em></span> to select a buddy on a different physical host. If not able to do so though, it will fall back to co-located instances. This defaults to <code class="literal">true</code> .
+								</div></li></ul></div>
+
+					</div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="idm140486327516784">
+      ⁠</a>8.1.2.2.2. BuddyPools</h4></div></div></div><div class="para">
+						Also known as <span class="emphasis"><em>replication groups</em></span>, a buddy pool is an optional construct where each instance in a cluster may be configured with a buddy pool name. Think of this as an 'exclusive club membership' where when selecting buddies, <code class="literal">BuddyLocator</code> s that support buddy pools would try and select buddies sharing the same buddy pool name. This allows system administrators a degree of flexibility and control over how buddies are selected. For example, a sysadmin may put two instances on two separate physical servers that may be on two separate physical racks in the same buddy pool. So rather than picking an instance on a different host on the same rack, <code class="literal">BuddyLocator</code> s would rather pick the instance in the same buddy pool, on a separate rack which may add a degree of redundancy.
+					</div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="idm140486348674864">
+      ⁠</a>8.1.2.2.3. Failover</h4></div></div></div><div class="para">
+						In the unfortunate event of an instance crashing, it is assumed that the client connecting to the cache (directly or indirectly, via some other service such as HTTP session replication) is able to redirect the request to any other random cache instance in the cluster. This is where a concept of Data Gravitation comes in.
+					</div><div class="para">
+						Data Gravitation is a concept where if a request is made on a cache in the cluster and the cache does not contain this information, it asks other instances in the cluster for the data. In other words, data is lazily transferred, migrating <span class="emphasis"><em>only</em></span> when other nodes ask for it. This strategy prevents a network storm effect where lots of data is pushed around healthy nodes because only one (or a few) of them die.
+					</div><div class="para">
+						If the data is not found in the primary section of some node, it would (optionally) ask other instances to check in the backup data they store for other caches. This means that even if a cache containing your session dies, other instances will still be able to access this data by asking the cluster to search through their backups for this data.
+					</div><div class="para">
+						Once located, this data is transferred to the instance which requested it and is added to this instance's data tree. The data is then (optionally) removed from all other instances (and backups) so that if session affinity is used, the affinity should now be to this new cache instance which has just <span class="emphasis"><em>taken ownership </em></span> of this data.
+					</div><div class="para">
+						Data Gravitation is implemented as an interceptor. The following (all optional) configuration properties pertain to data gravitation. 
+						<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+									<code class="literal">dataGravitationRemoveOnFind</code> - forces all remote caches that own the data or hold backups for the data to remove that data, thereby making the requesting cache the new data owner. This removal, of course, only happens after the new owner finishes replicating data to its buddy. If set to <code class="literal">false</code> an evict is broadcast instead of a remove, so any state persisted in cache loaders will remain. This is useful if you have a shared cache loader configured. Defaults to <code class="literal">true</code> .
+								</div></li><li class="listitem"><div class="para">
+									<code class="literal">dataGravitationSearchBackupTrees</code> - Asks remote instances to search through their backups as well as main data trees. Defaults to <code class="literal">true</code> . The resulting effect is that if this is <code class="literal">true</code> then backup nodes can respond to data gravitation requests in addition to data owners.
+								</div></li><li class="listitem"><div class="para">
+									<code class="literal">autoDataGravitation</code> - Whether data gravitation occurs for every cache miss. By default this is set to <code class="literal">false</code> to prevent unnecessary network calls. Most use cases will know when it may need to gravitate data and will pass in an <code class="literal">Option</code> to enable data gravitation on a per-invocation basis. If <code class="literal">autoDataGravitation</code> is <code class="literal">true</code> this <code class="literal">Option</code> is unnecessary.
+								</div></li></ul></div>
+
+					</div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="idm140486277870800">
+      ⁠</a>8.1.2.2.4. Configuration</h4></div></div></div><div class="para">
+						See the <a class="xref" href="configuration_reference_chapter.html">Chapter 12, <em>Configuration References</em></a> for details on configuring buddy replication.
+					</div></div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140486277868432">
+      ⁠</a>8.2. Invalidation</h1></div></div></div><div class="para">
+			If a cache is configured for invalidation rather than replication, every time data is changed in a cache other caches in the cluster receive a message informing them that their data is now stale and should be evicted from memory. Invalidation, when used with a shared cache loader (see chapter on <a class="xref" href="cache_loaders.html">Chapter 9, <em>Cache Loaders</em></a>) would cause remote caches to refer to the shared cache loader to retrieve modified data. The benefit of this is twofold: network traffic is minimized as invalidation messages are very small compared to replicating updated data, and also that other caches in the cluster look up modified data in a lazy manner, only when needed.
+		</div><div class="para">
+			Invalidation messages are sent after each modification (no transactions or batches), or at the end of a transaction or batch, upon successful commit. This is usually more efficient as invalidation messages can be optimized for the transaction as a whole rather than on a per-modification basis.
+		</div><div class="para">
+			Invalidation too can be synchronous or asynchronous, and just as in the case of replication, synchronous invalidation blocks until all caches in the cluster receive invalidation messages and have evicted stale data while asynchronous invalidation works in a 'fire-and-forget' mode, where invalidation messages are broadcast but does not block and wait for responses.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140486328551680">
+      ⁠</a>8.3. State Transfer</h1></div></div></div><div class="para">
+			<span class="emphasis"><em>State Transfer</em></span> refers to the process by which a JBoss Cache instance prepares itself to begin providing a service by acquiring the current state from another cache instance and integrating that state into its own state.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486337608496">
+      ⁠</a>8.3.1. State Transfer Types</h2></div></div></div><div class="para">
+				There are three divisions of state transfer types depending on a point of view related to state transfer. First, in the context of particular state transfer implementation, the underlying plumbing, there are two starkly different state transfer types: byte array and streaming based state transfer. Second, state transfer can be full or partial state transfer depending on a subtree being transferred. Entire cache tree transfer represents full transfer while transfer of a particular subtree represents partial state transfer. And finally state transfer can be "in-memory" and "persistent" transfer depending on a particular use of cache.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486337606416">
+      ⁠</a>8.3.2. Byte array and streaming based state transfer</h2></div></div></div><div class="para">
+				Byte array based transfer was a default and only transfer methodology for cache in all previous releases up to 2.0. Byte array based transfer loads entire state transferred into a byte array and sends it to a state receiving member. Major limitation of this approach is that the state transfer that is very large (&gt;1GB) would likely result in OutOfMemoryException. Streaming state transfer provides an InputStream to a state reader and an OutputStream to a state writer. OutputStream and InputStream abstractions enable state transfer in byte chunks thus resulting in smaller memory requirements. For example, if application state is represented as a tree whose aggregate size is 1GB, rather than having to provide a 1GB byte array streaming state transfer transfers the state in chunks of N bytes where N is user configurable.
+			</div><div class="para">
+				Byte array and streaming based state transfer are completely API transparent, interchangeable, and statically configured through a standard cache configuration XML file. Refer to JGroups documentation on how to change from one type of transfer to another.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486311233152">
+      ⁠</a>8.3.3. Full and partial state transfer</h2></div></div></div><div class="para">
+				If either in-memory or persistent state transfer is enabled, a full or partial state transfer will be done at various times, depending on how the cache is used. "Full" state transfer refers to the transfer of the state related to the entire tree -- i.e. the root node and all nodes below it. A "partial" state transfer is one where just a portion of the tree is transferred -- i.e. a node at a given Fqn and all nodes below it.
+			</div><div class="para">
+				If either in-memory or persistent state transfer is enabled, state transfer will occur at the following times:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="orderedlist"><ol><li class="listitem"><div class="para">
+						Initial state transfer. This occurs when the cache is first started (as part of the processing of the <code class="literal">start()</code> method). This is a full state transfer. The state is retrieved from the cache instance that has been operational the longest. <a id="idm140486311229264">
+      ⁠</a><a href="#ftn.idm140486311229264" class="footnote"><sup class="footnote">[1]</sup></a> If there is any problem receiving or integrating the state, the cache will not start.
+					</div><div class="para">
+						Initial state transfer will occur unless:
+					</div><div class="orderedlist"><ol><li class="listitem"><div class="para">
+								The cache's <code class="literal">InactiveOnStartup</code> property is <code class="literal">true</code>. This property is used in conjunction with region-based marshaling.
+							</div></li><li class="listitem"><div class="para">
+								Buddy replication is used. See below for more on state transfer with buddy replication.
+							</div></li></ol></div></li><li class="listitem"><div class="para">
+						Partial state transfer following region activation. When region-based marshaling is used, the application needs to register a specific class loader with the cache. This class loader is used to unmarshal the state for a specific region (subtree) of the cache.
+					</div><div class="para">
+						After registration, the application calls <code class="literal">cache.getRegion(fqn, true).activate()</code>, which initiates a partial state transfer of the relevant subtree's state. The request is first made to the oldest cache instance in the cluster. However, if that instance responds with no state, it is then requested from each instance in turn until one either provides state or all instances have been queried.
+					</div><div class="para">
+						Typically when region-based marshaling is used, the cache's <code class="literal">InactiveOnStartup</code> property is set to <code class="literal">true</code>. This suppresses initial state transfer, which would fail due to the inability to deserialize the transferred state.
+					</div></li><li class="listitem"><div class="para">
+						Buddy replication. When buddy replication is used, initial state transfer is disabled. Instead, when a cache instance joins the cluster, it becomes the buddy of one or more other instances, and one or more other instances become its buddy. Each time an instance determines it has a new buddy providing backup for it, it pushes its current state to the new buddy. This "pushing" of state to the new buddy is slightly different from other forms of state transfer, which are based on a "pull" approach (i.e. recipient asks for and receives state). However, the process of preparing and integrating the state is the same.
+					</div><div class="para">
+						This "push" of state upon buddy group formation only occurs if the <code class="literal">InactiveOnStartup</code> property is set to <code class="literal">false</code>. If it is <code class="literal">true</code>, state transfer amongst the buddies only occurs when the application activates the region on the various members of the group.
+					</div><div class="para">
+						Partial state transfer following a region activation call is slightly different in the buddy replication case as well. Instead of requesting the partial state from one cache instance, and trying all instances until one responds, with buddy replication the instance that is activating a region will request partial state from each instance for which it is serving as a backup.
+					</div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486319785360">
+      ⁠</a>8.3.4. Transient ("in-memory") and persistent state transfer</h2></div></div></div><div class="para">
+				The state that is acquired and integrated can consist of two basic types:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="orderedlist"><ol><li class="listitem"><div class="para">
+						"Transient" or "in-memory" state. This consists of the actual in-memory state of another cache instance - the contents of the various in-memory nodes in the cache that is providing state are serialized and transferred; the recipient deserializes the data, creates corresponding nodes in its own in-memory tree, and populates them with the transferred data.
+					</div><div class="para">
+						"In-memory" state transfer is enabled by setting the cache's <code class="literal">FetchInMemoryState</code> configuration attribute to <code class="literal">true</code>.
+					</div></li><li class="listitem"><div class="para">
+						"Persistent" state. Only applicable if a non-shared cache loader is used. The state stored in the state-provider cache's persistent store is deserialized and transferred; the recipient passes the data to its own cache loader, which persists it to the recipient's persistent store.
+					</div><div class="para">
+						"Persistent" state transfer is enabled by setting a cache loader's <code class="literal">fetchPersistentState</code> attribute to <code class="literal">true</code>. If multiple cache loaders are configured in a chain, only one can have this property set to true; otherwise you will get an exception at start up.
+					</div><div class="para">
+						Persistent state transfer with a shared cache loader does not make sense, as the same persistent store that provides the data will just end up receiving it. Therefore, if a shared cache loader is used, the cache will not allow a persistent state transfer even if a cache loader has <code class="literal">fetchPersistentState</code> set to <code class="literal">true</code>.
+					</div></li></ol></div><div class="para">
+				Which of these types of state transfer is appropriate depends on the usage of the cache.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="orderedlist"><ol><li class="listitem"><div class="para">
+						If a write-through cache loader is used, the current cache state is fully represented by the persistent state. Data may have been evicted from the in-memory state, but it will still be in the persistent store. In this case, if the cache loader is not shared, persistent state transfer is used to ensure the new cache has the correct state. In-memory state can be transferred as well if the desire is to have a "hot" cache -- one that has all relevant data in memory when the cache begins providing service. (Note that the <code class="literal">&lt;preload&gt;</code> element in the <code class="literal">&lt;loaders&gt;</code> configuration element can be used as well to provide a "warm" or "hot" cache without requiring an in-memory state transfer. This approach somewhat reduces the burden on the cache instance providing state, but increases the load on the persistent store on the recipient side.)
+					</div></li><li class="listitem"><div class="para">
+						If a cache loader is used with passivation, the full representation of the state can only be obtained by combining the in-memory (i.e. non-passivated) and persistent (i.e. passivated) states. Therefore an in-memory state transfer is necessary. A persistent state transfer is necessary if the cache loader is not shared.
+					</div></li><li class="listitem"><div class="para">
+						If no cache loader is used and the cache is solely a write-aside cache (i.e. one that is used to cache data that can also be found in a persistent store, e.g. a database), whether or not in-memory state should be transferred depends on whether or not a "hot" cache is desired.
+					</div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486347116112">
+      ⁠</a>8.3.5. Configuring State Transfer</h2></div></div></div><div class="para">
+				To ensure state transfer behaves as expected, it is important that all nodes in the cluster are configured with the same settings for persistent and transient state. This is because byte array based transfers, when requested, rely only on the requester's configuration while stream based transfers rely on both the requester and sender's configuration, and this is expected to be identical.
+			</div></div></div><div class="footnotes"><br/><hr/><div id="ftn.idm140486311229264" class="footnote"><div class="para"><a href="#idm140486311229264" class="para"><sup class="para">[1] </sup></a>
+							The longest operating cache instance is always, in JGroups terms, the coordinator.
+						</div></div></div></div></body></html>

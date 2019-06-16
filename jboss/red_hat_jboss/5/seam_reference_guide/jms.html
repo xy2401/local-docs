@@ -1,0 +1,341 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 21. Asynchronicity and messaging</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="jms">
+      ⁠</a>Chapter 21. Asynchronicity and messaging</h1></div></div></div><div class="para">
+		Seam makes it easy to perform work asynchronously from a web request. Asynchronicity in Java EE is usually linked with JMS, and where your quality of service requirements are strict and well-defined, this is logical. It is easy to send JMS messages through Seam components.
+	</div><div class="para">
+		However, for many use cases, JMS is more powerful than necessary. Seam layers a simple, asynchronous method and event facility over your choice of <span class="emphasis"><em>dispatchers</em></span>:
+	</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+				<code class="literal">java.util.concurrent.ScheduledThreadPoolExecutor</code> (by default)
+			</div></li><li class="listitem"><div class="para">
+				the EJB timer service (for EJB 3.0 environments)
+			</div></li><li class="listitem"><div class="para">
+				Quartz
+			</div></li></ul></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139690509478000">
+      ⁠</a>21.1. Asynchronicity</h1></div></div></div><div class="para">
+			Asynchronous events and method calls have the same quality of service expectations as the underlying dispatcher mechanism. The default dispatcher, based upon a <code class="literal">ScheduledThreadPoolExecutor</code> performs efficiently but provides no support for persistent asynchronous tasks, and hence no guarantee that a task will ever actually be executed. If you are working in an environment that supports EJB 3.0, add the following line to <code class="filename">components.xml</code> to ensure that your asynchronous tasks are processed by the container's EJB timer service:
+		</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;async:timer-service-dispatcher/&gt;</span>
+</pre><div class="para">
+			If you want to use asynchronous methods in Seam, you do not need to interact directly with the Timer service. However, it is important that your EJB3 implementation has the option of using persistent timers, which give some guarantee that the task will eventually be processed.
+		</div><div class="para">
+			Alternatively, you can use the open source Quartz library to manage asynchronous method. To do so, bundle the Quartz library <code class="filename">JAR</code> (found in the <code class="literal">lib</code> directory) in your <code class="filename">EAR</code>, and declare it as a Java module in <code class="filename">application.xml</code>. You can configure the Quartz dispatcher by adding a Quartz property file to the classpath —this file must be named <code class="filename">seam.quartz.properties</code>. To install the Quartz dispatcher, you will also need to add the following line to <code class="filename">components.xml</code>:
+		</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;async:quartz-dispatcher/&gt;</span>
+</pre><div class="para">
+			Since the Seam API for the default <code class="literal">ScheduledThreadPoolExecutor</code>, the EJB3 <code class="literal">Timer</code>, and the Quartz <code class="literal">Scheduler</code> are very similar, you can "plug and play" by adding a line to <code class="filename">components.xml</code>. 
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690538926800">
+      ⁠</a>21.1.1. Asynchronous methods</h2></div></div></div><div class="para">
+				An asynchronous call allows a method call to be processed asynchronously (in a different thread) to the caller. Usually, asynchronous calls are used when we want to send an immediate response to the client, and simultaneously process expensive work in the background. This pattern works well in AJAX applications, where the client can automatically poll the server for the result of the work.
+			</div><div class="para">
+				For EJB components, annotate the implementation of the bean to specify that a method be processed asynchronously. For JavaBean components, annotate the component implementation class:
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@Stateless
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Name</span>(<span xmlns="" class="perl_String">"paymentHandler"</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> PaymentHandlerBean <span xmlns="" class="perl_Keyword">implements</span> PaymentHandler
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>  @Asynchronous
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">processPayment</span>(Payment payment) {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">//do some work!</span>
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				Asynchronicity is transparent to the bean class. It is also transparent to the client:
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@Stateful
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Name</span>(<span xmlns="" class="perl_String">"paymentAction"</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> CreatePaymentAction
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>  @<span xmlns="" class="perl_Function">In</span>(create=<span xmlns="" class="perl_Keyword">true</span>) PaymentHandler paymentHandler;
+<span xmlns="" class="line">​</span>  @In Bill bill;
+<span xmlns="" class="line">​</span>    
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> String <span xmlns="" class="perl_Function">pay</span>() {
+<span xmlns="" class="line">​</span>    paymentHandler.<span xmlns="" class="perl_Function">processPayment</span>( <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">Payment</span>(bill) );
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">return</span> <span xmlns="" class="perl_String">"success"</span>;
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				The asynchronous method is processed in a fresh event context, and has no access to the session or conversation context state of the caller. However, the business process context <span class="emphasis"><em>is</em></span> propagated.
+			</div><div class="para">
+				You can schedule asynchronous method calls for delayed execution with the <code class="literal">@Duration</code>, <code class="literal">@Expiration</code> and <code class="literal">@IntervalDuration</code> annotations.
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@Local
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">interface</span> PaymentHandler {
+<span xmlns="" class="line">​</span>  @Asynchronous
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">processScheduledPayment</span>(Payment payment, 
+<span xmlns="" class="line">​</span>                                      @Expiration Date date);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  @Asynchronous
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">processRecurringPayment</span>(Payment payment, 
+<span xmlns="" class="line">​</span>                                      @Expiration Date date, 
+<span xmlns="" class="line">​</span>                                      @IntervalDuration <span xmlns="" class="perl_DataType">Long</span> interval);
+<span xmlns="" class="line">​</span>}
+</pre><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@Stateful
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Name</span>(<span xmlns="" class="perl_String">"paymentAction"</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> CreatePaymentAction
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>  @<span xmlns="" class="perl_Function">In</span>(create=<span xmlns="" class="perl_Keyword">true</span>) PaymentHandler paymentHandler;
+<span xmlns="" class="line">​</span>  @In Bill bill;
+<span xmlns="" class="line">​</span>    
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> String <span xmlns="" class="perl_Function">schedulePayment</span>() {
+<span xmlns="" class="line">​</span>    paymentHandler.<span xmlns="" class="perl_Function">processScheduledPayment</span>(<span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">Payment</span>(bill), 
+<span xmlns="" class="line">​</span>                                           bill.<span xmlns="" class="perl_Function">getDueDate</span>() );
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">return</span> <span xmlns="" class="perl_String">"success"</span>;
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> String <span xmlns="" class="perl_Function">scheduleRecurringPayment</span>() {
+<span xmlns="" class="line">​</span>    paymentHandler.<span xmlns="" class="perl_Function">processRecurringPayment</span>(<span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">Payment</span>(bill), 
+<span xmlns="" class="line">​</span>                                           bill.<span xmlns="" class="perl_Function">getDueDate</span>(), ONE_MONTH );
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">return</span> <span xmlns="" class="perl_String">"success"</span>;
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				Both client and server can access the <code class="literal">Timer</code> object associated with the invocation. The <code class="literal">Timer</code> shown below is the EJB3 timer used with the EJB3 dispatcher. For the default <code class="literal">ScheduledThreadPoolExecutor</code>, the timer returns <code class="literal">Future</code> from the JDK. For the Quartz dispatcher, it returns <code class="literal">QuartzTriggerHandle</code>, which will be discussed in the next section.
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@Local
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">interface</span> PaymentHandler
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>  @Asynchronous
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> Timer <span xmlns="" class="perl_Function">processScheduledPayment</span>(Payment payment, 
+<span xmlns="" class="line">​</span>                                       @Expiration Date date);
+<span xmlns="" class="line">​</span>}
+</pre><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@Stateless
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Name</span>(<span xmlns="" class="perl_String">"paymentHandler"</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> PaymentHandlerBean <span xmlns="" class="perl_Keyword">implements</span> PaymentHandler {
+<span xmlns="" class="line">​</span>  @In Timer timer;
+<span xmlns="" class="line">​</span>    
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> Timer <span xmlns="" class="perl_Function">processScheduledPayment</span>(Payment payment, 
+<span xmlns="" class="line">​</span>                                       @Expiration Date date) {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">//do some work!    </span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">return</span> timer; <span xmlns="" class="perl_Comment">//note that return value is completely ignored</span>
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>}
+</pre><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@Stateful
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Name</span>(<span xmlns="" class="perl_String">"paymentAction"</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> CreatePaymentAction
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>  @<span xmlns="" class="perl_Function">In</span>(create=<span xmlns="" class="perl_Keyword">true</span>) PaymentHandler paymentHandler;
+<span xmlns="" class="line">​</span>  @In Bill bill;
+<span xmlns="" class="line">​</span>    
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> String <span xmlns="" class="perl_Function">schedulePayment</span>() {
+<span xmlns="" class="line">​</span>    Timer timer = 
+<span xmlns="" class="line">​</span>      paymentHandler.<span xmlns="" class="perl_Function">processScheduledPayment</span>(<span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">Payment</span>(bill), 
+<span xmlns="" class="line">​</span>                                             bill.<span xmlns="" class="perl_Function">getDueDate</span>());
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">return</span> <span xmlns="" class="perl_String">"success"</span>;
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				Asynchronous methods cannot return any other value to the caller.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690503792896">
+      ⁠</a>21.1.2. Asynchronous methods with the Quartz Dispatcher</h2></div></div></div><div class="para">
+				The Quartz dispatcher lets you use the <code class="literal">@Asynchronous</code>, <code class="literal">@Duration</code>, <code class="literal">@Expiration</code>, and <code class="literal">@IntervalDuration</code> annotations, as above, but it also supports several additional annotations.
+			</div><div class="para">
+				The <code class="literal">@FinalExpiration</code> annotation specifies an end date for a recurring task. Note that you can inject the <code class="code">QuartzTriggerHandle</code>.
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@In QuartzTriggerHandle timer;
+<span xmlns="" class="line">​</span>        
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// Defines the method in the "processor" component</span>
+<span xmlns="" class="line">​</span>@Asynchronous
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> QuartzTriggerHandle <span xmlns="" class="perl_Function">schedulePayment</span>(@Expiration Date when, 
+<span xmlns="" class="line">​</span>                                           @IntervalDuration <span xmlns="" class="perl_DataType">Long</span> interval,
+<span xmlns="" class="line">​</span>                                           @FinalExpiration Date endDate, 
+<span xmlns="" class="line">​</span>                                           Payment payment) { 
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">// do the repeating or long running task until endDate</span>
+<span xmlns="" class="line">​</span>}
+<span xmlns="" class="line">​</span>    
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">... </span>...
+<span xmlns="" class="line">​</span>    
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// Schedule the task in the business logic processing code</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// Starts now, repeats every hour, and ends on May 10th, 2010</span>
+<span xmlns="" class="line">​</span>Calendar cal = Calendar.<span xmlns="" class="perl_Function">getInstance</span> ();
+<span xmlns="" class="line">​</span>cal.<span xmlns="" class="perl_Function">set</span> (<span xmlns="" class="perl_Float">2010</span>, Calendar.<span xmlns="" class="perl_Function">MAY</span>, <span xmlns="" class="perl_Float">10</span>);
+<span xmlns="" class="line">​</span>processor.<span xmlns="" class="perl_Function">schedulePayment</span>(<span xmlns="" class="perl_Keyword">new</span> Date(), <span xmlns="" class="perl_Float">60</span>*<span xmlns="" class="perl_Float">60</span>*<span xmlns="" class="perl_Float">1000</span>, cal.<span xmlns="" class="perl_Function">getTime</span>(), payment);
+</pre><div class="para">
+				Note that this method returns the <code class="literal">QuartzTriggerHandle</code> object, which can be used to stop, pause, and resume the scheduler. The <code class="literal">QuartzTriggerHandle</code> object is serializable, so it can be saved into the database if required for an extended period of time.
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>QuartzTriggerHandle handle=
+<span xmlns="" class="line">​</span>    processor.<span xmlns="" class="perl_Function">schedulePayment</span>(payment.<span xmlns="" class="perl_Function">getPaymentDate</span>(), 
+<span xmlns="" class="line">​</span>                              payment.<span xmlns="" class="perl_Function">getPaymentCron</span>(), 
+<span xmlns="" class="line">​</span>                              payment);
+<span xmlns="" class="line">​</span>payment.<span xmlns="" class="perl_Function">setQuartzTriggerHandle</span>( handle );
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// Save payment to DB</span>
+<span xmlns="" class="line">​</span>        
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// later ...</span>
+<span xmlns="" class="line">​</span>        
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// Retrieve payment from DB</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// Cancel the remaining scheduled tasks</span>
+<span xmlns="" class="line">​</span>payment.<span xmlns="" class="perl_Function">getQuartzTriggerHandle</span>().<span xmlns="" class="perl_Function">cancel</span>();
+</pre><div class="para">
+				The <code class="literal">@IntervalCron</code> annotation supports Unix cron job syntax for task scheduling. For example, the following asynchronous method runs at 2:10pm and at 2:44pm every Wednesday in the month of March.
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// Define the method</span>
+<span xmlns="" class="line">​</span>@Asynchronous
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> QuartzTriggerHandle <span xmlns="" class="perl_Function">schedulePayment</span>(@Expiration Date when, 
+<span xmlns="" class="line">​</span>                                           @IntervalCron String cron, 
+<span xmlns="" class="line">​</span>                                           Payment payment) { 
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">// do the repeating or long running task</span>
+<span xmlns="" class="line">​</span>}
+<span xmlns="" class="line">​</span>    
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">... </span>...
+<span xmlns="" class="line">​</span>    
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// Schedule the task in the business logic processing code</span>
+<span xmlns="" class="line">​</span>QuartzTriggerHandle handle = 
+<span xmlns="" class="line">​</span>     processor.<span xmlns="" class="perl_Function">schedulePayment</span>(<span xmlns="" class="perl_Keyword">new</span> Date(), <span xmlns="" class="perl_String">"0 10,44 14 ? 3 WED"</span>, payment);
+</pre><div class="para">
+				The <code class="literal">@IntervalBusinessDay</code> annotation supports invocation in the "nth Business Day" scenario. For instance, the following asynchronous method runs at 14:00 on the 2nd business day of each month. All weekends and US Federal holidays are excluded from the business days by default.
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// Define the method</span>
+<span xmlns="" class="line">​</span>@Asynchronous
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> QuartzTriggerHandle <span xmlns="" class="perl_Function">schedulePayment</span>(@Expiration Date when, 
+<span xmlns="" class="line">​</span>                                 @IntervalBusinessDay NthBusinessDay nth, 
+<span xmlns="" class="line">​</span>                                 Payment payment) { 
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">// do the repeating or long running task</span>
+<span xmlns="" class="line">​</span>}
+<span xmlns="" class="line">​</span>    
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">... </span>...
+<span xmlns="" class="line">​</span>    
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// Schedule the task in the business logic processing code</span>
+<span xmlns="" class="line">​</span>QuartzTriggerHandle handle = 
+<span xmlns="" class="line">​</span>    processor.<span xmlns="" class="perl_Function">schedulePayment</span>(<span xmlns="" class="perl_Keyword">new</span> Date(), 
+<span xmlns="" class="line">​</span>                              <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">NthBusinessDay</span>(<span xmlns="" class="perl_Float">2</span>, <span xmlns="" class="perl_String">"14:00"</span>, WEEKLY), 
+<span xmlns="" class="line">​</span>                              payment);
+</pre><div class="para">
+				The <code class="literal">NthBusinessDay</code> object contains the configuration of the invocation trigger. You can specify more holidays (company holidays and non-US holidays, for example) in the <code class="literal">additionalHolidays</code> property.
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> NthBusinessDay <span xmlns="" class="perl_Keyword">implements</span> Serializable {
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_DataType">int</span> n;
+<span xmlns="" class="line">​</span>  String fireAtTime;
+<span xmlns="" class="line">​</span>  List&lt;Date&gt; additionalHolidays;
+<span xmlns="" class="line">​</span>  BusinessDayIntervalType interval;
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_DataType">boolean</span> excludeWeekends;
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_DataType">boolean</span> excludeUsFederalHolidays;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">enum</span> BusinessDayIntervalType { WEEKLY, MONTHLY, YEARLY }
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Function">NthBusinessDay</span> () {
+<span xmlns="" class="line">​</span>    n = <span xmlns="" class="perl_Float">1</span>;
+<span xmlns="" class="line">​</span>    fireAtTime = <span xmlns="" class="perl_String">"12:00"</span>;
+<span xmlns="" class="line">​</span>    additionalHolidays = <span xmlns="" class="perl_Keyword">new</span> ArrayList&lt;Date&gt; ();
+<span xmlns="" class="line">​</span>    interval = BusinessDayIntervalType.<span xmlns="" class="perl_Function">WEEKLY</span>;
+<span xmlns="" class="line">​</span>    excludeWeekends = <span xmlns="" class="perl_Keyword">true</span>;
+<span xmlns="" class="line">​</span>    excludeUsFederalHolidays = <span xmlns="" class="perl_Keyword">true</span>;
+<span xmlns="" class="line">​</span>  }     
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">... </span>...
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				The <code class="literal">@IntervalDuration</code>, <code class="literal">@IntervalCron</code>, and <code class="literal">@IntervalNthBusinessDay</code> annotations are mutually exclusive. Attempting to use them in the same method will cause a <code class="exceptionname">RuntimeException</code> error.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690518818992">
+      ⁠</a>21.1.3. Asynchronous events</h2></div></div></div><div class="para">
+				Component-driven events can also be asynchronous. To raise an event for asynchronous processing, call the <code class="literal">raiseAsynchronousEvent()</code> method of the <code class="literal">Events</code> class. To schedule a timed event, call the <code class="literal">raisedTimedEvent()</code> method and pass a schedule object. (For the default dispatcher or timer service dispatcher, use <code class="literal">TimerSchedule</code>.) Components can observe asynchronous events as usual, but only business process context is propagated to the asynchronous thread.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690522093056">
+      ⁠</a>21.1.4. Handling exceptions from asynchronous calls</h2></div></div></div><div class="para">
+				Each asynchronous dispatcher behaves differently when an exception propagates through it. For example, the <code class="literal">java.util.concurrent</code> suspends further executions of a repeating call, and the EJB3 timer service swallows the exception, so Seam catches any exception that propagates from the asynchronous call before it reaches the dispatcher.
+			</div><div class="para">
+				By default, any exception that propagates from an asynchronous execution will be caught and logged at error level. You can customize this behavior globally by overriding the <code class="literal">org.jboss.seam.async.asynchronousExceptionHandler</code> component:
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Scope</span>(ScopeType.<span xmlns="" class="perl_Function">STATELESS</span>)
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Name</span>(<span xmlns="" class="perl_String">"org.jboss.seam.async.asynchronousExceptionHandler"</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> MyAsynchronousExceptionHandler 
+<span xmlns="" class="line">​</span>             <span xmlns="" class="perl_Keyword">extends</span> AsynchronousExceptionHandler { 
+<span xmlns="" class="line">​</span>  @Logger Log log;
+<span xmlns="" class="line">​</span>   
+<span xmlns="" class="line">​</span>  @In Future timer;
+<span xmlns="" class="line">​</span>   
+<span xmlns="" class="line">​</span>  @Override
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">handleException</span>(Exception exception) {
+<span xmlns="" class="line">​</span>    log.<span xmlns="" class="perl_Function">debug</span>(exception);
+<span xmlns="" class="line">​</span>    timer.<span xmlns="" class="perl_Function">cancel</span>(<span xmlns="" class="perl_Keyword">false</span>);
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>   
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				Here, with <code class="literal">java.util.concurrent</code> dispatcher, we inject its control object and cancel all future invocations when an exception is encountered.
+			</div><div class="para">
+				You can alter this behavior for an individual component by implementing the <code class="literal">public void handleAsynchronousException(Exception exception);</code> method on that component, like so:
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>   
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">handleAsynchronousException</span>(Exception exception) { 
+<span xmlns="" class="line">​</span>  log.<span xmlns="" class="perl_Function">fatal</span>(exception); 
+<span xmlns="" class="line">​</span>}
+</pre></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139690451023120">
+      ⁠</a>21.2. Messaging in Seam</h1></div></div></div><div class="para">
+			It is easy to send and receive JMS messages to and from Seam components.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690451021872">
+      ⁠</a>21.2.1. Configuration</h2></div></div></div><div class="para">
+				To configure Seam infrastructure to send JMS messages, you must first tell Seam about the topics and queues you want to send messages to, and where to find the <code class="literal">QueueConnectionFactory</code> and <code class="literal">TopicConnectionFactory</code>, depending on your requirements.
+			</div><div class="para">
+				By default, Seam uses <code class="literal">UIL2ConnectionFactory</code>, the default connection factory with JBossMQ. If you use another JMS provider, you must set one or both of <code class="literal">queueConnection.queueConnectionFactoryJndiName</code> and <code class="literal">topicConnection.topicConnectionFactoryJndiName</code>, in either <code class="filename">seam.properties</code>, <code class="filename">web.xml</code>, or <code class="filename">components.xml</code>.
+			</div><div class="para">
+				To install Seam-managed <code class="literal">TopicPublisher</code>s and <code class="literal">QueueSender</code>s, you must also list topics and queues in <code class="filename">components.xml</code>:
+			</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;jms:managed-topic-publisher</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"stockTickerPublisher"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">     auto-create=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Others"> topic-jndi-name=</span><span xmlns="" class="perl_String">"topic/stockTickerTopic"</span><span xmlns="" class="perl_Keyword">/&gt;</span> 
+<span xmlns="" class="line">​</span>    
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;jms:managed-queue-sender</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"paymentQueueSender"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">     auto-create=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Others"> queue-jndi-name=</span><span xmlns="" class="perl_String">"queue/paymentQueue"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690502711056">
+      ⁠</a>21.2.2. Sending messages</h2></div></div></div><div class="para">
+				Once configuration is complete, you can inject a JMS <code class="literal">TopicPublisher</code> and <code class="literal">TopicSession</code> into any component:
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Name</span>(<span xmlns="" class="perl_String">"stockPriceChangeNotifier"</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> StockPriceChangeNotifier {
+<span xmlns="" class="line">​</span>  @In <span xmlns="" class="perl_Keyword">private</span> TopicPublisher stockTickerPublisher;   
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  @In <span xmlns="" class="perl_Keyword">private</span> TopicSession topicSession;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">publish</span>(StockPrice price) {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">try</span> {
+<span xmlns="" class="line">​</span>      stockTickerPublisher.<span xmlns="" class="perl_Function">publish</span>(topicSession
+<span xmlns="" class="line">​</span>                                   .<span xmlns="" class="perl_Function">createObjectMessage</span>(price));
+<span xmlns="" class="line">​</span>    } <span xmlns="" class="perl_Keyword">catch</span> (Exception ex) {
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">throw</span> <span xmlns="" class="perl_Keyword">new</span> RuntimeException(ex);
+<span xmlns="" class="line">​</span>    } 
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				Or, to work with a queue:
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Name</span>(<span xmlns="" class="perl_String">"paymentDispatcher"</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> PaymentDispatcher {
+<span xmlns="" class="line">​</span>  @In <span xmlns="" class="perl_Keyword">private</span> QueueSender paymentQueueSender;   
+<span xmlns="" class="line">​</span>    
+<span xmlns="" class="line">​</span>  @In <span xmlns="" class="perl_Keyword">private</span> QueueSession queueSession;
+<span xmlns="" class="line">​</span>    
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">publish</span>(Payment payment) {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">try</span> {
+<span xmlns="" class="line">​</span>      paymentQueueSender.<span xmlns="" class="perl_Function">send</span>(queueSession.<span xmlns="" class="perl_Function">createObjectMessage</span>(payment));
+<span xmlns="" class="line">​</span>    } <span xmlns="" class="perl_Keyword">catch</span> (Exception ex) {
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">throw</span> <span xmlns="" class="perl_Keyword">new</span> RuntimeException(ex);
+<span xmlns="" class="line">​</span>    } 
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>}
+</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690507754160">
+      ⁠</a>21.2.3. Receiving messages using a message-driven bean</h2></div></div></div><div class="para">
+				You can process messages with any EJB3 message-driven bean. Message-driven beans can sometimes be Seam components, in which case, you can inject other event- and application-scoped Seam components. The following is an example of the payment receiver, which delegates to the payment processor.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+					You may need to set the <code class="varname">create</code> attribute on the <code class="literal">@In</code> annotation to <code class="literal">true</code> so that Seam can create an instance of the component to be injected. (This is necessary only if the component does not support auto-creation — that is, it is not annotated with <code class="literal">@Autocreate</code>.)
+				</div></div></div><div class="para">
+				First, create a message-driven bean to receive the message:
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">MessageDriven</span>(activationConfig = 
+<span xmlns="" class="line">​</span>    {@<span xmlns="" class="perl_Function">ActivationConfigProperty</span>(propertyName = <span xmlns="" class="perl_String">"destinationType"</span>,
+<span xmlns="" class="line">​</span>                               propertyValue = <span xmlns="" class="perl_String">"javax.jms.Queue"</span>),
+<span xmlns="" class="line">​</span>     @<span xmlns="" class="perl_Function">ActivationConfigProperty</span>(propertyName = <span xmlns="" class="perl_String">"destination"</span>,
+<span xmlns="" class="line">​</span>                               propertyValue = <span xmlns="" class="perl_String">"queue/paymentQueue"</span>)
+<span xmlns="" class="line">​</span>})
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Name</span>(<span xmlns="" class="perl_String">"paymentReceiver"</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> PaymentReceiver <span xmlns="" class="perl_Keyword">implements</span> MessageListener
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>  @Logger <span xmlns="" class="perl_Keyword">private</span> Log log;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  @<span xmlns="" class="perl_Function">In</span>(create = <span xmlns="" class="perl_Keyword">true</span>) <span xmlns="" class="perl_Keyword">private</span> PaymentProcessor paymentProcessor;
+<span xmlns="" class="line">​</span>    
+<span xmlns="" class="line">​</span>  @Override
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">onMessage</span>(Message message)
+<span xmlns="" class="line">​</span>  {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">try</span> {
+<span xmlns="" class="line">​</span>      paymentProcessor.<span xmlns="" class="perl_Function">processPayment</span>((Payment) ((ObjectMessage) 
+<span xmlns="" class="line">​</span>                                      message).<span xmlns="" class="perl_Function">getObject</span>());
+<span xmlns="" class="line">​</span>    } <span xmlns="" class="perl_Keyword">catch</span> (JMSException ex) {
+<span xmlns="" class="line">​</span>      log.<span xmlns="" class="perl_Function">error</span>(<span xmlns="" class="perl_String">"Message payload did not contain a Payment object"</span>, ex);
+<span xmlns="" class="line">​</span>    } 
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>}</pre><div class="para">
+				Next, implement the Seam component to which the receiver will delegate payment processing:
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Name</span>(<span xmlns="" class="perl_String">"paymentProcessor"</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> PaymentProcessor {
+<span xmlns="" class="line">​</span>  @In <span xmlns="" class="perl_Keyword">private</span> EntityManager entityManager;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">processPayment</span>(Payment payment) {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">// perhaps do something more fancy</span>
+<span xmlns="" class="line">​</span>    entityManager.<span xmlns="" class="perl_Function">persist</span>(payment);
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>}</pre><div class="para">
+				If you want to perform transaction operations in your message-driven bean, ensure that you are working with an XA datasource, or you will not be able to roll back database changes in the event that a database transaction commits, but a subsequent message operation fails.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690508383792">
+      ⁠</a>21.2.4. Receiving messages in the client</h2></div></div></div><div class="para">
+				Seam Remoting lets you subscribe to a JMS topic from client-side JavaScript. You can find more information in <a class="xref" href="remoting.html">Chapter 24, <em>Remoting</em></a>.
+			</div></div></div></div></body></html>

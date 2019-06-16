@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 18. High-Availability Web Sessions</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="ch-High-Availability_Web_Sessions_with_Database_Persistence">
+      ⁠</a>Chapter 18. High-Availability Web Sessions</h1></div></div></div><div class="para">
+			JBoss Enterprise Application Server allows you to make web sessions highly available by storing them in a database table.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="important"><div class="admonition_header"><p><strong>Session Replication Preferred</strong></p></div><div class="admonition"><div class="para">
+				HTTP session replication with JBoss Cache is the preferred approach to securing web session failover. It is strongly recommended to use this approach if possible (refer to <a class="xref" href="clustering-http-state.html">Chapter 17, <em>HTTP session state replication</em></a>).
+			</div></div></div><div class="para">
+			To provide high availability web sessions, you can configure JBoss Application Server to store the web session state in a database table. If the server then becomes unavailable, the web session state is still preserved in the database table and can be used by failover servers, while if using session replication, the web session is available on the server and the respective failover nodes. The high availability web session setup can be useful in a WAN with several application server instance or in combination with session replication.
+		</div><div class="para">
+			To make web sessions highly available, you need to do the following:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					configure the server to use the session manager set on your web application (JBoss Application Server by default ignores the web application session manager and switches to JBossCacheManager automatically);
+				</div></li><li class="listitem"><div class="para">
+					configure your web applications to use DataSourcePersistentManager as their session manager (the manager handles the storing of web sessions to the defined database table);
+				</div></li><li class="listitem"><div class="para">
+					create the web session table in the target database and deploy the datasource, which will provide the connection between the session manager and the database table.
+				</div></li></ul></div><div class="task"><a id="task-Configuring_JBossEAP">
+      ⁠</a><p class="title"><strong>Configuring JBoss Enterprise Application Server</strong></p><div class="tasksummary"> <div class="para">
+			To configure JBoss Enterprise Application Server to allow storing of sessions in a database, disable overriding of the session manager set on your web application (overriden to JBossCacheManager; this allows the web application to use its own session manager):
+		</div>
+		 </div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><ol class="1"><li class="step"><div class="para">
+					Open the <code class="filename">JBOSS_HOME/server/<em class="replaceable">PROFILE</em>/deployers/jbossweb.deployer/META-INF/war-deployers-jboss-beans.xml</code> file for editing.
+				</div></li><li class="step"><div class="para">
+					Set the <span class="property"> overrideDistributableManager </span> property of the <code class="classname">WarDeployer</code> bean to <code class="literal">false</code>:
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"WarDeployer"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.web.tomcat.service.deployers.TomcatDeployer"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    . . .
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!-- "False" disables overriding the session manager for distributable webapps --&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"overrideDistributableManager"</span><span xmlns="" class="perl_Keyword">&gt;</span>false<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span></pre></li></ol></div></div><div class="task"><a id="task-Configuring_Web_Application">
+      ⁠</a><p class="title"><strong>Configuring Web Application</strong></p><div class="tasksummary"> <div class="para">
+			Configure your web application to use the database persistent session manager:
+		</div>
+		 </div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><ol class="1"><li class="step"><div class="para">
+					In the application's <code class="filename">WEB-INF</code> directory, create the <code class="filename">context.xml</code> file, which will define what session manager is to be used as well as the manager's attributes.
+				</div><div class="important"><div class="admonition_header"><p><strong>Important</strong></p></div><div class="admonition"><div class="para">
+						Note that it is not recommended to add the manager definition to the <code class="filename">jboss-web.xml</code> file, although it is the standard web application deployment descriptor. The goal of using the <code class="filename">context.xml</code> file instead is to avoid any unnecessary changes to the existing JBoss Application Server code.
+					</div></div></div></li><li class="step"><div class="para">
+					In the <code class="filename">context.xml</code> file, add the <span class="property"> Manager </span> element and its attributes:
+				</div><div class="variablelist"><dl class="variablelist"><dt><span class="term">className</span></dt><dd><div class="para">
+								fully-qualified class name of the session manager implementation
+							</div></dd><dt><span class="term">dataSourceJndiName</span></dt><dd><div class="para">
+								datasource that allows the session manager to communicate with the database that stores the web sessions
+							</div></dd></dl></div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;Context</span><span xmlns="" class="perl_Others"> cookies=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Others"> crossContext=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;Manager</span><span xmlns="" class="perl_Others"> className=</span><span xmlns="" class="perl_String">"org.jboss.web.tomcat.service.session.persistent.DataSourcePersistentManager"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">            dataSourceJndiName=</span><span xmlns="" class="perl_String">"java:HttpSessionDS"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>   
+<span xmlns="" class="line">​</span>:<span xmlns="" class="perl_Keyword">&lt;/Context&gt;</span></pre><div class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+						The <span class="property"> className </span> and <span class="property"> dataSourceJndiName </span> are compulsory attributes. You can also define further Context and Manager attributes (refer to <a class="xref" href="ch-High-Availability_Web_Sessions_with_Database_Persistence.html#sec-Context_Configuration_Attributes">Section 18.1, “DataSourcePersistentManager Configuration Attributes”</a>.
+					</div></div></div></li></ol></div></div><div class="task"><a id="task-Configuring_Database_and_Datasource">
+      ⁠</a><p class="title"><strong>Configuring Database and Datasource</strong></p><div class="tasksummary"> <div class="para">
+			Create the database session table, which will hold the web session data and then create the respective datasource:
+		</div>
+		 </div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><ol class="1"><li class="step"><div class="para">
+					Create the web session ( <span class="database"> httpsessions </span> ) database table:
+				</div><div class="para">
+					You can change the name of the table and of the columns; however, make sure to configure the DataSourcePersistentManager attributes appropriately.
+				</div><div class="para">
+					Individual columns must be able to store values of particular datatypes:
+				</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+							<span class="database"> creationtime </span> and <span class="database"> lastaccess </span> : java long values
+						</div></li><li class="listitem"><div class="para">
+							<span class="database"> maxinactive </span> and <span class="database"> version </span> : java int value
+						</div></li><li class="listitem"><div class="para">
+							<span class="database"> metadata </span> : serialized java objects (currently not used)
+						</div></li><li class="listitem"><div class="para">
+							<span class="database"> attributes </span> : serialized java objects (stores the session attributes map; should be large enough to store your largest sessions)
+						</div></li><li class="listitem"><div class="para">
+							<span class="database"> primary key </span> : synthetic primary key (optional, make sure there is a UNIQUE INDEX on app + id).
+						</div></li></ul></div><div class="para">
+					The following command creates the table with default settings in the most common databases (MySQL, IBM DB2, Oracle Database):
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">CREATE</span> <span xmlns="" class="perl_Keyword">TABLE</span> httpsessions (app <span xmlns="" class="perl_DataType">VARCHAR</span>(<span xmlns="" class="perl_Float">255</span>) <span xmlns="" class="perl_Keyword">NOT</span> <span xmlns="" class="perl_Keyword">NULL</span>, <span xmlns="" class="perl_Keyword">id</span> <span xmlns="" class="perl_DataType">VARCHAR</span>(<span xmlns="" class="perl_Float">255</span>) <span xmlns="" class="perl_Keyword">NOT</span> <span xmlns="" class="perl_Keyword">NULL</span>, 
+<span xmlns="" class="line">​</span>     fullId <span xmlns="" class="perl_DataType">VARCHAR</span>(<span xmlns="" class="perl_Float">255</span>) <span xmlns="" class="perl_Keyword">NOT</span> <span xmlns="" class="perl_Keyword">NULL</span>, creationtime BIGINT <span xmlns="" class="perl_Keyword">NOT</span> <span xmlns="" class="perl_Keyword">NULL</span>, 
+<span xmlns="" class="line">​</span>     maxinactive BIGINT <span xmlns="" class="perl_Keyword">NOT</span> <span xmlns="" class="perl_Keyword">NULL</span>, version <span xmlns="" class="perl_DataType">INT</span> <span xmlns="" class="perl_Keyword">NOT</span> <span xmlns="" class="perl_Keyword">NULL</span>, lastaccess BIGINT <span xmlns="" class="perl_Keyword">NOT</span> <span xmlns="" class="perl_Keyword">NULL</span>, 
+<span xmlns="" class="line">​</span>     isnew <span xmlns="" class="perl_DataType">CHAR</span>(<span xmlns="" class="perl_Float">1</span>) <span xmlns="" class="perl_Keyword">NOT</span> <span xmlns="" class="perl_Keyword">NULL</span>, valid <span xmlns="" class="perl_DataType">CHAR</span>(<span xmlns="" class="perl_Float">1</span>) <span xmlns="" class="perl_Keyword">NOT</span> <span xmlns="" class="perl_Keyword">NULL</span>, metadata VARBINARY <span xmlns="" class="perl_Keyword">NULL</span>, 
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">attributes</span> LONGVARBINARY <span xmlns="" class="perl_Keyword">NOT</span> <span xmlns="" class="perl_Keyword">NULL</span>, 
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">CONSTRAINT</span> app_id <span xmlns="" class="perl_Keyword">PRIMARY</span> <span xmlns="" class="perl_Keyword">KEY</span> (app, <span xmlns="" class="perl_Keyword">id</span>))</pre></li><li class="step"><div class="para">
+					Deploy an appropriate datasource to allow the DataSourcePersistentManager to communicate with the database (refer to the chapter on <span class="emphasis"><em>Datasource Configuration</em></span> in the <span class="emphasis"><em>Administration and Configuration Guide</em></span>. Make sure the datasource is set up as local-tx-datasource (xa-datasources are not supported).
+				</div></li><li class="step"><div class="para">
+					Add the <span class="property"> dataSourceJndiName </span> with the jndi-name of the created datasource to DataSourcePersistentManager element in the <code class="filename">context.xml</code> file.
+				</div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sec-Context_Configuration_Attributes">
+      ⁠</a>18.1. DataSourcePersistentManager Configuration Attributes</h1></div></div></div><div class="para">
+				The DataSourcePersistentManager element must define the <span class="property"> className </span> and <span class="property"> dataSourceJndiName </span> attributes. Apart from these, it can define other properties to specify manager's behavior and the way it interacts with the database.
+			</div><div class="variablelist"><p class="title"><strong>Compulsory Properties</strong></p><dl class="variablelist"><dt><span class="term">className</span></dt><dd><div class="para">
+							fully-qualified class name of the org.apache.catalina.Manager implementation (that is, <code class="classname">org.jboss.web.tomcat.service.session.persistent.DataSourcePersistentManager</code>)
+						</div></dd><dt><span class="term">dataSourceJndiName</span></dt><dd><div class="para">
+							JNDI name of the data source, which defines the database connection to the <span class="database"> httpsessions </span>
+						</div></dd></dl></div><div class="variablelist"><p class="title"><strong>Properties Defining the Database Connection Properties</strong></p><dl class="variablelist"><dt><span class="term">connectionName</span></dt><dd><div class="para">
+							value of the username parameter to pass to the <code class="function"> DataSource.getConnection </code> method (if <code class="literal">null</code>, the getConnection with no arguments is called)
+						</div></dd><dt><span class="term">connectionPassword</span></dt><dd><div class="para">
+							password to pass to DataSource.getConnection
+						</div></dd><dt><span class="term">sessionTable</span></dt><dd><div class="para">
+							name of the database session table in which sessions are stored (by default <code class="literal">httpsessions</code>)
+						</div></dd><dt><span class="term">sessionAppCol</span></dt><dd><div class="para">
+							name of the column with the web application name associated with the session (by default <code class="literal">app</code>)
+						</div></dd><dt><span class="term">sessionIdCol</span></dt><dd><div class="para">
+							name of the column with the core, immutable part of a session ID (by default <code class="literal">id</code>; this and the sessionAppCol columns form the unique index for the table)
+						</div></dd><dt><span class="term">sessionFullIdCol</span></dt><dd><div class="para">
+							name of the column with the full session ID (including any mutable element added to the core session ID, for example a jvmRoute; by default <code class="literal">fullid</code>)
+						</div></dd><dt><span class="term">sessionCreationTimeCol</span></dt><dd><div class="para">
+							name of the column with the time when the session was created (of the long datatype, by default <code class="literal">creationtime</code>)
+						</div></dd><dt><span class="term">sessionMaxInactiveCol</span></dt><dd><div class="para">
+							name of the column with the maximum number of milliseconds the session can remain unaccessed before expiring (by default <code class="literal">maxinactive</code>)
+						</div></dd><dt><span class="term">sessionVersionCol</span></dt><dd><div class="para">
+							name of the column which stores the session's "version" (session version is incremented each time the session is persisted; by default <code class="literal">version</code>)
+						</div></dd><dt><span class="term">sessionLastAccessedCol</span></dt><dd><div class="para">
+							name of the column with the timestamp of the last session access (take the long data type value; by default <code class="literal">lastaccess</code>)
+						</div></dd><dt><span class="term">sessionNewCol</span></dt><dd><div class="para">
+							Name of the column with the flag indicating whether the session is new (session is considered new if it was not yet joined by the client; by default <code class="literal">isnew</code>
+						</div></dd><dt><span class="term">sessionValidCol</span></dt><dd><div class="para">
+							name of the column with the flag indicating whether the session is valid (by default <code class="literal">isvalid</code>
+						</div></dd><dt><span class="term">sessionMetadataCol</span></dt><dd><div class="para">
+							name of the column which can store serialized metadata about the session (currently unused; by default <code class="literal">metadata</code>
+						</div></dd><dt><span class="term">sessionAttributeCol</span></dt><dd><div class="para">
+							name of the column with the serialized session attribute map (by default <code class="literal">attributes</code>)
+						</div></dd></dl></div><div class="variablelist"><p class="title"><strong>Properties Defining the Manager's Behavior</strong></p><dl class="variablelist"><dt><span class="term">cleanupInterval</span></dt><dd><div class="para">
+							minimum period of time in seconds that must lapse from the last cleaning of old "abandoned" sessions from the database before the next cleaning (by default 14400 seconds, that is, 4 hours)
+						</div><div class="para">
+							A session is abandoned if the only server that was handling the session requests was shut down before the session expired, no further requests for the session were received so that the session did not fail over to another server. Such session do not expire on the normal session expiration checks. Therefore a special process runs periodically to clean the session from the database.
+						</div></dd><dt><span class="term">replicationTriggerString</span></dt><dd><div class="para">
+							activity executed during a request that makes the session database persistent (the activity with the <span class="property"> replication-trigger </span> property SET)
+						</div></dd><dt><span class="term">maxUnreplicatedInterval</span></dt><dd><div class="para">
+							maximum interval between requests, in seconds, after which the session's timestamp is persisted regardless of whether the request caused the session to become dirty in any other way
+						</div></dd><dt><span class="term">useJK</span></dt><dd><div class="para">
+							flag determining whether the container assumes a JK-based software load balancer is used for load balancing (if set to <code class="literal">true</code>, the container examines the session ID associated with every request and replace the jvmRoute portion of the session ID if it detects a failover)
+						</div></dd><dt><span class="term">maxActiveAllowed</span></dt><dd><div class="para">
+							maximum number of active sessions
+						</div></dd><dt><span class="term">useSessionPassivation</span></dt><dd><div class="para">
+							flag for enabling/disabling session passivation (session is removed from memory but remains always in the persistent store)
+						</div></dd><dt><span class="term">passivationMinIdleTime</span></dt><dd><div class="para">
+							minimum time, in seconds, a session must be inactive before passivated
+						</div></dd><dt><span class="term">passivationMaxIdleTime</span></dt><dd><div class="para">
+							maximum time, in seconds, a session can be inactive before passivated
+						</div></dd><dt><span class="term">processExpiresFrequency</span></dt><dd><div class="para">
+							frequency at which the background process thread calls the session manager to perform background processes (for example, expire or passivate sessions; (by default, every 10 seconds)
+						</div><div class="para">
+							This configuration is defined as value N with the background cleanup process called 1 in N callings to the session manager. Default is 1, that is, the cleanup process is performed every time the manager is called by the background process, that is cleanup is performed every 10 seconds. For example, if set to <code class="literal">6</code>, the manager performs the cleanup once a minute (1/6, that is once in 60 seconds).
+						</div></dd><dt><span class="term">sessionNotificationPolicy</span></dt><dd><div class="para">
+							fully qualified class name of the implementation of the <span class="interface"> ClusteredSessionNotificationPolicy </span> interface that is used to govern whether servlet specification notifications is emitted to any registered HttpSessionListener, HttpSessionAttributeListener or HttpSessionBindingListener.
+						</div></dd></dl></div></div></div></body></html>

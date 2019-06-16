@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 6. Using JMS</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="using-jms">
+      ⁠</a>Chapter 6. Using JMS</h1></div></div></div><div class="para">
+		Although HornetQ provides a JMS agnostic messaging API, many users will be more comfortable using JMS.
+	</div><div class="para">
+		JMS is a very popular API standard for messaging, and most messaging systems provide a JMS API.
+	</div><div class="para">
+		This section will cover the main steps in configuring the server for JMS and creating a simple JMS program. It will also show how to configure and use JNDI, and how to use JMS with HornetQ without using any JNDI.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139905812745616">
+      ⁠</a>6.1. A Simple Ordering System - Configuration Example</h1></div></div></div><div class="para">
+			
+		</div><div class="para">
+			This configuration example uses a single JMS Queue called <code class="literal">OrderQueue</code>, with a single <code class="literal">MessageProducer</code> sending an order messages to the queue. A single <code class="literal">MessageConsumer</code> consumes the order message from the queue.
+		</div><div class="para">
+			The queue is configured to be <code class="literal">durable</code>, (it will survive a server restart or crash).
+		</div><div class="para">
+			The example also shows how to specify the queue in the server JMS configuration so it is created automatically without having to explicitly create it from the client.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="using-jms.server.configuration">
+      ⁠</a>6.1.1. JMS Server Configuration</h2></div></div></div><div class="para">
+				The file <code class="literal">hornetq-jms.xml</code> on the server classpath (in standard configurations, <code class="filename"><em class="replaceable">JBOSS_DIST</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-jms.xml</code>) contains any JMS queue, topic and ConnectionFactory instances that we wish to create and make available to lookup via the JNDI.
+			</div><div class="para">
+				A JMS ConnectionFactory object is used by the client to make connections to the server. It knows the location of the server it is connecting to, as well as many other configuration parameters. In most cases the defaults will be acceptable.
+			</div><div class="para">
+				The example will deploy a single JMS queue and a single JMS Connection Factory instance on the server for this example but there are no limits to the number of queues, topics and ConnectionFactory instances you can deploy from the file. Here is the configuration:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;configuration</span><span xmlns="" class="perl_Others"> xmlns=</span><span xmlns="" class="perl_String">"urn:hornetq"</span><span xmlns="" class="perl_Others"> xmlns:xsi=</span><span xmlns="" class="perl_String">"http://www.w3.org/2001/XMLSchema-instance"</span><span xmlns="" class="perl_Others"> xsi:schemaLocation=</span><span xmlns="" class="perl_String">"urn:hornetq ../schemas/hornetq-jms.xsd "</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;connection-factory</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"NettyConnectionFactory"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;connectors&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;connector-ref</span><span xmlns="" class="perl_Others"> connector-name=</span><span xmlns="" class="perl_String">"netty"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/connectors&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;entries&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;entry</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"/ConnectionFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>           
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/entries&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/connection-factory&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;queue</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"OrderQueue"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;entry</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"queues/OrderQueue"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/queue&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/configuration&gt;</span>
+</pre><div class="para">
+				One ConnectionFactory called <code class="literal">ConnectionFactory</code> is deployed and bound in just one place in JNDI as given by the <code class="literal">entry</code> element. ConnectionFactory instances can be bound in many places in JNDI if it is required.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+					The JMS connection factory references a <code class="literal">connector</code> called <code class="literal">netty</code>. This is a reference to a connector object deployed in the main core configuration file <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code>, which defines the transport and parameters used to actually connect to the server.
+				</div></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="using-jms.configure.factory.types">
+      ⁠</a>6.1.2. Connection Factory Types</h2></div></div></div><div class="para">
+				The JMS API doc provides several connection factories for applications. HornetQ JMS users can choose to configure the types for their connection factories. Each connection factory has a <code class="literal">signature</code> attribute and a <code class="literal">xa</code> parameter, the combination of which determines the type of the factory.
+			</div><div class="para">
+				Attribute <code class="literal">signature</code> has three possible string values (<span class="emphasis"><em>generic</em></span>, <span class="emphasis"><em>queue</em></span> and <span class="emphasis"><em>topic</em></span>).
+			</div><div class="para">
+				<code class="literal">xa</code> is a boolean type parameter. The following table gives their configuration values for different connection factory interfaces.
+			</div><div class="table"><a id="using-jms.table.configure.factory.types">
+      ⁠</a><p class="title"><strong>Table 6.1. Configuration for Connection Factory Types</strong></p><div class="table-contents"><table xmlns:d="http://docbook.org/ns/docbook" class="lt-4-cols lt-7-rows" summary="Configuration for Connection Factory Types"><colgroup><col class="signature"/><col class="xa"/><col class="cftype"/></colgroup><thead><tr><th> signature </th><th> xa </th><th> Connection Factory Type </th></tr></thead><tbody><tr><td> generic (default) </td><td> false (default) </td><td> javax.jms.ConnectionFactory </td></tr><tr><td> generic </td><td> true </td><td> javax.jms.XAConnectionFactory </td></tr><tr><td> queue </td><td> false </td><td> javax.jms.QueueConnectionFactory </td></tr><tr><td> queue </td><td> true </td><td> javax.jms.XAQueueConnectionFactory </td></tr><tr><td> topic </td><td> false </td><td> javax.jms.TopicConnectionFactory </td></tr><tr><td> topic </td><td> true </td><td> javax.jms.XATopicConnectionFactory </td></tr></tbody></table></div></div><div class="para">
+				As an example, the following configures an XAQueueConnectionFactory:
+			</div><pre class="programlisting">
+&lt;configuration xmlns="urn:hornetq" 
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="urn:hornetq ../schemas/hornetq-jms.xsd "&gt;
+    
+    &lt;connection-factory name="ConnectionFactory" signature="queue"&gt;
+        &lt;xa&gt;true&lt;/xa&gt;
+        &lt;connectors&gt;
+           &lt;connector-ref connector-name="netty"/&gt;
+        &lt;/connectors&gt;
+        &lt;entries&gt;
+            &lt;entry name="/ConnectionFactory"/&gt;           
+        &lt;/entries&gt;
+    &lt;/connection-factory&gt;
+&lt;/configuration&gt;
+</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139905864703184">
+      ⁠</a>6.1.3. The code</h2></div></div></div><div class="para">
+				The code for the example is available below.
+			</div><div class="para">
+				The first step is to create a JNDI initial context from which to look up JMS objects.
+			</div><pre class="programlisting">InitialContect ic = new InitialContext();</pre><div class="para">
+				The next step is to look up the connection factory:
+			</div><pre class="programlisting">ConnectionFactory cf = (ConnectionFactory)ic.lookup("/ConnectionFactory");</pre><div class="para">
+				Followed by looking up the Queue:
+			</div><pre class="programlisting">Queue orderQueue = (Queue)ic.lookup("/queues/OrderQueue");</pre><div class="para">
+				Next, create a JMS connection using the connection factory:
+			</div><pre class="programlisting">Connection connection = cf.createConnection();</pre><div class="para">
+				Create a non transacted JMS Session, with AUTO_ACKNOWLEDGE acknowledge mode:
+			</div><pre class="programlisting">Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);</pre><div class="para">
+				Create a MessageProducer that will send orders to the queue:
+			</div><pre class="programlisting">MessageProducer producer = session.createProducer(orderQueue);</pre><div class="para">
+				Create a MessageConsumer which will consume orders from the queue:
+			</div><pre class="programlisting">MessageConsumer consumer = session.createConsumer(orderQueue);</pre><div class="para">
+				Make sure to start the connection, or delivery will not occur on it:
+			</div><pre class="programlisting">connection.start();</pre><div class="para">
+				Create a simple TextMessage and send it:
+			</div><pre class="programlisting">TextMessage message = session.createTextMessage("This is an order");
+producer.send(message);</pre><div class="para">
+				Consume the message:
+			</div><pre class="programlisting">TextMessage receivedMessage = (TextMessage)consumer.receive();
+System.out.println("Got order: " + receivedMessage.getText());</pre><div xmlns:d="http://docbook.org/ns/docbook" class="warning"><div class="admonition_header"><p><strong>Warning</strong></p></div><div class="admonition"><div class="para">
+					JMS connections, sessions, producers, and consumers are <span class="emphasis"><em>designed to be re-used</em></span>.
+				</div><div class="para">
+					It is an anti-pattern to create new connections, sessions, producers, and consumers for each message you produce or consume. If you do this, your application will perform very poorly. This is discussed further in <a class="xref" href="perf-tuning.html">Chapter 43, <em>Performance Tuning</em></a>.
+				</div></div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139905857987664">
+      ⁠</a>6.2. Directly Instantiating JMS Resources Without Using JNDI</h1></div></div></div><div class="para">
+			It is a very common usage pattern to look up JMS <span class="emphasis"><em>Administered Objects</em></span> (that is JMS queue, topic and ConnectionFactory instances) from JNDI. However in some cases, a JNDI server is not available, and using JMS is still required, or it is preferable to directly instantiate objects. This is possible with HornetQ, which supports the direct instantiation of JMS queue, topic and ConnectionFactory instances.
+		</div><div class="para">
+			The following is a simple example, which does not use JNDI at all:
+		</div><div class="para">
+			Create the JMS ConnectionFactory object via the HornetQJMSClient Utility class. Note you need to provide connection parameters and specify which transport you are using. For more information on connectors refer to <a class="xref" href="configuring-transports.html">Chapter 14, <em>Configuring the Transport</em></a>.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>TransportConfiguration transportConfiguration =
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">TransportConfiguration</span>(NettyConnectorFactory.<span xmlns="" class="perl_Function">class</span>.<span xmlns="" class="perl_Function">getName</span>());                
+<span xmlns="" class="line">​</span>ConnectionFactory cf =
+<span xmlns="" class="line">​</span>   HornetQJMSClient.<span xmlns="" class="perl_Function">createConnectionFactory</span>(transportConfiguration);</pre><div class="para">
+			Also create the JMS Queue object via the HornetQJMSClient Utility class:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>Queue orderQueue = HornetQJMSClient.<span xmlns="" class="perl_Function">createQueue</span>(<span xmlns="" class="perl_String">"OrderQueue"</span>);</pre><div class="para">
+			Next create a JMS connection using the connection factory:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>Connection connection = cf.<span xmlns="" class="perl_Function">createConnection</span>();</pre><div class="para">
+			Create a non transacted JMS Session, with AUTO_ACKNOWLEDGE acknowledge mode:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>Session session = connection.<span xmlns="" class="perl_Function">createSession</span>(<span xmlns="" class="perl_Keyword">false</span>, Session.<span xmlns="" class="perl_Function">AUTO_ACKNOWLEDGE</span>);</pre><div class="para">
+			Create a MessageProducer that will send orders to the queue:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>MessageProducer producer = session.<span xmlns="" class="perl_Function">createProducer</span>(orderQueue);</pre><div class="para">
+			Create a MessageConsumer which will consume orders from the queue:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>MessageConsumer consumer = session.<span xmlns="" class="perl_Function">createConsumer</span>(orderQueue);</pre><div class="para">
+			Make sure you start the connection, or delivery will not occur on it:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>connection.<span xmlns="" class="perl_Function">start</span>();</pre><div class="para">
+			Create a simple TextMessage and send it:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>TextMessage message = session.<span xmlns="" class="perl_Function">createTextMessage</span>(<span xmlns="" class="perl_String">"This is an order"</span>);
+<span xmlns="" class="line">​</span>producer.<span xmlns="" class="perl_Function">send</span>(message);</pre><div class="para">
+			And we consume the message:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>TextMessage receivedMessage = (TextMessage)consumer.<span xmlns="" class="perl_Function">receive</span>();
+<span xmlns="" class="line">​</span>System.<span xmlns="" class="perl_Function">out</span>.<span xmlns="" class="perl_Function">println</span>(<span xmlns="" class="perl_String">"Got order: "</span> + receivedMessage.<span xmlns="" class="perl_Function">getText</span>());</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="using-jms.clientid">
+      ⁠</a>6.3. Setting The Client ID</h1></div></div></div><div class="para">
+			The client ID for a JMS client is needed to create durable subscriptions. It is possible to configure this on the connection factory in <code class="filename"><em class="replaceable">JBOSS_DIST</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-jms.xml</code>, and can be set via the <span class="markup">&lt;client-id&gt;</span> directive. Any connection created by this connection factory will have this set as its client ID.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="using-jms.dupsokbatchsize">
+      ⁠</a>6.4. Setting The Batch Size for DUPS_OK </h1></div></div></div><div class="para">
+			When the JMS acknowledge mode is set to <code class="literal">DUPS_OK</code> it is possible to configure the consumer so that it sends acknowledgments in batches rather that one at a time, saving valuable bandwidth. This can be configured via the connection factory via the <code class="literal">dups-ok-batch-size</code> element and is set in bytes. The default is 1024 * 1024 bytes = 1 MiB (Mebibyte).
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="using-jms.txbatchsize">
+      ⁠</a>6.5. Setting The Transaction Batch Size</h1></div></div></div><div class="para">
+			When receiving messages in a transaction it is possible to configure the consumer to send acknowledgments in batches rather than individually saving valuable bandwidth. This can be configured on the connection factory via the <code class="literal">transaction-batch-size</code> element. The default is 1024 * 1024 (bytes).
+		</div></div></div></body></html>

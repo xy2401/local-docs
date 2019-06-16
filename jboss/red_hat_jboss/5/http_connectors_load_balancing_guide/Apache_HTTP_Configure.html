@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 3. Configure load balancing using Apache HTTP Server and mod_jk</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="Apache_HTTP_Configure">
+      ⁠</a>Chapter 3. Configure load balancing using Apache HTTP Server and mod_jk</h1></div></div></div><div class="para">
+		Follow the tasks in this chapter to correctly configure load balancing using Apache HTTP Server and the mod_jk connector.
+	</div><div class="task"><a id="task-Configure_Apache_Load_mod_jk">
+      ⁠</a><p class="title"><strong>Task: Configure Apache HTTP Server to Load mod_jk</strong></p><div class="tasksummary"> <div class="para">
+		Complete this task to configure Apache HTTP Server to load mod_jk.
+	</div>
+	 </div><div class="taskprerequisites"><a id="idm139711972164608">
+      ⁠</a><p class="title"><strong>Prerequisites</strong></p><div class="taskprerequisites-contents"> 
+	 <div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+				Apache HTTP Server and mod_jk installed (Refer to <a class="xref" href="Apache_HTTP_Install.html">Chapter 2, <em>Download and install</em></a>).
+			</div></li></ul></div>
+	 </div></div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><ol class="1"><li class="step"><div class="para">
+				Open <code class="filename"><em class="replaceable">HTTPD_DIST</em>/conf/httpd.conf</code> and add the following text at the end of the file.
+			</div><pre class="programlisting">
+# Include mod_jk's specific configuration file  
+Include conf/mod-jk.conf
+</pre></li><li class="step"><div class="para">
+				Create a new file named <code class="literal"><em class="replaceable">HTTPD_DIST</em>/conf/mod-jk.conf</code>
+			</div></li><li class="step"><div class="para">
+				Add the following configuration block to <code class="filename">mod-jk.conf</code>.
+			</div><pre class="programlisting">
+# Load mod_jk module
+# Specify the filename of the mod_jk lib
+LoadModule jk_module modules/mod_jk.so
+ 
+# Where to find workers.properties
+JkWorkersFile conf/workers.properties
+
+# Where to put jk logs
+JkLogFile logs/mod_jk.log
+ 
+# Set the jk log level [debug/error/info]
+JkLogLevel info 
+ 
+# Select the log format
+JkLogStampFormat  "[%a %b %d %H:%M:%S %Y]"
+ 
+# JkOptions indicates to send SSK KEY SIZE
+JkOptions +ForwardKeySize +ForwardURICompat -ForwardDirectories
+ 
+# JkRequestLogFormat
+JkRequestLogFormat "%w %V %T"
+               
+# Mount your applications
+JkMount /application/* loadbalancer
+ 
+# Add shared memory.
+# This directive is present with 1.2.10 and
+# later versions of mod_jk, and is needed for
+# for load balancing to work properly
+JkShmFile logs/jk.shm 
+              
+# Add jkstatus for managing runtime data
+&lt;Location /jkstatus/&gt;
+    JkMount status
+    Order deny,allow
+    Deny from all
+    Allow from 127.0.0.1
+&lt;/Location&gt;
+</pre></li><li class="step"><div class="para">
+				Confirm that the <code class="literal">LoadModule</code> directive references the right path for the <span class="application"><strong>mod_jk</strong></span> library. If not, edit the path.
+			</div></li><li class="step"><div class="para">
+				The default configuration specifies that static content is served directly by Apache HTTP Server and all requests with URL path <code class="literal">/application/*</code> are sent to the load balancer. If <span class="application"><strong>mod_jk</strong></span> is only to be used as a load balancer, change the directive to <code class="literal">/*</code>.
+			</div></li><li class="step"><p class="title"><strong>Optional: JKMountFile Directive</strong></p><div class="para">
+				In addition to the <code class="literal">JkMount</code> directive, you can use the <code class="literal">JkMountFile</code> directive to specify a mount point's configuration file. The configuration file contains multiple Tomcat forwarding URL mappings.
+			</div><ol class="substeps a"><li class="step"><div class="para">
+						Navigate to <code class="filename"><em class="replaceable">HTTPD_DIST</em>/conf</code>.
+					</div></li><li class="step"><div class="para">
+						Create a file named <code class="filename">uriworkermap.properties</code>.
+					</div></li><li class="step"><div class="para">
+						Specify the URL whose requests are to be forwarded and the name of the worker node to which they are to be forwarded, using the following syntax example as a guide.
+					</div><div class="para">
+						The example block will configure <span class="application"><strong>mod_jk</strong></span> to forward requests to <code class="literal">/jmx-console</code> and <code class="literal">/web-console</code> to Apache HTTP Server.
+					</div><div class="para">
+						The syntax required takes the form <code class="literal">/url=worker_name</code>.
+					</div><pre class="programlisting">
+# Simple worker configuration file
+
+# Mount the Servlet context to the ajp13 worker
+/jmx-console=loadbalancer
+/jmx-console/*=loadbalancer
+/web-console=loadbalancer
+/web-console/*=loadbalancer
+</pre></li><li class="step"><div class="para">
+						In <code class="literal"><em class="replaceable">HTTPD_DIST</em>/conf/mod-jk.conf</code>, append the following directive.
+					</div><pre class="programlisting"># You can use external file for mount points.
+# It will be checked for updates each 60 seconds.
+# The format of the file is: /url=worker
+# /examples/*=loadbalancer
+JkMountFile conf/uriworkermap.properties</pre></li></ol></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="clustering-http-nodes">
+      ⁠</a>3.1. Configure worker nodes in mod_jk</h1></div></div></div><div class="task"><a id="task-Configure_modjk_Worker_Nodes">
+      ⁠</a><p class="title"><strong>Task: Configure mod_jk Worker Nodes</strong></p><div class="tasksummary"> <div class="para">
+			Complete this task to configure two mod_jk worker node definitions in a weighted round-robin configuration with sticky sessions active between two servlet containers.
+		</div>
+		 </div><div class="taskprerequisites"><a id="idm139711963343216">
+      ⁠</a><p class="title"><strong>Prerequisites</strong></p><div class="taskprerequisites-contents"> 
+		 <div class="para">
+			Understand the format of the <code class="filename">workers.properties</code> directives, as specified in <a class="xref" href="workers.properties_Reference.html">Appendix A, <em>Reference: workers.properties</em></a>.
+		</div>
+		 </div></div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><ol class="1"><li class="step"><div class="para">
+					Navigate to <code class="filename"><em class="replaceable">HTTPD_DIST</em>/conf/</code>.
+				</div></li><li class="step"><div class="para">
+					Create a file named <code class="filename">workers.properties</code>.
+				</div></li><li class="step"><div class="para">
+					Append the following information to <code class="filename">workers.properties</code>.
+				</div><pre class="programlisting">
+# Define list of workers that will be used
+# for mapping requests
+worker.list=loadbalancer,status
+
+# Define Node1
+# modify the host as your host IP or DNS name.
+worker.node1.port=8009
+worker.node1.host=node1.mydomain.com
+worker.node1.type=ajp13
+worker.node1.ping_mode=A
+worker.node1.lbfactor=1 
+
+# Define Node2
+# modify the host as your host IP or DNS name.
+worker.node2.port=8009
+worker.node2.host=node2.mydomain.com
+worker.node2.type=ajp13
+worker.node2.ping_mode=A
+worker.node2.lbfactor=1
+
+# Load-balancing behavior
+worker.loadbalancer.type=lb
+worker.loadbalancer.balance_workers=node1,node2
+worker.loadbalancer.sticky_session=1
+
+# Status worker for managing load balancer
+worker.status.type=status</pre></li></ol></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="clustering-http-jboss">
+      ⁠</a>3.2. Configuring JBoss to work with mod_jk</h1></div></div></div><div class="task"><a id="task-Configure_JBoss_EAP_Operate_mod_jk">
+      ⁠</a><p class="title"><strong>Task: Configure JBoss Enterprise Application Platform to Operate Using mod_jk</strong></p><div class="tasksummary"> <div class="para">
+			Complete this task to correctly prepare a JBoss Enterprise Application Platform instance on a clustered node to receive forwarded requests from the <span class="application"><strong>mod_jk</strong></span> load balancer.
+		</div>
+		 <div class="para">
+			Repeat this task for each server instance you require, observing the warnings at each step.
+		</div>
+		 </div><div class="taskprerequisites"><a id="idm139711933751888">
+      ⁠</a><p class="title"><strong>Prerequisites</strong></p><div class="taskprerequisites-contents"> 
+		 <div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					Complete <a class="xref" href="Apache_HTTP_Configure.html#task-Configure_modjk_Worker_Nodes">Task: Configure mod_jk Worker Nodes</a>.
+				</div></li></ul></div>
+		 </div></div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><ol class="1"><li class="step"><div class="para">
+					Navigate to the location of the clustered server instance.
+				</div></li><li class="step"><div class="para">
+					Open <code class="literal"><em class="replaceable">JBOSS_EAP_DIST</em>/jboss-as/server/<em class="replaceable">PROFILE</em>/deploy/jbossweb.sar/server.xml</code>.
+				</div></li><li class="step"><div class="para">
+					Specify the node name by appending the <code class="varname"> jvmRoute </code> attribute to the <span class="markup"> &lt;Engine&gt; </span> element in <code class="filename">server.xml</code>. The jvmRoute attribute value is the node name defined in <code class="filename"><em class="replaceable">HTTPD_DIST</em>/conf/workers.properties</code>.
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!--Preceeding syntax removed for readability --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;Engine</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"jboss.web"</span><span xmlns="" class="perl_Others"> defaultHost=</span><span xmlns="" class="perl_String">"localhost"</span><span xmlns="" class="perl_Others"> jvmRoute=</span><span xmlns="" class="perl_String">"node1"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!--Proceeding syntax removed for readability --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/Engine&gt;</span></pre><div class="important"><div class="admonition_header"><p><strong>Important</strong></p></div><div class="admonition"><div class="para">
+						If you intend to configure more than one server node in a cluster, ensure you change the jvmRoute attribute value to a unique name each time you repeat this step.
+					</div></div></div></li><li class="step"><div class="para">
+					In <code class="filename">server.xml</code>, ensure the AJP protocol <span class="markup"> &lt;connector&gt; </span> element is enabled (uncommented). The element is uncommented by default in new installations.
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;Connector</span><span xmlns="" class="perl_Others"> protocol=</span><span xmlns="" class="perl_String">"AJP/1.3"</span><span xmlns="" class="perl_Others"> port=</span><span xmlns="" class="perl_String">"8009"</span><span xmlns="" class="perl_Others"> address=</span><span xmlns="" class="perl_String">"${jboss.bind.address}"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">   redirectPort=</span><span xmlns="" class="perl_String">"8443"</span> <span xmlns="" class="perl_Keyword">/&gt;</span></pre></li><li class="step"><div class="para">
+					You now have a correctly configured Apache HTTP Server with <code class="filename">mod_jk</code> load balancer, which balances calls to the servlet containers in the cluster, and ensures clients will always use the same servlet container (sticky sessions).
+				</div></li></ol></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+				For supplementary information about using mod_jk with JBoss, refer to the JBoss wiki page at <a href="https://community.jboss.org/wiki/UsingModjk12WithJBoss">https://community.jboss.org/wiki/UsingModjk12WithJBoss</a>.
+			</div></div></div></div></div></body></html>

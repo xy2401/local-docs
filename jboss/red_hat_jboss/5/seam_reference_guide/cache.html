@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 22. Caching</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="cache">
+      ⁠</a>Chapter 22. Caching</h1></div></div></div><div class="para">
+		The database is the primary bottleneck in almost all enterprise applications, and the least-scalable tier of the runtime environment, so anything we can do to reduce the number of times the database is accessed can dramatically improve application performance.
+	</div><div class="para">
+		A well-designed Seam application will feature a rich, multi-layered caching strategy that impacts every layer of the application, including:
+	</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+				A cache for the database. This is vital, but cannot scale like a cache in the application tier.
+			</div></li><li class="listitem"><div class="para">
+				A secondary cache of data from the database, provided by your ORM solution (Hibernate, or another JPA implementation). In a clustered environment, keeping cache data transactionally consistent with both the database and the rest of the cluster can be very expensive to implement effectively. Therefore, this secondary cache is best used to store data that is rarely updated, and shared between many users. In traditional stateless architectures, this space is often used (ineffectively) to store conversational state.
+			</div></li><li class="listitem"><div class="para">
+				The Seam conversational context, which is a cache of conversational state. Components in the conversation context store state relating to the current user interaction.
+			</div></li><li class="listitem"><div class="para">
+				The Seam-managed persistence context, which acts as a cache of data read in the current conversation. (An Enterprise JavaBean [EJB] container-managed persistence context associated with a conversation-scoped stateful session bean can be used in place of a Seam-managed persistence context.) Seam optimizes the replication of Seam-managed persistence contexts in a clustered environment, and optimistic locking provides sufficient transactional consistency with the database. Unless you read thousands of objects into a single persistence context, the performance implications of this cache are minimal.
+			</div></li><li class="listitem"><div class="para">
+				The Seam application context, which can be used to cache non-transactional state. State held here is not visible to other nodes in the cluster.
+			</div></li><li class="listitem"><div class="para">
+				The Seam <code class="literal">cacheProvider</code> component within the application, which integrates JBossCache, or Ehcache into the Seam environment. State held here is visible to other nodes if your cache supports running in clustered mode.
+			</div></li><li class="listitem"><div class="para">
+				Finally, Seam can cache rendered fragments of a JSF page. Unlike the ORM secondary cache, this is not automatically invalidated when data is updated, so you will need to write application code to perform explicit invalidation, or set appropriate expiry policies.
+			</div></li></ul></div><div class="para">
+		For more information about the secondary cache, you will need to refer to the documentation of your ORM solution, since this can be quite complex. In this section, we discuss the use of caching directly via the <code class="literal">cacheProvider</code> component, or caching as stored page fragments, via the <code class="literal">&lt;s:cache&gt;</code> control.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139690529545552">
+      ⁠</a>22.1. Using Caching in Seam</h1></div></div></div><div class="para">
+			The built-in <code class="literal">cacheProvider</code> component manages an instance of:
+		</div><div class="variablelist"><dl class="variablelist"><dt><span class="term"> JBoss Cache 3.2.x </span></dt><dd><div class="para">
+						<code class="literal">org.jboss.cache.Cache</code>
+					</div></dd><dt><span class="term">EhCache </span></dt><dd><div class="para">
+						<code class="literal">net.sf.ehcache.CacheManager</code>
+					</div></dd></dl></div><div class="para">
+			Any immutable Java object placed in the cache will be stored there and replicated across the cluster (if replication is supported and enabled). To keep mutable objects in the cache, read the underlying caching project documentation for information about notifying the cache of changes made to stored objects.
+		</div><div class="para">
+			To use <code class="literal">cacheProvider</code>, you need to include the JARs of the cache implementation in your project:
+		</div><div class="variablelist"><dl class="variablelist"><dt><span class="term"> JBoss Cache 3.2.x </span></dt><dd><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+								<code class="filename">jbosscache-core.jar</code> — JBoss Cache 3.2.x
+							</div></li><li class="listitem"><div class="para">
+								<code class="filename">jgroups.jar</code> — JGroups 2.6.x
+							</div></li></ul></div></dd><dt><span class="term"> Ehcache </span></dt><dd><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+								<code class="filename">ehcache.jar</code> — Ehcache 1.2.3
+							</div></li></ul></div></dd></dl></div><div class="para">
+			In <code class="filename">EAR</code> deployments of Seam, it is recommended that cache <code class="filename">JAR</code>s and configuration go directly into the <code class="filename">EAR</code>.
+		</div><div class="para">
+			You will also need to provide a configuration file for JBossCache. Place <code class="filename">cache-configuration.xml</code> with an appropriate cache configuration into the classpath — for example, the EJB JAR or <code class="literal">WEB-INF/classes</code>. Refer to the JBossCache documentation for more information about configuring the JBossCache.
+		</div><div class="para">
+			You can find a sample <code class="filename">cache-configuration.xml</code> in <code class="filename">examples/blog/resources/META-INF/cache-configuration.xml</code>.
+		</div><div class="para">
+			Ehcache will run in its default configuration without a configuration file.
+		</div><div class="para">
+			To alter the configuration file in use, configure your cache in <code class="filename">components.xml</code>:
+		</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;components</span><span xmlns="" class="perl_Others"> xmlns=</span><span xmlns="" class="perl_String">"http://jboss.com/products/seam/components"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">            xmlns:cache=</span><span xmlns="" class="perl_String">"http://jboss.com/products/seam/cache"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;cache:jboss-cache-provider</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">         configuration=</span><span xmlns="" class="perl_String">"META-INF/cache/cache-configuration.xml"</span> <span xmlns="" class="perl_Keyword">/&gt;</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/components&gt;</span>
+</pre><div class="para">
+			Now you can inject the cache into any Seam component:
+		</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Name</span>(<span xmlns="" class="perl_String">"chatroomUsers"</span>) 
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Scope</span>(ScopeType.<span xmlns="" class="perl_Function">STATELESS</span>) 
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> ChatroomUsers { 
+<span xmlns="" class="line">​</span>  @In CacheProvider cacheProvider; 
+<span xmlns="" class="line">​</span>  @Unwrap <span xmlns="" class="perl_Keyword">public</span> Set&lt;String&gt; <span xmlns="" class="perl_Function">getUsers</span>() <span xmlns="" class="perl_Keyword">throws</span> CacheException   { 
+<span xmlns="" class="line">​</span>    Set&lt;String&gt; userList = 
+<span xmlns="" class="line">​</span>      (Set&lt;String&gt;) cacheProvider.<span xmlns="" class="perl_Function">get</span>(<span xmlns="" class="perl_String">"chatroom"</span>, <span xmlns="" class="perl_String">"userList"</span>); 
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">if</span> (userList==<span xmlns="" class="perl_Keyword">null</span>) { 
+<span xmlns="" class="line">​</span>      userList = <span xmlns="" class="perl_Keyword">new</span> HashSet&lt;String&gt;(); 
+<span xmlns="" class="line">​</span>      cacheProvider.<span xmlns="" class="perl_Function">put</span>(<span xmlns="" class="perl_String">"chatroom"</span>, <span xmlns="" class="perl_String">"userList"</span>, userList); 
+<span xmlns="" class="line">​</span>    } <span xmlns="" class="perl_Keyword">return</span> userList; 
+<span xmlns="" class="line">​</span>  } 
+<span xmlns="" class="line">​</span>}</pre><div class="para">
+			If you want multiple cache configurations available to your application, use <code class="filename">components.xml</code> to configure multiple cache providers:
+		</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;components</span><span xmlns="" class="perl_Others"> xmlns=</span><span xmlns="" class="perl_String">"http://jboss.com/products/seam/components"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">            xmlns:cache=</span><span xmlns="" class="perl_String">"http://jboss.com/products/seam/cache"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;cache:jboss-cache3-provider</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"myCache"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">         configuration=</span><span xmlns="" class="perl_String">"myown/cache.xml"</span><span xmlns="" class="perl_Keyword">/&gt;</span> 
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;cache:jboss-cache3-provider</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"myOtherCache"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">         configuration=</span><span xmlns="" class="perl_String">"myother/cache.xml"</span><span xmlns="" class="perl_Keyword">/&gt;</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/components&gt;</span>
+</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139690497159312">
+      ⁠</a>22.2. Page fragment caching</h1></div></div></div><div class="para">
+			The <code class="literal">&lt;s:cache&gt;</code> tag is Seam's solution to the problem of page fragment caching in JSF. <code class="literal">&lt;s:cache&gt;</code> uses <code class="literal">pojoCache</code> internally, so you will need to follow the previous steps — place the <code class="filename">JAR</code>s in the <code class="filename">EAR</code> and edit additional configuration options — before you can use it.
+		</div><div class="para">
+			<code class="literal">&lt;s:cache&gt;</code> stores some rendered content that is rarely updated. For example, the welcome page of our blog displays recent blog entries:
+		</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;s:cache</span><span xmlns="" class="perl_Others"> key=</span><span xmlns="" class="perl_String">"recentEntries-#{blog.id}"</span><span xmlns="" class="perl_Others"> region=</span><span xmlns="" class="perl_String">"welcomePageFragments"</span><span xmlns="" class="perl_Keyword">&gt;</span> 
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;h:dataTable</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"#{blog.recentEntries}"</span><span xmlns="" class="perl_Others"> var=</span><span xmlns="" class="perl_String">"blogEntry"</span><span xmlns="" class="perl_Keyword">&gt;</span> 
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;h:column&gt;</span> 
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;h3&gt;</span>#{blogEntry.title}<span xmlns="" class="perl_Keyword">&lt;/h3&gt;</span> 
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;div&gt;</span> 
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;s:formattedText</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"#{blogEntry.body}"</span><span xmlns="" class="perl_Keyword">/&gt;</span> 
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/div&gt;</span> 
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/h:column&gt;</span> 
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/h:dataTable&gt;</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/s:cache&gt;</span>
+</pre><div class="para">
+			The <code class="literal">key</code> lets you store multiple versions of each page fragment. In this case, there is one cached version per blog.  The <code class="literal">region</code> determines the cache or region node where all versions are stored. Different nodes may have differing expiry policies.
+		</div><div class="para">
+			The <code class="literal">&lt;s:cache&gt;</code> cannot tell when the underlying data is updated, so you will need to manually remove the cached fragment when a change occurs:
+		</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">post</span>() { 
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">... </span>
+<span xmlns="" class="line">​</span>  entityManager.<span xmlns="" class="perl_Function">persist</span>(blogEntry); 
+<span xmlns="" class="line">​</span>  cacheProvider.<span xmlns="" class="perl_Function">remove</span>(<span xmlns="" class="perl_String">"welcomePageFragments"</span>, 
+<span xmlns="" class="line">​</span>                       <span xmlns="" class="perl_String">"recentEntries-"</span> + blog.<span xmlns="" class="perl_Function">getId</span>()); 
+<span xmlns="" class="line">​</span>}</pre><div class="para">
+			If changes need not be immediately visible to the user, you can set up a short expiry period on the cache node.
+		</div></div></div></body></html>

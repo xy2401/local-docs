@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 13. Persistence</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="persistence">
+      ⁠</a>Chapter 13. Persistence</h1></div></div></div><div class="para">
+		This chapter covers persistence and its configuration in HornetQ.
+	</div><div class="para">
+		HornetQ handles its own persistence. It ships with a high-performance journal, which is optimized for messaging-specific use cases.
+	</div><div class="para">
+		The HornetQ journal is <span class="emphasis"><em>append only</em></span> with a configurable file size, which improves performance by enabling single write operations. It consists of a set of files on disk, which are initially pre-created to a fixed size and filled with padding. As server operations (add message, delete message, update message, etc.) are performed, records of the operations are appended to the journal until the journal file is full, at which point the next journal file is used.
+	</div><div class="para">
+		A sophisticated garbage collection algorithm determines whether journal files can be reclaimed and re-used when all of their data has been deleted. A compaction algorithm removes dead space from journal files and compresses the data.
+	</div><div class="para">
+		The journal also fully supports both local and XA transactions.
+	</div><div class="para">
+		The majority of the journal is written in Java, but interaction with the file system has been abstracted to allow different pluggable implementations. The two implementations shipped with HornetQ are:
+	</div><div class="variablelist"><dl class="variablelist"><dt><span class="term">Java Non-blocking IO (NIO)</span></dt><dd><div class="para">
+					Uses standard Java NIO to interface with the file system. This provides extremely good performance and runs on any platform with a Java 6 or later runtime.
+				</div></dd><dt><span class="term">Linux Asynchronous IO (AIO)</span></dt><dd><div class="para">
+					Uses a native code wrapper to talk to the Linux asynchronous IO library (AIO). With AIO, HornetQ receives a message when data has been persisted. This removes the need for explicit syncs. AIO will typically provide better performance than Java NIO, but requires Linux kernel 2.6 or later and <span class="application"><strong>libaio</strong></span>.
+				</div><div class="para">
+					AIO also requires <code class="literal">ext2</code>, <code class="literal">ext3</code>, <code class="literal">ext4</code>, <code class="literal">jfs</code> or <code class="literal">xfs</code> type file systems. On NFS, AIO falls back to slower, synchronous behavior.
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Installing AIO</strong></p></div><div class="admonition"><div class="para">
+						On Red Hat Enterprise Linux, install <span class="application"><strong>libaio</strong></span> with the following command:
+					</div><pre class="programlisting">yum install libaio</pre></div></div></dd></dl></div><div class="para">
+		The standard HornetQ core server uses the following journal instances:
+	</div><div class="variablelist"><dl class="variablelist"><dt><span class="term">bindings journal</span></dt><dd><div class="para">
+					Stores bindings-related data, including the set of queues deployed on the server and their attributes. It also stores data such as ID sequence counters. The bindings journal is always a NIO journal, as it typically has low throughput in comparison to the message journal.
+				</div><div class="para">
+					The files on this journal are prefixed as <code class="literal">hornetq-bindings</code>. Each file has a <code class="literal">bindings</code> extension. File size is <code class="literal">1048576</code> bytes, and it is located in the bindings folder.
+				</div></dd><dt><span class="term">JMS journal</span></dt><dd><div class="para">
+					Stores all JMS-related data, for example, any JMS queues, topics or connection factories and any JNDI bindings for these resources. Any JMS resources created with the management API are persisted to this journal. Any resources configured with configuration files are not. This journal is created only if JMS is in use.
+				</div></dd><dt><span class="term">message journal</span></dt><dd><div class="para">
+					Stores all message-related data, including messages themselves and <em class="parameter"><code>duplicate-id</code></em> caches. By default, HornetQ uses AIO for this journal. If AIO is not available, it will automatically fall back to NIO.
+				</div></dd></dl></div><div class="para">
+		Large messages are persisted outside the message journal. For more information see <a class="xref" href="large-messages.html">Chapter 21, <em>Large Messages</em></a>.
+	</div><div class="para">
+		In low memory situations, configure HornetQ to page messages to disk. See <a class="xref" href="paging.html">Chapter 22, <em>Paging</em></a> for more information.
+	</div><div class="para">
+		If persistence is not required, HornetQ can be configured not to persist any data, as discussed in <a class="xref" href="persistence.html#persistence.enabled">Section 13.4, “Configuring HornetQ for Zero Persistence”</a>.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring.bindings.journal">
+      ⁠</a>13.1. Configuring the bindings journal</h1></div></div></div><div class="para">
+			The bindings journal is configured using the following attributes in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code>.
+		</div><div class="variablelist"><dl class="variablelist"><dt><span class="term"> <code class="varname">bindings-directory</code> </span></dt><dd><div class="para">
+						The location of the bindings journal. The default value is <code class="filename">data/bindings</code>.
+					</div></dd><dt><span class="term"> <code class="varname">create-bindings-dir</code> </span></dt><dd><div class="para">
+						If <code class="literal">true</code>, and the bindings directory does not exist, the bindings directory is created automatically at the location specified in <code class="varname">bindings-directory</code>. The default value is <code class="literal">true</code>.
+					</div></dd></dl></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring.bindings.jms">
+      ⁠</a>13.2. Configuring the JMS journal</h1></div></div></div><div class="para">
+			The JMS journal shares its configuration with the bindings journal.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring.message.journal">
+      ⁠</a>13.3. Configuring the message journal</h1></div></div></div><div class="para">
+			The message journal is configured using the following attributes in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code>.
+		</div><div class="variablelist"><dl class="variablelist"><dt><span class="term"> <code class="varname">journal-directory</code> </span></dt><dd><div class="para">
+						The location of the message journal. The default value is <code class="filename">data/journal</code>. For best performance, this journal should be located on its own physical volume to minimize disk head movement. If this journal is stored on a storage area network, each journal instance on the network should have its own logical unit.
+					</div></dd><dt><span class="term"> <code class="varname">create-journal-dir</code> </span></dt><dd><div class="para">
+						If <code class="literal">true</code>, the journal directory is created at the location specified in <code class="varname">journal-directory</code>. The default value is <code class="literal">true</code>.
+					</div></dd><dt><span class="term"> <code class="varname">journal-type</code> </span></dt><dd><div class="para">
+						Valid values are <code class="literal">NIO</code> or <code class="literal">ASYNCIO</code>. If <code class="literal">NIO</code>, the Java NIO journal is used. If <code class="literal">ASYNCIO</code>, Linux asynchronous IO is used. If <code class="literal">ASYNCIO</code> is set on a non-Linux or non-libaio system, HornetQ detects this and falls back to <code class="literal">NIO</code>.
+					</div></dd><dt><span class="term"> <code class="varname">journal-sync-transactional</code> </span></dt><dd><div class="para">
+						If <code class="literal">true</code>, HornetQ ensures all transaction data is flushed to disk on transaction boundaries (commit, prepare, and rollback). The default is <code class="literal">true</code>.
+					</div></dd><dt><span class="term"> <code class="varname">journal-sync-non-transactional</code> </span></dt><dd><div class="para">
+						If <code class="literal">true</code>, HornetQ ensures non-transactional message data (sends and acknowledgments) are flushed to disk. The default is <code class="literal">true</code>.
+					</div></dd><dt><span class="term"> <code class="varname">journal-file-size</code> </span></dt><dd><div class="para">
+						The size of each journal file in bytes. The default value is <code class="literal">10485760</code> bytes (10 megabytes).
+					</div></dd><dt><span class="term"> <code class="varname">journal-min-files</code> </span></dt><dd><div class="para">
+						The minimum number of files the journal maintains. When HornetQ starts and there is no initial data, HornetQ pre-creates this number of files. Creating and padding journal files is an expensive operation, so to be avoided at run-time as files are filled. Pre-creating files means that as one is filled the journal can immediately resume with the next file without pausing to create it.
+					</div></dd><dt><span class="term"> <code class="varname">journal-max-io</code> </span></dt><dd><div class="para">
+						The maximum number of write requests to hold in the IO queue. Write requests are queued here before being submitted to the system for execution. If the queue fills, writes are blocked until space becomes available in the queue. For NIO, this must be <code class="literal">1</code>. For AIO, this should be <code class="literal">500</code>. A different default value is maintained depending on whether NIO or AIO is used (<code class="literal">1</code> for NIO, <code class="literal">500</code> for AIO). The total max AIO must not be higher than what is configured at the operating system level (<code class="filename">/proc/sys/fs/aio-max-nr</code>), generally at 65536.
+					</div></dd><dt><span class="term"> <code class="varname">journal-buffer-timeout</code> </span></dt><dd><div class="para">
+						HornetQ maintains a buffer of flush requests, and flushes the entire buffer either when it is full or when this timeout expires - whichever is soonest. This is used for both NIO and AIO and allows improved scaling when many concurrent writes and flushes are required.
+					</div></dd><dt><span class="term"> <code class="varname">journal-buffer-size</code> </span></dt><dd><div class="para">
+						The size of the timed buffer on AIO. The default value is <code class="literal">490</code> kilobytes.
+					</div></dd><dt><span class="term"> <code class="varname">journal-compact-min-files</code> </span></dt><dd><div class="para">
+						The minimum number of files before the journal will be compacted. The default value is <code class="literal">10</code>.
+					</div></dd><dt><span class="term"> <code class="varname">journal-compact-percentage</code> </span></dt><dd><div class="para">
+						When less than this percentage of a journal is considered live data compacting will occur. The default value is <code class="literal">30</code>. <code class="varname">journal-compact-min-files</code> must also be fulfilled before compacting.
+					</div></dd></dl></div><div xmlns:d="http://docbook.org/ns/docbook" class="warning"><div class="admonition_header"><p><strong>Disabling disk write cache</strong></p></div><div class="admonition"><div class="para">
+				Most disks contain hardware write caches, which increase the apparent performance of a disk because writes are cached and lazily written to disk later.
+			</div><div class="para">
+				Many systems ship with disk write cache enabled by default, so even after syncing from the operating system there is no guarantee that the data has been written to disk. If a failure occurs, critical data can still be lost.
+			</div><div class="para">
+				Some systems have non-volatile or battery-backed write caches. These will not necessarily lose data in the event of failure, but testing is essential.
+			</div><div class="para">
+				If your disk does not have these backups in place, and is not part of a redundant array (for example, RAID), ensure that disk write cache is <code class="literal">disabled</code>. This can have negative effects on performance, but ensures data integrity.
+			</div><div class="para">
+				On Linux, inspect or change your disk's write cache settings with the <span class="application"><strong>hdparm</strong></span> tool for IDE disks, or <span class="application"><strong>sdparm</strong></span> or <span class="application"><strong>sginfo</strong></span> tools for SCSI or SATA disks.
+			</div><div class="para">
+				On Windows, check or change settings by right-clicking on the disk and selecting <span class="guimenu"><strong>Properties</strong></span>.
+			</div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="persistence.enabled">
+      ⁠</a>13.4. Configuring HornetQ for Zero Persistence</h1></div></div></div><div class="para">
+			To configure HornetQ to perform zero persistence, set the <code class="varname">persistence-enabled</code> parameter in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code> to <code class="literal">false</code>.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="important"><div class="admonition_header"><p><strong>Zero Persistence</strong></p></div><div class="admonition"><div class="para">
+				Once this parameter is set to <code class="literal">false</code>, no persistence will occur. No bindings data, message data, large message data, duplicate ID caches, or paging data will be persisted.
+			</div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="persistence.importexport">
+      ⁠</a>13.5. Import/Export the Journal Data</h1></div></div></div><div class="para">
+			You may want to inspect the existent records on each one of the journals used by HornetQ, and you can use the export/import tool for that purpose. The export/import are classes located in the <code class="filename">hornetq-core.jar</code>, you can export the journal as a text file by using this command:
+		</div><div class="para">
+			<code class="literal">java -cp hornetq-core.jar org.hornetq.core.journal.impl.ExportJournal &lt;JournalDirectory&gt; &lt;JournalPrefix&gt; &lt;FileExtension&gt; &lt;FileSize&gt; &lt;FileOutput&gt;</code>
+		</div><div class="para">
+			To import the file as binary data on the journal (Notice you also require <code class="filename">netty.jar)</code>:
+		</div><div class="para">
+			<code class="literal">java -cp hornetq-core.jar:netty.jar org.hornetq.core.journal.impl.ImportJournal &lt;JournalDirectory&gt; &lt;JournalPrefix&gt; &lt;FileExtension&gt; &lt;FileSize&gt; &lt;FileInput&gt;</code>
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					JournalDirectory: Use the configured folder for your selected folder. Example: ./hornetq/data/journal
+				</div></li><li class="listitem"><div class="para">
+					JournalPrefix: Use the prefix for your selected journal, as discussed
+				</div></li><li class="listitem"><div class="para">
+					FileExtension: Use the extension for your selected journal, as discussed
+				</div></li><li class="listitem"><div class="para">
+					FileSize: Use the size for your selected journal, as discussed
+				</div></li><li class="listitem"><div class="para">
+					FileOutput: text file that will contain the exported data
+				</div></li></ul></div></div></div></body></html>

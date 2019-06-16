@@ -1,0 +1,1035 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 9. The JNDI Naming Service</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="Naming_on_JBoss">
+      ⁠</a>Chapter 9. The JNDI Naming Service</h1></div></div></div><div class="para">
+		The naming service plays a key role in enterprise Java applications, providing the core infrastructure that is used to locate objects or services in an application server. It is also the mechanism that clients external to the application server use to locate services inside the application server. Application code, whether it is internal or external to the JBoss Enterprise Application Platform instance, needs only know that it needs to talk to the a message queue named <code class="literal">queue/IncomingOrders</code> and need not worry about any of the queue's configuration details.
+	</div><div class="para">
+		In a clustered environment, naming services are even more valuable. A client of a service must be able to look up a <code class="literal">ProductCatalog</code> session bean from the cluster without needing to know which machine it resides on. Whether it is a large clustered service, a local resource or an application component that is needed, the JNDI naming service provides the glue that lets code find the objects in the system by name.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Naming_on_JBoss-An_Overview_of_JNDI">
+      ⁠</a>9.1. An Overview of JNDI</h1></div></div></div><div class="para">
+			JNDI is a standard Java API that is bundled with the Java Development Kit. JNDI provides a common interface to a variety of existing naming services: DNS, LDAP, Active Directory, RMI registry, COS registry, NIS, and file systems. The JNDI API is divided logically into a client API that is used to access naming services, and a service provider interface (SPI) that allows the user to create JNDI implementations for naming services.
+		</div><div class="para">
+			The SPI layer is an abstraction that naming service providers must implement to enable the core JNDI classes to expose the naming service using the common JNDI client interface. An implementation of JNDI for a naming service is referred to as a <em class="firstterm">JNDI provider</em>. JBoss naming is an example JNDI implementation, based on the SPI classes. Note that the JNDI SPI is not needed by J2EE component developers.
+		</div><div class="para">
+			The main JNDI API package is the <code class="literal">javax.naming</code> package. It contains five interfaces, 10 classes, and several exceptions. There is one key class, <code class="classname">InitialContext</code>, and two key interfaces, <code class="classname">Context</code> and <code class="classname">Name</code>
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="An_Overview_of_JNDI-Names">
+      ⁠</a>9.1.1. Names</h2></div></div></div><div class="para">
+				The notion of a name is of fundamental importance in JNDI. The naming system determines the syntax that the name must follow. The syntax of the naming system allows the user to parse string representations of names into its components. A name is used with a naming system to locate objects. In the simplest sense, a naming system is just a collection of objects with unique names. To locate an object in a naming system you provide a name to the naming system, and the naming system returns the object store under the name.
+			</div><div class="para">
+				As an example, consider the Unix file system's naming convention. Each file is named from its path relative to the root of the file system, with each component in the path separated by the forward slash character ("<code class="literal">/</code>"). The file's path is ordered from left to right. The pathname <code class="filename">/usr/jboss/readme.txt</code>, for example, names a file <code class="filename">readme.txt</code> in the directory <code class="filename">jboss</code>, under the directory <code class="filename">usr</code>, located in the root of the file system. JBoss Enterprise Application Platform naming uses a Unix-style namespace as its naming convention.
+			</div><div class="para">
+				The <code class="classname">javax.naming.Name</code> interface represents a generic name as an ordered sequence of components. It can be a composite name (one that spans multiple namespaces), or a compound name (one that is used within a single hierarchical naming system). The components of a name are numbered. The indexes of a name with N components range from 0 up to, but not including, N. The most significant component is at index 0. An empty name has no components.
+			</div><div class="para">
+				A composite name is a sequence of component names that span multiple namespaces. An example of a composite name would be the hostname and file combination commonly used with Unix commands like <code class="literal">scp</code>. For example, the following command copies <code class="filename">localfile.txt</code> to the file <code class="filename">remotefile.txt</code> in the <code class="filename">tmp</code> directory on host <code class="literal">ahost.someorg.org</code>:
+			</div><pre class="programlisting">scp localfile.txt ahost.someorg.org:/tmp/remotefile.txt</pre><div class="para">
+				A compound name is derived from a hierarchical namespace. Each component in a compound name is an atomic name, meaning a string that cannot be parsed into smaller components. A file pathname in the Unix file system is an example of a compound name. <code class="literal">ahost.someorg.org:/tmp/remotefile.txt</code> is a composite name that spans the DNS and Unix file system namespaces. The components of the composite name are <code class="literal">ahost.someorg.org</code> and <code class="filename">/tmp/remotefile.txt</code>. A component is a string name from the namespace of a naming system. If the component comes from a hierarchical namespace, that component can be further parsed into its atomic parts by using the <code class="literal">javax.naming.CompoundName</code> class. The JNDI API provides the <code class="literal">javax.naming.CompositeName</code> class as the implementation of the <code class="literal">Name</code> interface for composite names.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="An_Overview_of_JNDI-Contexts">
+      ⁠</a>9.1.2. Contexts</h2></div></div></div><div class="para">
+				The <code class="classname">javax.naming.Context</code> interface is the primary interface for interacting with a naming service. The <code class="classname">Context</code> interface represents a set of name-to-object bindings. Every context has an associated naming convention that determines how the context parses string names into <code class="classname">javax.naming.Name</code> instances. To create a name-to-object binding you invoke the bind method of a <code class="classname">Context</code> and specify a name and an object as arguments. The object can later be retrieved using its name using the <code class="classname">Context</code> lookup method. A <code class="classname">Context</code> will typically provide operations for binding a name to an object, unbinding a name, and obtaining a listing of all name-to-object bindings. The object you bind into a <code class="classname">Context</code> can itself be of type <code class="literal">Context</code>. The <code class="classname">Context</code> object that is bound is referred to as a subcontext of the <code class="classname">Context</code> on which the bind method was invoked.
+			</div><div class="para">
+				As an example, consider a file directory with a pathname <code class="filename">/usr</code>, which is a context in the Unix file system. A file directory named relative to another file directory is a subcontext (commonly referred to as a subdirectory). A file directory with a pathname <code class="filename">/usr/jboss</code> names a <code class="literal">jboss</code> context that is a subcontext of <code class="literal">usr</code>. In another example, a DNS domain, such as <code class="literal">org</code>, is a context. A DNS domain named relative to another DNS domain is another example of a subcontext. In the DNS domain <code class="literal">jboss.org</code>, the DNS domain <code class="literal">jboss</code> is a subcontext of <code class="literal">org</code> because DNS names are parsed right to left.
+			</div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="Contexts-Obtaining_a_Context_using_InitialContext">
+      ⁠</a>9.1.2.1. Obtaining a Context using InitialContext</h3></div></div></div><div class="para">
+					All naming service operations are performed on some implementation of the <code class="classname">Context</code> interface. Therefore, you need a way to obtain a <code class="classname">Context</code> for the naming service you are interested in using. The <code class="literal">javax.naming.IntialContext</code> class implements the <code class="classname">Context</code> interface, and provides the starting point for interacting with a naming service.
+				</div><div class="para">
+					When you create an <code class="classname">InitialContext</code>, it is initialized with properties from the environment. JNDI determines each property's value by merging the values from the following two sources, in order.
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+							The first occurrence of the property from the constructor's environment parameter and (for appropriate properties) the applet parameters and system properties.
+						</div></li><li class="listitem"><div class="para">
+							All <code class="filename">jndi.properties</code> resource files found on the classpath.
+						</div></li></ul></div><div class="para">
+					For each property found in both of these two sources, the property's value is determined as follows. If the property is one of the standard JNDI properties that specify a list of JNDI factories, all of the values are concatenated into a single colon-separated list. For other properties, only the first value found is used. The preferred method of specifying the JNDI environment properties is through a <code class="filename">jndi.properties</code> file, which allows your code to externalize the JNDI provider specific information so that changing JNDI providers will not require changes to your code or recompilation.
+				</div><div class="para">
+					The <code class="classname">Context</code> implementation used internally by the <code class="classname">InitialContext</code> class is determined at runtime. The default policy uses the environment property <code class="varname">java.naming.factory.initial</code>, which contains the class name of the <code class="classname">javax.naming.spi.InitialContextFactory</code> implementation. You obtain the name of the <code class="classname">InitialContextFactory</code> class from the naming service provider you are using.
+				</div><div class="para">
+					<a class="xref" href="Naming_on_JBoss.html#Obtaining_a_Context_using_InitialContext-A_sample_jndi.properties_file">Example 9.1, “A sample jndi.properties file”</a> gives a sample <code class="filename">jndi.properties</code> file a client application would use to connect to a JBossNS service running on the local host at port 1099. The client application would need to have the <code class="filename">jndi.properties</code> file available on the application classpath. These are the properties that the JBossNS JNDI implementation requires. Other JNDI providers will have different properties and values.
+				</div><div class="example"><a id="Obtaining_a_Context_using_InitialContext-A_sample_jndi.properties_file">
+      ⁠</a><p class="title"><strong>Example 9.1. A sample jndi.properties file</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span>### JBossNS properties
+<span xmlns="" class="line">​</span>java.naming.factory.initial=org.jnp.interfaces.NamingContextFactory
+<span xmlns="" class="line">​</span>java.naming.provider.url=jnp://localhost:1099
+<span xmlns="" class="line">​</span>java.naming.factory.url.pkgs=org.jboss.naming:org.jnp.interfaces
+</pre></div></div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Naming_on_JBoss-The_JBossNS_Architecture">
+      ⁠</a>9.2. The JBoss Naming Service Architecture</h1></div></div></div><div class="para">
+			The JBoss Naming Service (JBossNS) architecture is a Java socket/RMI based implementation of the <code class="classname">javax.naming.Context</code> interface. It is a client/server implementation that can be accessed remotely. The implementation is optimized so that access from within the same VM in which the JBossNS server is running does not involve sockets. Same VM access occurs through an object reference available as a global singleton. <a class="xref" href="Naming_on_JBoss.html#The_JBossNS_Architecture-Key_components_in_the_JBossNS_architecture.">Figure 9.1, “Key components in the JBoss Naming Service architecture.”</a> illustrates some of the key classes in the JBossNS implementation and their relationships.
+		</div><div class="figure"><a id="The_JBossNS_Architecture-Key_components_in_the_JBossNS_architecture.">
+      ⁠</a><div class="figure-contents"><div class="mediaobject" style="text-align: center"><img src="images/Chap3-8.png" align="middle" alt="Key components in the JBoss Naming Service architecture." style="text-align: middle"/></div></div><p class="title"><strong>Figure 9.1. Key components in the JBoss Naming Service architecture.</strong></p></div><div class="para">
+			We will start with the <code class="literal">NamingService</code> MBean. The <code class="literal">NamingService</code> MBean provides the JNDI naming service. This is a key service used pervasively by the J2EE technology components. The configurable attributes for the <code class="literal">NamingService</code> are as follows.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					<span class="bold bold"><strong>Port</strong></span>: The jnp protocol listening port for the <code class="literal">NamingService</code>. If not specified default is 1099, the same as the RMI registry default port.
+				</div></li><li class="listitem"><div class="para">
+					<span class="bold bold"><strong>RmiPort</strong></span>: The RMI port on which the RMI Naming implementation will be exported. If not specified the default is 0 which means use any available port.
+				</div></li><li class="listitem"><div class="para">
+					<span class="bold bold"><strong>BindAddress</strong></span>: The specific address the <code class="literal">NamingService</code> listens on. This can be used on a multi-homed host for a <code class="literal">java.net.ServerSocket</code> that will only accept connect requests on one of its addresses.
+				</div></li><li class="listitem"><div class="para">
+					<span class="bold bold"><strong>RmiBindAddress</strong></span>: The specific address the RMI server portion of the <code class="literal">NamingService</code> listens on. This can be used on a multi-homed host for a <code class="literal">java.net.ServerSocket</code> that will only accept connect requests on one of its addresses. If this is not specified and the <code class="literal">BindAddress</code> is, the <code class="literal">RmiBindAddress</code> defaults to the <code class="literal">BindAddress</code> value.
+				</div></li><li class="listitem"><div class="para">
+					<span class="bold bold"><strong>Backlog</strong></span>: The maximum queue length for incoming connection indications (a request to connect) is set to the <code class="literal">backlog</code> parameter. If a connection indication arrives when the queue is full, the connection is refused.
+				</div></li><li class="listitem"><div class="para">
+					<span class="bold bold"><strong>ClientSocketFactory</strong></span>: An optional custom <code class="literal">java.rmi.server.RMIClientSocketFactory</code> implementation class name. If not specified the default <code class="literal">RMIClientSocketFactory</code> is used.
+				</div></li><li class="listitem"><div class="para">
+					<span class="bold bold"><strong>ServerSocketFactory</strong></span>: An optional custom <code class="literal">java.rmi.server.RMIServerSocketFactory</code> implementation class name. If not specified the default <code class="literal">RMIServerSocketFactory</code> is used.
+				</div></li><li class="listitem"><div class="para">
+					<span class="bold bold"><strong>JNPServerSocketFactory</strong></span>: An optional custom <code class="literal">javax.net.ServerSocketFactory</code> implementation class name. This is the factory for the <code class="literal">ServerSocket</code> used to bootstrap the download of the JBoss Naming Service <code class="literal">Naming</code> interface. If not specified the <code class="literal">javax.net.ServerSocketFactory.getDefault()</code> method value is used.
+				</div></li></ul></div><div class="para">
+			The <code class="literal">NamingService</code> also creates the <code class="literal">java:comp</code> context such that access to this context is isolated based on the context class loader of the thread that accesses the <code class="literal">java:comp</code> context. This provides the application component private ENC that is required by the J2EE specs. This segregation is accomplished by binding a <code class="literal">javax.naming.Reference</code> to a context that uses the <code class="literal">org.jboss.naming.ENCFactory</code> as its <code class="literal">javax.naming.ObjectFactory</code>. When a client performs a lookup of <code class="literal">java:comp</code>, or any subcontext, the <code class="literal">ENCFactory</code> checks the thread context <code class="literal">ClassLoader</code>, and performs a lookup into a map using the <code class="literal">ClassLoader</code> as the key.
+		</div><div class="para">
+			If a context instance does not exist for the class loader instance, one is created and associated with that class loader in the <code class="literal">ENCFactory</code> map. Thus, correct isolation of an application component's ENC relies on each component receiving a unique <code class="literal">ClassLoader</code> that is associated with the component threads of execution.
+		</div><div class="para">
+			The <code class="literal">NamingService</code> delegates its functionality to an <code class="literal">org.jnp.server.Main</code> MBean. The reason for the duplicate MBeans is because JBoss Naming Service started out as a stand-alone JNDI implementation, and can still be run as such. The <code class="literal">NamingService</code> MBean embeds the <code class="literal">Main</code> instance into the server so that usage of JNDI with the same VM as the server does not incur any socket overhead. The configurable attributes of the NamingService are really the configurable attributes of the JBoss Naming Service <code class="literal">Main</code> MBean. The setting of any attributes on the <code class="literal">NamingService</code> MBean simply set the corresponding attributes on the <code class="literal">Main</code> MBean the <code class="literal">NamingService</code> contains. When the <code class="literal">NamingService</code> is started, it starts the contained <code class="literal">Main</code> MBean to activate the JNDI naming service.
+		</div><div class="para">
+			In addition, the <code class="literal">NamingService</code> exposes the <code class="literal">Naming</code> interface operations through a JMX detyped invoke operation. This allows the naming service to be accessed via JMX adaptors for arbitrary protocols. We will look at an example of how HTTP can be used to access the naming service using the invoke operation later in this chapter.
+		</div><div class="para">
+			When the <code class="literal">Main</code> MBean is started, it performs the following tasks:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					Instantiates an <code class="literal">org.jnp.naming.NamingService</code> instance and sets this as the local VM server instance. This is used by any <code class="literal">org.jnp.interfaces.NamingContext</code> instances that are created within the server VM to avoid RMI calls over TCP/IP.
+				</div></li><li class="listitem"><div class="para">
+					Exports the <code class="literal">NamingServer</code> instance's <code class="literal">org.jnp.naming.interfaces.Naming</code> RMI interface using the configured <code class="literal">RmiPort</code>, <code class="literal">ClientSocketFactory</code>, <code class="literal">ServerSocketFactory</code> attributes.
+				</div></li><li class="listitem"><div class="para">
+					Creates a socket that listens on the interface given by the <code class="literal">BindAddress</code> and <code class="literal">Port</code> attributes.
+				</div></li><li class="listitem"><div class="para">
+					Spawns a thread to accept connections on the socket.
+				</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Naming_on_JBoss-The_Naming_InitialContext_Factories">
+      ⁠</a>9.3. The Naming InitialContext Factories</h1></div></div></div><div class="para">
+			The JBoss JNDI provider currently supports several different <code class="literal">InitialContext</code> factory implementations.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="The_Naming_InitialContext_Factories-The_standard_naming_context_factory">
+      ⁠</a>9.3.1. The standard naming context factory</h2></div></div></div><div class="para">
+				The most commonly used factory is the <code class="literal">org.jnp.interfaces.NamingContextFactory</code> implementation. Its properties include:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>java.naming.factory.initial</strong></span>: The name of the environment property for specifying the initial context factory to use. The value of the property should be the fully qualified class name of the factory class that will create an initial context. If it is not specified, a <code class="literal">javax.naming.NoInitialContextException</code> will be thrown when an <code class="literal">InitialContext</code> object is created.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>java.naming.provider.url</strong></span>: The name of the environment property for specifying the location of the JBoss JNDI service provider the client will use. The <code class="literal">NamingContextFactory</code> class uses this information to know which JBossNS server to connect to. The value of the property should be a URL string. For JBossNS the URL format is <code class="literal">jnp://host:port/[jndi_path]</code>. The <code class="literal">jnp:</code> portion of the URL is the protocol and refers to the socket/RMI based protocol used by JBoss. The <code class="literal">jndi_path</code> portion of the URL is an optional JNDI name relative to the root context, for example, <code class="literal">apps</code> or <code class="literal">apps/tmp</code>. Everything but the host component is optional. The following examples are equivalent because the default port value is 1099.
+					</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+								<code class="literal">jnp://www.jboss.org:1099/</code>
+							</div></li><li class="listitem"><div class="para">
+								<code class="literal">www.jboss.org:1099</code>
+							</div></li><li class="listitem"><div class="para">
+								<code class="literal">www.jboss.org</code>
+							</div></li></ul></div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>java.naming.factory.url.pkgs</strong></span>: The name of the environment property for specifying the list of package prefixes to use when loading in URL context factories. The value of the property should be a colon-separated list of package prefixes for the class name of the factory class that will create a URL context factory. For the JBoss JNDI provider this must be <code class="literal">org.jboss.naming:org.jnp.interfaces</code>. This property is essential for locating the <code class="literal">jnp:</code> and <code class="literal">java:</code> URL context factories of the JBoss JNDI provider.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>jnp.socketFactory</strong></span>: The fully qualified class name of the <code class="literal">javax.net.SocketFactory</code> implementation to use to create the bootstrap socket. The default value is <code class="literal">org.jnp.interfaces.TimedSocketFactory</code>. The <code class="literal">TimedSocketFactory</code> is a simple <code class="literal">SocketFactory</code> implementation that supports the specification of a connection and read timeout. These two properties are specified by:
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>jnp.timeout</strong></span>: The connection timeout in milliseconds. The default value is 0 which means the connection will block until the VM TCP/IP layer times out.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>jnp.sotimeout</strong></span>: The connected socket read timeout in milliseconds. The default value is 0 which means reads will block. This is the value passed to the <code class="literal">Socket.setSoTimeout</code> on the newly connected socket.
+					</div></li></ul></div><div class="para">
+				When a client creates an <code class="literal">InitialContext</code> with these JBossNS properties available, the <code class="literal">org.jnp.interfaces.NamingContextFactory</code> object is used to create the <code class="literal">Context</code> instance that will be used in subsequent operations. The <code class="literal">NamingContextFactory</code> is the JBossNS implementation of the <code class="literal">javax.naming.spi.InitialContextFactory</code> interface. When the <code class="literal">NamingContextFactory</code> class is asked to create a <code class="literal">Context</code>, it creates an <code class="literal">org.jnp.interfaces.NamingContext</code> instance with the <code class="literal">InitialContext</code> environment and name of the context in the global JNDI namespace. It is the <code class="literal">NamingContext</code> instance that actually performs the task of connecting to the JBossNS server, and implements the <code class="literal">Context</code> interface. The <code class="literal">Context.PROVIDER_URL</code> information from the environment indicates from which server to obtain a <code class="literal">NamingServer</code> RMI reference.
+			</div><div class="para">
+				The association of the <code class="literal">NamingContext</code> instance to a <code class="literal">NamingServer</code> instance is done in a lazy fashion on the first <code class="literal">Context</code> operation that is performed. When a <code class="literal">Context</code> operation is performed and the <code class="literal">NamingContext</code> has no <code class="literal">NamingServer</code> associated with it, it looks to see if its environment properties define a <code class="literal">Context.PROVIDER_URL</code>. A <code class="literal">Context.PROVIDER_URL</code> defines the host and port of the JBossNS server the <code class="literal">Context</code> is to use. If there is a provider URL, the <code class="literal">NamingContext</code> first checks to see if a <code class="literal">Naming</code> instance keyed by the host and port pair has already been created by checking a <code class="literal">NamingContext</code> class static map. It simply uses the existing <code class="literal">Naming</code> instance if one for the host port pair has already been obtained. If no <code class="literal">Naming</code> instance has been created for the given host and port, the <code class="literal">NamingContext</code> connects to the host and port using a <code class="literal">java.net.Socket</code>, and retrieves a <code class="literal">Naming</code> RMI stub from the server by reading a <code class="literal">java.rmi.MarshalledObject</code> from the socket and invoking its get method. The newly obtained Naming instance is cached in the <code class="literal">NamingContext</code> server map under the host and port pair. If no provider URL was specified in the JNDI environment associated with the context, the <code class="literal">NamingContext</code> simply uses the in VM Naming instance set by the <code class="literal">Main</code> MBean.
+			</div><div class="para">
+				The <code class="literal">NamingContext</code> implementation of the <code class="literal">Context</code> interface delegates all operations to the <code class="literal">Naming</code> instance associated with the <code class="literal">NamingContext</code>. The <code class="literal">NamingServer</code> class that implements the <code class="literal">Naming</code> interface uses a <code class="literal">java.util.Hashtable</code> as the <code class="literal">Context</code> store. There is one unique <code class="literal">NamingServer</code> instance for each distinct JNDI Name for a given JBossNS server. There are zero or more transient <code class="literal">NamingContext</code> instances active at any given moment that refers to a <code class="literal">NamingServer</code> instance. The purpose of the <code class="literal">NamingContext</code> is to act as a <code class="literal">Context</code> to the <code class="literal">Naming</code> interface adaptor that manages translation of the JNDI names passed to the <code class="literal">NamingContext</code>. Because a JNDI name can be relative or a URL, it needs to be converted into an absolute name in the context of the JBossNS server to which it refers. This translation is a key function of the <code class="literal">NamingContext</code>.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="The_Naming_InitialContext_Factories-The_org.jboss.naming.NamingContextFactory">
+      ⁠</a>9.3.2. The org.jboss.naming.NamingContextFactory</h2></div></div></div><div class="para">
+				This version of the <code class="literal">InitialContextFactory</code> implementation is a simple extension of the jnp version which differs from the jnp version in that it stores the last configuration passed to its <code class="literal">InitialContextFactory.getInitialContext(Hashtable env)</code> method in a public thread local variable. This is used by EJB handles and other JNDI sensitive objects like the <code class="literal">UserTransaction</code> factory to keep track of the JNDI context that was in effect when they were created. If you want this environment to be bound to the object even after its serialized across vm boundaries, then you should the <code class="literal">org.jboss.naming.NamingContextFactory</code>. If you want the environment that is defined in the current VM <code class="literal">jndi.properties</code> or system properties, then you should use the <code class="literal">org.jnp.interfaces.NamingContextFactory</code> version.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="The_Naming_InitialContext_Factories-Naming_Discovery_in_Clustered_Environments">
+      ⁠</a>9.3.3. Naming Discovery in Clustered Environments</h2></div></div></div><div class="para">
+				When running in a clustered JBoss environment, you can choose not to specify a <code class="literal">Context.PROVIDER_URL</code> value and let the client query the network for available naming services. This only works with servers running with the <code class="literal">all</code> server profile, or an equivalent server profile that has <code class="literal">org.jboss.ha.framework.server.ClusterPartition</code> and <code class="literal">org.jboss.ha.jndi.HANamingService</code> services deployed. The discovery process consists of sending a multicast request packet to the discovery address/port and waiting for any node to respond. The response is a HA-RMI version of the <code class="literal">Naming</code> interface. The following <code class="literal">InitialContext</code> properties affect the discovery configuration:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>jnp.partitionName</strong></span>: The cluster partition name discovery should be restricted to. If you are running in an environment with multiple clusters, you may want to restrict the naming discovery to a particular cluster. There is no default value, meaning that any cluster response will be accepted.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>jnp.discoveryGroup</strong></span>: The multicast IP/address to which the discovery query is sent. The default is 230.0.0.4.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>jnp.discoveryPort</strong></span>: The port to which the discovery query is sent. The default is 1102.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>jnp.discoveryTimeout</strong></span>: The time in milliseconds to wait for a discovery query response. The default value is 5000 (5 seconds).
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>jnp.disableDiscovery</strong></span>: A flag indicating if the discovery process should be avoided. Discovery occurs when either no <code class="literal">Context.PROVIDER_URL</code> is specified, or no valid naming service could be located among the URLs specified. If the <code class="literal">jnp.disableDiscovery</code> flag is true, then discovery will not be attempted.
+					</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="The_Naming_InitialContext_Factories-The_HTTP_InitialContext_Factory_Implementation">
+      ⁠</a>9.3.4. The HTTP InitialContext Factory Implementation</h2></div></div></div><div class="para">
+				The JNDI naming service can be accessed over HTTP. From a JNDI client's perspective this is a transparent change as they continue to use the JNDI <code class="literal">Context</code> interface. Operations through the <code class="literal">Context</code> interface are translated into HTTP posts to a servlet that passes the request to the NamingService using its JMX invoke operation. Advantages of using HTTP as the access protocol include better access through firewalls and proxies setup to allow HTTP, as well as the ability to secure access to the JNDI service using standard servlet role based security.
+			</div><div class="para">
+				To access JNDI over HTTP you use the <code class="literal">org.jboss.naming.HttpNamingContextFactory</code> as the factory implementation. The complete set of support <code class="literal">InitialContext</code> environment properties for this factory are:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>java.naming.factory.initial</strong></span>: The name of the environment property for specifying the initial context factory, which must be <code class="literal">org.jboss.naming.HttpNamingContextFactory</code>.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>java.naming.provider.url</strong></span> (or <code class="literal">Context.PROVIDER_URL</code>): This must be set to the HTTP URL of the JNDI factory. The full HTTP URL would be the public URL of the JBoss servlet container plus <code class="literal">/invoker/JNDIFactory</code>. Examples include:
+					</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+								<code class="literal">http://www.jboss.org:8080/invoker/JNDIFactory</code>
+							</div></li><li class="listitem"><div class="para">
+								<code class="literal">http://www.jboss.org/invoker/JNDIFactory</code>
+							</div></li><li class="listitem"><div class="para">
+								<code class="literal">https://www.jboss.org/invoker/JNDIFactory</code>
+							</div></li></ul></div><div class="para">
+						The first example accesses the servlet using the port 8080. The second uses the standard HTTP port 80, and the third uses an SSL encrypted connection to the standard HTTPS port 443.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>java.naming.factory.url.pkgs</strong></span>: For all JBoss JNDI provider this must be <code class="literal">org.jboss.naming:org.jnp.interfaces</code>. This property is essential for locating the <code class="literal">jnp:</code> and <code class="literal">java:</code> URL context factories of the JBoss JNDI provider.
+					</div></li></ul></div><div class="para">
+				The JNDI <code class="literal">Context</code> implementation returned by the <code class="literal">HttpNamingContextFactory</code> is a proxy that delegates invocations made on it to a bridge servlet which forwards the invocation to the <code class="literal">NamingService</code> through the JMX bus and marshals the reply back over HTTP. The proxy needs to know what the URL of the bridge servlet is in order to operate. This value may have been bound on the server side if the JBoss web server has a well known public interface. If the JBoss web server is sitting behind one or more firewalls or proxies, the proxy cannot know what URL is required. In this case, the proxy will be associated with a system property value that must be set in the client VM. For more information on the operation of JNDI over HTTP see <a class="xref" href="Naming_on_JBoss.html#JNDI_over_HTTP-Accessing_JNDI_over_HTTP">Section 9.4.1, “Accessing JNDI over HTTP”</a>.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+					If a cluster partition uses the default partition name, the discovery process ignores other clusters. Therefore, make sure to specify unique partition names: props.put("jnp.partitionName", "ClusterBPartition") when using several clusters.
+				</div></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="The_Naming_InitialContext_Factories-The_Login_InitialContext_Factory_Implementation">
+      ⁠</a>9.3.5. The Login InitialContext Factory Implementation</h2></div></div></div><div class="para">
+				JAAS is the preferred method for authenticating a remote client to JBoss. However, for simplicity and to ease the migration from other application server environment that do not use JAAS, JBoss allows you the security credentials to be passed through the <code class="literal">InitialContext</code>. JAAS is still used under the covers, but there is no manifest use of the JAAS interfaces in the client application.
+			</div><div class="para">
+				The factory class that provides this capability is the <code class="literal">org.jboss.security.jndi.LoginInitialContextFactory</code>. The complete set of support <code class="literal">InitialContext</code> environment properties for this factory are:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>java.naming.factory.initial</strong></span>: The name of the environment property for specifying the initial context factory, which must be <code class="literal">org.jboss.security.jndi.LoginInitialContextFactory</code>.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>java.naming.provider.url</strong></span>: This must be set to a <code class="literal">NamingContextFactory</code> provider URL. The <code class="literal">LoginIntialContext</code> is really just a wrapper around the <code class="literal">NamingContextFactory</code> that adds a JAAS login to the existing <code class="literal">NamingContextFactory</code> behavior.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>java.naming.factory.url.pkgs</strong></span>: For all JBoss JNDI provider this must be <code class="literal">org.jboss.naming:org.jnp.interfaces</code>. This property is essential for locating the <code class="literal">jnp:</code> and <code class="literal">java:</code> URL context factories of the JBoss JNDI provider.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>java.naming.security.principal</strong></span> (or <code class="literal">Context.SECURITY_PRINCIPAL</code>): The principal to authenticate. This may be either a <code class="literal">java.security.Principal</code> implementation or a string representing the name of a principal.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>java.naming.security.credentials</strong></span> (or <code class="literal">Context.SECURITY_CREDENTIALS</code>), The credentials that should be used to authenticate the principal, e.g., password, session key, etc.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>java.naming.security.protocol</strong></span>: (<code class="literal">Context.SECURITY_PROTOCOL</code>) This gives the name of the JAAS login module to use for the authentication of the principal and credentials.
+					</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="The_Naming_InitialContext_Factories-The_ORBInitialContextFactory">
+      ⁠</a>9.3.6. The ORBInitialContextFactory</h2></div></div></div><div class="para">
+				When using Sun's CosNaming it is necessary to use a different naming context factory from the default. CosNaming looks for the ORB in JNDI instead of using the ORB configured in <code class="literal">deploy/iiop-service.xml?</code>. It is necessary to set the global context factory to <code class="literal">org.jboss.iiop.naming.ORBInitialContextFactory</code>, which sets the ORB to JBoss's ORB. This is done in the <code class="literal">conf/jndi.properties</code> file:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span># DO NOT EDIT THIS FILE UNLESS YOU KNOW WHAT YOU ARE DOING
+<span xmlns="" class="line">​</span>#
+<span xmlns="" class="line">​</span>java.naming.factory.initial=org.jboss.iiop.naming.ORBInitialContextFactory
+<span xmlns="" class="line">​</span>java.naming.factory.url.pkgs=org.jboss.naming:org.jnp.interfaces
+<span xmlns="" class="line">​</span>
+</pre><div class="para">
+				It is also necessary to use <code class="literal">ORBInitialContextFactory</code> when using CosNaming in an application client.
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Naming_on_JBoss-JNDI_over_HTTP">
+      ⁠</a>9.4. JNDI over HTTP</h1></div></div></div><div class="para">
+			In addition to the legacy RMI/JRMP with a socket bootstrap protocol, JBoss provides support for accessing its JNDI naming service over HTTP.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="JNDI_over_HTTP-Accessing_JNDI_over_HTTP">
+      ⁠</a>9.4.1. Accessing JNDI over HTTP</h2></div></div></div><div class="para">
+				This capability is provided by <code class="literal">http-invoker.sar</code>. The structure of the <code class="literal">http-invoker.sar</code> is:
+			</div><pre class="programlisting">http-invoker.sar
+├── invoker.war
+│   └── WEB-INF
+│       ├── classes
+│       │   └── org
+│       │       └── jboss
+│       │           └── invocation
+│       │               └── http
+│       │                   └── servlet
+│       │                       ├── InvokerServlet.class
+│       │                       ├── InvokerServlet$GetCredentialAction.class
+│       │                       ├── InvokerServlet$GetPrincipalAction.class
+│       │                       ├── NamingFactoryServlet.class
+│       │                       └── ReadOnlyAccessFilter.class
+│       ├── jboss-web.xml
+│       └── web.xml
+└── META-INF
+    └── jboss-service.xml
+
+</pre><div class="para">
+				The <code class="literal">jboss-service.xml</code> descriptor defines the <code class="literal">HttpInvoker</code> and <code class="literal">HttpInvokerHA</code> MBeans. These services handle the routing of methods invocations that are sent via HTTP to the appropriate target MBean on the JMX bus.
+			</div><div class="para">
+				The <code class="literal">http-invoker.war</code> web application contains servlets that handle the details of the HTTP transport. The <code class="literal">NamingFactoryServlet</code> handles creation requests for the JBoss JNDI naming service <code class="literal">javax.naming.Context</code> implementation. The <code class="literal">InvokerServlet</code> handles invocations made by RMI/HTTP clients. The <code class="literal">ReadOnlyAccessFilter</code> allows one to secure the JNDI naming service while making a single JNDI context available for read-only access by unauthenticated clients.
+			</div><div class="figure"><a id="Accessing_JNDI_over_HTTP-The_HTTP_invoker_proxyserver_structure_for_a_JNDI_Context">
+      ⁠</a><div class="figure-contents"><div class="mediaobject" style="text-align: center"><img src="images/Chap3-9.png" align="middle" alt="The HTTP invoker proxy/server structure for a JNDI Context" style="text-align: middle"/></div></div><p class="title"><strong>Figure 9.2. The HTTP invoker proxy/server structure for a JNDI Context</strong></p></div><div class="para">
+				Before looking at the configurations let us look at the operation of the <code class="literal">http-invoker</code> services. <a class="xref" href="Naming_on_JBoss.html#Accessing_JNDI_over_HTTP-The_HTTP_invoker_proxyserver_structure_for_a_JNDI_Context">Figure 9.2, “The HTTP invoker proxy/server structure for a JNDI Context”</a> shows a logical view of the structure of a JBoss JNDI proxy and its relationship to the server side components of the <code class="literal">http-invoker</code>. The proxy is obtained from the <code class="literal">NamingFactoryServlet</code> using an <code class="literal">InitialContext</code> with the <code class="literal">Context.INITIAL_CONTEXT_FACTORY</code> property set to <code class="literal">org.jboss.naming.HttpNamingContextFactory</code>, and the <code class="literal">Context.PROVIDER_URL</code> property set to the HTTP URL of the <code class="literal">NamingFactoryServlet</code>. The resulting proxy is embedded in an <code class="literal">org.jnp.interfaces.NamingContext</code> instance that provides the <code class="literal">Context</code> interface implementation.
+			</div><div class="para">
+				The proxy is an instance of <code class="literal">org.jboss.invocation.http.interfaces.HttpInvokerProxy</code>, and implements the <code class="literal">org.jnp.interfaces.Naming</code> interface. Internally the <code class="literal">HttpInvokerProxy</code> contains an invoker that marshals the <code class="literal">Naming</code> interface method invocations to the <code class="literal">InvokerServlet</code> via HTTP posts. The <code class="literal">InvokerServlet</code> translates these posts into JMX invocations to the <code class="literal">NamingService</code>, and returns the invocation response back to the proxy in the HTTP post response.
+			</div><div class="para">
+				There are several configuration values that need to be set to tie all of these components together and <a class="xref" href="Naming_on_JBoss.html#Accessing_JNDI_over_HTTP-The_relationship_between_configuration_files_and_JNDIHTTP_component">Figure 9.3, “The relationship between configuration files and JNDI/HTTP component”</a> illustrates the relationship between configuration files and the corresponding components.
+			</div><div class="figure"><a id="Accessing_JNDI_over_HTTP-The_relationship_between_configuration_files_and_JNDIHTTP_component">
+      ⁠</a><div class="figure-contents"><div class="mediaobject" style="text-align: center"><img src="images/Chap3-10.png" align="middle" alt="The relationship between configuration files and JNDI/HTTP component" style="text-align: middle"/></div></div><p class="title"><strong>Figure 9.3. The relationship between configuration files and JNDI/HTTP component</strong></p></div><div class="para">
+				The <code class="literal">http-invoker.sar/META-INF/jboss-service.xml</code> descriptor defines the <code class="literal">HttpProxyFactory</code> that creates the <code class="literal">HttpInvokerProxy</code> for the <code class="literal">NamingService</code>. The attributes that need to be configured for the <code class="literal">HttpProxyFactory</code> include:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>InvokerName</strong></span>: The JMX <code class="literal">ObjectName</code> of the <code class="literal">NamingService</code> defined in the <code class="literal">conf/jboss-service.xml</code> descriptor. The standard setting used in the JBoss distributions is <code class="literal">jboss:service=Naming</code>.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>InvokerURL</strong></span> or <span class="bold bold"><strong>InvokerURLPrefix</strong></span> + InvokerURLSuffix + <span class="bold bold"><strong>UseHostName</strong></span>. You can specify the full HTTP URL to the <code class="literal">InvokerServlet</code> using the <code class="literal">InvokerURL</code> attribute, or you can specify the hostname independent parts of the URL and have the <code class="literal">HttpProxyFactory</code> fill them in. An example <code class="literal">InvokerURL</code> value would be <code class="literal">http://jbosshost1.dot.com:8080/invoker/JMXInvokerServlet</code>. This can be broken down into: 
+						<div class="itemizedlist"><ul><li class="listitem"><div class="para">
+									<span class="bold bold"><strong>InvokerURLPrefix</strong></span>: the URL prefix prior to the hostname. Typically this will be <code class="literal">http://</code> or <code class="literal">https://</code> if SSL is to be used.
+								</div></li><li class="listitem"><div class="para">
+									<span class="bold bold"><strong>InvokerURLSuffix</strong></span>: the URL suffix after the hostname. This will include the port number of the web server as well as the deployed path to the <code class="literal">InvokerServlet</code>. For the example <code class="literal">InvokerURL</code> value the <code class="literal">InvokerURLSuffix</code> would be <code class="literal">:8080/invoker/JMXInvokerServlet</code> without the quotes. The port number is determined by the web container service settings. The path to the <code class="literal">InvokerServlet</code> is specified in the <code class="literal">http-invoker.sar/invoker.war/WEB-INF/web.xml</code> descriptor.
+								</div></li><li class="listitem"><div class="para">
+									<span class="bold bold"><strong>UseHostName</strong></span>: a flag indicating if the hostname should be used in place of the host IP address when building the hostname portion of the full <code class="literal">InvokerURL</code>. If true, <code class="methodname">InetAddress.getLocalHost().getHostName</code> method will be used. Otherwise, the <code class="methodname">InetAddress.getLocalHost().getHostAddress()</code> method is used.
+								</div></li></ul></div>
+
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>ExportedInterface</strong></span>: The <code class="literal">org.jnp.interfaces.Naming</code> interface the proxy will expose to clients. The actual client of this proxy is the JBoss JNDI implementation <code class="literal">NamingContext</code> class, which JNDI client obtain from <code class="literal">InitialContext</code> lookups when using the JBoss JNDI provider.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>JndiName</strong></span>: The name in JNDI under which the proxy is bound. This needs to be set to a blank/empty string to indicate the interface should not be bound into JNDI. We can not use the JNDI to bootstrap itself. This is the role of the <code class="literal">NamingFactoryServlet</code>.
+					</div></li></ul></div><div class="para">
+				The <code class="literal">http-invoker.sar/invoker.war/WEB-INF/web.xml</code> descriptor defines the mappings of the <code class="literal">NamingFactoryServlet</code> and <code class="literal">InvokerServlet</code> along with their initialization parameters. The configuration of the <code class="literal">NamingFactoryServlet</code> relevant to JNDI/HTTP is the <code class="literal">JNDIFactory</code> entry which defines:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						A <code class="literal">namingProxyMBean</code> initialization parameter that maps to the <code class="literal">HttpProxyFactory</code> MBean name. This is used by the <code class="literal">NamingFactoryServlet</code> to obtain the <code class="literal">Naming</code> proxy which it will return in response to HTTP posts. For the default <code class="literal">http-invoker.sar/META-INF/jboss-service.xml</code> settings the name <code class="literal">jboss:service=invoker,type=http,target=Naming</code>.
+					</div></li><li class="listitem"><div class="para">
+						A proxy initialization parameter that defines the name of the <code class="literal">namingProxyMBean</code> attribute to query for the Naming proxy value. This defaults to an attribute name of <code class="literal">Proxy</code>.
+					</div></li><li class="listitem"><div class="para">
+						The servlet mapping for the <code class="literal">JNDIFactory</code> configuration. The default setting for the unsecured mapping is <code class="literal">/JNDIFactory/*</code>. This is relative to the context root of the <code class="literal">http-invoker.sar/invoker.war</code>, which by default is the WAR name minus the <code class="literal">.war</code> suffix.
+					</div></li></ul></div><div class="para">
+				The configuration of the <code class="literal">InvokerServlet</code> relevant to JNDI/HTTP is the <code class="literal">JMXInvokerServlet</code> which defines:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						The servlet mapping of the <code class="literal">InvokerServlet</code>. The default setting for the unsecured mapping is <code class="literal">/JMXInvokerServlet/*</code>. This is relative to the context root of the <code class="literal">http-invoker.sar/invoker.war</code>, which by default is the WAR name minus the <code class="literal">.war</code> suffix.
+					</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="JNDI_over_HTTP-Accessing_JNDI_over_HTTPS">
+      ⁠</a>9.4.2. Accessing JNDI over HTTPS</h2></div></div></div><div class="para">
+				To be able to access JNDI over HTTP/SSL you need to enable an SSL connector on the web container. The details of this are covered in the Integrating Servlet Containers for Tomcat. We will demonstrate the use of HTTPS with a simple example client that uses an HTTPS URL as the JNDI provider URL. We will provide an SSL connector configuration for the example, so unless you are interested in the details of the SSL connector setup, the example is self contained.
+			</div><div class="para">
+				We also provide a configuration of the <code class="literal">HttpProxyFactory</code> setup to use an HTTPS URL. The following example shows the section of the <code class="literal">http-invoker.sar</code><code class="literal">jboss-service.xml</code> descriptor that the example installs to provide this configuration. All that has changed relative to the standard HTTP configuration are the <code class="literal">InvokerURLPrefix</code> and <code class="literal">InvokerURLSuffix</code> attributes, which setup an HTTPS URL using the 8443 port.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- Expose the Naming service interface via HTTPS --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;mbean</span><span xmlns="" class="perl_Others"> code=</span><span xmlns="" class="perl_String">"org.jboss.invocation.http.server.HttpProxyFactory"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">       name=</span><span xmlns="" class="perl_String">"jboss:service=invoker,type=https,target=Naming"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!-- The Naming service we are proxying --&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"InvokerName"</span><span xmlns="" class="perl_Keyword">&gt;</span>jboss:service=Naming<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!-- Compose the invoker URL from the cluster node address --&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"InvokerURLPrefix"</span><span xmlns="" class="perl_Keyword">&gt;</span>https://<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"InvokerURLSuffix"</span><span xmlns="" class="perl_Keyword">&gt;</span>:8443/invoker/JMXInvokerServlet 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"UseHostName"</span><span xmlns="" class="perl_Keyword">&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"ExportedInterface"</span><span xmlns="" class="perl_Keyword">&gt;</span>org.jnp.interfaces.Naming 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"JndiName"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"ClientInterceptors"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;interceptors&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;interceptor&gt;</span>org.jboss.proxy.ClientMethodInterceptor 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/interceptor&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;interceptor&gt;</span>org.jboss.proxy.SecurityInterceptor
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/interceptor&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;interceptor&gt;</span>org.jboss.naming.interceptors.ExceptionInterceptor 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/interceptor&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;interceptor&gt;</span>org.jboss.invocation.InvokerInterceptor 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/interceptor&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/interceptors&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/mbean&gt;</span>
+</pre><div class="para">
+				At a minimum, a JNDI client using HTTPS requires setting up a HTTPS URL protocol handler. We will be using the Java Secure Socket Extension (JSSE) for HTTPS. The JSSE documentation does a good job of describing what is necessary to use HTTPS, and the following steps were needed to configure the example client shown in <a class="xref" href="Naming_on_JBoss.html#Accessing_JNDI_over_HTTPS-A_JNDI_client_that_uses_HTTPS_as_the_transport">Example 9.2, “A JNDI client that uses HTTPS as the transport”</a>:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						A protocol handler for HTTPS URLs must be made available to Java. The JSSE release includes an HTTPS handler in the <code class="literal">com.sun.net.ssl.internal.www.protocol</code> package. To enable the use of HTTPS URLs you include this package in the standard URL protocol handler search property, <code class="literal">java.protocol.handler.pkgs</code>. We set the <code class="literal">java.protocol.handler.pkgs</code> property in the Ant script.
+					</div></li><li class="listitem"><div class="para">
+						The JSSE security provider must be installed in order for SSL to work. This can be done either by installing the JSSE jars as an extension package, or programatically. We use the programmatic approach in the example since this is less intrusive. Line 18 of the <code class="literal">ExClient</code> code demonstrates how this is done.
+					</div></li><li class="listitem"><div class="para">
+						The JNDI provider URL must use HTTPS as the protocol. Lines 24-25 of the <code class="literal">ExClient</code> code specify an HTTP/SSL connection to the localhost on port 8443. The hostname and port are defined by the web container SSL connector.
+					</div></li><li class="listitem"><div class="para">
+						The validation of the HTTPS URL hostname against the server certificate must be disabled. By default, the JSSE HTTPS protocol handler employs a strict validation of the hostname portion of the HTTPS URL against the common name of the server certificate. This is the same check done by web browsers when you connect to secured web site. We are using a self-signed server certificate that uses a common name of "<code class="literal">Chapter 8 SSL Example</code>" rather than a particular hostname, and this is likely to be common in development environments or intranets. The JBoss <code class="literal">HttpInvokerProxy</code> will override the default hostname checking if a <code class="literal">org.jboss.security.ignoreHttpsHost</code> system property exists and has a value of true. We set the <code class="literal">org.jboss.security.ignoreHttpsHost</code> property to true in the Ant script.
+					</div></li></ul></div><div class="example"><a id="Accessing_JNDI_over_HTTPS-A_JNDI_client_that_uses_HTTPS_as_the_transport">
+      ⁠</a><p class="title"><strong>Example 9.2. A JNDI client that uses HTTPS as the transport</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span>package org.<span xmlns="" class="perl_Function">jboss</span>.<span xmlns="" class="perl_Function">chap3</span>.<span xmlns="" class="perl_Function">ex1</span>;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">import java.security.Security;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">import java.util.Properties;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">import javax.naming.Context;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">import javax.naming.InitialContext;</span>
+<span xmlns="" class="line">​</span>                    
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> ExClient
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">static</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">main</span>(String args[]) <span xmlns="" class="perl_Keyword">throws</span> Exception
+<span xmlns="" class="line">​</span>    {
+<span xmlns="" class="line">​</span>        Properties env = <span xmlns="" class="perl_Keyword">new</span> Properties();
+<span xmlns="" class="line">​</span>        env.<span xmlns="" class="perl_Function">setProperty</span>(Context.<span xmlns="" class="perl_Function">INITIAL_CONTEXT_FACTORY</span>,
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_String">"org.jboss.naming.HttpNamingContextFactory"</span>);
+<span xmlns="" class="line">​</span>        env.<span xmlns="" class="perl_Function">setProperty</span>(Context.<span xmlns="" class="perl_Function">PROVIDER_URL</span>,
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_String">"https://localhost:8443/invoker/JNDIFactorySSL"</span>);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>        Context ctx = <span xmlns="" class="perl_Keyword">new</span> InitialContext(env);
+<span xmlns="" class="line">​</span>        System.<span xmlns="" class="perl_Function">out</span>.<span xmlns="" class="perl_Function">println</span>(<span xmlns="" class="perl_String">"Created InitialContext, env="</span> + env);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>        Object data = ctx.<span xmlns="" class="perl_Function">lookup</span>(<span xmlns="" class="perl_String">"jmx/invoker/RMIAdaptor"</span>);
+<span xmlns="" class="line">​</span>        System.<span xmlns="" class="perl_Function">out</span>.<span xmlns="" class="perl_Function">println</span>(<span xmlns="" class="perl_String">"lookup(jmx/invoker/RMIAdaptor): "</span> + data);
+<span xmlns="" class="line">​</span>    }
+<span xmlns="" class="line">​</span>}
+</pre></div></div><div class="para">
+				To test the client, first build the chapter 3 example to create the <code class="literal">chap3</code> configuration fileset.
+			</div><pre class="programlisting">[examples]$ ant -Dchap=naming config</pre><div class="para">
+				Next, start the server using the <code class="literal">naming</code> configuration fileset:
+			</div><pre class="programlisting">[bin]$ sh run.sh -c naming</pre><div class="para">
+				And finally, run the <code class="literal">ExClient</code> using:
+			</div><pre class="programlisting">[examples]$ ant -Dchap=naming -Dex=1 run-example
+...
+run-example1:
+
+[java] Created InitialContext, env={java.naming. \ 
+provider.url=https://localhost:8443/invoker/JNDIFactorySSL, java.naming. \
+factory.initial=org.jboss.naming.HttpNamingContextFactory}
+     [java] lookup(jmx/invoker/RMIAdaptor): org.jboss.invocation.jrmp. \
+     interfaces.JRMPInvokerP
+roxy@cac3fa
+</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="JNDI_over_HTTP-Securing_Access_to_JNDI_over_HTTP">
+      ⁠</a>9.4.3. Securing Access to JNDI over HTTP</h2></div></div></div><div class="para">
+				One benefit to accessing JNDI over HTTP is that it is easy to secure access to the JNDI <code class="literal">InitialContext</code> factory as well as the naming operations using standard web declarative security. This is possible because the server side handling of the JNDI/HTTP transport is implemented with two servlets. These servlets are included in the <code class="literal">http-invoker.sar/invoker.war</code> directory found in the <code class="literal">default</code> and <code class="literal">all</code> server profile deploy directories as shown previously. To enable secured access to JNDI you need to edit the <code class="literal">invoker.war/WEB-INF/web.xml</code> descriptor and remove all unsecured servlet mappings. For example, the <code class="literal">web.xml</code> descriptor shown in <a class="xref" href="Naming_on_JBoss.html#Securing_Access_to_JNDI_over_HTTP-An_example_web.xml_descriptor_for_secured_access_to_the_JNDI_servlets">Example 9.3, “An example web.xml descriptor for secured access to the JNDI servlets”</a> only allows access to the <code class="literal">invoker.war</code> servlets if the user has been authenticated and has a role of <code class="literal">HttpInvoker</code>.
+			</div><div class="example"><a id="Securing_Access_to_JNDI_over_HTTP-An_example_web.xml_descriptor_for_secured_access_to_the_JNDI_servlets">
+      ⁠</a><p class="title"><strong>Example 9.3. An example web.xml descriptor for secured access to the JNDI servlets</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;?xml</span> version="1.0" encoding="UTF-8"<span xmlns="" class="perl_Keyword">?&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_DataType">&lt;!DOCTYPE </span>web-app PUBLIC
+<span xmlns="" class="line">​</span>          "-//Sun Microsystems, Inc.//DTD Web Application 2.3//EN"
+<span xmlns="" class="line">​</span>          "http://java.sun.com/dtd/web-app_2_3.dtd"<span xmlns="" class="perl_DataType">&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;web-app&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!-- </span><span xmlns="" class="perl_Alert">###</span><span xmlns="" class="perl_Comment"> Servlets --&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;servlet&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;servlet-name&gt;</span>JMXInvokerServlet<span xmlns="" class="perl_Keyword">&lt;/servlet-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;servlet-class&gt;</span>
+<span xmlns="" class="line">​</span>            org.jboss.invocation.http.servlet.InvokerServlet
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/servlet-class&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;load-on-startup&gt;</span>1<span xmlns="" class="perl_Keyword">&lt;/load-on-startup&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/servlet&gt;</span>   <span xmlns="" class="perl_Keyword">&lt;servlet&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;servlet-name&gt;</span>JNDIFactory<span xmlns="" class="perl_Keyword">&lt;/servlet-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;servlet-class&gt;</span>
+<span xmlns="" class="line">​</span>            org.jboss.invocation.http.servlet.NamingFactoryServlet
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/servlet-class&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;init-param&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;param-name&gt;</span>namingProxyMBean<span xmlns="" class="perl_Keyword">&lt;/param-name&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;param-value&gt;</span>jboss:service=invoker,type=http,target=Naming<span xmlns="" class="perl_Keyword">&lt;/param-value&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/init-param&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;init-param&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;param-name&gt;</span>proxyAttribute<span xmlns="" class="perl_Keyword">&lt;/param-name&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;param-value&gt;</span>Proxy<span xmlns="" class="perl_Keyword">&lt;/param-value&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/init-param&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;load-on-startup&gt;</span>2<span xmlns="" class="perl_Keyword">&lt;/load-on-startup&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/servlet&gt;</span>  
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!-- </span><span xmlns="" class="perl_Alert">###</span><span xmlns="" class="perl_Comment"> Servlet Mappings --&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;servlet-mapping&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;servlet-name&gt;</span>JNDIFactory<span xmlns="" class="perl_Keyword">&lt;/servlet-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;url-pattern&gt;</span>/restricted/JNDIFactory/*<span xmlns="" class="perl_Keyword">&lt;/url-pattern&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/servlet-mapping&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;servlet-mapping&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;servlet-name&gt;</span>JMXInvokerServlet<span xmlns="" class="perl_Keyword">&lt;/servlet-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;url-pattern&gt;</span>/restricted/JMXInvokerServlet/*<span xmlns="" class="perl_Keyword">&lt;/url-pattern&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/servlet-mapping&gt;</span>   <span xmlns="" class="perl_Keyword">&lt;security-constraint&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;web-resource-collection&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;web-resource-name&gt;</span>HttpInvokers<span xmlns="" class="perl_Keyword">&lt;/web-resource-name&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;description&gt;</span>An example security config that only allows users with
+<span xmlns="" class="line">​</span>                the role HttpInvoker to access the HTTP invoker servlets <span xmlns="" class="perl_Keyword">&lt;/description&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;url-pattern&gt;</span>/restricted/*<span xmlns="" class="perl_Keyword">&lt;/url-pattern&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;http-method&gt;</span>GET<span xmlns="" class="perl_Keyword">&lt;/http-method&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;http-method&gt;</span>POST<span xmlns="" class="perl_Keyword">&lt;/http-method&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/web-resource-collection&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;auth-constraint&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;role-name&gt;</span>HttpInvoker<span xmlns="" class="perl_Keyword">&lt;/role-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/auth-constraint&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/security-constraint&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;login-config&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;auth-method&gt;</span>BASIC<span xmlns="" class="perl_Keyword">&lt;/auth-method&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;realm-name&gt;</span>JBoss HTTP Invoker<span xmlns="" class="perl_Keyword">&lt;/realm-name&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/login-config&gt;</span>   <span xmlns="" class="perl_Keyword">&lt;security-role&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;role-name&gt;</span>HttpInvoker<span xmlns="" class="perl_Keyword">&lt;/role-name&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/security-role&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/web-app&gt;</span>
+</pre></div></div><div class="para">
+				The <code class="literal">web.xml</code> descriptor only defines which servlets are secured, and which roles are allowed to access the secured servlets. You must additionally define the security domain that will handle the authentication and authorization for the war. This is done through the <code class="literal">jboss-web.xml</code> descriptor, and an example that uses the <code class="literal">http-invoker</code> security domain is given below.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;jboss-web&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;security-domain&gt;</span>java:/jaas/http-invoker<span xmlns="" class="perl_Keyword">&lt;/security-domain&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/jboss-web&gt;</span>
+</pre><div class="para">
+				The <code class="literal">security-domain</code> element defines the name of the security domain that will be used for the JAAS login module configuration used for authentication and authorization. 
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="JNDI_over_HTTP-Securing_Access_to_JNDI_with_a_Read_Only_Unsecured_Context">
+      ⁠</a>9.4.4. Securing Access to JNDI with a Read-Only Unsecured Context</h2></div></div></div><div class="para">
+				Another feature available for the JNDI/HTTP naming service is the ability to define a context that can be accessed by unauthenticated users in read-only mode. This can be important for services used by the authentication layer. For example, the <code class="literal">SRPLoginModule</code> needs to lookup the SRP server interface used to perform authentication. The rest of this section explains how read-only works in JBoss Enterprise Application Platform.
+			</div><div class="para">
+				First, the <code class="literal">ReadOnlyJNDIFactory</code> is declared in <code class="literal">invoker.sar/WEB-INF/web.xml</code>. It will be mapped to <code class="literal">/invoker/ReadOnlyJNDIFactory</code>.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;servlet&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;servlet-name&gt;</span>ReadOnlyJNDIFactory<span xmlns="" class="perl_Keyword">&lt;/servlet-name&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;description&gt;</span>A servlet that exposes the JBoss JNDI Naming service stub
+<span xmlns="" class="line">​</span>          through http, but only for a single read-only context. The return content 
+<span xmlns="" class="line">​</span>          is serialized MarshalledValue containing the org.jnp.interfaces.Naming 
+<span xmlns="" class="line">​</span>          stub.
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/description&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;servlet-class&gt;</span>org.jboss.invocation.http.servlet.NamingFactoryServlet<span xmlns="" class="perl_Keyword">&lt;/servlet-class&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;init-param&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;param-name&gt;</span>namingProxyMBean<span xmlns="" class="perl_Keyword">&lt;/param-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;param-value&gt;</span>jboss:service=invoker,type=http,target=Naming,readonly=true<span xmlns="" class="perl_Keyword">&lt;/param-value&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/init-param&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;init-param&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;param-name&gt;</span>proxyAttribute<span xmlns="" class="perl_Keyword">&lt;/param-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;param-value&gt;</span>Proxy<span xmlns="" class="perl_Keyword">&lt;/param-value&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/init-param&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;load-on-startup&gt;</span>2<span xmlns="" class="perl_Keyword">&lt;/load-on-startup&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/servlet&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+<span xmlns="" class="line">​</span>                        
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;servlet-mapping&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;servlet-name&gt;</span>ReadOnlyJNDIFactory<span xmlns="" class="perl_Keyword">&lt;/servlet-name&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;url-pattern&gt;</span>/ReadOnlyJNDIFactory/*<span xmlns="" class="perl_Keyword">&lt;/url-pattern&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/servlet-mapping&gt;</span>
+</pre><div class="para">
+				The factory only provides a JNDI stub which needs to be connected to an invoker. Here the invoker is <code class="literal">jboss:service=invoker,type=http,target=Naming,readonly=true</code>. This invoker is declared in the <code class="filename">http-invoker.sar/META-INF/jboss-service.xml</code> file.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;mbean</span><span xmlns="" class="perl_Others"> code=</span><span xmlns="" class="perl_String">"org.jboss.invocation.http.server.HttpProxyFactory"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">      name=</span><span xmlns="" class="perl_String">"jboss:service=invoker,type=http,target=Naming,readonly=true"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"InvokerName"</span><span xmlns="" class="perl_Keyword">&gt;</span>jboss:service=Naming<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"InvokerURLPrefix"</span><span xmlns="" class="perl_Keyword">&gt;</span>http://<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"InvokerURLSuffix"</span><span xmlns="" class="perl_Keyword">&gt;</span>:8080/invoker/readonly/JMXInvokerServlet<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"UseHostName"</span><span xmlns="" class="perl_Keyword">&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"ExportedInterface"</span><span xmlns="" class="perl_Keyword">&gt;</span>org.jnp.interfaces.Naming<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"JndiName"</span><span xmlns="" class="perl_Keyword">&gt;&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"ClientInterceptors"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;interceptors&gt;</span>
+<span xmlns="" class="line">​</span>             <span xmlns="" class="perl_Keyword">&lt;interceptor&gt;</span>org.jboss.proxy.ClientMethodInterceptor<span xmlns="" class="perl_Keyword">&lt;/interceptor&gt;</span>
+<span xmlns="" class="line">​</span>             <span xmlns="" class="perl_Keyword">&lt;interceptor&gt;</span>org.jboss.proxy.SecurityInterceptor<span xmlns="" class="perl_Keyword">&lt;/interceptor&gt;</span>
+<span xmlns="" class="line">​</span>             <span xmlns="" class="perl_Keyword">&lt;interceptor&gt;</span>org.jboss.naming.interceptors.ExceptionInterceptor<span xmlns="" class="perl_Keyword">&lt;/interceptor&gt;</span>
+<span xmlns="" class="line">​</span>             <span xmlns="" class="perl_Keyword">&lt;interceptor&gt;</span>org.jboss.invocation.InvokerInterceptor<span xmlns="" class="perl_Keyword">&lt;/interceptor&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;/interceptors&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/mbean&gt;</span>
+</pre><div class="para">
+				The proxy on the client side needs to talk back to a specific invoker servlet on the server side. The configuration here has the actual invocations going to <code class="literal">/invoker/readonly/JMXInvokerServlet</code>. This is actually the standard <code class="literal">JMXInvokerServlet</code> with a read-only filter attached.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;filter&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;filter-name&gt;</span>ReadOnlyAccessFilter<span xmlns="" class="perl_Keyword">&lt;/filter-name&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;filter-class&gt;</span>org.jboss.invocation.http.servlet.ReadOnlyAccessFilter<span xmlns="" class="perl_Keyword">&lt;/filter-class&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;init-param&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;param-name&gt;</span>readOnlyContext<span xmlns="" class="perl_Keyword">&lt;/param-name&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;param-value&gt;</span>readonly<span xmlns="" class="perl_Keyword">&lt;/param-value&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;description&gt;</span>The top level JNDI context the filter will enforce
+<span xmlns="" class="line">​</span>             read-only access on. If specified only Context.lookup operations
+<span xmlns="" class="line">​</span>             will be allowed on this context. Another other operations or
+<span xmlns="" class="line">​</span>             lookups on any other context will fail. Do not associate this
+<span xmlns="" class="line">​</span>             filter with the JMXInvokerServlets if you want unrestricted
+<span xmlns="" class="line">​</span>             access. <span xmlns="" class="perl_Keyword">&lt;/description&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;/init-param&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;init-param&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;param-name&gt;</span>invokerName<span xmlns="" class="perl_Keyword">&lt;/param-name&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;param-value&gt;</span>jboss:service=Naming<span xmlns="" class="perl_Keyword">&lt;/param-value&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;description&gt;</span>The JMX ObjectName of the naming service mbean <span xmlns="" class="perl_Keyword">&lt;/description&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;/init-param&gt;</span>
+<span xmlns="" class="line">​</span> <span xmlns="" class="perl_Keyword">&lt;/filter&gt;</span>
+<span xmlns="" class="line">​</span> 
+<span xmlns="" class="line">​</span> <span xmlns="" class="perl_Keyword">&lt;filter-mapping&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;filter-name&gt;</span>ReadOnlyAccessFilter<span xmlns="" class="perl_Keyword">&lt;/filter-name&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;url-pattern&gt;</span>/readonly/*<span xmlns="" class="perl_Keyword">&lt;/url-pattern&gt;</span>
+<span xmlns="" class="line">​</span> <span xmlns="" class="perl_Keyword">&lt;/filter-mapping&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span> <span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+<span xmlns="" class="line">​</span> <span xmlns="" class="perl_Comment">&lt;!-- A mapping for the JMXInvokerServlet that only allows invocations </span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">         of lookups under a read-only context. This is enforced by the</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">         ReadOnlyAccessFilter </span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">         --&gt;</span>
+<span xmlns="" class="line">​</span> <span xmlns="" class="perl_Keyword">&lt;servlet-mapping&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;servlet-name&gt;</span>JMXInvokerServlet<span xmlns="" class="perl_Keyword">&lt;/servlet-name&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;url-pattern&gt;</span>/readonly/JMXInvokerServlet/*<span xmlns="" class="perl_Keyword">&lt;/url-pattern&gt;</span>
+<span xmlns="" class="line">​</span> <span xmlns="" class="perl_Keyword">&lt;/servlet-mapping&gt;</span>
+</pre><div class="para">
+				The <code class="literal">readOnlyContext</code> parameter is set to <code class="literal">readonly</code> which means that when you access JBoss through the <code class="literal">ReadOnlyJNDIFactory</code>, you will only be able to access data in the <code class="literal">readonly</code> context. Here is a code fragment that illustrates the usage:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>Properties env = <span xmlns="" class="perl_Keyword">new</span> Properties();
+<span xmlns="" class="line">​</span>env.<span xmlns="" class="perl_Function">setProperty</span>(Context.<span xmlns="" class="perl_Function">INITIAL_CONTEXT_FACTORY</span>, 
+<span xmlns="" class="line">​</span>                <span xmlns="" class="perl_String">"org.jboss.naming.HttpNamingContextFactory"</span>);
+<span xmlns="" class="line">​</span>env.<span xmlns="" class="perl_Function">setProperty</span>(Context.<span xmlns="" class="perl_Function">PROVIDER_URL</span>, 
+<span xmlns="" class="line">​</span>                <span xmlns="" class="perl_String">"http://localhost:8080/invoker/ReadOnlyJNDIFactory"</span>);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>Context ctx2 = <span xmlns="" class="perl_Keyword">new</span> InitialContext(env);
+<span xmlns="" class="line">​</span>Object data = ctx2.<span xmlns="" class="perl_Function">lookup</span>(<span xmlns="" class="perl_String">"readonly/data"</span>);
+</pre><div class="para">
+				Attempts to look up any objects outside of the readonly context will fail. Note that JBoss does not ship with any data in the <code class="literal">readonly</code> context, so the readonly context will not be bound usable unless you create it.
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Naming_on_JBoss-Additional_Naming_MBeans">
+      ⁠</a>9.5. Additional Naming MBeans</h1></div></div></div><div class="para">
+			In addition to the <code class="literal">NamingService</code> MBean that configures an embedded JBossNS server within JBoss, there are several additional MBean services related to naming that ship with JBoss. They are <code class="literal">JndiBindingServiceMgr</code>, <code class="literal">NamingAlias</code>, <code class="literal">ExternalContext</code>, and <code class="literal">JNDIView</code>.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="Additional_Naming_MBeans-JNDI_Binding_Manager">
+      ⁠</a>9.5.1. JNDI Binding Manager</h2></div></div></div><div class="para">
+				The JNDI binding manager service allows you to quickly bind objects into JNDI for use by application code. The MBean class for the binding service is <code class="literal">org.jboss.naming.JNDIBindingServiceMgr</code>. It has a single attribute, <code class="literal">BindingsConfig</code>, which accepts an XML document that conforms to the <code class="literal">jndi-binding-service_1_0.xsd</code> schema. The content of the <code class="literal">BindingsConfig</code> attribute is unmarshaled using the JBossXB framework. The following is an MBean definition that shows the most basic form usage of the JNDI binding manager service.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;mbean</span><span xmlns="" class="perl_Others"> code=</span><span xmlns="" class="perl_String">"org.jboss.naming.JNDIBindingServiceMgr"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">       name=</span><span xmlns="" class="perl_String">"jboss.tests:name=example1"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"BindingsConfig"</span><span xmlns="" class="perl_Others"> serialDataType=</span><span xmlns="" class="perl_String">"jbxb"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;jndi:bindings</span><span xmlns="" class="perl_Others"> xmlns:xs=</span><span xmlns="" class="perl_String">"http://www.w3.org/2001/XMLSchema-instance"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">                       xmlns:jndi=</span><span xmlns="" class="perl_String">"urn:jboss:jndi-binding-service:1.0"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">                       xs:schemaLocation=</span><span xmlns="" class="perl_String">"urn:jboss:jndi-binding-service  \</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_String">         resource:jndi-binding-service_1_0.xsd"</span><span xmlns="" class="perl_Keyword">&gt;</span> 
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;jndi:binding</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"bindexample/message"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                <span xmlns="" class="perl_Keyword">&lt;jndi:value</span><span xmlns="" class="perl_Others"> trim=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                    Hello, JNDI!
+<span xmlns="" class="line">​</span>                <span xmlns="" class="perl_Keyword">&lt;/jndi:value&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;/jndi:binding&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/jndi:bindings&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/mbean&gt;</span>
+</pre><div class="para">
+				This binds the text string "<code class="literal">Hello, JNDI!</code>" under the JNDI name <code class="literal">bindexample/message</code>. An application would look up the value just as it would for any other JNDI value. The <code class="literal">trim</code> attribute specifies that leading and trailing whitespace should be ignored. The use of the attribute here is purely for illustrative purposes as the default value is true.
+			</div><pre class="programlisting">InitialContext ctx  = new InitialContext();
+String         text = (String) ctx.lookup("bindexample/message");
+</pre><div class="para">
+				String values themselves are not that interesting. If a JavaBeans property editor is available, the desired class name can be specified using the <code class="literal">type</code> attribute
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;jndi:binding</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"urls/jboss-home"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;jndi:value</span><span xmlns="" class="perl_Others"> type=</span><span xmlns="" class="perl_String">"java.net.URL"</span><span xmlns="" class="perl_Keyword">&gt;</span>http://www.jboss.org<span xmlns="" class="perl_Keyword">&lt;/jndi:value&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/jndi:binding&gt;</span>
+</pre><div class="para">
+				The <code class="literal">editor</code> attribute can be used to specify a particular property editor to use.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;jndi:binding</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hosts/localhost"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;jndi:value</span><span xmlns="" class="perl_Others"> editor=</span><span xmlns="" class="perl_String">"org.jboss.util.propertyeditor.InetAddressEditor"</span><span xmlns="" class="perl_Keyword">&gt;</span> 
+<span xmlns="" class="line">​</span>        127.0.0.1 
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/jndi:value&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/jndi:binding&gt;</span>
+</pre><div class="para">
+				For more complicated structures, any JBossXB-ready schema may be used. The following example shows how a <code class="literal">java.util.Properties</code> object would be mapped.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;jndi:binding</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"maps/testProps"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;java:properties</span><span xmlns="" class="perl_Others"> xmlns:java=</span><span xmlns="" class="perl_String">"urn:jboss:java-properties"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">                     xmlns:xs=</span><span xmlns="" class="perl_String">"http://www.w3.org/2001/XMLSchema-instance"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">                     xs:schemaLocation=</span><span xmlns="" class="perl_String">"urn:jboss:java-properties \</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_String">       resource:java-properties_1_0.xsd"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;java:property&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;java:key&gt;</span>key1<span xmlns="" class="perl_Keyword">&lt;/java:key&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;java:value&gt;</span>value1<span xmlns="" class="perl_Keyword">&lt;/java:value&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/java:property&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;java:property&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;java:key&gt;</span>key2<span xmlns="" class="perl_Keyword">&lt;/java:key&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;java:value&gt;</span>value2<span xmlns="" class="perl_Keyword">&lt;/java:value&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/java:property&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/java:properties&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/jndi:binding&gt;</span>
+</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="Additional_Naming_MBeans-The_org.jboss.naming.NamingAlias_MBean">
+      ⁠</a>9.5.2. The org.jboss.naming.NamingAlias MBean</h2></div></div></div><div class="para">
+				The <code class="literal">NamingAlias</code> MBean is a simple utility service that allows you to create an alias in the form of a JNDI <code class="literal">javax.naming.LinkRef</code> from one JNDI name to another. This is similar to a symbolic link in the Unix file system. To an alias you add a configuration of the <code class="literal">NamingAlias</code> MBean to the <code class="literal">jboss-service.xml</code> configuration file. The configurable attributes of the <code class="literal">NamingAlias</code> service are as follows:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>FromName</strong></span>: The location where the <code class="literal">LinkRef</code> is bound under JNDI.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>ToName</strong></span>: The to name of the alias. This is the target name to which the <code class="literal">LinkRef</code> refers. The name is a URL, or a name to be resolved relative to the <code class="literal">InitialContext</code>, or if the first character of the name is a dot (<code class="literal">.</code>), the name is relative to the context in which the link is bound.
+					</div></li></ul></div><div class="para">
+				The following example provides a mapping of the JNDI name <code class="literal">QueueConnectionFactory</code> to the name <code class="literal">ConnectionFactory</code>.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;mbean</span><span xmlns="" class="perl_Others"> code=</span><span xmlns="" class="perl_String">"org.jboss.naming.NamingAlias"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">       name=</span><span xmlns="" class="perl_String">"jboss.mq:service=NamingAlias,fromName=QueueConnectionFactory"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"ToName"</span><span xmlns="" class="perl_Keyword">&gt;</span>ConnectionFactory<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"FromName"</span><span xmlns="" class="perl_Keyword">&gt;</span>QueueConnectionFactory<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/mbean&gt;</span>
+</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="Additional_Naming_MBeans-org.jboss.naming.ExternalContext_MBean">
+      ⁠</a>9.5.3. org.jboss.naming.ExternalContext MBean</h2></div></div></div><div class="para">
+				The <code class="literal">ExternalContext</code> MBean allows you to federate external JNDI contexts into the server JNDI namespace. The term external refers to any naming service external to the JBossNS naming service running inside of the server VM. You can incorporate LDAP servers, file systems, DNS servers, and so on, even if the JNDI provider root context is not serializable. The federation can be made available to remote clients if the naming service supports remote access.
+			</div><div class="para">
+				To incorporate an external JNDI naming service, you have to add a configuration of the <code class="literal">ExternalContext</code> MBean service to the <code class="literal">jboss-service.xml</code> configuration file. The configurable attributes of the <code class="literal">ExternalContext</code> service are as follows:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>JndiName</strong></span>: The JNDI name under which the external context is to be bound.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>RemoteAccess</strong></span>: A boolean flag indicating if the external <code class="literal">InitialContext</code> should be bound using a <code class="literal">Serializable</code> form that allows a remote client to create the external <code class="literal">InitialContext</code>. When a remote client looks up the external context via the JBoss JNDI <code class="literal">InitialContext</code>, they effectively create an instance of the external <code class="literal">InitialContext</code> using the same env properties passed to the <code class="literal">ExternalContext</code> MBean. This will only work if the client can do a <code class="literal">new InitialContext(env)</code> remotely. This requires that the <code class="literal">Context.PROVIDER_URL</code> value of env is resolvable in the remote VM that is accessing the context. This should work for the LDAP example. For the file system example this most likely will not work unless the file system path refers to a common network path. If this property is not given it defaults to false.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>CacheContext</strong></span>: The <code class="literal">cacheContext</code> flag. When set to true, the external <code class="literal">Context</code> is only created when the MBean is started and then stored as an in memory object until the MBean is stopped. If cacheContext is set to false, the external <code class="literal">Context</code> is created on each lookup using the MBean properties and InitialContext class. When the uncached <code class="literal">Context</code> is looked up by a client, the client should invoke <code class="literal">close()</code> on the Context to prevent resource leaks.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>InitialContext</strong></span>: The fully qualified class name of the <code class="literal">InitialContext</code> implementation to use. Must be one of: <code class="literal">javax.naming.InitialContext</code>, <code class="literal">javax.naming.directory.InitialDirContext</code> or <code class="literal">javax.naming.ldap.InitialLdapContext</code>. In the case of the <code class="literal">InitialLdapContext</code> a null <code class="literal">Controls</code> array is used. The default is <code class="literal">javax.naming.InitialContex</code>.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>Properties</strong></span>: The <code class="literal">Properties</code> attribute contains the JNDI properties for the external <code class="literal">InitialContext</code>. The input should be the text equivalent to what would go into a <code class="literal">jndi.properties</code> file.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>PropertiesURL</strong></span>: This set the <code class="literal">jndi.properties</code> information for the external <code class="literal">InitialContext</code> from an external properties file. This is either a URL, string or a classpath resource name. Examples are as follows:
+					</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+								file:///config/myldap.properties
+							</div></li><li class="listitem"><div class="para">
+								http://config.mycompany.com/myldap.properties
+							</div></li><li class="listitem"><div class="para">
+								/conf/myldap.properties
+							</div></li><li class="listitem"><div class="para">
+								myldap.properties
+							</div></li></ul></div></li></ul></div><div class="para">
+				The MBean definition below shows a binding to an external LDAP context into the JBoss JNDI namespace under the name <code class="literal">external/ldap/jboss</code>.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- Bind a remote LDAP server --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;mbean</span><span xmlns="" class="perl_Others"> code=</span><span xmlns="" class="perl_String">"org.jboss.naming.ExternalContext"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">       name=</span><span xmlns="" class="perl_String">"jboss.jndi:service=ExternalContext,jndiName=external/ldap/jboss"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"JndiName"</span><span xmlns="" class="perl_Keyword">&gt;</span>external/ldap/jboss<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"Properties"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>        java.naming.factory.initial=com.sun.jndi.ldap.LdapCtxFactory
+<span xmlns="" class="line">​</span>        java.naming.provider.url=ldap://ldaphost.jboss.org:389/o=jboss.org
+<span xmlns="" class="line">​</span>        java.naming.security.principal=cn=Directory Manager
+<span xmlns="" class="line">​</span>        java.naming.security.authentication=simple
+<span xmlns="" class="line">​</span>        java.naming.security.credentials=secret
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"InitialContext"</span><span xmlns="" class="perl_Keyword">&gt;</span> javax.naming.ldap.InitialLdapContext <span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"RemoteAccess"</span><span xmlns="" class="perl_Keyword">&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/mbean&gt;</span>
+</pre><div class="para">
+				With this configuration, you can access the external LDAP context located at <code class="literal">ldap://ldaphost.jboss.org:389/o=jboss.org</code> from within the JBoss VM using the following code fragment:
+			</div><pre class="programlisting">InitialContext iniCtx = new InitialContext();
+LdapContext ldapCtx = iniCtx.lookup("external/ldap/jboss");
+</pre><div class="para">
+				Using the same code fragment outside of the server VM will work in this case because the <code class="literal">RemoteAccess</code> property was set to true. If it were set to false, it would not work because the remote client would receive a <code class="literal">Reference</code> object with an <code class="literal">ObjectFactory</code> that would not be able to recreate the external <code class="literal">InitialContext</code>.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- Bind the /usr/local file system directory  --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;mbean</span><span xmlns="" class="perl_Others"> code=</span><span xmlns="" class="perl_String">"org.jboss.naming.ExternalContext"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">       name=</span><span xmlns="" class="perl_String">"jboss.jndi:service=ExternalContext,jndiName=external/fs/usr/local"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"JndiName"</span><span xmlns="" class="perl_Keyword">&gt;</span>external/fs/usr/local<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"Properties"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>        java.naming.factory.initial=com.sun.jndi.fscontext.RefFSContextFactory
+<span xmlns="" class="line">​</span>        java.naming.provider.url=file:///usr/local
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"InitialContext"</span><span xmlns="" class="perl_Keyword">&gt;</span>javax.naming.IntialContext<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/mbean&gt;</span>
+</pre><div class="para">
+				This configuration describes binding a local file system directory <code class="literal">/usr/local</code> into the JBoss JNDI namespace under the name <code class="literal">external/fs/usr/local</code>.
+			</div><div class="para">
+				With this configuration, you can access the external file system context located at <code class="literal">file:///usr/local</code> from within the JBoss VM using the following code fragment:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>InitialContext iniCtx = <span xmlns="" class="perl_Keyword">new</span> InitialContext();
+<span xmlns="" class="line">​</span>                Context ldapCtx = iniCtx.<span xmlns="" class="perl_Function">lookup</span>(<span xmlns="" class="perl_String">"external/fs/usr/local"</span>);
+</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="Additional_Naming_MBeans-The_org.jboss.naming.JNDIView_MBean">
+      ⁠</a>9.5.4. The org.jboss.naming.JNDIView MBean</h2></div></div></div><div class="para">
+				The JNDIView MBean allows the user to view the JNDI namespace tree as it exists in the server using the JMX agent view interface. To view the JBoss JNDI namespace using the JNDIView MBean, you connect to the JMX Agent View using the http interface. The default settings put this at <code class="literal">http://localhost:8080/jmx-console/</code>. On this page you will see a section that lists the registered MBeans sorted by domain. It should look something like that shown in <a class="xref" href="Naming_on_JBoss.html#The_org.jboss.naming.JNDIView_MBean-The_JMX_Console_view_of_the_configured_JBoss_MBeans">Figure 9.4, “The JMX Console view of the configured JBoss MBeans”</a>.
+			</div><div class="figure"><a id="The_org.jboss.naming.JNDIView_MBean-The_JMX_Console_view_of_the_configured_JBoss_MBeans">
+      ⁠</a><div class="figure-contents"><div class="mediaobject" style="text-align: center"><img src="images/jndiview-1.png" align="middle" alt="The JMX Console view of the configured JBoss MBeans" style="text-align: middle"/></div></div><p class="title"><strong>Figure 9.4. The JMX Console view of the configured JBoss MBeans</strong></p></div><div class="para">
+				Selecting the JNDIView link takes you to the JNDIView MBean view, which will have a list of the JNDIView MBean operations. This view should look similar to that shown in <a class="xref" href="Naming_on_JBoss.html#The_org.jboss.naming.JNDIView_MBean-The_JMX_Console_view_of_the_JNDIView_MBean">Figure 9.5, “The JMX Console view of the JNDIView MBean”</a>.
+			</div><div class="figure"><a id="The_org.jboss.naming.JNDIView_MBean-The_JMX_Console_view_of_the_JNDIView_MBean">
+      ⁠</a><div class="figure-contents"><div class="mediaobject" style="text-align: center"><img src="images/jndiview-2.png" align="middle" alt="The JMX Console view of the JNDIView MBean" style="text-align: middle"/></div></div><p class="title"><strong>Figure 9.5. The JMX Console view of the JNDIView MBean</strong></p></div><div class="para">
+				The list operation dumps out the server JNDI namespace as an HTML page using a simple text view. As an example, invoking the list operation produces the view shown in <a class="xref" href="Naming_on_JBoss.html#The_org.jboss.naming.JNDIView_MBean-The_JMX_Console_view_of_the_JNDIView_list_operation_output">Figure 9.6, “The JMX Console view of the JNDIView list operation output”</a>.
+			</div><div class="figure"><a id="The_org.jboss.naming.JNDIView_MBean-The_JMX_Console_view_of_the_JNDIView_list_operation_output">
+      ⁠</a><div class="figure-contents"><div class="mediaobject" style="text-align: center"><img src="images/jndiview-3.png" align="middle" alt="The JMX Console view of the JNDIView list operation output" style="text-align: middle"/></div></div><p class="title"><strong>Figure 9.6. The JMX Console view of the JNDIView list operation output</strong></p></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Naming_on_JBoss-J2EE_and_JNDI___The_Application_Component_Environment">
+      ⁠</a>9.6. J2EE and JNDI - The Application Component Environment</h1></div></div></div><div class="para">
+			JNDI is a fundamental aspect of the J2EE specifications. One key usage is the isolation of J2EE component code from the environment in which the code is deployed. Use of the application component's environment allows the application component to be customized without the need to access or change the application component's source code. The application component environment is referred to as the ENC, the enterprise naming context. It is the responsibility of the application component container to make an ENC available to the container components in the form of JNDI Context. The ENC is utilized by the participants involved in the life cycle of a J2EE component in the following ways.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					Application component business logic should be coded to access information from its ENC. The component provider uses the standard deployment descriptor for the component to specify the required ENC entries. The entries are declarations of the information and resources the component requires at runtime.
+				</div></li><li class="listitem"><div class="para">
+					The container provides tools that allow a deployer of a component to map the ENC references made by the component developer to the deployment environment entity that satisfies the reference.
+				</div></li><li class="listitem"><div class="para">
+					The component deployer utilizes the container tools to ready a component for final deployment.
+				</div></li><li class="listitem"><div class="para">
+					The component container uses the deployment package information to build the complete component ENC at runtime
+				</div></li></ul></div><div class="para">
+			The complete specification regarding the use of JNDI in the J2EE platform can be found in section 5 of the J2EE 1.4 specification.
+		</div><div class="para">
+			An application component instance locates the ENC using the JNDI API. An application component instance creates a <code class="literal">javax.naming.InitialContext</code> object by using the no argument constructor and then looks up the naming environment under the name <code class="literal">java:comp/env</code>. The application component's environment entries are stored directly in the ENC, or in its subcontexts. <a class="xref" href="Naming_on_JBoss.html#J2EE_and_JNDI___The_Application_Component_Environment-ENC_access_sample_code">Example 9.4, “ENC access sample code”</a> illustrates the prototypical lines of code a component uses to access its ENC.
+		</div><div class="example"><a id="J2EE_and_JNDI___The_Application_Component_Environment-ENC_access_sample_code">
+      ⁠</a><p class="title"><strong>Example 9.4. ENC access sample code</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// Obtain the application component's ENC</span>
+<span xmlns="" class="line">​</span>Context iniCtx = <span xmlns="" class="perl_Keyword">new</span> InitialContext();
+<span xmlns="" class="line">​</span>Context compEnv = (Context) iniCtx.<span xmlns="" class="perl_Function">lookup</span>(<span xmlns="" class="perl_String">"java:comp/env"</span>);
+</pre></div></div><div class="para">
+			An application component environment is a local environment that is accessible only by the component when the application server container thread of control is interacting with the application component. This means that an EJB <code class="literal">Bean1</code> cannot access the ENC elements of EJB <code class="literal">Bean2</code>, and vice versa. Similarly, Web application <code class="literal">Web1</code> cannot access the ENC elements of Web application <code class="literal">Web2</code> or <code class="literal">Bean1</code> or <code class="literal">Bean2</code> for that matter. Also, arbitrary client code, whether it is executing inside of the application server VM or externally cannot access a component's <code class="literal">java:comp</code> JNDI context. The purpose of the ENC is to provide an isolated, read-only namespace that the application component can rely on regardless of the type of environment in which the component is deployed. The ENC must be isolated from other components because each component defines its own ENC content. Components <code class="literal">A</code> and <code class="literal">B</code>, for example, may define the same name to refer to different objects. For example, EJB <code class="literal">Bean1</code> may define an environment entry <code class="literal">java:comp/env/red</code> to refer to the hexadecimal value for the RGB color for red, while Web application <code class="literal">Web1</code> may bind the same name to the deployment environment language locale representation of red.
+		</div><div class="para">
+			There are three commonly used levels of naming scope in JBoss: names under <code class="literal">java:comp</code>, names under <code class="literal">java:</code>, and any other name. As discussed, the <code class="literal">java:comp</code> context and its subcontexts are only available to the application component associated with that particular context. Subcontexts and object bindings directly under <code class="literal">java:</code> are only visible within the server virtual machine and not to remote clients. Any other context or object binding is available to remote clients, provided the context or object supports serialization. You'll see how the isolation of these naming scopes is achieved in the <a class="xref" href="Naming_on_JBoss.html#Naming_on_JBoss-The_JBossNS_Architecture">Section 9.2, “The JBoss Naming Service Architecture”</a>.
+		</div><div class="para">
+			An example of where the restricting a binding to the <code class="literal">java:</code> context is useful would be a <code class="literal">javax.sql.DataSource</code> connection factory that can only be used inside of the server where the associated database pool resides. On the other hand, an EJB home interface would be bound to a globally visible name that should accessible by remote client.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="J2EE_and_JNDI___The_Application_Component_Environment-ENC_Usage_Conventions">
+      ⁠</a>9.6.1. ENC Usage Conventions</h2></div></div></div><div class="para">
+				JNDI is used as the API for externalizing a great deal of information from an application component. The JNDI name that the application component uses to access the information is declared in the standard <code class="literal">ejb-jar.xml</code> deployment descriptor for EJB components, and the standard <code class="literal">web.xml</code> deployment descriptor for Web components. Several different types of information may be stored in and retrieved from JNDI including:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						Environment entries as declared by the <code class="literal">env-entry</code> elements
+					</div></li><li class="listitem"><div class="para">
+						EJB references as declared by <code class="literal">ejb-ref</code> and <code class="literal">ejb-local-ref</code> elements.
+					</div></li><li class="listitem"><div class="para">
+						Resource manager connection factory references as declared by the <code class="literal">resource-ref</code> elements
+					</div></li><li class="listitem"><div class="para">
+						Resource environment references as declared by the <code class="literal">resource-env-ref</code> elements
+					</div></li></ul></div><div class="para">
+				Each type of deployment descriptor element has a JNDI usage convention with regard to the name of the JNDI context under which the information is bound. Also, in addition to the standard deploymentdescriptor element, there is a JBoss Enterprise Application Platform specific deployment descriptor element that maps the JNDI name as used by the application component to the deployment environment JNDI name.
+			</div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="ENC_Usage_Conventions-Environment_Entries">
+      ⁠</a>9.6.1.1. Environment Entries</h3></div></div></div><div class="para">
+					Environment entries are the simplest form of information stored in a component ENC, and are similar to operating system environment variables like those found on Unix or Windows. Environment entries are a name-to-value binding that allows a component to externalize a value and refer to the value using a name.
+				</div><div class="para">
+					An environment entry is declared using an <code class="literal">env-entry</code> element in the standard deployment descriptors. The <code class="literal">env-entry</code> element contains the following child elements:
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+							An optional <span class="bold bold"><strong>description</strong></span> element that provides a description of the entry
+						</div></li><li class="listitem"><div class="para">
+							An <span class="bold bold"><strong>env-entry-name</strong></span> element giving the name of the entry relative to <code class="literal">java:comp/env</code>
+						</div></li><li class="listitem"><div class="para">
+							An <span class="bold bold"><strong>env-entry-type</strong></span> element giving the Java type of the entry value that must be one of: 
+							<div class="itemizedlist"><ul><li class="listitem"><div class="para">
+										<code class="literal">java.lang.Byte</code>
+									</div></li><li class="listitem"><div class="para">
+										<code class="literal">java.lang.Boolean</code>
+									</div></li><li class="listitem"><div class="para">
+										<code class="literal">java.lang.Character</code>
+									</div></li><li class="listitem"><div class="para">
+										<code class="literal">java.lang.Double</code>
+									</div></li><li class="listitem"><div class="para">
+										<code class="literal">java.lang.Float</code>
+									</div></li><li class="listitem"><div class="para">
+										<code class="literal">java.lang.Integer</code>
+									</div></li><li class="listitem"><div class="para">
+										<code class="literal">java.lang.Long</code>
+									</div></li><li class="listitem"><div class="para">
+										<code class="literal">java.lang.Short</code>
+									</div></li><li class="listitem"><div class="para">
+										<code class="literal">java.lang.String</code>
+									</div></li></ul></div>
+
+						</div></li><li class="listitem"><div class="para">
+							An <span class="bold bold"><strong>env-entry-value</strong></span> element giving the value of entry as a string
+						</div></li></ul></div><div class="para">
+					An example of an <code class="literal">env-entry</code> fragment from an <code class="literal">ejb-jar.xml</code> deployment descriptor is given in <a class="xref" href="Naming_on_JBoss.html#Environment_Entries-An_example_ejb_jar.xml_env_entry_fragment">Example 9.5, “An example ejb-jar.xml env-entry fragment”</a>. There is no JBoss specific deployment descriptor element because an <code class="literal">env-entry</code> is a complete name and value specification. <a class="xref" href="Naming_on_JBoss.html#Environment_Entries-ENC_env_entry_access_code_fragment">Example 9.6, “ENC env-entry access code fragment”</a> shows a sample code fragment for accessing the <code class="literal">maxExemptions</code> and <code class="literal">taxRate</code> and <code class="literal">env-entry</code> values declared in the deployment descriptor.
+				</div><div class="example"><a id="Environment_Entries-An_example_ejb_jar.xml_env_entry_fragment">
+      ⁠</a><p class="title"><strong>Example 9.5. An example ejb-jar.xml env-entry fragment</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;session&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;ejb-name&gt;</span>ASessionBean<span xmlns="" class="perl_Keyword">&lt;/ejb-name&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;env-entry&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;description&gt;</span>The maximum number of tax exemptions allowed <span xmlns="" class="perl_Keyword">&lt;/description&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;env-entry-name&gt;</span>maxExemptions<span xmlns="" class="perl_Keyword">&lt;/env-entry-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;env-entry-type&gt;</span>java.lang.Integer<span xmlns="" class="perl_Keyword">&lt;/env-entry-type&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;env-entry-value&gt;</span>15<span xmlns="" class="perl_Keyword">&lt;/env-entry-value&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/env-entry&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;env-entry&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;description&gt;</span>The tax rate <span xmlns="" class="perl_Keyword">&lt;/description&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;env-entry-name&gt;</span>taxRate<span xmlns="" class="perl_Keyword">&lt;/env-entry-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;env-entry-type&gt;</span>java.lang.Float<span xmlns="" class="perl_Keyword">&lt;/env-entry-type&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;env-entry-value&gt;</span>0.23<span xmlns="" class="perl_Keyword">&lt;/env-entry-value&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/env-entry&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/session&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+</pre></div></div><div class="example"><a id="Environment_Entries-ENC_env_entry_access_code_fragment">
+      ⁠</a><p class="title"><strong>Example 9.6. ENC env-entry access code fragment</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span>InitialContext iniCtx = <span xmlns="" class="perl_Keyword">new</span> InitialContext();
+<span xmlns="" class="line">​</span>Context envCtx = (Context) iniCtx.<span xmlns="" class="perl_Function">lookup</span>(<span xmlns="" class="perl_String">"java:comp/env"</span>);
+<span xmlns="" class="line">​</span>Integer maxExemptions = (Integer) envCtx.<span xmlns="" class="perl_Function">lookup</span>(<span xmlns="" class="perl_String">"maxExemptions"</span>);
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_DataType">Float</span> taxRate = (<span xmlns="" class="perl_DataType">Float</span>) envCtx.<span xmlns="" class="perl_Function">lookup</span>(<span xmlns="" class="perl_String">"taxRate"</span>);
+</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="ENC_Usage_Conventions-EJB_References">
+      ⁠</a>9.6.1.2. EJB References</h3></div></div></div><div class="para">
+					It is common for EJBs and Web components to interact with other EJBs. Because the JNDI name under which an EJB home interface is bound is a deployment time decision, there needs to be a way for a component developer to declare a reference to an EJB that will be linked by the deployer. EJB references satisfy this requirement.
+				</div><div class="para">
+					An EJB reference is a link in an application component naming environment that points to a deployed EJB home interface. The name used by the application component is a logical link that isolates the component from the actual name of the EJB home in the deployment environment. The J2EE specification recommends that all references to enterprise beans be organized in the <code class="literal">java:comp/env/ejb</code> context of the application component's environment.
+				</div><div class="para">
+					An EJB reference is declared using an <code class="literal">ejb-ref</code> element in the deployment descriptor. Each <code class="literal">ejb-ref</code> element describes the interface requirements that the referencing application component has for the referenced enterprise bean. The <code class="literal">ejb-ref</code> element contains the following child elements:
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+							An optional <span class="bold bold"><strong>description</strong></span> element that provides the purpose of the reference.
+						</div></li><li class="listitem"><div class="para">
+							An <span class="bold bold"><strong>ejb-ref-name</strong></span> element that specifies the name of the reference relative to the <code class="literal">java:comp/env</code> context. To place the reference under the recommended <code class="literal">java:comp/env/ejb</code> context, use an <code class="literal">ejb/link-name</code> form for the <code class="literal">ejb-ref-name</code> value.
+						</div></li><li class="listitem"><div class="para">
+							An <span class="bold bold"><strong>ejb-ref-type</strong></span> element that specifies the type of the EJB. This must be either <code class="literal">Entity</code> or <code class="literal">Session</code>.
+						</div></li><li class="listitem"><div class="para">
+							A <span class="bold bold"><strong>home</strong></span> element that gives the fully qualified class name of the EJB home interface.
+						</div></li><li class="listitem"><div class="para">
+							A <span class="bold bold"><strong>remote</strong></span> element that gives the fully qualified class name of the EJB remote interface.
+						</div></li><li class="listitem"><div class="para">
+							An optional <span class="bold bold"><strong>ejb-link</strong></span> element that links the reference to another enterprise bean in the same EJB JAR or in the same J2EE application unit. The <code class="literal">ejb-link</code> value is the <code class="literal">ejb-name</code> of the referenced bean. If there are multiple enterprise beans with the same <code class="literal">ejb-name</code>, the value uses the path name specifying the location of the <code class="literal">ejb-jar</code> file that contains the referenced component. The path name is relative to the referencing <code class="literal">ejb-jar</code> file. The Application Assembler appends the <code class="literal">ejb-name</code> of the referenced bean to the path name separated by <code class="literal">#</code>. This allows multiple beans with the same name to be uniquely identified.
+						</div></li></ul></div><div class="para">
+					An EJB reference is scoped to the application component whose declaration contains the <code class="literal">ejb-ref</code> element. This means that the EJB reference is not accessible from other application components at runtime, and that other application components may define <code class="literal">ejb-ref</code> elements with the same <code class="literal">ejb-ref-name</code> without causing a name conflict. <a class="xref" href="Naming_on_JBoss.html#EJB_References-An_example_ejb_jar.xml_ejb_ref_descriptor_fragment">Example 9.7, “An example ejb-jar.xml ejb-ref descriptor fragment”</a> provides an <code class="literal">ejb-jar.xml</code> fragment that illustrates the use of the <code class="literal">ejb-ref</code> element. A code sample that illustrates accessing the <code class="literal">ShoppingCartHome</code> reference declared in <a class="xref" href="Naming_on_JBoss.html#EJB_References-An_example_ejb_jar.xml_ejb_ref_descriptor_fragment">Example 9.7, “An example ejb-jar.xml ejb-ref descriptor fragment”</a> is given in <a class="xref" href="Naming_on_JBoss.html#EJB_References-ENC_ejb_ref_access_code_fragment">Example 9.8, “ENC ejb-ref access code fragment”</a>.
+				</div><div class="example"><a id="EJB_References-An_example_ejb_jar.xml_ejb_ref_descriptor_fragment">
+      ⁠</a><p class="title"><strong>Example 9.7. An example ejb-jar.xml ejb-ref descriptor fragment</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;session&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;ejb-name&gt;</span>ShoppingCartBean<span xmlns="" class="perl_Keyword">&lt;/ejb-name&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!-- ...--&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/session&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;session&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;ejb-name&gt;</span>ProductBeanUser<span xmlns="" class="perl_Keyword">&lt;/ejb-name&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!--...--&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;ejb-ref&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;description&gt;</span>This is a reference to the store products entity <span xmlns="" class="perl_Keyword">&lt;/description&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;ejb-ref-name&gt;</span>ejb/ProductHome<span xmlns="" class="perl_Keyword">&lt;/ejb-ref-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;ejb-ref-type&gt;</span>Entity<span xmlns="" class="perl_Keyword">&lt;/ejb-ref-type&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;home&gt;</span>org.jboss.store.ejb.ProductHome<span xmlns="" class="perl_Keyword">&lt;/home&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;remote&gt;</span> org.jboss.store.ejb.Product<span xmlns="" class="perl_Keyword">&lt;/remote&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/ejb-ref&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/session&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;session&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;ejb-ref&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;ejb-name&gt;</span>ShoppingCartUser<span xmlns="" class="perl_Keyword">&lt;/ejb-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Comment">&lt;!--...--&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;ejb-ref-name&gt;</span>ejb/ShoppingCartHome<span xmlns="" class="perl_Keyword">&lt;/ejb-ref-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;ejb-ref-type&gt;</span>Session<span xmlns="" class="perl_Keyword">&lt;/ejb-ref-type&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;home&gt;</span>org.jboss.store.ejb.ShoppingCartHome<span xmlns="" class="perl_Keyword">&lt;/home&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;remote&gt;</span> org.jboss.store.ejb.ShoppingCart<span xmlns="" class="perl_Keyword">&lt;/remote&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;ejb-link&gt;</span>ShoppingCartBean<span xmlns="" class="perl_Keyword">&lt;/ejb-link&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/ejb-ref&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/session&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;entity&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;description&gt;</span>The Product entity bean <span xmlns="" class="perl_Keyword">&lt;/description&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;ejb-name&gt;</span>ProductBean<span xmlns="" class="perl_Keyword">&lt;/ejb-name&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!--...--&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/entity&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!--...--&gt;</span>
+</pre></div></div><div class="example"><a id="EJB_References-ENC_ejb_ref_access_code_fragment">
+      ⁠</a><p class="title"><strong>Example 9.8. ENC ejb-ref access code fragment</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span>InitialContext iniCtx = <span xmlns="" class="perl_Keyword">new</span> InitialContext();
+<span xmlns="" class="line">​</span>Context ejbCtx = (Context) iniCtx.<span xmlns="" class="perl_Function">lookup</span>(<span xmlns="" class="perl_String">"java:comp/env/ejb"</span>);
+<span xmlns="" class="line">​</span>ShoppingCartHome home = (ShoppingCartHome) ejbCtx.<span xmlns="" class="perl_Function">lookup</span>(<span xmlns="" class="perl_String">"ShoppingCartHome"</span>);
+</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="ENC_Usage_Conventions-EJB_References_with_jboss.xml_and_jboss_web.xml">
+      ⁠</a>9.6.1.3. EJB References with <code class="literal">jboss.xml</code> and <code class="literal">jboss-web.xml</code></h3></div></div></div><div class="para">
+					The JBoss specific <code class="literal">jboss.xml</code> EJB deployment descriptor affects EJB references in two ways. First, the <code class="literal">jndi-name</code> child element of the <code class="literal">session</code> and <code class="literal">entity</code> elements allows the user to specify the deployment JNDI name for the EJB home interface. In the absence of a <code class="literal">jboss.xml</code> specification of the <code class="literal">jndi-name</code> for an EJB, the home interface is bound under the <code class="literal">ejb-jar.xml</code><code class="literal">ejb-name</code> value. For example, the session EJB with the <code class="literal">ejb-name</code> of <code class="literal">ShoppingCartBean</code> in <a class="xref" href="Naming_on_JBoss.html#EJB_References-An_example_ejb_jar.xml_ejb_ref_descriptor_fragment">Example 9.7, “An example ejb-jar.xml ejb-ref descriptor fragment”</a> would have its home interface bound under the JNDI name <code class="literal">ShoppingCartBean</code> in the absence of a <code class="literal">jboss.xml</code><code class="literal">jndi-name</code> specification.
+				</div><div class="para">
+					The second use of the <code class="literal">jboss.xml</code> descriptor with respect to <code class="literal">ejb-ref</code>s is the setting of the destination to which a component's ENC <code class="literal">ejb-ref</code> refers. The <code class="literal">ejb-link</code> element cannot be used to refer to EJBs in another enterprise application. If your <code class="literal">ejb-ref</code> needs to access an external EJB, you can specify the JNDI name of the deployed EJB home using the <code class="literal">jboss.xml</code><code class="literal">ejb-ref/jndi-name</code> element.
+				</div><div class="para">
+					The <code class="literal">jboss-web.xml</code> descriptor is used only to set the destination to which a Web application ENC <code class="literal">ejb-ref</code> refers. The content model for the JBoss <code class="literal">ejb-ref</code> is as follows:
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+							An <span class="bold bold"><strong>ejb-ref-name</strong></span> element that corresponds to the <span class="bold bold"><strong>ejb-ref-name</strong></span> element in the <span class="bold bold"><strong>ejb-jar.xml</strong></span> or <span class="bold bold"><strong>web.xml</strong></span> standard descriptor
+						</div></li><li class="listitem"><div class="para">
+							A <code class="literal">jndi-name</code> element that specifies the JNDI name of the EJB home interface in the deployment environment
+						</div></li></ul></div><div class="para">
+					<a class="xref" href="Naming_on_JBoss.html#EJB_References_with_jboss.xml_and_jboss_web.xml-An_example_jboss.xml_ejb_ref_fragment">Example 9.9, “An example jboss.xml ejb-ref fragment”</a> provides an example <code class="literal">jboss.xml</code> descriptor fragment that illustrates the following usage points:
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+							The <code class="literal">ProductBeanUser</code><code class="literal">ejb-ref</code> link destination is set to the deployment name of <code class="literal">jboss/store/ProductHome</code>
+						</div></li><li class="listitem"><div class="para">
+							The deployment JNDI name of the <code class="literal">ProductBean</code> is set to <code class="literal">jboss/store/ProductHome</code>
+						</div></li></ul></div><div class="example"><a id="EJB_References_with_jboss.xml_and_jboss_web.xml-An_example_jboss.xml_ejb_ref_fragment">
+      ⁠</a><p class="title"><strong>Example 9.9. An example jboss.xml ejb-ref fragment</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;session&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;ejb-name&gt;</span>ProductBeanUser<span xmlns="" class="perl_Keyword">&lt;/ejb-name&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;ejb-ref&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;ejb-ref-name&gt;</span>ejb/ProductHome<span xmlns="" class="perl_Keyword">&lt;/ejb-ref-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;jndi-name&gt;</span>jboss/store/ProductHome<span xmlns="" class="perl_Keyword">&lt;/jndi-name&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/ejb-ref&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/session&gt;</span>
+<span xmlns="" class="line">​</span>                        
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;entity&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;ejb-name&gt;</span>ProductBean<span xmlns="" class="perl_Keyword">&lt;/ejb-name&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;jndi-name&gt;</span>jboss/store/ProductHome<span xmlns="" class="perl_Keyword">&lt;/jndi-name&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/entity&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="ENC_Usage_Conventions-EJB_Local_References">
+      ⁠</a>9.6.1.4. EJB Local References</h3></div></div></div><div class="para">
+					EJB 2.0 added local interfaces that do not use RMI call by value semantics. These interfaces use a call by reference semantic and therefore do not incur any RMI serialization overhead. An EJB local reference is a link in an application component naming environment that points to a deployed EJB local home interface. The name used by the application component is a logical link that isolates the component from the actual name of the EJB local home in the deployment environment. The J2EE specification recommends that all references to enterprise beans be organized in the <code class="literal">java:comp/env/ejb</code> context of the application component's environment.
+				</div><div class="para">
+					An EJB local reference is declared using an <code class="literal">ejb-local-ref</code> element in the deployment descriptor. Each <code class="literal">ejb-local-ref</code> element describes the interface requirements that the referencing application component has for the referenced enterprise bean. The <code class="literal">ejb-local-ref</code> element contains the following child elements:
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+							An optional <span class="bold bold"><strong>description</strong></span> element that provides the purpose of the reference.
+						</div></li><li class="listitem"><div class="para">
+							An <span class="bold bold"><strong>ejb-ref-name</strong></span> element that specifies the name of the reference relative to the <code class="literal">java:comp/env</code> context. To place the reference under the recommended <code class="literal">java:comp/env/ejb</code> context, use an <code class="literal">ejb/link-name</code> form for the <code class="literal">ejb-ref-name</code> value.
+						</div></li><li class="listitem"><div class="para">
+							An <span class="bold bold"><strong>ejb-ref-type</strong></span> element that specifies the type of the EJB. This must be either <code class="literal">Entity</code> or <code class="literal">Session</code>.
+						</div></li><li class="listitem"><div class="para">
+							A <span class="bold bold"><strong>local-home</strong></span> element that gives the fully qualified class name of the EJB local home interface.
+						</div></li><li class="listitem"><div class="para">
+							A <span class="bold bold"><strong>local</strong></span> element that gives the fully qualified class name of the EJB local interface.
+						</div></li><li class="listitem"><div class="para">
+							An <span class="bold bold"><strong>ejb-link</strong></span> element that links the reference to another enterprise bean in the <code class="literal">ejb-jar</code> file or in the same J2EE application unit. The <code class="literal">ejb-link</code> value is the <code class="literal">ejb-name</code> of the referenced bean. If there are multiple enterprise beans with the same <code class="literal">ejb-name</code>, the value uses the path name specifying the location of the <code class="literal">ejb-jar</code> file that contains the referenced component. The path name is relative to the referencing <code class="literal">ejb-jar</code> file. The Application Assembler appends the <code class="literal">ejb-name</code> of the referenced bean to the path name separated by <code class="literal">#</code>. This allows multiple beans with the same name to be uniquely identified. An <code class="literal">ejb-link</code> element must be specified in JBoss to match the local reference to the corresponding EJB.
+						</div></li></ul></div><div class="para">
+					An EJB local reference is scoped to the application component whose declaration contains the <code class="literal">ejb-local-ref</code> element. This means that the EJB local reference is not accessible from other application components at runtime, and that other application components may define <code class="literal">ejb-local-ref</code> elements with the same <code class="literal">ejb-ref-name</code> without causing a name conflict. <a class="xref" href="Naming_on_JBoss.html#EJB_Local_References-An_example_ejb_jar.xml_ejb_local_ref_descriptor_fragment">Example 9.10, “An example ejb-jar.xml ejb-local-ref descriptor fragment”</a> provides an <code class="literal">ejb-jar.xml</code> fragment that illustrates the use of the <code class="literal">ejb-local-ref</code> element. A code sample that illustrates accessing the <code class="literal">ProbeLocalHome</code> reference declared in <a class="xref" href="Naming_on_JBoss.html#EJB_Local_References-An_example_ejb_jar.xml_ejb_local_ref_descriptor_fragment">Example 9.10, “An example ejb-jar.xml ejb-local-ref descriptor fragment”</a> is given in <a class="xref" href="Naming_on_JBoss.html#EJB_Local_References-ENC_ejb_local_ref_access_code_fragment">Example 9.11, “ENC ejb-local-ref access code fragment”</a>.
+				</div><div class="example"><a id="EJB_Local_References-An_example_ejb_jar.xml_ejb_local_ref_descriptor_fragment">
+      ⁠</a><p class="title"><strong>Example 9.10. An example ejb-jar.xml ejb-local-ref descriptor fragment</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span> <span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+<span xmlns="" class="line">​</span> <span xmlns="" class="perl_Keyword">&lt;session&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;ejb-name&gt;</span>Probe<span xmlns="" class="perl_Keyword">&lt;/ejb-name&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;home&gt;</span>org.jboss.test.perf.interfaces.ProbeHome<span xmlns="" class="perl_Keyword">&lt;/home&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;remote&gt;</span>org.jboss.test.perf.interfaces.Probe<span xmlns="" class="perl_Keyword">&lt;/remote&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;local-home&gt;</span>org.jboss.test.perf.interfaces.ProbeLocalHome<span xmlns="" class="perl_Keyword">&lt;/local-home&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;local&gt;</span>org.jboss.test.perf.interfaces.ProbeLocal<span xmlns="" class="perl_Keyword">&lt;/local&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;ejb-class&gt;</span>org.jboss.test.perf.ejb.ProbeBean<span xmlns="" class="perl_Keyword">&lt;/ejb-class&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;session-type&gt;</span>Stateless<span xmlns="" class="perl_Keyword">&lt;/session-type&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;transaction-type&gt;</span>Bean<span xmlns="" class="perl_Keyword">&lt;/transaction-type&gt;</span>
+<span xmlns="" class="line">​</span> <span xmlns="" class="perl_Keyword">&lt;/session&gt;</span>
+<span xmlns="" class="line">​</span> <span xmlns="" class="perl_Keyword">&lt;session&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;ejb-name&gt;</span>PerfTestSession<span xmlns="" class="perl_Keyword">&lt;/ejb-name&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;home&gt;</span>org.jboss.test.perf.interfaces.PerfTestSessionHome<span xmlns="" class="perl_Keyword">&lt;/home&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;remote&gt;</span>org.jboss.test.perf.interfaces.PerfTestSession<span xmlns="" class="perl_Keyword">&lt;/remote&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;ejb-class&gt;</span>org.jboss.test.perf.ejb.PerfTestSessionBean<span xmlns="" class="perl_Keyword">&lt;/ejb-class&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;session-type&gt;</span>Stateless<span xmlns="" class="perl_Keyword">&lt;/session-type&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;transaction-type&gt;</span>Container<span xmlns="" class="perl_Keyword">&lt;/transaction-type&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;ejb-ref&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;ejb-ref-name&gt;</span>ejb/ProbeHome<span xmlns="" class="perl_Keyword">&lt;/ejb-ref-name&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;ejb-ref-type&gt;</span>Session<span xmlns="" class="perl_Keyword">&lt;/ejb-ref-type&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;home&gt;</span>org.jboss.test.perf.interfaces.SessionHome<span xmlns="" class="perl_Keyword">&lt;/home&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;remote&gt;</span>org.jboss.test.perf.interfaces.Session<span xmlns="" class="perl_Keyword">&lt;/remote&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;ejb-link&gt;</span>Probe<span xmlns="" class="perl_Keyword">&lt;/ejb-link&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;/ejb-ref&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;ejb-local-ref&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;ejb-ref-name&gt;</span>ejb/ProbeLocalHome<span xmlns="" class="perl_Keyword">&lt;/ejb-ref-name&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;ejb-ref-type&gt;</span>Session<span xmlns="" class="perl_Keyword">&lt;/ejb-ref-type&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;local-home&gt;</span>org.jboss.test.perf.interfaces.ProbeLocalHome<span xmlns="" class="perl_Keyword">&lt;/local-home&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;local&gt;</span>org.jboss.test.perf.interfaces.ProbeLocal<span xmlns="" class="perl_Keyword">&lt;/local&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;ejb-link&gt;</span>Probe<span xmlns="" class="perl_Keyword">&lt;/ejb-link&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;/ejb-local-ref&gt;</span>
+<span xmlns="" class="line">​</span> <span xmlns="" class="perl_Keyword">&lt;/session&gt;</span>
+<span xmlns="" class="line">​</span> <span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+</pre></div></div><div class="example"><a id="EJB_Local_References-ENC_ejb_local_ref_access_code_fragment">
+      ⁠</a><p class="title"><strong>Example 9.11. ENC ejb-local-ref access code fragment</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span>InitialContext iniCtx = <span xmlns="" class="perl_Keyword">new</span> InitialContext();
+<span xmlns="" class="line">​</span>Context ejbCtx = (Context) iniCtx.<span xmlns="" class="perl_Function">lookup</span>(<span xmlns="" class="perl_String">"java:comp/env/ejb"</span>);
+<span xmlns="" class="line">​</span>ProbeLocalHome home = (ProbeLocalHome) ejbCtx.<span xmlns="" class="perl_Function">lookup</span>(<span xmlns="" class="perl_String">"ProbeLocalHome"</span>);
+</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="ENC_Usage_Conventions-Resource_Manager_Connection_Factory_References">
+      ⁠</a>9.6.1.5. Resource Manager Connection Factory References</h3></div></div></div><div class="para">
+					Resource manager connection factory references allow application component code to refer to resource factories using logical names called resource manager connection factory references. Resource manager connection factory references are defined by the <code class="literal">resource-ref</code> elements in the standard deployment descriptors. The <code class="literal">Deployer</code> binds the resource manager connection factory references to the actual resource manager connection factories that exist in the target operational environment using the <code class="literal">jboss.xml</code> and <code class="literal">jboss-web.xml</code> descriptors.
+				</div><div class="para">
+					Each <code class="literal">resource-ref</code> element describes a single resource manager connection factory reference. The <code class="literal">resource-ref</code> element consists of the following child elements:
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+							An optional <span class="bold bold"><strong>description</strong></span> element that provides the purpose of the reference.
+						</div></li><li class="listitem"><div class="para">
+							A <span class="bold bold"><strong>res-ref-name</strong></span> element that specifies the name of the reference relative to the <code class="literal">java:comp/env</code> context. The resource type based naming convention for which subcontext to place the <code class="literal">res-ref-name</code> into is discussed in the next paragraph.
+						</div></li><li class="listitem"><div class="para">
+							A <span class="bold bold"><strong>res-type</strong></span> element that specifies the fully qualified class name of the resource manager connection factory.
+						</div></li><li class="listitem"><div class="para">
+							A <span class="bold bold"><strong>res-auth</strong></span> element that indicates whether the application component code performs resource sign on programmatically, or whether the container signs on to the resource based on the principal mapping information supplied by the Deployer. It must be one of <code class="literal">Application</code> or <code class="literal">Container</code>.
+						</div></li><li class="listitem"><div class="para">
+							An optional <span class="bold bold"><strong>res-sharing-scope</strong></span> element. This currently is not supported by JBoss.
+						</div></li></ul></div><div class="para">
+					The J2EE specification recommends that all resource manager connection factory references be organized in the subcontexts of the application component's environment, using a different subcontext for each resource manager type. The recommended resource manager type to subcontext name is as follows:
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+							JDBC <code class="literal">DataSource</code> references should be declared in the <code class="literal">java:comp/env/jdbc</code> subcontext.
+						</div></li><li class="listitem"><div class="para">
+							JMS connection factories should be declared in the <code class="literal">java:comp/env/jms</code> subcontext.
+						</div></li><li class="listitem"><div class="para">
+							JavaMail connection factories should be declared in the <code class="literal">java:comp/env/mail</code> subcontext.
+						</div></li><li class="listitem"><div class="para">
+							URL connection factories should be declared in the <code class="literal">java:comp/env/url</code> subcontext.
+						</div></li></ul></div><div class="para">
+					<a class="xref" href="Naming_on_JBoss.html#Resource_Manager_Connection_Factory_References-A_web.xml_resource_ref_descriptor_fragment">Example 9.12, “A web.xml resource-ref descriptor fragment”</a> shows an example <code class="literal">web.xml</code> descriptor fragment that illustrates the <code class="literal">resource-ref</code> element usage. <a class="xref" href="Naming_on_JBoss.html#Resource_Manager_Connection_Factory_References-ENC_resource_ref_access_sample_code_fragment">Example 9.13, “ENC resource-ref access sample code fragment”</a> provides a code fragment that an application component would use to access the <code class="literal">DefaultMail</code> resource declared by the <code class="literal">resource-ref</code>.
+				</div><div class="example"><a id="Resource_Manager_Connection_Factory_References-A_web.xml_resource_ref_descriptor_fragment">
+      ⁠</a><p class="title"><strong>Example 9.12. A web.xml resource-ref descriptor fragment</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;web&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;servlet&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;servlet-name&gt;</span>AServlet<span xmlns="" class="perl_Keyword">&lt;/servlet-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/servlet&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!-- JDBC DataSources (java:comp/env/jdbc) --&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;resource-ref&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;description&gt;</span>The default DS<span xmlns="" class="perl_Keyword">&lt;/description&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;res-ref-name&gt;</span>jdbc/DefaultDS<span xmlns="" class="perl_Keyword">&lt;/res-ref-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;res-type&gt;</span>javax.sql.DataSource<span xmlns="" class="perl_Keyword">&lt;/res-type&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;res-auth&gt;</span>Container<span xmlns="" class="perl_Keyword">&lt;/res-auth&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/resource-ref&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!-- JavaMail Connection Factories (java:comp/env/mail) --&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;resource-ref&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;description&gt;</span>Default Mail<span xmlns="" class="perl_Keyword">&lt;/description&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;res-ref-name&gt;</span>mail/DefaultMail<span xmlns="" class="perl_Keyword">&lt;/res-ref-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;res-type&gt;</span>javax.mail.Session<span xmlns="" class="perl_Keyword">&lt;/res-type&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;res-auth&gt;</span>Container<span xmlns="" class="perl_Keyword">&lt;/res-auth&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/resource-ref&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!-- JMS Connection Factories (java:comp/env/jms) --&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;resource-ref&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;description&gt;</span>Default QueueFactory<span xmlns="" class="perl_Keyword">&lt;/description&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;res-ref-name&gt;</span>jms/QueueFactory<span xmlns="" class="perl_Keyword">&lt;/res-ref-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;res-type&gt;</span>javax.jms.QueueConnectionFactory<span xmlns="" class="perl_Keyword">&lt;/res-type&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;res-auth&gt;</span>Container<span xmlns="" class="perl_Keyword">&lt;/res-auth&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/resource-ref&gt;</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;web&gt;</span>
+</pre></div></div><div class="example"><a id="Resource_Manager_Connection_Factory_References-ENC_resource_ref_access_sample_code_fragment">
+      ⁠</a><p class="title"><strong>Example 9.13. ENC resource-ref access sample code fragment</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span>Context initCtx = <span xmlns="" class="perl_Keyword">new</span> InitialContext();
+<span xmlns="" class="line">​</span>javax.<span xmlns="" class="perl_Function">mail</span>.<span xmlns="" class="perl_Function">Session</span> s = (javax.<span xmlns="" class="perl_Function">mail</span>.<span xmlns="" class="perl_Function">Session</span>)
+<span xmlns="" class="line">​</span>initCtx.<span xmlns="" class="perl_Function">lookup</span>(<span xmlns="" class="perl_String">"java:comp/env/mail/DefaultMail"</span>);
+</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="ENC_Usage_Conventions-Resource_Manager_Connection_Factory_References_with_jboss.xml_and_jboss_web.xml">
+      ⁠</a>9.6.1.6. Resource Manager Connection Factory References with jboss.xml and jboss-web.xml</h3></div></div></div><div class="para">
+					The purpose of the JBoss <code class="literal">jboss.xml</code> EJB deployment descriptor and <code class="literal">jboss-web.xml</code> Web application deployment descriptor is to provide the link from the logical name defined by the <code class="literal">res-ref-name</code> element to the JNDI name of the resource factory as deployed in JBoss. This is accomplished by providing a <code class="literal">resource-ref</code> element in the <code class="literal">jboss.xml</code> or <code class="literal">jboss-web.xml</code> descriptor. The JBoss <code class="literal">resource-ref</code> element consists of the following child elements:
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+							A <span class="bold bold"><strong>res-ref-name</strong></span> element that must match the <code class="literal">res-ref-name</code> of a corresponding <code class="literal">resource-ref</code> element from the <code class="literal">ejb-jar.xml</code> or <code class="literal">web.xml</code> standard descriptors
+						</div></li><li class="listitem"><div class="para">
+							An optional <span class="bold bold"><strong>res-type</strong></span> element that specifies the fully qualified class name of the resource manager connection factory
+						</div></li><li class="listitem"><div class="para">
+							A <span class="bold bold"><strong>jndi-name</strong></span> element that specifies the JNDI name of the resource factory as deployed in JBoss
+						</div></li><li class="listitem"><div class="para">
+							A <span class="bold bold"><strong>res-url</strong></span> element that specifies the URL string in the case of a <code class="literal">resource-ref</code> of type <code class="literal">java.net.URL</code>
+						</div></li></ul></div><div class="para">
+					<a class="xref" href="Naming_on_JBoss.html#Resource_Manager_Connection_Factory_References_with_jboss.xml_and_jboss_web.xml-A_sample_jboss_web.xml_resource_ref_descriptor_fragment">Example 9.14, “A sample jboss-web.xml resource-ref descriptor fragment”</a> provides a sample <code class="literal">jboss-web.xml</code> descriptor fragment that shows sample mappings of the <code class="literal">resource-ref</code> elements given in <a class="xref" href="Naming_on_JBoss.html#Resource_Manager_Connection_Factory_References-A_web.xml_resource_ref_descriptor_fragment">Example 9.12, “A web.xml resource-ref descriptor fragment”</a>.
+				</div><div class="example"><a id="Resource_Manager_Connection_Factory_References_with_jboss.xml_and_jboss_web.xml-A_sample_jboss_web.xml_resource_ref_descriptor_fragment">
+      ⁠</a><p class="title"><strong>Example 9.14. A sample jboss-web.xml resource-ref descriptor fragment</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;jboss-web&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;resource-ref&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;res-ref-name&gt;</span>jdbc/DefaultDS<span xmlns="" class="perl_Keyword">&lt;/res-ref-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;res-type&gt;</span>javax.sql.DataSource<span xmlns="" class="perl_Keyword">&lt;/res-type&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;jndi-name&gt;</span>java:/DefaultDS<span xmlns="" class="perl_Keyword">&lt;/jndi-name&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/resource-ref&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;resource-ref&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;res-ref-name&gt;</span>mail/DefaultMail<span xmlns="" class="perl_Keyword">&lt;/res-ref-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;res-type&gt;</span>javax.mail.Session<span xmlns="" class="perl_Keyword">&lt;/res-type&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;jndi-name&gt;</span>java:/Mail<span xmlns="" class="perl_Keyword">&lt;/jndi-name&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/resource-ref&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;resource-ref&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;res-ref-name&gt;</span>jms/QueueFactory<span xmlns="" class="perl_Keyword">&lt;/res-ref-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;res-type&gt;</span>javax.jms.QueueConnectionFactory<span xmlns="" class="perl_Keyword">&lt;/res-type&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;jndi-name&gt;</span>QueueConnectionFactory<span xmlns="" class="perl_Keyword">&lt;/jndi-name&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/resource-ref&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/jboss-web&gt;</span>
+</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="ENC_Usage_Conventions-Resource_Environment_References">
+      ⁠</a>9.6.1.7. Resource Environment References</h3></div></div></div><div class="para">
+					Resource environment references are elements that refer to administered objects that are associated with a resource (for example, JMS destinations) using logical names. Resource environment references are defined by the <code class="literal">resource-env-ref</code> elements in the standard deployment descriptors. The <code class="literal">Deployer</code> binds the resource environment references to the actual administered objects location in the target operational environment using the <code class="literal">jboss.xml</code> and <code class="literal">jboss-web.xml</code> descriptors.
+				</div><div class="para">
+					Each <code class="literal">resource-env-ref</code> element describes the requirements that the referencing application component has for the referenced administered object. The <code class="literal">resource-env-ref</code> element consists of the following child elements:
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+							An optional <span class="bold bold"><strong>description</strong></span> element that provides the purpose of the reference.
+						</div></li><li class="listitem"><div class="para">
+							A <span class="bold bold"><strong>resource-env-ref-name</strong></span> element that specifies the name of the reference relative to the <code class="literal">java:comp/env</code> context. Convention places the name in a subcontext that corresponds to the associated resource factory type. For example, a JMS queue reference named <code class="literal">MyQueue</code> should have a <code class="literal">resource-env-ref-name</code> of <code class="literal">jms/MyQueue</code>.
+						</div></li><li class="listitem"><div class="para">
+							A <span class="bold bold"><strong>resource-env-ref-type</strong></span> element that specifies the fully qualified class name of the referenced object. For example, in the case of a JMS queue, the value would be <code class="literal">javax.jms.Queue</code>.
+						</div></li></ul></div><div class="para">
+					<a class="xref" href="Naming_on_JBoss.html#Resource_Environment_References-An_example_ejb_jar.xml_resource_env_ref_fragment">Example 9.15, “An example ejb-jar.xml resource-env-ref fragment”</a> provides an example <code class="literal">resource-ref-env</code> element declaration by a session bean. <a class="xref" href="Naming_on_JBoss.html#Resource_Environment_References-ENC_resource_env_ref_access_code_fragment">Example 9.16, “ENC resource-env-ref access code fragment”</a> gives a code fragment that illustrates how to look up the <code class="literal">StockInfo</code> queue declared by the <code class="literal">resource-env-ref</code>.
+				</div><div class="example"><a id="Resource_Environment_References-An_example_ejb_jar.xml_resource_env_ref_fragment">
+      ⁠</a><p class="title"><strong>Example 9.15. An example ejb-jar.xml resource-env-ref fragment</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;session&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;ejb-name&gt;</span>MyBean<span xmlns="" class="perl_Keyword">&lt;/ejb-name&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;resource-env-ref&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;description&gt;</span>This is a reference to a JMS queue used in the
+<span xmlns="" class="line">​</span>            processing of Stock info
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/description&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;resource-env-ref-name&gt;</span>jms/StockInfo<span xmlns="" class="perl_Keyword">&lt;/resource-env-ref-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;resource-env-ref-type&gt;</span>javax.jms.Queue<span xmlns="" class="perl_Keyword">&lt;/resource-env-ref-type&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/resource-env-ref&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/session&gt;</span>
+</pre></div></div><div class="example"><a id="Resource_Environment_References-ENC_resource_env_ref_access_code_fragment">
+      ⁠</a><p class="title"><strong>Example 9.16. ENC resource-env-ref access code fragment</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span>InitialContext iniCtx = <span xmlns="" class="perl_Keyword">new</span> InitialContext();
+<span xmlns="" class="line">​</span>javax.<span xmlns="" class="perl_Function">jms</span>.<span xmlns="" class="perl_Function">Queue</span> q = (javax.<span xmlns="" class="perl_Function">jms</span>.<span xmlns="" class="perl_Function">Queue</span>)
+<span xmlns="" class="line">​</span>envCtx.<span xmlns="" class="perl_Function">lookup</span>(<span xmlns="" class="perl_String">"java:comp/env/jms/StockInfo"</span>);
+</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="ENC_Usage_Conventions-Resource_Environment_References_and_jboss.xml_jboss_web.xml">
+      ⁠</a>9.6.1.8. Resource Environment References and jboss.xml, jboss-web.xml</h3></div></div></div><div class="para">
+					The purpose of the JBoss <code class="literal">jboss.xml</code> EJB deployment descriptor and <code class="literal">jboss-web.xml</code> Web application deployment descriptor is to provide the link from the logical name defined by the <code class="literal">resource-env-ref-name</code> element to the JNDI name of the administered object deployed in JBoss. This is accomplished by providing a <code class="literal">resource-env-ref</code> element in the <code class="literal">jboss.xml</code> or <code class="literal">jboss-web.xml</code> descriptor. The JBoss <code class="literal">resource-env-ref</code> element consists of the following child elements:
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+							A <code class="literal">resource-env-ref-name</code> element that must match the <code class="literal">resource-env-ref-name</code> of a corresponding <code class="literal">resource-env-ref</code> element from the <code class="literal">ejb-jar.xml</code> or <code class="literal">web.xml</code> standard descriptors
+						</div></li><li class="listitem"><div class="para">
+							A <code class="literal">jndi-name</code> element that specifies the JNDI name of the resource as deployed in JBoss
+						</div></li></ul></div><div class="para">
+					<a class="xref" href="Naming_on_JBoss.html#Resource_Environment_References_and_jboss.xml_jboss_web.xml-A_sample_jboss.xml_resource_env_ref_descriptor_fragment">Example 9.17, “A sample jboss.xml resource-env-ref descriptor fragment”</a> provides a sample <code class="literal">jboss.xml</code> descriptor fragment that shows a sample mapping for the <code class="literal">StockInfo</code><code class="literal">resource-env-ref</code>.
+				</div><div class="example"><a id="Resource_Environment_References_and_jboss.xml_jboss_web.xml-A_sample_jboss.xml_resource_env_ref_descriptor_fragment">
+      ⁠</a><p class="title"><strong>Example 9.17. A sample jboss.xml resource-env-ref descriptor fragment</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;session&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;ejb-name&gt;</span>MyBean<span xmlns="" class="perl_Keyword">&lt;/ejb-name&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;resource-env-ref&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;resource-env-ref-name&gt;</span>jms/StockInfo<span xmlns="" class="perl_Keyword">&lt;/resource-env-ref-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;jndi-name&gt;</span>queue/StockInfoQueue<span xmlns="" class="perl_Keyword">&lt;/jndi-name&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/resource-env-ref&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">&lt;!-- ... --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/session&gt;</span>
+</pre></div></div></div></div></div></div></body></html>

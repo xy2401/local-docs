@@ -1,0 +1,478 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 10. Working with objects</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="objectstate">
+      ⁠</a>Chapter 10. Working with objects</h1></div></div></div><div class="para">
+		Hibernate is a full object/relational mapping solution that not only shields the developer from the details of the underlying database management system, but also offers <span class="emphasis"><em>state management</em></span> of objects. This is, contrary to the management of SQL <code class="literal">statements</code> in common JDBC/SQL persistence layers, a natural object-oriented view of persistence in Java applications.
+	</div><div class="para">
+		In other words, Hibernate application developers should always think about the <span class="emphasis"><em>state</em></span> of their objects, and not necessarily about the execution of SQL statements. This part is taken care of by Hibernate and is only relevant for the application developer when tuning the performance of the system.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="objectstate-overview">
+      ⁠</a>10.1. Hibernate object states</h1></div></div></div><div class="para">
+			Hibernate defines and supports the following object states:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					<span class="emphasis"><em>Transient</em></span> - an object is transient if it has just been instantiated using the <code class="literal">new</code> operator, and it is not associated with a Hibernate <code class="literal">Session</code>. It has no persistent representation in the database and no identifier value has been assigned. Transient instances will be destroyed by the garbage collector if the application does not hold a reference anymore. Use the Hibernate <code class="literal">Session</code> to make an object persistent (and let Hibernate take care of the SQL statements that need to be executed for this transition).
+				</div></li><li class="listitem"><div class="para">
+					<span class="emphasis"><em>Persistent</em></span> - a persistent instance has a representation in the database and an identifier value. It might just have been saved or loaded, however, it is by definition in the scope of a <code class="literal">Session</code>. Hibernate will detect any changes made to an object in persistent state and synchronize the state with the database when the unit of work completes. Developers do not execute manual <code class="literal">UPDATE</code> statements, or <code class="literal">DELETE</code> statements when an object should be made transient.
+				</div></li><li class="listitem"><div class="para">
+					<span class="emphasis"><em>Detached</em></span> - a detached instance is an object that has been persistent, but its <code class="literal">Session</code> has been closed. The reference to the object is still valid, of course, and the detached instance might even be modified in this state. A detached instance can be reattached to a new <code class="literal">Session</code> at a later point in time, making it (and all the modifications) persistent again. This feature enables a programming model for long running units of work that require user think-time. We call them <span class="emphasis"><em>application transactions</em></span>, i.e., a unit of work from the point of view of the user.
+				</div></li></ul></div><div class="para">
+			We will now discuss the states and state transitions (and the Hibernate methods that trigger a transition) in more detail.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="objectstate-makingpersistent">
+      ⁠</a>10.2. Making objects persistent</h1></div></div></div><div class="para">
+			Newly instantiated instances of a persistent class are considered <span class="emphasis"><em>transient</em></span> by Hibernate. We can make a transient instance <span class="emphasis"><em>persistent</em></span> by associating it with a session:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>DomesticCat fritz = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">DomesticCat</span>();
+<span xmlns="" class="line">​</span>fritz.<span xmlns="" class="perl_Function">setColor</span>(Color.<span xmlns="" class="perl_Function">GINGER</span>);
+<span xmlns="" class="line">​</span>fritz.<span xmlns="" class="perl_Function">setSex</span>(<span xmlns="" class="perl_Char">'M'</span>);
+<span xmlns="" class="line">​</span>fritz.<span xmlns="" class="perl_Function">setName</span>(<span xmlns="" class="perl_String">"Fritz"</span>);
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_DataType">Long</span> generatedId = (<span xmlns="" class="perl_DataType">Long</span>) sess.<span xmlns="" class="perl_Function">save</span>(fritz);</pre><div class="para">
+			If <code class="literal">Cat</code> has a generated identifier, the identifier is generated and assigned to the <code class="literal">cat</code> when <code class="literal">save()</code> is called. If <code class="literal">Cat</code> has an <code class="literal">assigned</code> identifier, or a composite key, the identifier should be assigned to the <code class="literal">cat</code> instance before calling <code class="literal">save()</code>. You can also use <code class="literal">persist()</code> instead of <code class="literal">save()</code>, with the semantics defined in the EJB3 early draft.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					<code class="literal">persist()</code> makes a transient instance persistent. However, it does not guarantee that the identifier value will be assigned to the persistent instance immediately, the assignment might happen at flush time. <code class="literal">persist()</code> also guarantees that it will not execute an <code class="literal">INSERT</code> statement if it is called outside of transaction boundaries. This is useful in long-running conversations with an extended Session/persistence context.
+				</div></li><li class="listitem"><div class="para">
+					<code class="literal">save()</code> does guarantee to return an identifier. If an INSERT has to be executed to get the identifier ( e.g. "identity" generator, not "sequence"), this INSERT happens immediately, no matter if you are inside or outside of a transaction. This is problematic in a long-running conversation with an extended Session/persistence context.
+				</div></li></ul></div><div class="para">
+			Alternatively, you can assign the identifier using an overloaded version of <code class="literal">save()</code>.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>DomesticCat pk = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">DomesticCat</span>();
+<span xmlns="" class="line">​</span>pk.<span xmlns="" class="perl_Function">setColor</span>(Color.<span xmlns="" class="perl_Function">TABBY</span>);
+<span xmlns="" class="line">​</span>pk.<span xmlns="" class="perl_Function">setSex</span>(<span xmlns="" class="perl_Char">'F'</span>);
+<span xmlns="" class="line">​</span>pk.<span xmlns="" class="perl_Function">setName</span>(<span xmlns="" class="perl_String">"PK"</span>);
+<span xmlns="" class="line">​</span>pk.<span xmlns="" class="perl_Function">setKittens</span>( <span xmlns="" class="perl_Keyword">new</span> HashSet() );
+<span xmlns="" class="line">​</span>pk.<span xmlns="" class="perl_Function">addKitten</span>(fritz);</pre><div class="para">
+			If the object you make persistent has associated objects (e.g. the <code class="literal">kittens</code> collection in the previous example), these objects can be made persistent in any order you like unless you have a <code class="literal">NOT NULL</code> constraint upon a foreign key column. There is never a risk of violating foreign key constraints. However, you might violate a <code class="literal">NOT NULL</code> constraint if you <code class="literal">save()</code> the objects in the wrong order.
+		</div><div class="para">
+			Usually you do not bother with this detail, as you will normally use Hibernate's <span class="emphasis"><em>transitive persistence</em></span> feature to save the associated objects automatically. Then, even <code class="literal">NOT NULL</code> constraint violations do not occur - Hibernate will take care of everything. Transitive persistence is discussed later in this chapter.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="objectstate-loading">
+      ⁠</a>10.3. Loading an object</h1></div></div></div><div class="para">
+			The <code class="literal">load()</code> methods of <code class="literal">Session</code> provide a way of retrieving a persistent instance if you know its identifier. <code class="literal">load()</code> takes a class object and loads the state into a newly instantiated instance of that class in a persistent state.
+		</div><pre class="programlisting">Cat fritz = (Cat) sess.load(Cat.class, generatedId);</pre><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// you need to wrap primitive identifiers</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_DataType">long</span> id = <span xmlns="" class="perl_Float">1234</span>;
+<span xmlns="" class="line">​</span>DomesticCat pk = (DomesticCat) sess.<span xmlns="" class="perl_Function">load</span>( DomesticCat.<span xmlns="" class="perl_Function">class</span>, <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_DataType">Long</span>(id) );</pre><div class="para">
+			Alternatively, you can load state into a given instance:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>Cat cat = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">DomesticCat</span>();
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// load pk's state into cat</span>
+<span xmlns="" class="line">​</span>sess.<span xmlns="" class="perl_Function">load</span>( cat, <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_DataType">Long</span>(pkId) );
+<span xmlns="" class="line">​</span>Set kittens = cat.<span xmlns="" class="perl_Function">getKittens</span>();</pre><div class="para">
+			Be aware that <code class="literal">load()</code> will throw an unrecoverable exception if there is no matching database row. If the class is mapped with a proxy, <code class="literal">load()</code> just returns an uninitialized proxy and does not actually hit the database until you invoke a method of the proxy. This is useful if you wish to create an association to an object without actually loading it from the database. It also allows multiple instances to be loaded as a batch if <code class="literal">batch-size</code> is defined for the class mapping.
+		</div><div class="para">
+			If you are not certain that a matching row exists, you should use the <code class="literal">get()</code> method which hits the database immediately and returns null if there is no matching row.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>Cat cat = (Cat) sess.<span xmlns="" class="perl_Function">get</span>(Cat.<span xmlns="" class="perl_Function">class</span>, id);
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">if</span> (cat==<span xmlns="" class="perl_Keyword">null</span>) {
+<span xmlns="" class="line">​</span>    cat = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">Cat</span>();
+<span xmlns="" class="line">​</span>}
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">return</span> cat;</pre><div class="para">
+			You can even load an object using an SQL <code class="literal">SELECT ... FOR UPDATE</code>, using a <code class="literal">LockMode</code>. See the API documentation for more information.
+		</div><pre class="programlisting">Cat cat = (Cat) sess.get(Cat.class, id, LockMode.UPGRADE);</pre><div class="para">
+			Any associated instances or contained collections will <span class="emphasis"><em>not</em></span> be selected <code class="literal">FOR UPDATE</code>, unless you decide to specify <code class="literal">lock</code> or <code class="literal">all</code> as a cascade style for the association.
+		</div><div class="para">
+			It is possible to re-load an object and all its collections at any time, using the <code class="literal">refresh()</code> method. This is useful when database triggers are used to initialize some of the properties of the object.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>sess.<span xmlns="" class="perl_Function">save</span>(cat);
+<span xmlns="" class="line">​</span>sess.<span xmlns="" class="perl_Function">flush</span>(); <span xmlns="" class="perl_Comment">//force the SQL INSERT</span>
+<span xmlns="" class="line">​</span>sess.<span xmlns="" class="perl_Function">refresh</span>(cat); <span xmlns="" class="perl_Comment">//re-read the state (after the trigger executes)</span></pre><div class="para">
+			How much does Hibernate load from the database and how many SQL <code class="literal">SELECT</code>s will it use? This depends on the <span class="emphasis"><em>fetching strategy</em></span>. This is explained in <a class="xref" href="performance.html#performance-fetching">Section 19.1, “Fetching strategies”</a>.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="objectstate-querying">
+      ⁠</a>10.4. Querying</h1></div></div></div><div class="para">
+			If you do not know the identifiers of the objects you are looking for, you need a query. Hibernate supports an easy-to-use but powerful object oriented query language (HQL). For programmatic query creation, Hibernate supports a sophisticated Criteria and Example query feature (QBC and QBE). You can also express your query in the native SQL of your database, with optional support from Hibernate for result set conversion into objects.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="objectstate-querying-executing">
+      ⁠</a>10.4.1. Executing queries</h2></div></div></div><div class="para">
+				HQL and native SQL queries are represented with an instance of <code class="literal">org.hibernate.Query</code>. This interface offers methods for parameter binding, result set handling, and for the execution of the actual query. You always obtain a <code class="literal">Query</code> using the current <code class="literal">Session</code>:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>List cats = session.<span xmlns="" class="perl_Function">createQuery</span>(
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_String">"from Cat as cat where cat.birthdate &lt; ?"</span>)
+<span xmlns="" class="line">​</span>    .<span xmlns="" class="perl_Function">setDate</span>(<span xmlns="" class="perl_Float">0</span>, date)
+<span xmlns="" class="line">​</span>    .<span xmlns="" class="perl_Function">list</span>();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>List mothers = session.<span xmlns="" class="perl_Function">createQuery</span>(
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_String">"select mother from Cat as cat join cat.mother as mother where cat.name = ?"</span>)
+<span xmlns="" class="line">​</span>    .<span xmlns="" class="perl_Function">setString</span>(<span xmlns="" class="perl_Float">0</span>, name)
+<span xmlns="" class="line">​</span>    .<span xmlns="" class="perl_Function">list</span>();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>List kittens = session.<span xmlns="" class="perl_Function">createQuery</span>(
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_String">"from Cat as cat where cat.mother = ?"</span>)
+<span xmlns="" class="line">​</span>    .<span xmlns="" class="perl_Function">setEntity</span>(<span xmlns="" class="perl_Float">0</span>, pk)
+<span xmlns="" class="line">​</span>    .<span xmlns="" class="perl_Function">list</span>();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>Cat mother = (Cat) session.<span xmlns="" class="perl_Function">createQuery</span>(
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_String">"select cat.mother from Cat as cat where cat = ?"</span>)
+<span xmlns="" class="line">​</span>    .<span xmlns="" class="perl_Function">setEntity</span>(<span xmlns="" class="perl_Float">0</span>, izi)
+<span xmlns="" class="line">​</span>    .<span xmlns="" class="perl_Function">uniqueResult</span>();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>Query mothersWithKittens = session.<span xmlns="" class="perl_Function">createQuery</span>(
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_String">"select mother from Cat as mother left join fetch mother.kittens"</span>);
+<span xmlns="" class="line">​</span>Set uniqueMothers = <span xmlns="" class="perl_Keyword">new</span> HashSet(mothersWithKittens.<span xmlns="" class="perl_Function">list</span>());</pre><div class="para">
+				A query is usually executed by invoking <code class="literal">list()</code>. The result of the query will be loaded completely into a collection in memory. Entity instances retrieved by a query are in a persistent state. The <code class="literal">uniqueResult()</code> method offers a shortcut if you know your query will only return a single object. Queries that make use of eager fetching of collections usually return duplicates of the root objects, but with their collections initialized. You can filter these duplicates through a <code class="literal">Set</code>.
+			</div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="objectstate-querying-executing-iterate">
+      ⁠</a>10.4.1.1. Iterating results</h3></div></div></div><div class="para">
+					Occasionally, you might be able to achieve better performance by executing the query using the <code class="literal">iterate()</code> method. This will usually be the case if you expect that the actual entity instances returned by the query will already be in the session or second-level cache. If they are not already cached, <code class="literal">iterate()</code> will be slower than <code class="literal">list()</code> and might require many database hits for a simple query, usually <span class="emphasis"><em>1</em></span> for the initial select which only returns identifiers, and <span class="emphasis"><em>n</em></span> additional selects to initialize the actual instances.
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// fetch ids</span>
+<span xmlns="" class="line">​</span>Iterator iter = sess.<span xmlns="" class="perl_Function">createQuery</span>(<span xmlns="" class="perl_String">"from eg.Qux q order by q.likeliness"</span>).<span xmlns="" class="perl_Function">iterate</span>();
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">while</span> ( iter.<span xmlns="" class="perl_Function">hasNext</span>() ) {
+<span xmlns="" class="line">​</span>    Qux qux = (Qux) iter.<span xmlns="" class="perl_Function">next</span>();  <span xmlns="" class="perl_Comment">// fetch the object</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">// something we could not express in the query</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">if</span> ( qux.<span xmlns="" class="perl_Function">calculateComplicatedAlgorithm</span>() ) {
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Comment">// delete the current instance</span>
+<span xmlns="" class="line">​</span>        iter.<span xmlns="" class="perl_Function">remove</span>();
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Comment">// do not need to process the rest</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">break</span>;
+<span xmlns="" class="line">​</span>    }
+<span xmlns="" class="line">​</span>}</pre></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="objectstate-querying-executing-tuples">
+      ⁠</a>10.4.1.2. Queries that return tuples</h3></div></div></div><div class="para">
+					Hibernate queries sometimes return tuples of objects. Each tuple is returned as an array:
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span>Iterator kittensAndMothers = sess.<span xmlns="" class="perl_Function">createQuery</span>(
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_String">"select kitten, mother from Cat kitten join kitten.mother mother"</span>)
+<span xmlns="" class="line">​</span>            .<span xmlns="" class="perl_Function">list</span>()
+<span xmlns="" class="line">​</span>            .<span xmlns="" class="perl_Function">iterator</span>();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">while</span> ( kittensAndMothers.<span xmlns="" class="perl_Function">hasNext</span>() ) {
+<span xmlns="" class="line">​</span>    Object[] tuple = (Object[]) kittensAndMothers.<span xmlns="" class="perl_Function">next</span>();
+<span xmlns="" class="line">​</span>    Cat kitten = (Cat) tuple[<span xmlns="" class="perl_Float">0</span>];
+<span xmlns="" class="line">​</span>    Cat mother = (Cat) tuple[<span xmlns="" class="perl_Float">1</span>];
+<span xmlns="" class="line">​</span>    ....
+<span xmlns="" class="line">​</span>}</pre></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="objectstate-querying-executing-scalar">
+      ⁠</a>10.4.1.3. Scalar results</h3></div></div></div><div class="para">
+					Queries can specify a property of a class in the <code class="literal">select</code> clause. They can even call SQL aggregate functions. Properties or aggregates are considered "scalar" results and not entities in persistent state.
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span>Iterator results = sess.<span xmlns="" class="perl_Function">createQuery</span>(
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_String">"select cat.color, min(cat.birthdate), count(cat) from Cat cat "</span> +
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_String">"group by cat.color"</span>)
+<span xmlns="" class="line">​</span>        .<span xmlns="" class="perl_Function">list</span>()
+<span xmlns="" class="line">​</span>        .<span xmlns="" class="perl_Function">iterator</span>();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">while</span> ( results.<span xmlns="" class="perl_Function">hasNext</span>() ) {
+<span xmlns="" class="line">​</span>    Object[] row = (Object[]) results.<span xmlns="" class="perl_Function">next</span>();
+<span xmlns="" class="line">​</span>    Color type = (Color) row[<span xmlns="" class="perl_Float">0</span>];
+<span xmlns="" class="line">​</span>    Date oldest = (Date) row[<span xmlns="" class="perl_Float">1</span>];
+<span xmlns="" class="line">​</span>    Integer count = (Integer) row[<span xmlns="" class="perl_Float">2</span>];
+<span xmlns="" class="line">​</span>    .....
+<span xmlns="" class="line">​</span>}</pre></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="objectstate-querying-executing-parameters">
+      ⁠</a>10.4.1.4. Bind parameters</h3></div></div></div><div class="para">
+					Methods on <code class="literal">Query</code> are provided for binding values to named parameters or JDBC-style <code class="literal">?</code> parameters. <span class="emphasis"><em>Contrary to JDBC, Hibernate numbers parameters from zero.</em></span> Named parameters are identifiers of the form <code class="literal">:name</code> in the query string. The advantages of named parameters are as follows:
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+							named parameters are insensitive to the order they occur in the query string
+						</div></li><li class="listitem"><div class="para">
+							they can occur multiple times in the same query
+						</div></li><li class="listitem"><div class="para">
+							they are self-documenting
+						</div></li></ul></div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">//named parameter (preferred)</span>
+<span xmlns="" class="line">​</span>Query q = sess.<span xmlns="" class="perl_Function">createQuery</span>(<span xmlns="" class="perl_String">"from DomesticCat cat where cat.name = :name"</span>);
+<span xmlns="" class="line">​</span>q.<span xmlns="" class="perl_Function">setString</span>(<span xmlns="" class="perl_String">"name"</span>, <span xmlns="" class="perl_String">"Fritz"</span>);
+<span xmlns="" class="line">​</span>Iterator cats = q.<span xmlns="" class="perl_Function">iterate</span>();</pre><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">//positional parameter</span>
+<span xmlns="" class="line">​</span>Query q = sess.<span xmlns="" class="perl_Function">createQuery</span>(<span xmlns="" class="perl_String">"from DomesticCat cat where cat.name = ?"</span>);
+<span xmlns="" class="line">​</span>q.<span xmlns="" class="perl_Function">setString</span>(<span xmlns="" class="perl_Float">0</span>, <span xmlns="" class="perl_String">"Izi"</span>);
+<span xmlns="" class="line">​</span>Iterator cats = q.<span xmlns="" class="perl_Function">iterate</span>();</pre><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">//named parameter list</span>
+<span xmlns="" class="line">​</span>List names = <span xmlns="" class="perl_Keyword">new</span> ArrayList();
+<span xmlns="" class="line">​</span>names.<span xmlns="" class="perl_Function">add</span>(<span xmlns="" class="perl_String">"Izi"</span>);
+<span xmlns="" class="line">​</span>names.<span xmlns="" class="perl_Function">add</span>(<span xmlns="" class="perl_String">"Fritz"</span>);
+<span xmlns="" class="line">​</span>Query q = sess.<span xmlns="" class="perl_Function">createQuery</span>(<span xmlns="" class="perl_String">"from DomesticCat cat where cat.name in (:namesList)"</span>);
+<span xmlns="" class="line">​</span>q.<span xmlns="" class="perl_Function">setParameterList</span>(<span xmlns="" class="perl_String">"namesList"</span>, names);
+<span xmlns="" class="line">​</span>List cats = q.<span xmlns="" class="perl_Function">list</span>();</pre></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="objectstate-querying-executing-pagination">
+      ⁠</a>10.4.1.5. Pagination</h3></div></div></div><div class="para">
+					If you need to specify bounds upon your result set, that is, the maximum number of rows you want to retrieve and/or the first row you want to retrieve, you can use methods of the <code class="literal">Query</code> interface:
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span>Query q = sess.<span xmlns="" class="perl_Function">createQuery</span>(<span xmlns="" class="perl_String">"from DomesticCat cat"</span>);
+<span xmlns="" class="line">​</span>q.<span xmlns="" class="perl_Function">setFirstResult</span>(<span xmlns="" class="perl_Float">20</span>);
+<span xmlns="" class="line">​</span>q.<span xmlns="" class="perl_Function">setMaxResults</span>(<span xmlns="" class="perl_Float">10</span>);
+<span xmlns="" class="line">​</span>List cats = q.<span xmlns="" class="perl_Function">list</span>();</pre><div class="para">
+					Hibernate knows how to translate this limit query into the native SQL of your DBMS.
+				</div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="objectstate-querying-executing-scrolling">
+      ⁠</a>10.4.1.6. Scrollable iteration</h3></div></div></div><div class="para">
+					If your JDBC driver supports scrollable <code class="literal">ResultSet</code>s, the <code class="literal">Query</code> interface can be used to obtain a <code class="literal">ScrollableResults</code> object that allows flexible navigation of the query results.
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span>Query q = sess.<span xmlns="" class="perl_Function">createQuery</span>(<span xmlns="" class="perl_String">"select cat.name, cat from DomesticCat cat "</span> +
+<span xmlns="" class="line">​</span>                            <span xmlns="" class="perl_String">"order by cat.name"</span>);
+<span xmlns="" class="line">​</span>ScrollableResults cats = q.<span xmlns="" class="perl_Function">scroll</span>();
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">if</span> ( cats.<span xmlns="" class="perl_Function">first</span>() ) {
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">// find the first name on each page of an alphabetical list of cats by name</span>
+<span xmlns="" class="line">​</span>    firstNamesOfPages = <span xmlns="" class="perl_Keyword">new</span> ArrayList();
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">do</span> {
+<span xmlns="" class="line">​</span>        String name = cats.<span xmlns="" class="perl_Function">getString</span>(<span xmlns="" class="perl_Float">0</span>);
+<span xmlns="" class="line">​</span>        firstNamesOfPages.<span xmlns="" class="perl_Function">add</span>(name);
+<span xmlns="" class="line">​</span>    }
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">while</span> ( cats.<span xmlns="" class="perl_Function">scroll</span>(PAGE_SIZE) );
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">// Now get the first page of cats</span>
+<span xmlns="" class="line">​</span>    pageOfCats = <span xmlns="" class="perl_Keyword">new</span> ArrayList();
+<span xmlns="" class="line">​</span>    cats.<span xmlns="" class="perl_Function">beforeFirst</span>();
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_DataType">int</span> i=<span xmlns="" class="perl_Float">0</span>;
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">while</span>( ( PAGE_SIZE &gt; i++ ) &amp;&amp; cats.<span xmlns="" class="perl_Function">next</span>() ) pageOfCats.<span xmlns="" class="perl_Function">add</span>( cats.<span xmlns="" class="perl_Function">get</span>(<span xmlns="" class="perl_Float">1</span>) );
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>}
+<span xmlns="" class="line">​</span>cats.<span xmlns="" class="perl_Function">close</span>();</pre><div class="para">
+					Note that an open database connection and cursor is required for this functionality. Use <code class="literal">setMaxResult()</code>/<code class="literal">setFirstResult()</code> if you need offline pagination functionality.
+				</div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="objectstate-querying-executing-named">
+      ⁠</a>10.4.1.7. Externalizing named queries</h3></div></div></div><div class="para">
+					You can also define named queries in the mapping document. Remember to use a <code class="literal">CDATA</code> section if your query contains characters that could be interpreted as markup.
+				</div><pre class="programlisting">&lt;query name="ByNameAndMaximumWeight"&gt;&lt;![CDATA[
+    from eg.DomesticCat as cat
+        where cat.name = ?
+        and cat.weight &gt; ?
+] ]&gt;&lt;/query&gt;</pre><div class="para">
+					Parameter binding and executing is done programmatically:
+				</div><pre class="programlisting">Query q = sess.getNamedQuery("ByNameAndMaximumWeight");
+q.setString(0, name);
+q.setInteger(1, minWeight);
+List cats = q.list();</pre><div class="para">
+					The actual program code is independent of the query language that is used. You can also define native SQL queries in metadata, or migrate existing queries to Hibernate by placing them in mapping files.
+				</div><div class="para">
+					Also note that a query declaration inside a <code class="literal">&lt;hibernate-mapping&gt;</code> element requires a global unique name for the query, while a query declaration inside a <code class="literal">&lt;class&gt;</code> element is made unique automatically by prepending the fully qualified name of the class. For example <code class="literal">eg.Cat.ByNameAndMaximumWeight</code>.
+				</div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="objectstate-filtering">
+      ⁠</a>10.4.2. Filtering collections</h2></div></div></div><div class="para">
+				A collection <span class="emphasis"><em>filter</em></span> is a special type of query that can be applied to a persistent collection or array. The query string can refer to <code class="literal">this</code>, meaning the current collection element.
+			</div><pre class="programlisting">Collection blackKittens = session.createFilter(
+    pk.getKittens(), 
+    "where this.color = ?")
+    .setParameter( Color.BLACK, Hibernate.custom(ColorUserType.class) )
+    .list()
+</pre><div class="para">
+				The returned collection is considered a bag that is a copy of the given collection. The original collection is not modified. This is contrary to the implication of the name "filter", but consistent with expected behavior.
+			</div><div class="para">
+				Observe that filters do not require a <code class="literal">from</code> clause, although they can have one if required. Filters are not limited to returning the collection elements themselves.
+			</div><pre class="programlisting">Collection blackKittenMates = session.createFilter(
+    pk.getKittens(), 
+    "select this.mate where this.color = eg.Color.BLACK.intValue")
+    .list();</pre><div class="para">
+				Even an empty filter query is useful, e.g. to load a subset of elements in a large collection:
+			</div><pre class="programlisting">Collection tenKittens = session.createFilter(
+    mother.getKittens(), "")
+    .setFirstResult(0).setMaxResults(10)
+    .list();</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="objecstate-querying-criteria">
+      ⁠</a>10.4.3. Criteria queries</h2></div></div></div><div class="para">
+				HQL is extremely powerful, but some developers prefer to build queries dynamically using an object-oriented API, rather than building query strings. Hibernate provides an intuitive <code class="literal">Criteria</code> query API for these cases:
+			</div><pre class="programlisting">Criteria crit = session.createCriteria(Cat.class);
+crit.add( Restrictions.eq( "color", eg.Color.BLACK ) );
+crit.setMaxResults(10);
+List cats = crit.list();</pre><div class="para">
+				The <code class="literal">Criteria</code> and the associated <code class="literal">Example</code> API are discussed in more detail in <a class="xref" href="querycriteria.html">Chapter 15, <em>Criteria Queries</em></a>.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="objectstate-querying-nativesql">
+      ⁠</a>10.4.4. Queries in native SQL</h2></div></div></div><div class="para">
+				You can express a query in SQL, using <code class="literal">createSQLQuery()</code> and let Hibernate manage the mapping from result sets to objects. You can at any time call <code class="literal">session.connection()</code> and use the JDBC <code class="literal">Connection</code> directly. If you choose to use the Hibernate API, you must enclose SQL aliases in braces:
+			</div><pre class="programlisting">List cats = session.createSQLQuery("SELECT {cat.*} FROM CAT {cat} WHERE ROWNUM&lt;10")
+    .addEntity("cat", Cat.class)
+.list();</pre><pre class="programlisting">List cats = session.createSQLQuery(
+    "SELECT {cat}.ID AS {cat.id}, {cat}.SEX AS {cat.sex}, " +
+           "{cat}.MATE AS {cat.mate}, {cat}.SUBCLASS AS {cat.class}, ... " +
+    "FROM CAT {cat} WHERE ROWNUM&lt;10")
+    .addEntity("cat", Cat.class)
+.list();</pre><div class="para">
+				SQL queries can contain named and positional parameters, just like Hibernate queries. More information about native SQL queries in Hibernate can be found in <a class="xref" href="querysql.html">Chapter 16, <em>Native SQL</em></a>.
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="objectstate-modifying">
+      ⁠</a>10.5. Modifying persistent objects</h1></div></div></div><div class="para">
+			<span class="emphasis"><em>Transactional persistent instances</em></span> (i.e. objects loaded, saved, created or queried by the <code class="literal">Session</code>) can be manipulated by the application, and any changes to persistent state will be persisted when the <code class="literal">Session</code> is <span class="emphasis"><em>flushed</em></span>. This is discussed later in this chapter. There is no need to call a particular method (like <code class="literal">update()</code>, which has a different purpose) to make your modifications persistent. The most straightforward way to update the state of an object is to <code class="literal">load()</code> it and then manipulate it directly while the <code class="literal">Session</code> is open:
+		</div><pre class="programlisting">DomesticCat cat = (DomesticCat) sess.load( Cat.class, new Long(69) );
+cat.setName("PK");
+sess.flush();  // changes to cat are automatically detected and persisted</pre><div class="para">
+			Sometimes this programming model is inefficient, as it requires in the same session both an SQL <code class="literal">SELECT</code> to load an object and an SQL <code class="literal">UPDATE</code> to persist its updated state. Hibernate offers an alternate approach by using detached instances.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="important"><div class="admonition_header"><p><strong>Important</strong></p></div><div class="admonition"><div class="para">
+				Hibernate does not offer its own API for direct execution of <code class="literal">UPDATE</code> or <code class="literal">DELETE</code> statements. Hibernate is a <span class="emphasis"><em>state management</em></span> service, you do not have to think in <span class="emphasis"><em>statements</em></span> to use it. JDBC is a perfect API for executing SQL statements, you can get a JDBC <code class="literal">Connection</code> at any time by calling <code class="literal">session.connection()</code>. Furthermore, the notion of mass operations conflicts with object/relational mapping for online transaction processing-oriented applications. Future versions of Hibernate can, however, provide special mass operation functions. See <a class="xref" href="batch.html">Chapter 13, <em>Batch processing</em></a> for some possible batch operation tricks.
+			</div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="objectstate-detached">
+      ⁠</a>10.6. Modifying detached objects</h1></div></div></div><div class="para">
+			Many applications need to retrieve an object in one transaction, send it to the UI layer for manipulation, then save the changes in a new transaction. Applications that use this kind of approach in a high-concurrency environment usually use versioned data to ensure isolation for the "long" unit of work.
+		</div><div class="para">
+			Hibernate supports this model by providing for reattachment of detached instances using the <code class="literal">Session.update()</code> or <code class="literal">Session.merge()</code> methods:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// in the first session</span>
+<span xmlns="" class="line">​</span>Cat cat = (Cat) firstSession.<span xmlns="" class="perl_Function">load</span>(Cat.<span xmlns="" class="perl_Function">class</span>, catId);
+<span xmlns="" class="line">​</span>Cat potentialMate = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">Cat</span>();
+<span xmlns="" class="line">​</span>firstSession.<span xmlns="" class="perl_Function">save</span>(potentialMate);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// in a higher layer of the application</span>
+<span xmlns="" class="line">​</span>cat.<span xmlns="" class="perl_Function">setMate</span>(potentialMate);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// later, in a new session</span>
+<span xmlns="" class="line">​</span>secondSession.<span xmlns="" class="perl_Function">update</span>(cat);  <span xmlns="" class="perl_Comment">// update cat</span>
+<span xmlns="" class="line">​</span>secondSession.<span xmlns="" class="perl_Function">update</span>(mate); <span xmlns="" class="perl_Comment">// update mate</span></pre><div class="para">
+			If the <code class="literal">Cat</code> with identifier <code class="literal">catId</code> had already been loaded by <code class="literal">secondSession</code> when the application tried to reattach it, an exception would have been thrown.
+		</div><div class="para">
+			Use <code class="literal">update()</code> if you are certain that the session does not contain an already persistent instance with the same identifier. Use <code class="literal">merge()</code> if you want to merge your modifications at any time without consideration of the state of the session. In other words, <code class="literal">update()</code> is usually the first method you would call in a fresh session, ensuring that the reattachment of your detached instances is the first operation that is executed.
+		</div><div class="para">
+			The application should individually <code class="literal">update()</code> detached instances that are reachable from the given detached instance <span class="emphasis"><em>only</em></span> if it wants their state to be updated. This can be automated using <span class="emphasis"><em>transitive persistence</em></span>. See <a class="xref" href="objectstate.html#objectstate-transitive">Section 10.11, “Transitive persistence”</a> for more information.
+		</div><div class="para">
+			The <code class="literal">lock()</code> method also allows an application to reassociate an object with a new session. However, the detached instance has to be unmodified.
+		</div><pre class="programlisting">//just reassociate:
+sess.lock(fritz, LockMode.NONE);
+//do a version check, then reassociate:
+sess.lock(izi, LockMode.READ);
+//do a version check, using SELECT ... FOR UPDATE, then reassociate:
+sess.lock(pk, LockMode.UPGRADE);</pre><div class="para">
+			Note that <code class="literal">lock()</code> can be used with various <code class="literal">LockMode</code>s. See the API documentation and the chapter on transaction handling for more information. Reattachment is not the only usecase for <code class="literal">lock()</code>.
+		</div><div class="para">
+			Other models for long units of work are discussed in <a class="xref" href="transactions.html#transactions-optimistic">Section 11.3, “Optimistic concurrency control”</a>.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="objectstate-saveorupdate">
+      ⁠</a>10.7. Automatic state detection</h1></div></div></div><div class="para">
+			Hibernate users have requested a general purpose method that either saves a transient instance by generating a new identifier or updates/reattaches the detached instances associated with its current identifier. The <code class="literal">saveOrUpdate()</code> method implements this functionality.
+		</div><pre class="programlisting">// in the first session
+Cat cat = (Cat) firstSession.load(Cat.class, catID);
+
+// in a higher tier of the application
+Cat mate = new Cat();
+cat.setMate(mate);
+
+// later, in a new session
+secondSession.saveOrUpdate(cat);   // update existing state (cat has a non-null id)
+secondSession.saveOrUpdate(mate);  // save the new instance (mate has a null id)</pre><div class="para">
+			The usage and semantics of <code class="literal">saveOrUpdate()</code> seems to be confusing for new users. Firstly, so long as you are not trying to use instances from one session in another new session, you should not need to use <code class="literal">update()</code>, <code class="literal">saveOrUpdate()</code>, or <code class="literal">merge()</code>. Some whole applications will never use either of these methods.
+		</div><div class="para">
+			Usually <code class="literal">update()</code> or <code class="literal">saveOrUpdate()</code> are used in the following scenario:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					the application loads an object in the first session
+				</div></li><li class="listitem"><div class="para">
+					the object is passed up to the UI tier
+				</div></li><li class="listitem"><div class="para">
+					some modifications are made to the object
+				</div></li><li class="listitem"><div class="para">
+					the object is passed back down to the business logic tier
+				</div></li><li class="listitem"><div class="para">
+					the application persists these modifications by calling <code class="literal">update()</code> in a second session
+				</div></li></ul></div><div class="para">
+			<code class="literal">saveOrUpdate()</code> does the following:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					if the object is already persistent in this session, do nothing
+				</div></li><li class="listitem"><div class="para">
+					if another object associated with the session has the same identifier, throw an exception
+				</div></li><li class="listitem"><div class="para">
+					if the object has no identifier property, <code class="literal">save()</code> it
+				</div></li><li class="listitem"><div class="para">
+					if the object's identifier has the value assigned to a newly instantiated object, <code class="literal">save()</code> it
+				</div></li><li class="listitem"><div class="para">
+					if the object is versioned by a <code class="literal">&lt;version&gt;</code> or <code class="literal">&lt;timestamp&gt;</code>, and the version property value is the same value assigned to a newly instantiated object, <code class="literal">save()</code> it
+				</div></li><li class="listitem"><div class="para">
+					otherwise <code class="literal">update()</code> the object
+				</div></li></ul></div><div class="para">
+			and <code class="literal">merge()</code> is very different:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					if there is a persistent instance with the same identifier currently associated with the session, copy the state of the given object onto the persistent instance
+				</div></li><li class="listitem"><div class="para">
+					if there is no persistent instance currently associated with the session, try to load it from the database, or create a new persistent instance
+				</div></li><li class="listitem"><div class="para">
+					the persistent instance is returned
+				</div></li><li class="listitem"><div class="para">
+					the given instance does not become associated with the session, it remains detached
+				</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="objectstate-deleting">
+      ⁠</a>10.8. Deleting persistent objects</h1></div></div></div><div class="para">
+			<code class="literal">Session.delete()</code> will remove an object's state from the database. Your application, however, can still hold a reference to a deleted object. It is best to think of <code class="literal">delete()</code> as making a persistent instance, transient.
+		</div><pre class="programlisting">sess.delete(cat);</pre><div class="para">
+			You can delete objects in any order, without risk of foreign key constraint violations. It is still possible to violate a <code class="literal">NOT NULL</code> constraint on a foreign key column by deleting objects in the wrong order, e.g. if you delete the parent, but forget to delete the children.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="objectstate-replicating">
+      ⁠</a>10.9. Replicating object between two different datastores</h1></div></div></div><div class="para">
+			It is sometimes useful to be able to take a graph of persistent instances and make them persistent in a different datastore, without regenerating identifier values.
+		</div><pre class="programlisting">//retrieve a cat from one database
+Session session1 = factory1.openSession();
+Transaction tx1 = session1.beginTransaction();
+Cat cat = (Cat) session1.get(Cat.class, catId);
+tx1.commit();
+session1.close();
+
+//reconcile with a second database
+Session session2 = factory2.openSession();
+Transaction tx2 = session2.beginTransaction();
+session2.replicate(cat, ReplicationMode.LATEST_VERSION);
+tx2.commit();
+session2.close();</pre><div class="para">
+			The <code class="literal">ReplicationMode</code> determines how <code class="literal">replicate()</code> will deal with conflicts with existing rows in the database:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					<code class="literal">ReplicationMode.IGNORE</code>: ignores the object when there is an existing database row with the same identifier
+				</div></li><li class="listitem"><div class="para">
+					<code class="literal">ReplicationMode.OVERWRITE</code>: overwrites any existing database row with the same identifier
+				</div></li><li class="listitem"><div class="para">
+					<code class="literal">ReplicationMode.EXCEPTION</code>: throws an exception if there is an existing database row with the same identifier
+				</div></li><li class="listitem"><div class="para">
+					<code class="literal">ReplicationMode.LATEST_VERSION</code>: overwrites the row if its version number is earlier than the version number of the object, or ignore the object otherwise
+				</div></li></ul></div><div class="para">
+			Usecases for this feature include reconciling data entered into different database instances, upgrading system configuration information during product upgrades, rolling back changes made during non-ACID transactions and more.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="objectstate-flushing">
+      ⁠</a>10.10. Flushing the Session</h1></div></div></div><div class="para">
+			Sometimes the <code class="literal">Session</code> will execute the SQL statements needed to synchronize the JDBC connection's state with the state of objects held in memory. This process, called <span class="emphasis"><em>flush</em></span>, occurs by default at the following points:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					before some query executions
+				</div></li><li class="listitem"><div class="para">
+					from <code class="literal">org.hibernate.Transaction.commit()</code>
+				</div></li><li class="listitem"><div class="para">
+					from <code class="literal">Session.flush()</code>
+				</div></li></ul></div><div class="para">
+			The SQL statements are issued in the following order:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="orderedlist"><ol><li class="listitem"><div class="para">
+					all entity insertions in the same order the corresponding objects were saved using <code class="literal">Session.save()</code>
+				</div></li><li class="listitem"><div class="para">
+					all entity updates
+				</div></li><li class="listitem"><div class="para">
+					all collection deletions
+				</div></li><li class="listitem"><div class="para">
+					all collection element deletions, updates and insertions
+				</div></li><li class="listitem"><div class="para">
+					all collection insertions
+				</div></li><li class="listitem"><div class="para">
+					all entity deletions in the same order the corresponding objects were deleted using <code class="literal">Session.delete()</code>
+				</div></li></ol></div><div class="para">
+			An exception is that objects using <code class="literal">native</code> ID generation are inserted when they are saved.
+		</div><div class="para">
+			Except when you explicitly <code class="literal">flush()</code>, there are absolutely no guarantees about <span class="emphasis"><em>when</em></span> the <code class="literal">Session</code> executes the JDBC calls, only the <span class="emphasis"><em>order</em></span> in which they are executed. However, Hibernate does guarantee that the <code class="literal">Query.list(..)</code> will never return stale or incorrect data.
+		</div><div class="para">
+			It is possible to change the default behavior so that flush occurs less frequently. The <code class="literal">FlushMode</code> class defines three different modes: only flush at commit time when the Hibernate <code class="literal">Transaction</code> API is used, flush automatically using the explained routine, or never flush unless <code class="literal">flush()</code> is called explicitly. The last mode is useful for long running units of work, where a <code class="literal">Session</code> is kept open and disconnected for a long time (see <a class="xref" href="transactions.html#transactions-optimistic-longsession">Section 11.3.2, “Extended session and automatic versioning”</a>).
+		</div><pre class="programlisting">sess = sf.openSession();
+Transaction tx = sess.beginTransaction();
+sess.setFlushMode(FlushMode.COMMIT); // allow queries to return stale state
+
+Cat izi = (Cat) sess.load(Cat.class, id);
+izi.setName(iznizi);
+
+// might return stale data
+sess.createQuery("from Cat as cat left outer join cat.kittens kitten");
+
+// change to izi is not flushed!
+...
+tx.commit(); // flush occurs
+sess.close();</pre><div class="para">
+			During flush, an exception might occur (e.g. if a DML operation violates a constraint). Since handling exceptions involves some understanding of Hibernate's transactional behavior, we discuss it in <a class="xref" href="transactions.html">Chapter 11, <em>Transactions and Concurrency</em></a>.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="objectstate-transitive">
+      ⁠</a>10.11. Transitive persistence</h1></div></div></div><div class="para">
+			It is quite cumbersome to save, delete, or reattach individual objects, especially if you deal with a graph of associated objects. A common case is a parent/child relationship. Consider the following example:
+		</div><div class="para">
+			If the children in a parent/child relationship would be value typed (e.g. a collection of addresses or strings), their life cycle would depend on the parent and no further action would be required for convenient "cascading" of state changes. When the parent is saved, the value-typed child objects are saved and when the parent is deleted, the children will be deleted, etc. This works for operations such as the removal of a child from the collection. Since value-typed objects cannot have shared references, Hibernate will detect this and delete the child from the database.
+		</div><div class="para">
+			Now consider the same scenario with parent and child objects being entities, not value-types (e.g. categories and items, or parent and child cats). Entities have their own life cycle and support shared references. Removing an entity from the collection does not mean it can be deleted), and there is by default no cascading of state from one entity to any other associated entities. Hibernate does not implement <span class="emphasis"><em>persistence by reachability</em></span> by default.
+		</div><div class="para">
+			For each basic operation of the Hibernate session - including <code class="literal">persist(), merge(), saveOrUpdate(), delete(), lock(), refresh(), evict(), replicate()</code> - there is a corresponding cascade style. Respectively, the cascade styles are named <code class="literal">create, merge, save-update, delete, lock, refresh, evict, replicate</code>. If you want an operation to be cascaded along an association, you must indicate that in the mapping document. For example:
+		</div><pre class="programlisting">&lt;one-to-one name="person" cascade="persist"/&gt;</pre><div class="para">
+			Cascade styles my be combined:
+		</div><pre class="programlisting">&lt;one-to-one name="person" cascade="persist,delete,lock"/&gt;</pre><div class="para">
+			You can even use <code class="literal">cascade="all"</code> to specify that <span class="emphasis"><em>all</em></span> operations should be cascaded along the association. The default <code class="literal">cascade="none"</code> specifies that no operations are to be cascaded.
+		</div><div class="para">
+			A special cascade style, <code class="literal">delete-orphan</code>, applies only to one-to-many associations, and indicates that the <code class="literal">delete()</code> operation should be applied to any child object that is removed from the association.
+		</div><div class="para">
+			Recommendations:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					It does not usually make sense to enable cascade on a <code class="literal">&lt;many-to-one&gt;</code> or <code class="literal">&lt;many-to-many&gt;</code> association. Cascade is often useful for <code class="literal">&lt;one-to-one&gt;</code> and <code class="literal">&lt;one-to-many&gt;</code> associations.
+				</div></li><li class="listitem"><div class="para">
+					If the child object's lifespan is bounded by the lifespan of the parent object, make it a <span class="emphasis"><em>life cycle object</em></span> by specifying <code class="literal">cascade="all,delete-orphan"</code>.
+				</div></li><li class="listitem"><div class="para">
+					Otherwise, you might not need cascade at all. But if you think that you will often be working with the parent and children together in the same transaction, and you want to save yourself some typing, consider using <code class="literal">cascade="persist,merge,save-update"</code>.
+				</div></li></ul></div><div class="para">
+			Mapping an association (either a single valued association, or a collection) with <code class="literal">cascade="all"</code> marks the association as a <span class="emphasis"><em>parent/child</em></span> style relationship where save/update/delete of the parent results in save/update/delete of the child or children.
+		</div><div class="para">
+			Furthermore, a mere reference to a child from a persistent parent will result in save/update of the child. This metaphor is incomplete, however. A child which becomes unreferenced by its parent is <span class="emphasis"><em>not</em></span> automatically deleted, except in the case of a <code class="literal">&lt;one-to-many&gt;</code> association mapped with <code class="literal">cascade="delete-orphan"</code>. The precise semantics of cascading operations for a parent/child relationship are as follows:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					If a parent is passed to <code class="literal">persist()</code>, all children are passed to <code class="literal">persist()</code>
+				</div></li><li class="listitem"><div class="para">
+					If a parent is passed to <code class="literal">merge()</code>, all children are passed to <code class="literal">merge()</code>
+				</div></li><li class="listitem"><div class="para">
+					If a parent is passed to <code class="literal">save()</code>, <code class="literal">update()</code> or <code class="literal">saveOrUpdate()</code>, all children are passed to <code class="literal">saveOrUpdate()</code>
+				</div></li><li class="listitem"><div class="para">
+					If a transient or detached child becomes referenced by a persistent parent, it is passed to <code class="literal">saveOrUpdate()</code>
+				</div></li><li class="listitem"><div class="para">
+					If a parent is deleted, all children are passed to <code class="literal">delete()</code>
+				</div></li><li class="listitem"><div class="para">
+					If a child is dereferenced by a persistent parent, <span class="emphasis"><em>nothing special happens</em></span> - the application should explicitly delete the child if necessary - unless <code class="literal">cascade="delete-orphan"</code>, in which case the "orphaned" child is deleted.
+				</div></li></ul></div><div class="para">
+			Finally, note that cascading of operations can be applied to an object graph at <span class="emphasis"><em>call time</em></span> or at <span class="emphasis"><em>flush time</em></span>. All operations, if enabled, are cascaded to associated entities reachable when the operation is executed. However, <code class="literal">save-update</code> and <code class="literal">delete-orphan</code> are transitive for all associated entities reachable during flush of the <code class="literal">Session</code>.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="objectstate-metadata">
+      ⁠</a>10.12. Using metadata</h1></div></div></div><div class="para">
+			Hibernate requires a rich meta-level model of all entity and value types. This model can be useful to the application itself. For example, the application might use Hibernate's metadata to implement a "smart" deep-copy algorithm that understands which objects should be copied (eg. mutable value types) and which objects that should not (e.g. immutable value types and, possibly, associated entities).
+		</div><div class="para">
+			Hibernate exposes metadata via the <code class="literal">ClassMetadata</code> and <code class="literal">CollectionMetadata</code> interfaces and the <code class="literal">Type</code> hierarchy. Instances of the metadata interfaces can be obtained from the <code class="literal">SessionFactory</code>.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>Cat fritz = ......;
+<span xmlns="" class="line">​</span>ClassMetadata catMeta = sessionfactory.<span xmlns="" class="perl_Function">getClassMetadata</span>(Cat.<span xmlns="" class="perl_Function">class</span>);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>Object[] propertyValues = catMeta.<span xmlns="" class="perl_Function">getPropertyValues</span>(fritz, EntityMode.<span xmlns="" class="perl_Function">POJO</span>);
+<span xmlns="" class="line">​</span>String[] propertyNames = catMeta.<span xmlns="" class="perl_Function">getPropertyNames</span>();
+<span xmlns="" class="line">​</span>Type[] propertyTypes = catMeta.<span xmlns="" class="perl_Function">getPropertyTypes</span>();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// get a Map of all properties which are not collections or associations</span>
+<span xmlns="" class="line">​</span>Map namedValues = <span xmlns="" class="perl_Keyword">new</span> HashMap();
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">for</span> ( <span xmlns="" class="perl_DataType">int</span> i=<span xmlns="" class="perl_Float">0</span>; i&lt;propertyNames.<span xmlns="" class="perl_Function">length</span>; i++ ) {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">if</span> ( !propertyTypes[i].<span xmlns="" class="perl_Function">isEntityType</span>() &amp;&amp; !propertyTypes[i].<span xmlns="" class="perl_Function">isCollectionType</span>() ) {
+<span xmlns="" class="line">​</span>        namedValues.<span xmlns="" class="perl_Function">put</span>( propertyNames[i], propertyValues[i] );
+<span xmlns="" class="line">​</span>    }
+<span xmlns="" class="line">​</span>}</pre></div></div></body></html>

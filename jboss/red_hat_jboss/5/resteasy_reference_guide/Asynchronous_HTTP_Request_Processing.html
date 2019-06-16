@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 29. Asynchronous HTTP Request Processing</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="Asynchronous_HTTP_Request_Processing">
+      ⁠</a>Chapter 29. Asynchronous HTTP Request Processing</h1></div></div></div><div class="para">
+		Asynchronous HTTP Request Processing lets you process a single HTTP request using NIO (Non-blocking Input/Output), in separate threads (if desired). This is also known as <span class="emphasis"><em>COMET capability</em></span>. The primary use case for Asynchronous HTTP is where the client polls the server for a delayed response.
+	</div><div class="para">
+		A common example is an AJAX chat client that pushes/pulls from both the client and the server. In this scenario, the client blocks a long period of time on the server's socket while waiting for a new message. In synchronous HTTP (where the server blocks on incoming and outgoing I/O), one thread is consumed per client connection, which consumes both memory and thread resources. When multiple concurrent clients block in this way, resources are not used effectively, and the server does not scale well.
+	</div><div class="para">
+		Tomcat, Jetty, and JBoss Web all have similar (proprietary) support for asynchronous HTTP request processing. This functionality is currently being standardized in the Servlet 3.0 specification. RESTEasy provides a simple callback API to provide asynchronous capabilities, and supports integration with Servlet 3.0 (through Jetty 7), Tomcat 6, and JBoss Web 2.1.1.
+	</div><div class="para">
+		The RESTEasy asynchronous HTTP support is implemented via two classes: the <code class="literal">@Suspend</code> annotation and the <code class="literal">AsynchronousResponse</code> interface.
+	</div><pre class="programlisting">
+public @interface Suspend
+{
+   long value() default -1;
+}
+
+import javax.ws.rs.core.Response;
+
+public interface AsynchronousResponse
+{
+   void setResponse(Response response);
+}
+</pre><div class="para">
+		<code class="literal">@Suspend</code> tells RESTEasy that the HTTP request/response should be detached from the currently executing thread, and that the current thread should not automatically process the response. The argument to <code class="literal">@Suspend</code> is the time in milliseconds until the request should be canceled.
+	</div><div class="para">
+		<code class="literal">AsynchronousResponse</code> is the callback object. It is injected into the method by RESTEasy. Application code moves the <code class="literal">AsynchronousResponse</code> to a different thread for processing. Calling <code class="literal">setResponse()</code> returns a response to the client and terminates the HTTP request. The following is an example of asynchronous processing:
+	</div><pre class="programlisting">
+import org.jboss.resteasy.annotations.Suspend;
+import org.jboss.resteasy.spi.AsynchronousResponse;
+
+@Path("/")
+public class SimpleResource
+{
+
+   @GET
+   @Path("basic")
+   @Produces("text/plain")
+   public void getBasic(final @Suspend(10000) AsynchronousResponse response) throws Exception
+   {
+      Thread t = new Thread()
+      {
+         @Override
+         public void run()
+         {
+            try
+            {
+               Response jaxrs = Response.ok("basic").type(MediaType.TEXT_PLAIN).build();
+               response.setResponse(jaxrs);
+            }
+            catch (Exception e)
+            {
+               e.printStackTrace();
+            }
+         }
+      };
+      t.start();
+   }
+}
+</pre><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Asynch_HTTP_Tomcat6">
+      ⁠</a>29.1. Tomcat 6 and JBoss 4.2.3 Support</h1></div></div></div><div class="para">
+			To use RESTEasy's Asynchronous HTTP APIs with Tomcat 6 or JBoss 4.2.3, you must use a special RESTEasy Servlet and configure Tomcat (or JBoss Web in JBoss 4.2.3) to use the NIO transport. First, edit Tomcat's (or JBoss Web's) <code class="filename">server.xml</code> file. Comment out the <code class="literal">vanilla HTTP adapter</code> and add the following:
+		</div><pre class="programlisting">
+&lt;Connector port="8080" address="${jboss.bind.address}"
+   emptySessionPath="true" protocol="org.apache.coyote.http11.Http11NioProtocol"
+   enableLookups="false" redirectPort="6443" acceptorThreadCount="2" pollerThreadCount="10"
+/&gt;
+</pre><div class="para">
+			Your deployed RESTEasy applications must also use a different RESTEasy Servlet: <code class="literal">org.jboss.resteasy.plugins.server.servlet.Tomcat6CometDispatcherServlet</code>. This class is available within the <code class="filename">async-http-tomcat-xxx.jar</code> (or within the Maven repository, under the <code class="literal">async-http-tomcat6</code> artifact ID) in <code class="filename">web.xml</code>.
+		</div><pre class="programlisting">
+&lt;servlet&gt;
+   &lt;servlet-name&gt;Resteasy&lt;/servlet-name&gt;
+   &lt;servlet-class&gt;org.jboss.resteasy.plugins.server.servlet.Tomcat6CometDispatcherServlet&lt;/servlet-class&gt;
+&lt;/servlet&gt;
+</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Asynch_HTTP_Servlet3">
+      ⁠</a>29.2. Servlet 3.0 Support</h1></div></div></div><div class="para">
+			As of October 20th, 2008, only Jetty 7.0.pre3 (mortbay.org) supported the current draft of the unfinished Servlet 3.0 specification.
+		</div><div class="para">
+			Your deployed RESTEasy applications must also use a different RESTEasy Servlet: <code class="literal">org.jboss.resteasy.plugins.server.servlet.HttpServlet30Dispatcher</code>. This class is available within the <code class="filename">async-http-servlet-3.0-xxx.jar</code> (or within the Maven repository under the <code class="literal">async-http-servlet-3.0</code> artifact ID) in <code class="filename">web.xml</code>:
+		</div><pre class="programlisting">
+&lt;servlet&gt;
+   &lt;servlet-name&gt;Resteasy&lt;/servlet-name&gt;
+   &lt;servlet-class&gt;org.jboss.resteasy.plugins.server.servlet.HttpServlet30Dispatcher&lt;/servlet-class&gt;
+&lt;/servlet&gt;
+</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Asynch_HTTP_JBossWeb">
+      ⁠</a>29.3. JBossWeb, EAP 5.0.x Support</h1></div></div></div><div class="para">
+			The JBossWeb container is shipped with EAP 5.0.x and higher requires the JBoss Native plug-in to enable asynchronous HTTP processing. See the JBoss Web documentation for information about this process.
+		</div><div class="para">
+			Your deployed RESTEasy applications must use a different RESTEasy Servlet: <code class="literal">org.jboss.resteasy.plugins.server.servlet.JBossWebDispatcherServlet</code>. This class is available within the <code class="filename">async-http-jbossweb-xxx.jar</code> (or within the Maven repository under the <code class="literal">async-http-jbossweb</code> artifact ID) in <code class="filename">web.xml</code>:
+		</div><pre class="programlisting">
+&lt;servlet&gt;
+   &lt;servlet-name&gt;Resteasy&lt;/servlet-name&gt;
+   &lt;servlet-class&gt;org.jboss.resteasy.plugins.server.servlet.JBossWebDispatcherServlet&lt;/servlet-class&gt;
+&lt;/servlet&gt;
+</pre></div></div></body></html>

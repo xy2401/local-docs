@@ -1,0 +1,409 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 23. Clustered Session EJBs</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="clustering-session">
+      ⁠</a>Chapter 23. Clustered Session EJBs</h1></div></div></div><div class="para">
+		Session EJBs provide remote invocation services. They are clustered based on the client-side interceptor architecture. The client application for a clustered session bean is the same as the client for the non-clustered version of the session bean, except for some minor changes. No code change or re-compilation is needed on the client side. Now, let us check out how to configure clustered session beans in EJB 3.0 and EJB 2.x server applications respectively.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="clustering-session-slsb30">
+      ⁠</a>23.1. Stateless Session Bean in EJB 3.0</h1></div></div></div><div class="para">
+			Clustering stateless session beans is probably the easiest case since no state is involved. Calls can be load balanced to any participating node (i.e. any node that has this specific bean deployed) of the cluster.
+		</div><div class="para">
+			To cluster a stateless session bean in EJB 3.0, simply annotate the bean class with the <code class="literal">@Clustered</code> annotation. This annotation contains optional parameters for overriding both the load balance policy and partition to use.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">@interface</span> Clustered
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>   String <span xmlns="" class="perl_Function">partition</span>() <span xmlns="" class="perl_Keyword">default</span> <span xmlns="" class="perl_String">"${jboss.partition.name:DefaultPartition}"</span>;
+<span xmlns="" class="line">​</span>   String <span xmlns="" class="perl_Function">loadBalancePolicy</span>() <span xmlns="" class="perl_Keyword">default</span> <span xmlns="" class="perl_String">"LoadBalancePolicy"</span>;
+<span xmlns="" class="line">​</span>}
+</pre><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					<span class="bold bold"><strong>partition</strong></span> specifies the name of the cluster the bean participates in. While the <code class="literal">@Clustered</code> annotation lets you override the default partition, <code class="literal">DefaultPartition</code>, for an individual bean, you can override this for all beans using the <code class="literal">jboss.partition.name</code> system property.
+				</div></li><li class="listitem"><div class="para">
+					<span class="bold bold"><strong>loadBalancePolicy</strong></span> defines the name of a class implementing <code class="literal">org.jboss.ha.client.loadbalance.LoadBalancePolicy</code>, indicating how the bean stub should balance calls made on the nodes of the cluster. The default value, <code class="literal">LoadBalancePolicy</code> is a special token indicating the default policy for the session bean type. For stateless session beans, the default policy is <code class="literal">org.jboss.ha.client.loadbalance.RoundRobin</code>. You can override the default value using your own implementation, or choose one from the list of available policies:
+				</div><div class="variablelist"><dl class="variablelist"><dt><span class="term"> <code class="literal">org.jboss.ha.client.loadbalance.RoundRobin</code> </span></dt><dd><div class="para">
+								Starting with a random target, always favors the next available target in the list, ensuring maximum load balancing always occurs.
+							</div></dd></dl></div><div class="variablelist"><dl class="variablelist"><dt><span class="term"> <code class="literal">org.jboss.ha.client.loadbalance.RandomRobin</code> </span></dt><dd><div class="para">
+								Randomly selects its target without any consideration to previously selected targets.
+							</div></dd></dl></div><div class="variablelist"><dl class="variablelist"><dt><span class="term"> <code class="literal">org.jboss.ha.client.loadbalance.aop.FirstAvailable</code> </span></dt><dd><div class="para">
+								Once a target is chosen, always favors that same target; i.e. no further load balancing occurs. Useful in cases where "sticky session" behavior is desired, e.g. stateful session beans.
+							</div></dd></dl></div><div class="variablelist"><dl class="variablelist"><dt><span class="term"> <code class="literal">org.jboss.ha.client.loadbalance.aop.FirstAvailableIdenticalAllProxies</code> </span></dt><dd><div class="para">
+								Similar to <code class="literal">FirstAvailable</code>, except that the favored target is shared across all proxies.
+							</div></dd></dl></div></li></ul></div><div class="para">
+			Here is an example of a clustered EJB 3.0 stateless session bean implementation.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>@Stateless
+<span xmlns="" class="line">​</span>@Clustered
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> MyBean <span xmlns="" class="perl_Keyword">implements</span> MySessionInt
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">test</span>()
+<span xmlns="" class="line">​</span>   {
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">// Do something cool</span>
+<span xmlns="" class="line">​</span>   }
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+			Rather than using the <code class="literal">@Clustered</code> annotation, you can also enable clustering for a session bean in jboss.xml:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;jboss&gt;</span>    
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;enterprise-beans&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;session&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;ejb-name&gt;</span>NonAnnotationStateful<span xmlns="" class="perl_Keyword">&lt;/ejb-name&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;clustered&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/clustered&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;cluster-config&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;partition-name&gt;</span>FooPartition<span xmlns="" class="perl_Keyword">&lt;/partition-name&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;load-balance-policy&gt;</span>org.jboss.ha.framework.interfaces.RandomRobin<span xmlns="" class="perl_Keyword">&lt;/load-balance-policy&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;/cluster-config&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/session&gt;</span>    
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/enterprise-beans&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/jboss&gt;</span>
+</pre><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+				The <code class="literal">&lt;clustered&gt;true&lt;/clustered&gt;</code> element is really just an alias for the <code class="literal">&lt;container-name&gt;Clustered Stateless SessionBean&lt;/container-name&gt;</code> element in the conf/standardjboss.xml file.
+			</div></div></div><div class="para">
+			In the bean configuration, only the &lt;clustered&gt; element is necessary to indicate that the bean needs to support clustering features. The default values for the optional &lt;cluster-config&gt; elements match those of the corresponding properties from the <code class="literal">@Clustered</code> annotation.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="clustering-session-sfsb30">
+      ⁠</a>23.2. Stateful Session Beans in EJB 3.0</h1></div></div></div><div class="para">
+			Clustering stateful session beans is more complex than clustering their stateless counterparts since JBoss needs to manage the state information. The state of all stateful session beans are replicated and synchronized across the cluster each time the state of a bean changes.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139776756095376">
+      ⁠</a>23.2.1. The EJB application configuration</h2></div></div></div><div class="para">
+				To cluster stateful session beans in EJB 3.0, you need to tag the bean implementation class with the <code class="literal">@Clustered</code> annotation, just as we did with the EJB 3.0 stateless session bean earlier. In contrast to stateless session beans, stateful session bean method invocations are load balanced using <code class="literal">org.jboss.ha.client.loadbalance.aop.FirstAvailable</code> policy, by default. Using this policy, methods invocations will stick to a randomly chosen node.
+			</div><div class="para">
+				The <code class="literal">@org.jboss.ejb3.annotation.CacheConfig</code> annotation can also be applied to the bean to override the default caching behavior. Below is the definition of the <code class="literal">@CacheConfig</code> annotation:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">@interface</span> CacheConfig
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>   String name() <span xmlns="" class="perl_Keyword">default</span> <span xmlns="" class="perl_String">""</span>;
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_DataType">int</span> <span xmlns="" class="perl_Function">maxSize</span>() <span xmlns="" class="perl_Keyword">default</span> <span xmlns="" class="perl_Float">10000</span>;
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_DataType">long</span> <span xmlns="" class="perl_Function">idleTimeoutSeconds</span>() <span xmlns="" class="perl_Keyword">default</span> <span xmlns="" class="perl_Float">300</span>;   
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">replicationIsPassivation</span>() <span xmlns="" class="perl_Keyword">default</span> <span xmlns="" class="perl_Keyword">true</span>;   
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_DataType">long</span> <span xmlns="" class="perl_Function">removalTimeoutSeconds</span>() <span xmlns="" class="perl_Keyword">default</span> <span xmlns="" class="perl_Float">0</span>;
+<span xmlns="" class="line">​</span>}
+</pre><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<code class="literal">name</code> specifies the name of a cache configuration registered with the <code class="literal">CacheManager</code> service discussed in <a class="xref" href="clustering-session.html#sfsb-jbc-cachemanager">Section 23.2.3, “CacheManager service configuration”</a>. By default, the <code class="literal">sfsb-cache</code> configuration will be used.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">maxSize</code> specifies the maximum number of beans that can cached before the cache should start passivating beans, using an LRU algorithm.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">idleTimeoutSeconds</code> specifies the max period of time a bean can go unused before the cache should passivate it (regardless of whether maxSize beans are cached.)
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">removalTimeoutSeconds</code> specifies the max period of time a bean can go unused before the cache should remove it altogether.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">replicationIsPassivation</code> specifies whether the cache should consider a replication as being equivalent to a passivation, and invoke any @PrePassivate and @PostActivate callbacks on the bean. By default true, since replication involves serializing the bean, and preparing for and recovering from serialization is a common reason for implementing the callback methods.
+					</div></li></ul></div><div class="para">
+				Here is an example of a clustered EJB 3.0 stateful session bean implementation.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>@Stateful
+<span xmlns="" class="line">​</span>@Clustered
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">CacheConfig</span>(maxSize=<span xmlns="" class="perl_Float">5000</span>, removalTimeoutSeconds=<span xmlns="" class="perl_Float">18000</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> MyBean <span xmlns="" class="perl_Keyword">implements</span> MySessionInt
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">private</span> <span xmlns="" class="perl_DataType">int</span> state = <span xmlns="" class="perl_Float">0</span>;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">increment</span>()
+<span xmlns="" class="line">​</span>   {
+<span xmlns="" class="line">​</span>      System.<span xmlns="" class="perl_Function">out</span>.<span xmlns="" class="perl_Function">println</span>(<span xmlns="" class="perl_String">"counter: "</span> + (state++));
+<span xmlns="" class="line">​</span>   }
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				As with stateless beans, the @Clustered annotation can alternatively be omitted and the clustering configuration instead applied to jboss.xml:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;jboss&gt;</span>    
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;enterprise-beans&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;session&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;ejb-name&gt;</span>NonAnnotationStateful<span xmlns="" class="perl_Keyword">&lt;/ejb-name&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;clustered&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/clustered&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;cache-config&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;cache-max-size&gt;</span>5000<span xmlns="" class="perl_Keyword">&lt;/cache-max-size&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;remove-timeout-seconds&gt;</span>18000<span xmlns="" class="perl_Keyword">&lt;/remove-timeout-seconds&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;/cache-config&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/session&gt;</span>    
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/enterprise-beans&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/jboss&gt;</span>
+</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139776736156800">
+      ⁠</a>23.2.2. Optimize state replication</h2></div></div></div><div class="para">
+				As the replication process is a costly operation, you can optimize this behavior by optionally implementing the org.jboss.ejb3.cache.Optimized interface in your bean class:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">interface</span> Optimized
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">isModified</span>();
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				Before replicating your bean, the container will check if your bean implements the <code class="literal">Optimized</code> interface. If this is the case, the container calls the <code class="literal">isModified()</code> method and will only replicate the bean when the method returns <code class="literal">true</code>. If the bean has not been modified (or not enough to require replication, depending on your own preferences), you can return <code class="literal">false</code> and the replication would not occur.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sfsb-jbc-cachemanager">
+      ⁠</a>23.2.3. CacheManager service configuration</h2></div></div></div><div class="para">
+				JBoss Cache provides the session state replication service for EJB 3.0 stateful session beans. The <code class="literal">CacheManager</code> service, described in <a class="xref" href="clustering-blocks.chapt.html#clustering-blocks-jbc-cachemanager">Section 21.2.1, “The JBoss Enterprise Application Platform CacheManager Service”</a> is both a factory and registry of JBoss Cache instances. By default, stateful session beans use the <code class="literal">sfsb-cache</code> configuration from the <code class="literal">CacheManager</code>, defined as follows:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"StandardSFSBCacheConfig"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.Configuration"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">&lt;!--  No transaction manager lookup --&gt;</span>
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">&lt;!-- Name of cluster. Needs to be the same for all members --&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"clusterName"</span><span xmlns="" class="perl_Keyword">&gt;</span>${jboss.partition.name:DefaultPartition}-SFSBCache<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">&lt;!--</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">    Use a UDP (multicast) based stack. Need JGroups flow control (FC)</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">    because we are using asynchronous replication.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">  --&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"multiplexerStack"</span><span xmlns="" class="perl_Keyword">&gt;</span>${jboss.default.jgroups.stack:udp}<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"fetchInMemoryState"</span><span xmlns="" class="perl_Keyword">&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"nodeLockingScheme"</span><span xmlns="" class="perl_Keyword">&gt;</span>PESSIMISTIC<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"isolationLevel"</span><span xmlns="" class="perl_Keyword">&gt;</span>REPEATABLE_READ<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"useLockStriping"</span><span xmlns="" class="perl_Keyword">&gt;</span>false<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"cacheMode"</span><span xmlns="" class="perl_Keyword">&gt;</span>REPL_ASYNC<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">&lt;!--</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">    Number of milliseconds to wait until all responses for a</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">    synchronous call have been received. Make this longer </span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">    than lockAcquisitionTimeout.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">  --&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"syncReplTimeout"</span><span xmlns="" class="perl_Keyword">&gt;</span>17500<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">&lt;!-- Max number of milliseconds to wait for a lock acquisition --&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"lockAcquisitionTimeout"</span><span xmlns="" class="perl_Keyword">&gt;</span>15000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">&lt;!-- The max amount of time (in milliseconds) we wait until the</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">  state (ie. the contents of the cache) are retrieved from</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">  existing members at startup. --&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"stateRetrievalTimeout"</span><span xmlns="" class="perl_Keyword">&gt;</span>60000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">&lt;!--</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">    SFSBs use region-based marshalling to provide for partial state</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">    transfer during deployment/undeployment.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">  --&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"useRegionBasedMarshalling"</span><span xmlns="" class="perl_Keyword">&gt;</span>false<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">&lt;!-- Must match the value of "useRegionBasedMarshalling" --&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"inactiveOnStartup"</span><span xmlns="" class="perl_Keyword">&gt;</span>false<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">&lt;!-- Disable asynchronous RPC marshalling/sending --&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"serializationExecutorPoolSize"</span><span xmlns="" class="perl_Keyword">&gt;</span>0<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>        
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">&lt;!-- We have no asynchronous notification listeners --&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"listenerAsyncPoolSize"</span><span xmlns="" class="perl_Keyword">&gt;</span>0<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"exposeManagementStatistics"</span><span xmlns="" class="perl_Keyword">&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"buddyReplicationConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.BuddyReplicationConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!--  Just set to true to turn on buddy replication --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"enabled"</span><span xmlns="" class="perl_Keyword">&gt;</span>false<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>      
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!--</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">        A way to specify a preferred replication group.  We try</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">        and pick a buddy who shares the same pool name (falling </span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">        back to other buddies if not available).</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">      --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"buddyPoolName"</span><span xmlns="" class="perl_Keyword">&gt;</span>default<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>      
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"buddyCommunicationTimeout"</span><span xmlns="" class="perl_Keyword">&gt;</span>17500<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>      
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!-- Do not change these --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"autoDataGravitation"</span><span xmlns="" class="perl_Keyword">&gt;</span>false<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"dataGravitationRemoveOnFind"</span><span xmlns="" class="perl_Keyword">&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"dataGravitationSearchBackupTrees"</span><span xmlns="" class="perl_Keyword">&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>               
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"buddyLocatorConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.buddyreplication.NextMemberBuddyLocatorConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Comment">&lt;!-- The number of backup nodes we maintain --&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"numBuddies"</span><span xmlns="" class="perl_Keyword">&gt;</span>1<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Comment">&lt;!-- Means that each node will *try* to select a buddy on </span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">               a different physical host. If not able to do so </span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">               though, it will fall back to colocated nodes. --&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"ignoreColocatedBuddies"</span><span xmlns="" class="perl_Keyword">&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"cacheLoaderConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.CacheLoaderConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!-- Do not change these --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"passivation"</span><span xmlns="" class="perl_Keyword">&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"shared"</span><span xmlns="" class="perl_Keyword">&gt;</span>false<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>      
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"individualCacheLoaderConfigs"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;list&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.loader.FileCacheLoaderConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Comment">&lt;!-- Where passivated sessions are stored --&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"location"</span><span xmlns="" class="perl_Keyword">&gt;</span>${jboss.server.data.dir}${/}sfsb<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Comment">&lt;!-- Do not change these --&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"async"</span><span xmlns="" class="perl_Keyword">&gt;</span>false<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"fetchPersistentState"</span><span xmlns="" class="perl_Keyword">&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"purgeOnStartup"</span><span xmlns="" class="perl_Keyword">&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"ignoreModifications"</span><span xmlns="" class="perl_Keyword">&gt;</span>false<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"checkCharacterPortability"</span><span xmlns="" class="perl_Keyword">&gt;</span>false<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/list&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">&lt;!-- EJBs use JBoss Cache eviction --&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.EvictionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"wakeupInterval"</span><span xmlns="" class="perl_Keyword">&gt;</span>5000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!--  Overall default --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"defaultEvictionRegionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.EvictionRegionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"regionName"</span><span xmlns="" class="perl_Keyword">&gt;</span>/<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.eviction.NullEvictionAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!-- EJB3 integration code will programatically create other regions as beans are deployed --&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+</pre><div class="para"><div xmlns:d="http://docbook.org/ns/docbook" class="title">Eviction</div>
+					The default SFSB cache is configured to support eviction. The EJB3 SFSB container uses the JBoss Cache eviction mechanism to manage SFSB passivation. When beans are deployed, the EJB container will programatically add eviction regions to the cache, one region per bean type.
+				</div><div class="para"><div xmlns:d="http://docbook.org/ns/docbook" class="title">CacheLoader</div>
+					A JBoss Cache CacheLoader is also configured; again to support SFSB passivation. When beans are evicted from the cache, the cache loader passivates them to a persistent store; in this case to the file system in the <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/server/production/data/sfsb</code> directory. JBoss Cache supports a variety of different CacheLoader implementations that know how to store data to different persistent store types; see the JBoss Cache documentation for details. However, if you change the CacheLoaderConfiguration, be sure that you do not use a shared store, e.g. a single schema in a shared database. Each node in the cluster must have its own persistent store, otherwise as nodes independently passivate and activate clustered beans, they will corrupt each other's data.
+				</div><div class="para"><div xmlns:d="http://docbook.org/ns/docbook" class="title">Buddy Replication</div>
+					Using buddy replication, state is replicated to a configurable number of backup servers in the cluster (a.k.a. buddies), rather than to all servers in the cluster. To enable buddy replication, adjust the following properties in the <code class="literal">buddyReplicationConfig</code> property bean: 
+					<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+								Set <code class="literal">enabled</code> to <code class="literal">true</code>.
+							</div></li><li class="listitem"><div class="para">
+								Use the <code class="literal">buddyPoolName</code> to form logical subgroups of nodes within the cluster. If possible, buddies will be chosen from nodes in the same buddy pool.
+							</div></li><li class="listitem"><div class="para">
+								Adjust the <code class="literal">buddyLocatorConfig.numBuddies</code> property to reflect the number of backup nodes to which each node should replicate its state.
+							</div></li></ul></div>
+
+				</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="clustering-session-slsb21">
+      ⁠</a>23.3. Stateless Session Bean in EJB 2.x</h1></div></div></div><div class="para">
+			To make an EJB 2.x bean clustered, you need to modify its <code class="literal">jboss.xml</code> descriptor to contain a <code class="literal">&lt;clustered&gt;</code> tag.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;jboss&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;enterprise-beans&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;session&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;ejb-name&gt;</span>nextgen.StatelessSession<span xmlns="" class="perl_Keyword">&lt;/ejb-name&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;jndi-name&gt;</span>nextgen.StatelessSession<span xmlns="" class="perl_Keyword">&lt;/jndi-name&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;clustered&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/clustered&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;cluster-config&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;partition-name&gt;</span>DefaultPartition<span xmlns="" class="perl_Keyword">&lt;/partition-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;home-load-balance-policy&gt;</span>org.jboss.ha.framework.interfaces.RoundRobin<span xmlns="" class="perl_Keyword">&lt;/home-load-balance-policy&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;bean-load-balance-policy&gt;</span>org.jboss.ha.framework.interfaces.RoundRobin<span xmlns="" class="perl_Keyword">&lt;/bean-load-balance-policy&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/cluster-config&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/session&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/enterprise-beans&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/jboss&gt;</span>
+</pre><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					<span class="bold bold"><strong>partition-name</strong></span> specifies the name of the cluster the bean participates in. The default value is <code class="literal">DefaultPartition</code>. The default partition name can also be set system-wide using the <code class="literal">jboss.partition.name</code> system property.
+				</div></li><li class="listitem"><div class="para">
+					<span class="bold bold"><strong>home-load-balance-policy</strong></span> indicates the class to be used by the home stub to balance calls made on the nodes of the cluster. By default, the proxy will load-balance calls in a <code class="literal">RoundRobin</code> fashion.
+				</div></li><li class="listitem"><div class="para">
+					<span class="bold bold"><strong>bean-load-balance-policy</strong></span> Indicates the class to be used by the bean stub to balance calls made on the nodes of the cluster. By default, the proxy will load-balance calls in a <code class="literal">RoundRobin</code> fashion.
+				</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="clustering-session-sfsb21">
+      ⁠</a>23.4. Stateful Session Bean in EJB 2.x</h1></div></div></div><div class="para">
+			Clustering stateful session beans is more complex than clustering their stateless counterparts since JBoss needs to manage the state information. The state of all stateful session beans are replicated and synchronized across the cluster each time the state of a bean changes. The JBoss Enterprise Application Platform uses the <code class="literal">HASessionStateService</code> bean to manage distributed session states for clustered EJB 2.x stateful session beans. In this section, we cover both the session bean configuration and the <code class="literal">HASessionStateService</code> bean configuration.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139776759480448">
+      ⁠</a>23.4.1. The EJB application configuration</h2></div></div></div><div class="para">
+				In the EJB application, you need to modify the <code class="literal">jboss.xml</code> descriptor file for each stateful session bean and add the <code class="literal">&lt;clustered&gt;</code> tag.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;jboss&gt;</span>    
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;enterprise-beans&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;session&gt;</span>        
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;ejb-name&gt;</span>nextgen.StatefulSession<span xmlns="" class="perl_Keyword">&lt;/ejb-name&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;jndi-name&gt;</span>nextgen.StatefulSession<span xmlns="" class="perl_Keyword">&lt;/jndi-name&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;clustered&gt;</span>True<span xmlns="" class="perl_Keyword">&lt;/clustered&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;cluster-config&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;partition-name&gt;</span>DefaultPartition<span xmlns="" class="perl_Keyword">&lt;/partition-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;home-load-balance-policy&gt;</span>org.jboss.ha.framework.interfaces.RoundRobin<span xmlns="" class="perl_Keyword">&lt;/home-load-balance-policy&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;bean-load-balance-policy&gt;</span>org.jboss.ha.framework.interfaces.FirstAvailable<span xmlns="" class="perl_Keyword">&lt;/bean-load-balance-policy&gt;</span>          
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;session-state-manager-jndi-name&gt;</span>/HASessionState/Default<span xmlns="" class="perl_Keyword">&lt;/session-state-manager-jndi-name&gt;</span>        
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/cluster-config&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/session&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/enterprise-beans&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/jboss&gt;</span>
+</pre><div class="para">
+				In the bean configuration, only the <code class="literal">&lt;clustered&gt;</code> tag is mandatory to indicate that the bean works in a cluster. The <code class="literal">&lt;cluster-config&gt;</code> element is optional and its default attribute values are indicated in the sample configuration above.
+			</div><div class="para">
+				The <code class="literal">&lt;session-state-manager-jndi-name&gt;</code> tag is used to give the JNDI name of the <code class="literal">HASessionStateService</code> to be used by this bean.
+			</div><div class="para">
+				The description of the remaining tags is identical to the one for stateless session bean. Actions on the clustered stateful session bean's home interface are by default load-balanced, round-robin. Once the bean's remote stub is available to the client, calls will not be load-balanced round-robin any more and will stay "sticky" to the first node in the list.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139776738990608">
+      ⁠</a>23.4.2. Optimize state replication</h2></div></div></div><div class="para">
+				As the replication process is a costly operation, you can optimize this behavior by optionally implementing in your bean class a method with the following signature:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">isModified</span>();
+</pre><div class="para">
+				Before replicating your bean, the container will detect if your bean implements this method. If your bean does, the container calls the <code class="literal">isModified()</code> method and it only replicates the bean when the method returns <code class="literal">true</code>. If the bean has not been modified (or not enough to require replication, depending on your own preferences), you can return <code class="literal">false</code> and the replication would not occur.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139776758782912">
+      ⁠</a>23.4.3. The HASessionStateService configuration</h2></div></div></div><div class="para">
+				The <code class="literal">HASessionStateService</code> bean is defined in the <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/cluster/ha-legacy-jboss-beans.xml</code> file.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"HASessionStateService"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">      class=</span><span xmlns="" class="perl_String">"org.jboss.ha.hasessionstate.server.HASessionStateService"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;annotation&gt;</span>@org.jboss.aop.microcontainer.aspects.jmx.JMX
+<span xmlns="" class="line">​</span>  (name="jboss:service=HASessionState", 
+<span xmlns="" class="line">​</span>  exposedInterface=org.jboss.ha.hasessionstate.server.
+<span xmlns="" class="line">​</span>  HASessionStateServiceMBean.class, 
+<span xmlns="" class="line">​</span>  registerDirectly=true)<span xmlns="" class="perl_Keyword">&lt;/annotation&gt;</span>
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">&lt;!--  Partition used for group RPCs --&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"HAPartition"</span><span xmlns="" class="perl_Keyword">&gt;&lt;inject</span><span xmlns="" class="perl_Others"> bean=</span><span xmlns="" class="perl_String">"HAPartition"</span><span xmlns="" class="perl_Keyword">/&gt;&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">&lt;!-- JNDI name under which the service is bound --&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"jndiName"</span><span xmlns="" class="perl_Keyword">&gt;</span>/HASessionState/Default<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">&lt;!-- Max delay before cleaning unreclaimed state.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">       Defaults to 30*60*1000 =&gt; 30 minutes --&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"beanCleaningDelay"</span><span xmlns="" class="perl_Keyword">&gt;</span>0<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>   
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+</pre><div class="para">
+				The configuration attributes in the <code class="literal">HASessionStateService</code> bean are listed below.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>HAPartition</strong></span> is a required attribute to inject the HAPartition service that HA-JNDI uses for intra-cluster communication.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>jndiName</strong></span> is an optional attribute to specify the JNDI name under which this <code class="literal">HASessionStateService</code> bean is bound. The default value is <code class="literal">/HAPartition/Default</code>.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>beanCleaningDelay</strong></span> is an optional attribute to specify the number of milliseconds after which the <code class="literal">HASessionStateService</code> can clean a state that has not been modified. If a node, owning a bean, crashes, its brother node will take ownership of this bean. Nevertheless, the container cache of the brother node will not know about it (because it has never seen it before) and will never delete according to the cleaning settings of the bean. That is why the <code class="literal">HASessionStateService</code> needs to do this cleanup sometimes. The default value is <code class="literal">30*60*1000</code> milliseconds (i.e., 30 minutes).
+					</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139776752243760">
+      ⁠</a>23.4.4. Handling Cluster Restart</h2></div></div></div><div class="para">
+				We have covered the HA smart client architecture in <a class="xref" href="cluster.concepts.chapt.html#clustering-concepts-arch-proxy">Section 20.2.1, “Client-side interceptor architecture”</a>. The default HA smart proxy client can only failover as long as one node in the cluster exists. If there is a complete cluster shutdown, the proxy becomes orphaned and loses knowledge of the available nodes in the cluster. There is no way for the proxy to recover from this. The proxy needs to look up a fresh set of targets out of JNDI/HA-JNDI when the nodes are restarted.
+			</div><div class="para">
+				RetryInterceptor can be added to the proxy client side interceptor stack to allow for a transparent recovery from such a restart failure. To enable it for an EJB, setup an invoker-proxy-binding that includes the RetryInterceptor. Below is an example jboss.xml configuration.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;jboss&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;session&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;ejb-name&gt;</span>nextgen_RetryInterceptorStatelessSession<span xmlns="" class="perl_Keyword">&lt;/ejb-name&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;invoker-bindings&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;invoker&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;invoker-proxy-binding-name&gt;</span>clustered-retry-stateless-rmi-invoker<span xmlns="" class="perl_Keyword">&lt;/invoker-proxy-binding-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;jndi-name&gt;</span>nextgen_RetryInterceptorStatelessSession<span xmlns="" class="perl_Keyword">&lt;/jndi-name&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/invoker&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/invoker-bindings&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;clustered&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/clustered&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/session&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;invoker-proxy-binding&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;name&gt;</span>clustered-retry-stateless-rmi-invoker<span xmlns="" class="perl_Keyword">&lt;/name&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;invoker-mbean&gt;</span>jboss:service=invoker,type=jrmpha<span xmlns="" class="perl_Keyword">&lt;/invoker-mbean&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;proxy-factory&gt;</span>org.jboss.proxy.ejb.ProxyFactoryHA<span xmlns="" class="perl_Keyword">&lt;/proxy-factory&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;proxy-factory-config&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;client-interceptors&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;home&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;interceptor&gt;</span>org.jboss.proxy.ejb.HomeInterceptor<span xmlns="" class="perl_Keyword">&lt;/interceptor&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;interceptor&gt;</span>org.jboss.proxy.SecurityInterceptor<span xmlns="" class="perl_Keyword">&lt;/interceptor&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;interceptor&gt;</span>org.jboss.proxy.TransactionInterceptor<span xmlns="" class="perl_Keyword">&lt;/interceptor&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;interceptor&gt;</span>org.jboss.proxy.ejb.RetryInterceptor<span xmlns="" class="perl_Keyword">&lt;/interceptor&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;interceptor&gt;</span>org.jboss.invocation.InvokerInterceptor<span xmlns="" class="perl_Keyword">&lt;/interceptor&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/home&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;bean&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;interceptor&gt;</span>org.jboss.proxy.ejb.StatelessSessionInterceptor<span xmlns="" class="perl_Keyword">&lt;/interceptor&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;interceptor&gt;</span>org.jboss.proxy.SecurityInterceptor<span xmlns="" class="perl_Keyword">&lt;/interceptor&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;interceptor&gt;</span>org.jboss.proxy.TransactionInterceptor<span xmlns="" class="perl_Keyword">&lt;/interceptor&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;interceptor&gt;</span>org.jboss.proxy.ejb.RetryInterceptor<span xmlns="" class="perl_Keyword">&lt;/interceptor&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;interceptor&gt;</span>org.jboss.invocation.InvokerInterceptor<span xmlns="" class="perl_Keyword">&lt;/interceptor&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/client-interceptors&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/proxy-factory-config&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/invoker-proxy-binding&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/jboss&gt;</span>
+</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139776740696512">
+      ⁠</a>23.4.5. JNDI Lookup Process</h2></div></div></div><div class="para">
+				In order to recover the HA proxy, the RetryInterceptor does a lookup in JNDI. This means that internally it creates a new InitialContext and does a JNDI lookup. But, for that lookup to succeed, the InitialContext needs to be configured properly to find your naming server. The RetryInterceptor will go through the following steps in attempting to determine the proper naming environment properties:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="orderedlist"><ol><li class="listitem"><div class="para">
+						It will check its own static retryEnv field. This field can be set by client code via a call to RetryInterceptor.setRetryEnv(Properties). This approach to configuration has two downsides: first, it reduces portability by introducing JBoss-specific calls to the client code; and second, since a static field is used only a single configuration per VM is possible.
+					</div></li><li class="listitem"><div class="para">
+						If the retryEnv field is null, it will check for any environment properties bound to a ThreadLocal by the org.jboss.naming.NamingContextFactory class. To use this class as your naming context factory, in your jndi.properties set property java.naming.factory.initial=org.jboss.naming.NamingContextFactory. The advantage of this approach is use of org.jboss.naming.NamingContextFactory is simply a configuration option in your jndi.properties file, and thus your java code is unaffected. The downside is the naming properties are stored in a ThreadLocal and thus are only visible to the thread that originally created an InitialContext.
+					</div></li><li class="listitem"><div class="para">
+						If neither of the above approaches yield a set of naming environment properties, a default InitialContext is used. If the attempt to contact a naming server is unsuccessful, by default the InitialContext will attempt to fall back on multicast discovery to find an HA-JNDI naming server. See <a class="xref" href="clustering-jndi.html">Chapter 22, <em>Clustered JNDI Services</em></a> for more on multicast discovery of HA-JNDI.
+					</div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139776689002992">
+      ⁠</a>23.4.6. SingleRetryInterceptor</h2></div></div></div><div class="para">
+				The RetryInterceptor is useful in many use cases, but a disadvantage it has is that it will continue attempting to re-lookup the HA proxy in JNDI until it succeeds. If for some reason it cannot succeed, this process could go on forever, and thus the EJB call that triggered the RetryInterceptor will never return. For many client applications, this possibility is unacceptable. As a result, JBoss does not make the RetryInterceptor part of its default client interceptor stacks for clustered EJBs.
+			</div><div class="para">
+				In a previous release, a new flavor of retry interceptor was introduced, the org.jboss.proxy.ejb.SingleRetryInterceptor. This version works like the RetryInterceptor, but only makes a single attempt to re-lookup the HA proxy in JNDI. If this attempt fails, the EJB call will fail just as if no retry interceptor was used. The SingleRetryInterceptor is now part of the default client interceptor stacks for clustered EJBs.
+			</div><div class="para">
+				The downside of the SingleRetryInterceptor is that if the retry attempt is made during a portion of a cluster restart where no servers are available, the retry will fail and no further attempts will be made.
+			</div></div></div></div></body></html>

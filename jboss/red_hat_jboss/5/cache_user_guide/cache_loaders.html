@@ -1,0 +1,475 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 9. Cache Loaders</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="cache_loaders">
+      ⁠</a>Chapter 9. Cache Loaders</h1></div></div></div><div class="para">
+		JBoss Cache can use a <code class="literal">CacheLoader</code> to back up the in-memory cache to a back end datastore. If JBoss Cache is configured with a cache loader, then the following features are provided: 
+		<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					Whenever a cache element is accessed, and that element is not in the cache (e.g. due to eviction or due to server restart), then the cache loader transparently loads the element into the cache if found in the back end store.
+				</div></li><li class="listitem"><div class="para">
+					Whenever an element is modified, added or removed, then that modification is persisted in the back end store via the cache loader. If transactions are used, all modifications created within a transaction are persisted. To this end, the <code class="literal">CacheLoader</code> takes part in the two phase commit protocol run by the transaction manager, although it does not do so explicitly.
+				</div></li></ul></div>
+
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140486278376256">
+      ⁠</a>9.1. The CacheLoader Interface and Lifecycle</h1></div></div></div><div class="figure"><a id="idm140486332607536">
+      ⁠</a><div class="figure-contents"><div class="mediaobject"><img src="images/CacheLoader.png" alt="The CacheLoader interface"/></div></div><p class="title"><strong>Figure 9.1. The CacheLoader interface</strong></p></div><div class="para">
+			The interaction between JBoss Cache and a <code class="literal">CacheLoader</code> implementation is as follows. When <code class="literal">CacheLoaderConfiguration</code> (see below) is non-null, an instance of each configured <code class="literal">CacheLoader</code> is created when the cache is created, and started when the cache is started.
+		</div><div class="para">
+			<code class="literal">CacheLoader.create()</code> and <code class="literal">CacheLoader.start()</code> are called when the cache is started. Correspondingly, <code class="literal">stop()</code> and <code class="literal">destroy()</code> are called when the cache is stopped.
+		</div><div class="para">
+			Next, <code class="literal">setConfig()</code> and <code class="literal">setCache()</code> are called. The latter can be used to store a reference to the cache, the former is used to configure this instance of the <code class="literal">CacheLoader</code> . For example, here a database cache loader could establish a connection to the database.
+		</div><div class="para">
+			The <code class="literal">CacheLoader</code> interface has a set of methods that are called when no transactions are used: <code class="literal">get()</code> , <code class="literal">put()</code> , <code class="literal">remove()</code> and <code class="literal">removeData()</code> : they get/set/remove the value immediately. These methods are described as javadoc comments in the interface.
+		</div><div class="para">
+			Then there are three methods that are used with transactions: <code class="literal">prepare()</code> , <code class="literal">commit()</code> and <code class="literal">rollback()</code> . The <code class="literal">prepare()</code> method is called when a transaction is to be committed. It has a transaction object and a list of modifications as argument. The transaction object can be used as a key into a hashmap of transactions, where the values are the lists of modifications. Each modification list has a number of <code class="literal">Modification</code> elements, which represent the changes made to a cache for a given transaction. When <code class="literal">prepare()</code> returns successfully, then the cache loader <span class="emphasis"><em>must</em></span> be able to commit (or rollback) the transaction successfully.
+		</div><div class="para">
+			JBoss Cache takes care of calling prepare(), commit() and rollback() on the cache loaders at the right time.
+		</div><div class="para">
+			The <code class="literal">commit()</code> method tells the cache loader to commit the transaction, and the <code class="literal">rollback()</code> method tells the cache loader to discard the changes associated with that transaction.
+		</div><div class="para">
+			See the javadocs on this interface for a detailed explanation on each method and the contract implementations would need to fulfill.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140486330782720">
+      ⁠</a>9.2. Configuration</h1></div></div></div><div class="para">
+			Cache loaders are configured as follows in the JBoss Cache XML file. Note that you can define several cache loaders, in a chain. The impact is that the cache will look at all of the cache loaders in the order they've been configured, until it finds a valid, non-null element of data. When performing writes, all cache loaders are written to, except if the <code class="literal">ignoreModifications</code> element has been set to <code class="literal">true</code> for a specific cache loader. See the configuration section below for details.
+		</div><pre class="programlisting XML">
+...
+
+&lt;!-- Cache loader config block --&gt;
+&lt;!-- if passivation is true, only the first cache loader is used; the rest are ignored --&gt;
+&lt;loaders passivation="false" shared="false"&gt;
+      &lt;preload&gt;
+         &lt;!-- Fqns to preload --&gt;
+         &lt;node fqn="/some/stuff"/&gt;
+      &lt;/preload&gt;
+      &lt;!-- if passivation is true, only the first cache loader is used; the rest are ignored --&gt;
+      &lt;loader class="org.jboss.cache.loader.JDBCCacheLoader" async="false" fetchPersistentState="true"
+              ignoreModifications="false" purgeOnStartup="false"&gt;
+         &lt;properties&gt;
+            cache.jdbc.driver=com.mysql.jdbc.Driver
+            cache.jdbc.url=jdbc:mysql://localhost:3306/jbossdb
+            cache.jdbc.user=root
+            cache.jdbc.password=
+         &lt;/properties&gt;
+      &lt;/loader&gt;
+  &lt;/loaders&gt;
+</pre><div class="para">
+			The <code class="literal">class</code> element defines the class of the cache loader implementation. (Note that, because of a bug in the properties editor in EAP, backslashes in variables for Windows file names might not get expanded correctly, so replace="false" may be necessary). Note that an implementation of cache loader has to have an empty constructor.
+		</div><div class="para">
+			The <code class="literal">properties</code> element defines a configuration specific to the given implementation. The file system-based implementation for example defines the root directory to be used, whereas a database implementation might define the database URL, name and password to establish a database connection. This configuration is passed to the cache loader implementation via <code class="literal">CacheLoader.setConfig(Properties)</code>. Note that backspaces may have to be escaped.
+		</div><div class="para">
+			<code class="literal">preload</code> allows us to define a list of nodes, or even entire subtrees, that are visited by the cache on start up, in order to preload the data associated with those nodes. The default ("/") loads the entire data available in the back end store into the cache, which is probably not a good idea given that the data in the back end store might be large. As an example, <code class="literal">/a, /product/catalogue </code> loads the subtrees <code class="literal">/a</code> and <code class="literal">/product/catalogue</code> into the cache, but nothing else. Anything else is loaded lazily when accessed. Preloading makes sense when one anticipates using elements under a given subtree frequently. .
+		</div><div class="para">
+			<code class="literal">fetchPersistentState</code> determines whether or not to fetch the persistent state of a cache when joining a cluster. Only one configured cache loader may set this property to true; if more than one cache loader does so, a configuration exception will be thrown when starting your cache service.
+		</div><div class="para">
+			<code class="literal">async</code> determines whether writes to the cache loader block until completed, or are run on a separate thread so writes return immediately. If this is set to true, an instance of <code class="literal">org.jboss.cache.loader.AsyncCacheLoader</code> is constructed with an instance of the actual cache loader to be used. The <code class="literal">AsyncCacheLoader</code> then delegates all requests to the underlying cache loader, using a separate thread if necessary. See the Javadocs on <code class="literal">AsyncCacheLoader</code> for more details. If unspecified, the <code class="literal">async</code> element defaults to <code class="literal">false</code>.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Using the <code class="literal">async</code> element</strong></p></div><div class="admonition"><div class="para">
+				There is always the possibility of dirty reads since all writes are performed asynchronously, and it is thus impossible to guarantee when (and even if) a write succeeds. This needs to be kept in mind when setting the <code class="literal">async</code> element to true.
+			</div></div></div><div class="para">
+			<code class="literal">ignoreModifications</code> determines whether write methods are pushed down to the specific cache loader. Situations may arise where transient application data should only reside in a file based cache loader on the same server as the in-memory cache, for example, with a further shared <code class="literal">JDBCCacheLoader</code> used by all servers in the network. This feature allows you to write to the 'local' file cache loader but not the shared <code class="literal">JDBCCacheLoader</code>. This property defaults to <code class="literal">false</code>, so writes are propagated to all cache loaders configured.
+		</div><div class="para">
+			<code class="literal">purgeOnStatup</code> empties the specified cache loader (if <code class="literal">ignoreModifications</code> is <code class="literal">false</code>) when the cache loader starts up.
+		</div><div class="para">
+			<code class="literal">shared</code> indicates that the cache loader is shared among different cache instances, for example where all instances in a cluster use the same JDBC settings t talk to the same remote, shared database. Setting this to <code class="literal">true</code> prevents repeated and unnecessary writes of the same data to the cache loader by different cache instances. Default value is <code class="literal">false</code> .
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sscl">
+      ⁠</a>9.2.1. Singleton Store Configuration</h2></div></div></div><pre class="programlisting XML">
+ &lt;loaders passivation="false" shared="true"&gt;
+    &lt;preload&gt;
+       &lt;node fqn="/a/b/c"/&gt;
+       &lt;node fqn="/f/r/s"/&gt;
+    &lt;/preload&gt;
+
+    &lt;!-- we can now have multiple cache loaders, which get chained --&gt;
+    &lt;loader class="org.jboss.cache.loader.JDBCCacheLoader" async="false" fetchPersistentState="false"
+         ignoreModifications="false" purgeOnStartup="false"&gt;
+       &lt;properties&gt;
+         cache.jdbc.datasource=java:/DefaultDS
+       &lt;/properties&gt;
+       &lt;singletonStore enabled="true" class="org.jboss.cache.loader.SingletonStoreCacheLoader"&gt;
+          &lt;properties&gt;
+             pushStateWhenCoordinator=true
+             pushStateWhenCoordinatorTimeout=20000
+          &lt;/properties&gt;
+       &lt;/singletonStore&gt;
+    &lt;/loader&gt;
+ &lt;/loaders&gt;
+</pre><div class="para">
+				<code class="literal">singletonStore</code> element enables modifications to be stored by only one node in the cluster, the coordinator. Essentially, whenever any data comes in to some node it is always replicated so as to keep the caches' in-memory states in sync; the coordinator, though, has the sole responsibility of pushing that state to disk. This functionality can be activated setting the <code class="literal">enabled</code> subelement to true in all nodes, but again only the coordinator of the cluster will store the modifications in the underlying cache loader as defined in <code class="literal">loader</code> element. You cannot define a cache loader as <code class="literal">shared</code> and with <code class="literal">singletonStore</code> enabled at the same time. Default value for <code class="literal">enabled</code> is <code class="literal">false</code>.
+			</div><div class="para">
+				Optionally, within the <code class="literal">singletonStore</code> element, you can define a <code class="literal">class</code> element that specifies the implementation class that provides the singleton store functionality. This class must extend <code class="literal">org.jboss.cache.loader.AbstractDelegatingCacheLoader</code>, and if absent, it defaults to <code class="literal">org.jboss.cache.loader.SingletonStoreCacheLoader</code>.
+			</div><div class="para">
+				The <code class="literal">properties</code> subelement defines properties that allow changing the behavior of the class providing the singleton store functionality. By default, <code class="literal">pushStateWhenCoordinator</code> and <code class="literal">pushStateWhenCoordinatorTimeout</code> properties have been defined, but more could be added as required by the user-defined class providing singleton store functionality.
+			</div><div class="para">
+				<code class="literal">pushStateWhenCoordinator</code> allows the in-memory state to be pushed to the cache store when a node becomes the coordinator, as a result of the new election of coordinator due to a cluster topology change. This can be very useful in situations where the coordinator crashes and there's a gap in time until the new coordinator is elected. During this time, if this property was set to <code class="literal">false</code> and the cache was updated, these changes would never be persisted. Setting this property to <code class="literal">true</code> would ensure that any changes during this process also get stored in the cache loader. You would also want to set this property to <code class="literal">true</code> if each node's cache loader is configured with a different location. Default value is <code class="literal">true</code>.
+			</div><div class="para">
+				<code class="literal">pushStateWhenCoordinatorTimeout</code> is only relevant if <code class="literal">pushStateWhenCoordinator</code> is <code class="literal">true</code> in which case, sets the maximum number of milliseconds that the process of pushing the in-memory state to the underlying cache loader should take, reporting a <code class="literal">PushStateException</code> if exceeded. Default value is 20000.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Using the <code class="literal">singletonStore</code> element</strong></p></div><div class="admonition"><div class="para">
+					Setting up a cache loader as a singleton and using cache passivation (via evictions) can lead to undesired effects. If a node is to be passivated as a result of an eviction, while the cluster is in the process of electing a new coordinator, the data will be lost. This is because no coordinator is active at that time and therefore, none of the nodes in the cluster will store the passivated node. A new coordinator is elected in the cluster when either, the coordinator leaves the cluster, the coordinator crashes or stops responding.
+				</div></div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="cl.impls">
+      ⁠</a>9.3. Shipped Implementations</h1></div></div></div><div class="para">
+			The currently available implementations shipped with JBoss Cache are as follows.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486327602640">
+      ⁠</a>9.3.1. File system based cache loaders</h2></div></div></div><div class="para">
+				JBoss Cache ships with several cache loaders that utilize the file system as a data store. They all require that the <code class="literal">&lt;loader&gt;&lt;properties&gt;</code> configuration element contains a <code class="literal">location</code> property, which maps to a directory to be used as a persistent store (e.g., <code class="literal">location=/tmp/myDataStore</code> ). Used mainly for testing and not recommended for production use.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<code class="literal">FileCacheLoader</code>, which is a simple file system-based implementation. By default, this cache loader checks for any potential character portability issues in the location or tree node names, for example invalid characters, producing warning messages. These checks can be disabled adding <code class="literal">check.character.portability</code> property to the <code class="literal">&lt;properties&gt;</code> element and setting it to <code class="literal">false</code> (e.g., <code class="literal">check.character.portability=false</code> ).
+					</div><div class="para">
+						The FileCacheLoader has some severe limitations which restrict its use in a production environment, or if used in such an environment, it should be used with due care and sufficient understanding of these limitations.
+					</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+								Due to the way the FileCacheLoader represents a tree structure on disk (directories and files) traversal is inefficient for deep trees.
+							</div></li><li class="listitem"><div class="para">
+								Usage on shared file systems like NFS, Windows shares, etc. should be avoided as these do not implement proper file locking and can cause data corruption.
+							</div></li><li class="listitem"><div class="para">
+								Usage with an isolation level of NONE can cause corrupt writes as multiple threads attempt to write to the same file.
+							</div></li><li class="listitem"><div class="para">
+								File systems are inherently not transactional, so when attempting to use your cache in a transactional context, failures when writing to the file (which happens during the commit phase) cannot be recovered.
+							</div></li></ul></div><div class="para">
+						As a rule of thumb, it is recommended that the FileCacheLoader not be used in a highly concurrent, transactional or stressful environment, and its use is restricted to testing.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">BdbjeCacheLoader</code> , which is a cache loader implementation based on the Oracle/Sleepycat's <a href="http://www.oracle.com/technetwork/products/berkeleydb/overview/index.html">BerkeleyDB Java Edition</a>.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">JdbmCacheLoader</code>, which is a cache loader implementation based on the <a href="http://jdbm.sourceforge.net/">JDBM engine</a>, a fast and free alternative to BerkeleyDB.
+					</div></li></ul></div><div class="para">
+				Note that the BerkeleyDB implementation is much more efficient than the file system-based implementation, and provides transactional guarantees, but requires a commercial license if distributed with an application (see <a href="http://www.oracle.com/database/berkeley-db/index.html">http://www.oracle.com/database/berkeley-db/index.html</a> for details).
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486273373584">
+      ⁠</a>9.3.2. Cache loaders that delegate to other caches</h2></div></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<code class="literal">LocalDelegatingCacheLoader</code> , which enables loading from and storing to another local (same JVM) cache.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">ClusteredCacheLoader</code>, which allows querying of other caches in the same cluster for in-memory data via the same clustering protocols used to replicate data. Writes are <span class="emphasis"><em>not</em></span> 'stored' though, as replication would take care of any updates needed. You need to specify a property called <code class="literal">timeout</code>, a long value telling the cache loader how many milliseconds to wait for responses from the cluster before assuming a null value. For example, <code class="literal">timeout = 3000</code> would use a timeout value of 3 seconds.
+					</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="cl.jdbc">
+      ⁠</a>9.3.3. JDBCCacheLoader</h2></div></div></div><div class="para">
+				JBossCache is distributed with a JDBC-based cache loader implementation that stores/loads nodes' state into a relational database. The implementing class is <code class="literal">org.jboss.cache.loader.JDBCCacheLoader</code>.
+			</div><div class="para">
+				The current implementation uses just one table. Each row in the table represents one node and contains three columns: 
+				<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+							column for <code class="literal">Fqn</code> (which is also a primary key column)
+						</div></li><li class="listitem"><div class="para">
+							column for node contents (attribute/value pairs)
+						</div></li><li class="listitem"><div class="para">
+							column for parent <code class="literal">Fqn</code>
+						</div></li></ul></div>
+
+			</div><div class="para">
+				<code class="literal">Fqn</code>s are stored as strings. Node content is stored as a BLOB.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="warning"><div class="admonition_header"><p><strong>Warning</strong></p></div><div class="admonition"><div class="para">
+					JBoss Cache does not impose any limitations on the types of objects used in <code class="literal">Fqn</code> but this implementation of cache loader requires <code class="literal">Fqn</code> to contain only objects of type <code class="literal">java.lang.String</code>. Another limitation for <code class="literal">Fqn</code> is its length. Since <code class="literal">Fqn</code> is a primary key, its default column type is <code class="literal">VARCHAR</code> which can store text values up to some maximum length determined by the database in use.
+				</div></div></div><div class="para">
+				See <a href="http://www.jboss.org/community/docs/DOC-10864">this wiki page</a> for configuration tips with specific database systems.
+			</div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="idm140486318192336">
+      ⁠</a>9.3.3.1. JDBCCacheLoader configuration</h3></div></div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="idm140486318191568">
+      ⁠</a>9.3.3.1.1. Table configuration</h4></div></div></div><div class="para">
+						Table and column names as well as column types are configurable with the following properties. 
+						<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+									<span class="emphasis"><em>cache.jdbc.table.name</em></span> - the name of the table. Can be prepended with schema name for the given table: <code class="literal">{schema_name}.{table_name}</code>. The default value is 'jbosscache'.
+								</div></li><li class="listitem"><div class="para">
+									<span class="emphasis"><em>cache.jdbc.table.primarykey</em></span> - the name of the primary key for the table. The default value is 'jbosscache_pk'.
+								</div></li><li class="listitem"><div class="para">
+									<span class="emphasis"><em>cache.jdbc.table.create</em></span> - can be true or false. Indicates whether to create the table during start up. If true, the table is created if it does not already exist. The default value is true.
+								</div></li><li class="listitem"><div class="para">
+									<span class="emphasis"><em>cache.jdbc.table.drop</em></span> - can be true or false. Indicates whether to drop the table during shutdown. The default value is true.
+								</div></li><li class="listitem"><div class="para">
+									<span class="emphasis"><em>cache.jdbc.fqn.column</em></span> - FQN column name. The default value is 'fqn'.
+								</div></li><li class="listitem"><div class="para">
+									<span class="emphasis"><em>cache.jdbc.fqn.type</em></span> - FQN column type. The default value is 'varchar(255)'.
+								</div></li><li class="listitem"><div class="para">
+									<span class="emphasis"><em>cache.jdbc.node.column</em></span> - node contents column name. The default value is 'node'.
+								</div></li><li class="listitem"><div class="para">
+									<span class="emphasis"><em>cache.jdbc.node.type</em></span> - node contents column type. The default value is 'blob'. This type must specify a valid binary data type for the database being used.
+								</div></li></ul></div>
+
+					</div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="idm140486321714720">
+      ⁠</a>9.3.3.1.2. DataSource</h4></div></div></div><div class="para">
+						If you are using JBossCache in a managed environment (e.g., an application server) you can specify the JNDI name of the DataSource you want to use. 
+						<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+									<span class="emphasis"><em>cache.jdbc.datasource</em></span> - JNDI name of the DataSource. The default value is <code class="literal">java:/DefaultDS</code> .
+								</div></li></ul></div>
+
+					</div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="idm140486314484576">
+      ⁠</a>9.3.3.1.3. JDBC driver</h4></div></div></div><div class="para">
+						If you are <span class="emphasis"><em>not</em></span> using DataSource you have the following properties to configure database access using a JDBC driver. 
+						<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+									<span class="emphasis"><em>cache.jdbc.driver</em></span> - fully qualified JDBC driver name.
+								</div></li><li class="listitem"><div class="para">
+									<span class="emphasis"><em>cache.jdbc.url</em></span> - URL to connect to the database.
+								</div></li><li class="listitem"><div class="para">
+									<span class="emphasis"><em>cache.jdbc.user</em></span> - user name to connect to the database.
+								</div></li><li class="listitem"><div class="para">
+									<span class="emphasis"><em>cache.jdbc.password</em></span> - password to connect to the database.
+								</div></li></ul></div>
+
+					</div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="idm140486281775568">
+      ⁠</a>9.3.3.1.4. c3p0 connection pooling</h4></div></div></div><div class="para">
+						JBoss Cache implements JDBC connection pooling when running outside of an application server standalone using the c3p0:JDBC DataSources/Resource Pools library. In order to enable it, just edit the following property: 
+						<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+									<span class="emphasis"><em>cache.jdbc.connection.factory</em></span> - Connection factory class name. If not set, it defaults to standard non-pooled implementation. To enable c3p0 pooling, just set the connection factory class for c3p0. See example below.
+								</div></li></ul></div>
+
+					</div><div class="para">
+						You can also set any c3p0 parameters in the same cache loader properties section but do not forget to start the property name with 'c3p0.'. To find a list of available properties, please check the c3p0 documentation for the c3p0 library version distributed in <a href="http://sourceforge.net/projects/c3p0">c3p0:JDBC DataSources/Resource Pools</a> . Also, in order to provide quick and easy way to try out different pooling parameters, any of these properties can be set via a System property overriding any values these properties might have in the JBoss Cache XML configuration file, for example: <code class="literal">-Dc3p0.maxPoolSize=20</code> . If a c3p0 property is not defined in either the configuration file or as a System property, default value, as indicated in the c3p0 documentation, will apply.
+					</div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="idm140486336595280">
+      ⁠</a>9.3.3.1.5. Configuration example</h4></div></div></div><div class="para">
+						Below is an example of a JDBCCacheLoader using Oracle as database. The CacheLoaderConfiguration XML element contains an arbitrary set of properties which define the database-related configuration.
+					</div><pre class="programlisting XML">
+&lt;loaders passivation="false" shared="false"&gt;
+      &lt;preload&gt;
+         &lt;node fqn="/some/stuff"/&gt;
+      &lt;/preload&gt;
+      &lt;!-- if passivation is true, only the first cache loader is used; the rest are ignored --&gt;
+      &lt;loader class="org.jboss.cache.loader.JDBCCacheLoader" async="false" fetchPersistentState="true"
+              ignoreModifications="false" purgeOnStartup="false"&gt;
+         &lt;properties&gt;
+            cache.jdbc.table.name=jbosscache
+            cache.jdbc.table.create=true
+            cache.jdbc.table.drop=true
+            cache.jdbc.table.primarykey=jbosscache_pk
+            cache.jdbc.fqn.column=fqn
+            cache.jdbc.fqn.type=VARCHAR(255)
+            cache.jdbc.node.column=node
+            cache.jdbc.node.type=BLOB
+            cache.jdbc.parent.column=parent
+            cache.jdbc.driver=oracle.jdbc.OracleDriver
+            cache.jdbc.url=jdbc:oracle:thin:@localhost:1521:JBOSSDB
+            cache.jdbc.user=SCOTT
+            cache.jdbc.password=TIGER
+          &lt;/properties&gt;
+      &lt;/loader&gt;
+  &lt;/loaders&gt;
+</pre><div class="para">
+						As an alternative to configuring the entire JDBC connection, the name of an existing data source can be given:
+					</div><pre class="programlisting XML">
+ &lt;loaders passivation="false" shared="false"&gt;
+      &lt;preload&gt;
+         &lt;node fqn="/some/stuff"/&gt;
+      &lt;/preload&gt;
+      &lt;!-- if passivation is true, only the first cache loader is used; the rest are ignored --&gt;
+      &lt;loader class="org.jboss.cache.loader.JDBCCacheLoader" async="false" fetchPersistentState="true"
+              ignoreModifications="false" purgeOnStartup="false"&gt;
+         &lt;properties&gt;
+            cache.jdbc.datasource=java:/DefaultDS
+         &lt;/properties&gt;
+      &lt;/loader&gt;
+  &lt;/loaders&gt;
+</pre><div class="para">
+						Configuration example for a cache loader using c3p0 JDBC connection pooling:
+					</div><pre class="programlisting XML">
+ &lt;loaders passivation="false" shared="false"&gt;
+      &lt;preload&gt;
+         &lt;node fqn="/some/stuff"/&gt;
+      &lt;/preload&gt;
+      &lt;!-- if passivation is true, only the first cache loader is used; the rest are ignored --&gt;
+      &lt;loader class="org.jboss.cache.loader.JDBCCacheLoader" async="false" fetchPersistentState="true"
+              ignoreModifications="false" purgeOnStartup="false"&gt;
+         &lt;properties&gt;
+            cache.jdbc.table.name=jbosscache
+            cache.jdbc.table.create=true
+            cache.jdbc.table.drop=true
+            cache.jdbc.table.primarykey=jbosscache_pk
+            cache.jdbc.fqn.column=fqn
+            cache.jdbc.fqn.type=VARCHAR(255)
+            cache.jdbc.node.column=node
+            cache.jdbc.node.type=BLOB
+            cache.jdbc.parent.column=parent
+            cache.jdbc.driver=oracle.jdbc.OracleDriver
+            cache.jdbc.url=jdbc:oracle:thin:@localhost:1521:JBOSSDB
+            cache.jdbc.user=SCOTT
+            cache.jdbc.password=TIGER
+            cache.jdbc.connection.factory=org.jboss.cache.loader.C3p0ConnectionFactory
+            c3p0.maxPoolSize=20
+            c3p0.checkoutTimeout=5000
+         &lt;/properties&gt;
+      &lt;/loader&gt;
+   &lt;/loaders&gt;
+</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="cl.s3">
+      ⁠</a>9.3.4. S3CacheLoader</h2></div></div></div><div class="para">
+				The <code class="literal">S3CacheLoader</code> uses the <a href="http://aws.amazon.com/">Amazon S3</a> (Simple Storage Solution) for storing cache data. Since Amazon S3 is remote network storage and has fairly high latency, it is really best for caches that store large pieces of data, such as media or files. But consider this cache loader over the JDBC or file system based cache loaders if you want remotely managed, highly reliable storage. Or, use it for applications running on Amazon's EC2 (Elastic Compute Cloud).
+			</div><div class="para">
+				If you are planning to use Amazon S3 for storage, consider using it with JBoss Cache. JBoss Cache itself provides in-memory caching for your data to minimize the amount of remote access calls, thus reducing the latency and cost of fetching your Amazon S3 data. With cache replication, you are also able to load data from your local cluster without having to remotely access it every time.
+			</div><div class="para">
+				Note that Amazon S3 does not support transactions. If transactions are used in your application then there is some possibility of state inconsistency when using this cache loader. However, writes are atomic, in that if a write fails nothing is considered written and data is never corrupted.
+			</div><div class="para">
+				Data is stored in keys based on the Fqn of the Node and Node data is serialized as a java.util.Map using the <code class="literal">CacheSPI.getMarshaller()</code> instance. Read the javadoc on how data is structured and stored. Data is stored using Java serialization. Be aware this means data is not readily accessible over HTTP to non-JBoss Cache clients. Your feedback and help would be appreciated to extend this cache loader for that purpose.
+			</div><div class="para">
+				With this cache loader, single-key operations such as <code class="literal">Node.remove(Object)</code> and <code class="literal">Node.put(Object, Object)</code> are the slowest as data is stored in a single Map instance. Use bulk operations such as <code class="literal">Node.replaceAll(Map)</code> and <code class="literal">Node.clearData()</code> for more efficiency. Try the <code class="literal">cache.s3.optimize</code> option as well.
+			</div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="idm140486281751104">
+      ⁠</a>9.3.4.1. Amazon S3 Library</h3></div></div></div><div class="para">
+					The S3 cache loader is provided with the default distribution but requires a library to access the service at runtime. This runtime library may be obtained through a Sourceforge Maven Repository. Include the following sections in your pom.xml file:
+				</div><pre class="programlisting XML">
+      &lt;repository&gt;
+         &lt;id&gt;e-xml.sourceforge.net&lt;/id&gt;
+         &lt;url&gt;http://e-xml.sourceforge.net/maven2/repository&lt;/url&gt;
+      &lt;/repository&gt;
+        ...
+      &lt;dependency&gt;
+         &lt;groupId&gt;net.noderunner&lt;/groupId&gt;
+         &lt;artifactId&gt;amazon-s3&lt;/artifactId&gt;
+         &lt;version&gt;1.0.0.0&lt;/version&gt;
+         &lt;scope&gt;runtime&lt;/scope&gt;
+      &lt;/dependency&gt;
+
+</pre><div class="para">
+					If you do not use Maven, you can still download the amazon-s3 library by navigating the repository or through <a href="http://e-xml.sourceforge.net/maven2/repository/net/noderunner/amazon-s3/1.0.0.0/amazon-s3-1.0.0.0.jar"> this URL</a>.
+				</div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="idm140486345610816">
+      ⁠</a>9.3.4.2. Configuration</h3></div></div></div><div class="para">
+					At a minimum, you must configure your Amazon S3 access key and secret access key. The following configuration keys are listed in general order of utility.
+				</div><div class="para">
+					<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+								<code class="literal">cache.s3.accessKeyId</code> - Amazon S3 Access Key, available from your account profile.
+							</div></li><li class="listitem"><div class="para">
+								<code class="literal">cache.s3.secretAccessKey</code> - Amazon S3 Secret Access Key, available from your account profile. As this is a password, be careful not to distribute it or include this secret key in built software.
+							</div></li><li class="listitem"><div class="para">
+								<code class="literal">cache.s3.secure</code> - The default is <code class="literal">false</code>: Traffic is sent unencrypted over the public Internet. Set to <code class="literal">true</code> to use HTTPS. Note that unencrypted uploads and downloads use less CPU.
+							</div></li><li class="listitem"><div class="para">
+								<code class="literal">cache.s3.bucket</code> - Name of the bucket to store data. For different caches using the same access key, use a different bucket name. Read the S3 documentation on the definition of a bucket. The default value is <code class="literal">jboss-cache</code>.
+							</div></li><li class="listitem"><div class="para">
+								<code class="literal">cache.s3.callingFormat</code> - One of<code class="literal">PATH</code>, <code class="literal">SUBDOMAIN</code>, or <code class="literal">VANITY</code>. Read the S3 documentation on the use of calling domains. The default value is <code class="literal">SUBDOMAIN</code>.
+							</div></li><li class="listitem"><div class="para">
+								<code class="literal">cache.s3.optimize</code> - The default is <code class="literal">false</code>. If true, <code class="literal">put(Map)</code> operations replace the data stored at an Fqn rather than attempt to fetch and merge. (This option is fairly experimental at the moment.)
+							</div></li><li class="listitem"><div class="para">
+								<code class="literal">cache.s3.parentCache</code> - The default is <code class="literal">true</code>. Set this value to <code class="literal">false</code> if you are using multiple caches sharing the same S3 bucket, that remove parent nodes of nodes being created in other caches. (This is not a common use case.)
+							</div><div class="para">
+								JBoss Cache stores nodes in a tree format and automatically creates intermediate parent nodes as necessary. The S3 cache loader must also create these parent nodes as well to allow for operations such as <code class="literal">getChildrenNames</code> to work properly. Checking if all parent nodes exists for every <code class="literal">put</code> operation is fairly expensive, so by default the cache loader caches the existence of these parent nodes.
+							</div></li><li class="listitem"><div class="para">
+								<code class="literal">cache.s3.location</code> - This denotes a primary storage location for your data to reduce loading and retrieval latency. Set to <code class="literal">EU</code> to store data in Europe. The default is<code class="literal">null</code>, to store data in the United States.
+							</div></li></ul></div>
+
+				</div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="cl.tcp">
+      ⁠</a>9.3.5. TcpDelegatingCacheLoader</h2></div></div></div><div class="para">
+				This cache loader allows to delegate loads and stores to another instance of JBoss Cache, which could reside (a) in the same address space, (b) in a different process on the same host, or (c) in a different process on a different host.
+			</div><div class="para">
+				A TcpDelegatingCacheLoader talks to a remote <code class="literal">org.jboss.cache.loader.tcp.TcpCacheServer</code> , which can be a standalone process started on the command line, or embedded as an MBean inside EAP. The <code class="literal">TcpCacheServer</code> has a reference to another JBoss Cache instance, which it can create itself, or which is given to it (e.g. by JBoss, using dependency injection).
+			</div><div class="para">
+				As of JBoss Cache 2.1.0, the <code class="literal">TcpDelegatingCacheLoader</code> transparently handles reconnects if the connection to the TcpCacheServer is lost.
+			</div><div class="para">
+				The TcpDelegatingCacheLoader is configured with the host and port of the remote TcpCacheServer, and uses this to communicate to it. In addition, 2 new optional parameters are used to control transparent reconnecting to the TcpCacheServer. The <code class="literal">timeout</code> property (defaults to 5000) specifies the length of time the cache loader must continue retrying to connect to the TcpCacheServer before giving up and throwing an exception. The <code class="literal">reconnectWaitTime</code> (defaults to 500) is how long the cache loader should wait before attempting a reconnect if it detects a communication failure. The last two parameters can be used to add a level of fault tolerance to the cache loader, do deal with TcpCacheServer restarts.
+			</div><div class="para">
+				The configuration looks as follows:
+			</div><pre class="programlisting XML">
+ &lt;loaders passivation="false" shared="false"&gt;
+      &lt;preload&gt;
+         &lt;node fqn="/"/&gt;
+      &lt;/preload&gt;
+      &lt;!-- if passivation is true, only the first cache loader is used; the rest are ignored --&gt;
+      &lt;loader class="org.jboss.cache.loader.TcpDelegatingCacheLoader"&gt;
+         &lt;properties&gt;
+            host=myRemoteServer
+            port=7500
+            timeout=10000
+            reconnectWaitTime=250
+         &lt;/properties&gt;
+      &lt;/loader&gt;
+   &lt;/loaders&gt;
+</pre><div class="para">
+				This means this instance of JBoss Cache will delegate all load and store requests to the remote TcpCacheServer running on <code class="literal">myRemoteServer:7500</code> .
+			</div><div class="para">
+				A typical use case could be multiple replicated instances of JBoss Cache in the same cluster, all delegating to the same TcpCacheServer instance. The TcpCacheServer might itself delegate to a database via JDBCCacheLoader, but the point here is that - if we have 5 nodes all accessing the same dataset - they will load the data from the TcpCacheServer, which has do execute one SQL statement per unloaded data set. If the nodes went directly to the database, then we'd have the same SQL executed multiple times. So TcpCacheServer serves as a natural cache in front of the DB (assuming that a network round trip is faster than a DB access (which usually also include a network round trip)).
+			</div><div class="para">
+				To alleviate single point of failure, we could configure several cache loaders. The first cache loader is a ClusteredCacheLoader, the second a TcpDelegatingCacheLoader, and the last a JDBCacheLoader, effectively defining our cost of access to a cache in increasing order.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="cl.transforming">
+      ⁠</a>9.3.6. Transforming Cache Loaders</h2></div></div></div><div class="para">
+				The way cached data is written to <code class="literal">FileCacheLoader</code> and <code class="literal">JDBCCacheLoader</code> based cache stores has changed in JBoss Cache 2.0 in such way that these cache loaders now write and read data using the same marshaling framework used to replicate data across the network. Such change is trivial for replication purposes as it just requires the rest of the nodes to understand this format. However, changing the format of the data in cache stores brings up a new problem: how do users, which have their data stored in JBoss Cache 1.x.x format, migrate their stores to JBoss Cache 2.0 format?
+			</div><div class="para">
+				With this in mind, JBoss Cache 2.0 comes with two cache loader implementations called <code class="literal">org.jboss.cache.loader.TransformingFileCacheLoader</code> and <code class="literal">org.jboss.cache.loader.TransformingJDBCCacheLoader</code> located within the optional jbosscache-cacheloader-migration.jar file. These are one-off cache loaders that read data from the cache store in JBoss Cache 1.x.x format and write data to cache stores in JBoss Cache 2.0 format.
+			</div><div class="para">
+				The idea is for users to modify their existing cache configuration file(s) momentarily to use these cache loaders and for them to create a small Java application that creates an instance of this cache, recursively reads the entire cache and writes the data read back into the cache. Once the data is transformed, users can revert back to their original cache configuration file(s). In order to help the users with this task, a cache loader migration example has been constructed which can be located under the <code class="literal">examples/cacheloader-migration</code> directory within the JBoss Cache distribution. This example, called <code class="literal">examples.TransformStore</code> , is independent of the actual data stored in the cache as it writes back whatever it was read recursively. It is highly recommended that anyone interested in porting their data run this example first, which contains a <code class="literal">readme.txt</code> file with detailed information about the example itself, and also use it as base for their own application.
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="cl.pass">
+      ⁠</a>9.4. Cache Passivation</h1></div></div></div><div class="para">
+			A cache loader can be used to enforce node passivation and activation on eviction in a cache.
+		</div><div class="para">
+			<span class="emphasis"><em>Cache Passivation</em></span> is the process of removing an object from in-memory cache and writing it to a secondary data store (e.g., file system, database) on eviction. <span class="emphasis"><em>Cache Activation </em></span> is the process of restoring an object from the data store into the in-memory cache when it's needed to be used. In both cases, the configured cache loader will be used to read from the data store and write to the data store.
+		</div><div class="para">
+			When an eviction policy in effect evicts a node from the cache, if passivation is enabled, a notification that the node is being passivated will be emitted to the cache listeners and the node and its children will be stored in the cache loader store. When a user attempts to retrieve a node that was evicted earlier, the node is loaded (lazy loaded) from the cache loader store into memory. When the node and its children have been loaded, they're removed from the cache loader and a notification is emitted to the cache listeners that the node has been activated.
+		</div><div class="para">
+			To enable cache passivation/activation, you can set <code class="literal">passivation</code> to true. The default is <code class="literal">false</code> . When passivation is used, only the first cache loader configured is used and all others are ignored.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486334662512">
+      ⁠</a>9.4.1. Cache Loader Behavior with Passivation Disabled vs. Enabled</h2></div></div></div><div class="para">
+				When passivation is disabled, whenever an element is modified, added or removed, then that modification is persisted in the back end store via the cache loader. There is no direct relationship between eviction and cache loading. If you do not use eviction, what's in the persistent store is basically a copy of what's in memory. If you do use eviction, what's in the persistent store is basically a superset of what's in memory (i.e. it includes nodes that have been evicted from memory).
+			</div><div class="para">
+				When passivation is enabled, there is a direct relationship between eviction and the cache loader. Writes to the persistent store via the cache loader only occur as part of the eviction process. Data is deleted from the persistent store when the application reads it back into memory. In this case, what's in memory and what's in the persistent store are two subsets of the total information set, with no intersection between the subsets.
+			</div><div class="para">
+				Following is a simple example, showing what state is in RAM and in the persistent store after each step of a 6 step process:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="orderedlist"><ol><li class="listitem"><div class="para">
+						Insert /A
+					</div></li><li class="listitem"><div class="para">
+						Insert /B
+					</div></li><li class="listitem"><div class="para">
+						Eviction thread runs, evicts /A
+					</div></li><li class="listitem"><div class="para">
+						Read /A
+					</div></li><li class="listitem"><div class="para">
+						Eviction thread runs, evicts /B
+					</div></li><li class="listitem"><div class="para">
+						Remove /B
+					</div></li></ol></div><div class="para">
+				When passivation is disabled:
+			</div><pre class="programlisting">
+                1) Memory: /A Disk: /A
+                2) Memory: /A, /B Disk: /A, /B
+                3) Memory: /B Disk: /A, /B
+                4) Memory: /A, /B Disk: /A, /B
+                5) Memory: /A Disk: /A, /B
+                6) Memory: /A Disk: /A
+</pre><div class="para">
+				When passivation is enabled:
+			</div><pre class="programlisting">
+                1) Memory: /A Disk:
+                2) Memory: /A, /B Disk:
+                3) Memory: /B Disk: /A
+                4) Memory: /A, /B Disk:
+                5) Memory: /A Disk: /B
+                6) Memory: /A Disk:
+</pre></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140486332420800">
+      ⁠</a>9.5. Strategies</h1></div></div></div><div class="para">
+			This section discusses different patterns of combining different cache loader types and configuration options to achieve specific outcomes.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486336961152">
+      ⁠</a>9.5.1. Local Cache With Store</h2></div></div></div><div class="para">
+				This is the simplest case. We have a JBoss Cache instance, whose cache mode is <code class="literal">LOCAL</code> , therefore no replication is going on. The cache loader simply loads non-existing elements from the store and stores modifications back to the store. When the cache is started, depending on the <code class="literal">preload</code> element, certain data can be preloaded, so that the cache is partly warmed up.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486336958640">
+      ⁠</a>9.5.2. Replicated Caches With All Caches Sharing The Same Store</h2></div></div></div><div class="para">
+				The following figure shows 2 JBoss Cache instances sharing the same back end store:
+			</div><div class="figure"><a id="idm140486336957344">
+      ⁠</a><div class="figure-contents"><div class="mediaobject"><img src="images/SharedCacheLoader.png" alt="2 nodes sharing a back end store"/></div></div><p class="title"><strong>Figure 9.2. 2 nodes sharing a back end store</strong></p></div><div class="para">
+				Both nodes have a cache loader that accesses a common shared back end store. This could for example be a shared file system (using the FileCacheLoader), or a shared database. Because both nodes access the same store, they do not necessarily need state transfer on start up. 
+				<div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+						Of course they can enable state transfer, if they want to have a warm or hot cache after start up.
+					</div></div></div>
+				 Rather, the <code class="literal">FetchInMemoryState</code> attribute could be set to false, resulting in a 'cold' cache, that gradually warms up as elements are accessed and loaded for the first time. This would mean that individual caches in a cluster might have different in-memory state at any given time (largely depending on their preloading and eviction strategies).
+			</div><div class="para">
+				When storing a value, the writer takes care of storing the change in the back end store. For example, if node1 made change C1 and node2 C2, then node1 would tell its cache loader to store C1, and node2 would tell its cache loader to store C2.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486330107648">
+      ⁠</a>9.5.3. Replicated Caches With Only One Cache Having A Store</h2></div></div></div><div class="figure"><a id="idm140486319663344">
+      ⁠</a><div class="figure-contents"><div class="mediaobject"><img src="images/OnlyOneCacheLoader.png" alt="2 nodes but only one accesses the back end store"/></div></div><p class="title"><strong>Figure 9.3. 2 nodes but only one accesses the back end store</strong></p></div><div class="para">
+				This is a similar case to the previous one, but here only one node in the cluster interacts with a back end store via its cache loader. All other nodes perform in-memory replication. The idea here is all application state is kept in memory in each node, with the existence of multiple caches making the data highly available. (This assumes that a client that needs the data is able to somehow fail over from one cache to another.) The single persistent back end store then provides a backup copy of the data in case all caches in the cluster fail or need to be restarted.
+			</div><div class="para">
+				Note that here it may make sense for the cache loader to store changes asynchronously, that is <span class="emphasis"><em>not</em></span> on the caller's thread, in order not to slow down the cluster by accessing (for example) a database. This is a non-issue when using asynchronous replication.
+			</div><div class="para">
+				A weakness with this architecture is that the cache with access to the cache loader becomes a single point of failure. Furthermore, if the cluster is restarted, the cache with the cache loader must be started first (easy to forget). A solution to the first problem is to configure a cache loader on each node, but set the <code class="literal">singletonStore</code> configuration to <code class="literal">true</code>. With this kind of setup, one but only one node will always be writing to a persistent store. However, this complicates the restart problem, as before restarting you need to determine which cache was writing before the shutdown/failure and then start that cache first.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486282339120">
+      ⁠</a>9.5.4. Replicated Caches With Each Cache Having Its Own Store</h2></div></div></div><div class="figure"><a id="idm140486282338352">
+      ⁠</a><div class="figure-contents"><div class="mediaobject"><img src="images/LocalCacheLoader.png" alt="2 nodes each having its own back end store"/></div></div><p class="title"><strong>Figure 9.4. 2 nodes each having its own back end store</strong></p></div><div class="para">
+				Here, each node has its own datastore. Modifications to the cache are (a) replicated across the cluster and (b) persisted using the cache loader. This means that all datastores have exactly the same state. When replicating changes synchronously and in a transaction, the two-phase commit protocol takes care that all modifications are replicated and persisted in each datastore, or none is replicated and persisted (atomic updates).
+			</div><div class="para">
+				Note that JBoss Cache is <span class="emphasis"><em>not</em></span> an XA Resource, that means it does not implement recovery. When used with a transaction manager that supports recovery, this functionality is not available.
+			</div><div class="para">
+				The challenge here is state transfer: when a new node starts it needs to do the following:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="orderedlist"><ol><li class="listitem"><div class="para">
+						Tell the coordinator (oldest node in a cluster) to send it the state. This is always a full state transfer, overwriting any state that may already be present.
+					</div></li><li class="listitem"><div class="para">
+						The coordinator then needs to wait until all in-flight transactions have completed. During this time, it will not allow for new transactions to be started.
+					</div></li><li class="listitem"><div class="para">
+						Then the coordinator asks its cache loader for the entire state using <code class="literal">loadEntireState()</code> . It then sends back that state to the new node.
+					</div></li><li class="listitem"><div class="para">
+						The new node then tells its cache loader to store that state in its store, overwriting the old state. This is the <code class="literal">CacheLoader.storeEntireState()</code> method
+					</div></li><li class="listitem"><div class="para">
+						As an option, the transient (in-memory) state can be transferred as well during the state transfer.
+					</div></li><li class="listitem"><div class="para">
+						The new node now has the same state in its back end store as everyone else in the cluster, and modifications received from other nodes will now be persisted using the local cache loader.
+					</div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486340966736">
+      ⁠</a>9.5.5. Hierarchical Caches</h2></div></div></div><div class="para">
+				If you need to set up a hierarchy within a single JVM, you can use the <code class="literal">LocalDelegatingCacheLoader</code> . This type of hierarchy can currently only be set up programmatically.
+			</div><div class="para">
+				Hierarchical caches could also be set up spanning more than one JVM or server, using the <code class="literal">TcpDelegatingCacheLoader</code> . 
+				<div class="figure"><a id="idm140486333012576">
+      ⁠</a><div class="figure-contents"><div class="mediaobject"><img src="images/DelegatingCacheLoader.png" alt="TCP delegating cache loader"/></div></div><p class="title"><strong>Figure 9.5. TCP delegating cache loader</strong></p></div>
+
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486333009696">
+      ⁠</a>9.5.6. Multiple Cache Loaders</h2></div></div></div><div class="para">
+				You can set up more than one cache loader in a chain. Internally, a delegating <code class="literal">ChainingCacheLoader</code> is used, with references to each cache loader you have configured. Use cases vary depending on the type of cache loaders used in the chain. One example is using a file system based cache loader, co-located on the same host as the JVM, used as an overflow for memory. This ensures data is available relatively easily and with low cost. An additional remote cache loader, such as a <code class="literal">TcpDelegatingCacheLoader</code> provides resilience between server restarts.
+			</div><div class="figure"><a id="idm140486334304480">
+      ⁠</a><div class="figure-contents"><div class="mediaobject"><img src="images/MultipleCacheLoaders.png" alt="Multiple cache loaders in a chain"/></div></div><p class="title"><strong>Figure 9.6. Multiple cache loaders in a chain</strong></p></div></div></div></div></body></html>

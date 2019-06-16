@@ -1,0 +1,344 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 24. Clustered Entity EJBs</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="clustering-entity">
+      ⁠</a>Chapter 24. Clustered Entity EJBs</h1></div></div></div><div class="para">
+		In a JBoss Enterprise Application Platform cluster, entity bean instance caches need to be kept in sync across all nodes. If an entity bean provides remote services, the service methods need to be load balanced as well.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="clustering-entity-30">
+      ⁠</a>24.1. Entity Bean in EJB 3.0</h1></div></div></div><div class="para">
+			In EJB 3.0, entity beans primarily serve as a persistence data model. They do not provide remote services. Hence, the entity bean clustering service in EJB 3.0 primarily deals with distributed caching and replication, instead of load balancing.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="clustering-entity-30-cache">
+      ⁠</a>24.1.1. Configure the distributed cache</h2></div></div></div><div class="para">
+				To avoid round trips to the database, you can use a cache for your entities. JBoss EJB 3.0 entity beans are implemented by Hibernate, which has support for a second-level cache. The second-level cache provides the following functionalities:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						If you persist a cache-enabled entity bean instance to the database via the entity manager, the entity will be inserted into the cache.
+					</div></li><li class="listitem"><div class="para">
+						If you update an entity bean instance, and save the changes to the database via the entity manager, the entity will be updated in the cache.
+					</div></li><li class="listitem"><div class="para">
+						If you remove an entity bean instance from the database via the entity manager, the entity will be removed from the cache.
+					</div></li><li class="listitem"><div class="para">
+						If loading a cached entity from the database via the entity manager, and that entity does not exist in the database, it will be inserted into the cache.
+					</div></li></ul></div><div class="para">
+				As well as a region for caching entities, the second-level cache also contains regions for caching collections, queries, and timestamps. The Hibernate setup used for the JBoss EJB 3.0 implementation uses JBoss Cache as its underlying second-level cache implementation.
+			</div><div class="para">
+				Configuration of a the second-level cache is done via your EJB3 deployment's <code class="filename">persistence.xml</code>, like so:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;?xml</span> version="1.0" encoding="UTF-8"<span xmlns="" class="perl_Keyword">?&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;persistence</span><span xmlns="" class="perl_Others"> xmlns:xsi=</span><span xmlns="" class="perl_String">"http://www.w3.org/2001/XMLSchema-instance"</span><span xmlns="" class="perl_Others"> xmlns=</span><span xmlns="" class="perl_String">"http://java.sun.com/xml/ns/persistence"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">    xsi:schemaLocation=</span><span xmlns="" class="perl_String">"http://java.sun.com/xml/ns/persistence http://java.sun.com/xml/ns/persistence/persistence_1_0.xsd"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;persistence-unit</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"tempdb"</span><span xmlns="" class="perl_Others"> transaction-type=</span><span xmlns="" class="perl_String">"JTA"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;jta-data-source&gt;</span>java:/DefaultDS<span xmlns="" class="perl_Keyword">&lt;/jta-data-source&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;properties&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.use_second_level_cache"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.use_query_cache"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.region.factory_class"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"org.hibernate.cache.jbc2.JndiMultiplexedJBossCacheRegionFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!-- region factory specific properties --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.region.jbc2.cachefactory"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"java:CacheManager"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.region.jbc2.cfg.entity"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"mvcc-entity"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.cache.region.jbc2.cfg.collection"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"mvcc-entity"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/properties&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/persistence-unit&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/persistence&gt;</span>
+</pre><div class="variablelist"><dl class="variablelist"><dt><span class="term">hibernate.cache.use_second_level_cache</span></dt><dd><div class="para">
+							Enables second-level caching of entities and collections.
+						</div></dd><dt><span class="term">hibernate.cache.use_query_cache</span></dt><dd><div class="para">
+							Enables second-level caching of queries.
+						</div></dd><dt><span class="term">hibernate.cache.region.factory_class</span></dt><dd><div class="para">
+							Defines the <code class="literal">RegionFactory</code> implementation that dictates region-specific caching behavior. Hibernate ships with 2 types of JBoss Cache-based second-level caches: shared and multiplexed.
+						</div><div class="para">
+							A shared region factory uses the same Cache for all cache regions - much like the legacy CacheProvider implementation in older Hibernate versions.
+						</div><div class="para">
+							Hibernate ships with 2 shared region factory implementations:
+						</div><div class="variablelist"><dl class="variablelist"><dt><span class="term">org.hibernate.cache.jbc2.SharedJBossCacheRegionFactory</span></dt><dd><div class="para">
+										Uses a single JBoss Cache configuration, from a newly instantiated CacheManager, for all cache regions.
+									</div><div class="table"><a id="idm139776742562080">
+      ⁠</a><p class="title"><strong>Table 24.1. Additional properties for SharedJBossCacheRegionFactory</strong></p><div class="table-contents"><table xmlns:d="http://docbook.org/ns/docbook" class="lt-4-cols lt-7-rows" summary="Additional properties for SharedJBossCacheRegionFactory"><colgroup><col/><col/><col/></colgroup><thead><tr><th> Property </th><th> Default </th><th> Description </th></tr></thead><tbody><tr><td> hibernate.cache.region.jbc2.cfg.shared </td><td> treecache.xml </td><td> The classpath or file system resource containing the JBoss Cache configuration settings. </td></tr><tr><td> hibernate.cache.region.jbc2.cfg.jgroups.stacks </td><td> org/hibernate/cache/jbc2/builder/jgroups-stacks.xml </td><td> The classpath or file system resource containing the JGroups protocol stack configurations. </td></tr></tbody></table></div></div></dd><dt><span class="term">org.hibernate.cache.jbc2.JndiSharedJBossCacheRegionFactory</span></dt><dd><div class="para">
+										Uses a single JBoss Cache configuration, from an existing CacheManager bound to JNDI, for all cache regions.
+									</div><div class="table"><a id="idm139776749233008">
+      ⁠</a><p class="title"><strong>Table 24.2. Additional properties for JndiSharedJBossCacheRegionFactory</strong></p><div class="table-contents"><table xmlns:d="http://docbook.org/ns/docbook" class="lt-4-cols lt-7-rows" summary="Additional properties for JndiSharedJBossCacheRegionFactory"><colgroup><col/><col/><col/></colgroup><thead><tr><th> Property </th><th> Default </th><th> Description </th></tr></thead><tbody><tr><td> hibernate.cache.region.jbc2.cfg.shared </td><td> <span class="emphasis"><em>Required</em></span> </td><td> JNDI name to which the shared <code class="literal">Cache</code> instance is bound. </td></tr></tbody></table></div></div></dd></dl></div><div class="para">
+							A multiplexed region factory uses separate Cache instances, using optimized configurations for each cache region.
+						</div><div class="table"><a id="idm139776752971248">
+      ⁠</a><p class="title"><strong>Table 24.3. Common properties for multiplexed region factory implementations</strong></p><div class="table-contents"><table xmlns:d="http://docbook.org/ns/docbook" class="lt-4-cols lt-7-rows" summary="Common properties for multiplexed region factory implementations"><colgroup><col/><col/><col/></colgroup><thead><tr><th> Property </th><th> Default </th><th> Description </th></tr></thead><tbody><tr><td> hibernate.cache.region.jbc2.cfg.entity </td><td> optimistic-entity </td><td> The JBoss Cache configuration used for the entity cache region. Alternative configurations: mvcc-entity, pessimistic-entity, mvcc-entity-repeatable, optimistic-entity-repeatable, pessimistic-entity-repeatable </td></tr><tr><td> hibernate.cache.region.jbc2.cfg.collection </td><td> optimistic-entity </td><td> The JBoss Cache configuration used for the collection cache region. The collection cache region typically uses the same configuration as the entity cache region. </td></tr><tr><td> hibernate.cache.region.jbc2.cfg.query </td><td> local-query </td><td> The JBoss Cache configuration used for the query cache region. By default, cached query results are not replicated. Alternative configurations: replicated-query </td></tr><tr><td> hibernate.cache.region.jbc2.cfg.ts </td><td> timestamps-cache </td><td> The JBoss Cache configuration used for the timestamp cache region. If query caching is used, the corresponding timestamp cache must be replicating, even if the query cache is non-replicating. The timestamp cache region must never share the same cache as the query cache. </td></tr></tbody></table></div></div><div class="para">
+							Hibernate ships with 2 shared region factory implementations:
+						</div><div class="variablelist"><dl class="variablelist"><dt><span class="term">org.hibernate.cache.jbc2.MultiplexedJBossCacheRegionFactory</span></dt><dd><div class="para">
+										Uses separate JBoss Cache configurations, from a newly instantiated CacheManager, per cache region.
+									</div><div class="table"><a id="idm139776685647408">
+      ⁠</a><p class="title"><strong>Table 24.4. Additional properties for MultiplexedJBossCacheRegionFactory</strong></p><div class="table-contents"><table xmlns:d="http://docbook.org/ns/docbook" class="lt-4-cols lt-7-rows" summary="Additional properties for MultiplexedJBossCacheRegionFactory"><colgroup><col/><col/><col/></colgroup><thead><tr><th> Property </th><th> Default </th><th> Description </th></tr></thead><tbody><tr><td> hibernate.cache.region.jbc2.configs </td><td> org/hibernate/cache/jbc2/builder/jbc2-configs.xml </td><td> The classpath or file system resource containing the JBoss Cache configuration settings. </td></tr><tr><td> hibernate.cache.region.jbc2.cfg.jgroups.stacks </td><td> org/hibernate/cache/jbc2/builder/jgroups-stacks.xml </td><td> The classpath or file system resource containing the JGroups protocol stack configurations. </td></tr></tbody></table></div></div></dd><dt><span class="term">org.hibernate.cache.jbc2.JndiMultiplexedJBossCacheRegionFactory</span></dt><dd><div class="para">
+										Uses separate JBoss Cache configurations, from a JNDI-bound CacheManager, see <a class="xref" href="clustering-blocks.chapt.html#clustering-blocks-jbc-cachemanager">Section 21.2.1, “The JBoss Enterprise Application Platform CacheManager Service”</a>, per cache region.
+									</div><div class="table"><a id="idm139776750560032">
+      ⁠</a><p class="title"><strong>Table 24.5. Additional properties for JndiMultiplexedJBossCacheRegionFactory</strong></p><div class="table-contents"><table xmlns:d="http://docbook.org/ns/docbook" class="lt-4-cols lt-7-rows" summary="Additional properties for JndiMultiplexedJBossCacheRegionFactory"><colgroup><col/><col/><col/></colgroup><thead><tr><th> Property </th><th> Default </th><th> Description </th></tr></thead><tbody><tr><td> hibernate.cache.region.jbc2.cachefactory </td><td> <span class="emphasis"><em>Required</em></span> </td><td> JNDI name to which the <code class="literal">CacheManager</code> instance is bound. </td></tr></tbody></table></div></div></dd></dl></div></dd></dl></div><div class="para">
+				Now, we have JBoss Cache configured to support distributed caching of EJB 3.0 entity beans. We still have to configure individual entity beans to use the cache service.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="clustering-entity-30-bean">
+      ⁠</a>24.1.2. Configure the entity beans for cache</h2></div></div></div><div class="para">
+				Next we need to configure which entities to cache. The default is to not cache anything, even with the settings shown above. We use the <code class="literal">@org.hibernate.annotations.Cache</code> annotation to tag entity beans that needs to be cached.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>@Entity 
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Cache</span>(usage = CacheConcurrencyStrategy.<span xmlns="" class="perl_Function">TRANSACTIONAL</span>) 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> Account <span xmlns="" class="perl_Keyword">implements</span> Serializable
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Comment">// ... ... </span>
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				A very simplified rule of thumb is that you will typically want to do caching for objects that rarely change, and which are frequently read. You can fine tune the cache for each entity bean in the appropriate JBoss Cache configuration file, e.g. <code class="filename">jboss-cache-manager-jboss-beans.xml</code>. For instance, you can specify the size of the cache. If there are too many objects in the cache, the cache can evict the oldest or least used objects, depending on configuration, to make room for new objects. Assuming the region_prefix specified in <code class="filename">persistence.xml</code> was <code class="literal">myprefix</code>, the default name of the cache region for the <code class="literal">com.mycompany.entities.Account</code> entity bean would be <code class="literal">/myprefix/com/mycompany/entities/Account</code>.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"..."</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.Configuration"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>   ... ...
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.EvictionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"wakeupInterval"</span><span xmlns="" class="perl_Keyword">&gt;</span>5000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!--  Overall default --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"defaultEvictionRegionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.EvictionRegionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"regionName"</span><span xmlns="" class="perl_Keyword">&gt;</span>/<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.eviction.LRUAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Comment">&lt;!-- Evict LRU node once we have more than this number of nodes --&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"maxNodes"</span><span xmlns="" class="perl_Keyword">&gt;</span>10000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Comment">&lt;!-- And, evict any node that has not been accessed in this many seconds --&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"timeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>1000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Comment">&lt;!-- Do not evict a node that's been accessed within this many seconds. </span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">                  Set this to a value greater than your max expected transaction length. --&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"minTimeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>120<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionRegionConfigs"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;list&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.EvictionRegionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"regionName"</span><span xmlns="" class="perl_Keyword">&gt;</span>/myprefix/com/mycompany/entities/Account<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.eviction.LRUAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"maxNodes"</span><span xmlns="" class="perl_Keyword">&gt;</span>10000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"timeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>5000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"minTimeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>120<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>           ... ...
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/list&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+</pre><div class="para">
+				If you do not specify a cache region for an entity bean class, all instances of this class will be cached using the <code class="literal">defaultEvictionRegionConfig</code> as defined above. The @Cache annotation exposes an optional attribute "region" that lets you specify the cache region where an entity is to be stored, rather than having it be automatically created from the fully-qualified class name of the entity class.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>@Entity 
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Cache</span>(usage = CacheConcurrencyStrategy.<span xmlns="" class="perl_Function">TRANSACTIONAL</span>, region = <span xmlns="" class="perl_String">"Account"</span>) 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> Account <span xmlns="" class="perl_Keyword">implements</span> Serializable
+<span xmlns="" class="line">​</span>{ 
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">// ... ... </span>
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				The eviction configuration would then become:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"..."</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.Configuration"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>   ... ...
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.EvictionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"wakeupInterval"</span><span xmlns="" class="perl_Keyword">&gt;</span>5000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!--  Overall default --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"defaultEvictionRegionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.EvictionRegionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"regionName"</span><span xmlns="" class="perl_Keyword">&gt;</span>/<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.eviction.LRUAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"maxNodes"</span><span xmlns="" class="perl_Keyword">&gt;</span>5000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"timeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>1000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"minTimeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>120<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionRegionConfigs"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;list&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.EvictionRegionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"regionName"</span><span xmlns="" class="perl_Keyword">&gt;</span>/myprefix/Account<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.eviction.LRUAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"maxNodes"</span><span xmlns="" class="perl_Keyword">&gt;</span>10000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"timeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>5000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"minTimeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>120<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>              <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>           ... ...
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/list&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139776743721792">
+      ⁠</a>24.1.3. Query result caching</h2></div></div></div><div class="para">
+				The EJB3 Query API also provides means for you to save the results (i.e., collections of primary keys of entity beans, or collections of scalar values) of specified queries in the second-level cache. Here we show a simple example of annotating a bean with a named query, also providing the Hibernate-specific hints that tells Hibernate to cache the query.
+			</div><div class="para">
+				First, in persistence.xml you need to tell Hibernate to enable query caching:
+			</div><pre class="screen">&lt;property name="hibernate.cache.use_query_cache" value="true"/&gt;</pre><div class="para">
+				Next, you create a named query associated with an entity, and tell Hibernate you want to cache the results of that query:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span> 
+<span xmlns="" class="line">​</span>@Entity
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Cache</span>(usage = CacheConcurrencyStrategy.<span xmlns="" class="perl_Function">TRANSACTIONAL</span>, region = <span xmlns="" class="perl_String">"Account"</span>)
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">NamedQueries</span>(
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>  @<span xmlns="" class="perl_Function">NamedQuery</span>(
+<span xmlns="" class="line">​</span>    name = <span xmlns="" class="perl_String">"account.bybranch"</span>,
+<span xmlns="" class="line">​</span>    query = <span xmlns="" class="perl_String">"select acct from Account as acct where acct.branch = ?1"</span>,
+<span xmlns="" class="line">​</span>    hints = { @<span xmlns="" class="perl_Function">QueryHint</span>(name = <span xmlns="" class="perl_String">"org.hibernate.cacheable"</span>, value = <span xmlns="" class="perl_String">"true"</span>) }
+<span xmlns="" class="line">​</span>  )
+<span xmlns="" class="line">​</span>})
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> Account <span xmlns="" class="perl_Keyword">implements</span> Serializable
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">// ... ... </span>
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				The @NamedQueries, @NamedQuery and @QueryHint annotations are all in the javax.persistence package. See the Hibernate and EJB3 documentation for more on how to use EJB3 queries and on how to instruct EJB3 to cache queries.
+			</div><div class="para">
+				By default, Hibernate stores query results in JBoss Cache in a region named &lt;region_prefix&gt;/org/hibernate/cache/StandardQueryCache. Based on this, you can set up separate eviction handling for your query results. So, if the region prefix were set to myprefix in <code class="filename">persistence.xml</code>, you could, for example, create this sort of eviction handling:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"..."</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.Configuration"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    ... ...
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>       <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.EvictionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"wakeupInterval"</span><span xmlns="" class="perl_Keyword">&gt;</span>5000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Comment">&lt;!--  Overall default --&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"defaultEvictionRegionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.EvictionRegionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>               <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"regionName"</span><span xmlns="" class="perl_Keyword">&gt;</span>/<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>               <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                  <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.eviction.LRUAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"maxNodes"</span><span xmlns="" class="perl_Keyword">&gt;</span>5000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"timeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>1000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"minTimeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>120<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                  <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>               <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionRegionConfigs"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;list&gt;</span>
+<span xmlns="" class="line">​</span>               <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.EvictionRegionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"regionName"</span><span xmlns="" class="perl_Keyword">&gt;</span>/myprefix/Account<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.eviction.LRUAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"maxNodes"</span><span xmlns="" class="perl_Keyword">&gt;</span>10000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"timeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>5000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"minTimeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>120<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>                  <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>               <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>               <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.EvictionRegionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"regionName"</span><span xmlns="" class="perl_Keyword">&gt;</span>/myprefix/org/hibernate/cache/StandardQueryCache<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.eviction.LRUAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"maxNodes"</span><span xmlns="" class="perl_Keyword">&gt;</span>100<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"timeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>600<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"minTimeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>120<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>                  <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>               <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;/list&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+</pre><div class="para">
+				The @NamedQuery.hints attribute shown above takes an array of vendor-specific @QueryHints as a value. Hibernate accepts the "org.hibernate.cacheRegion" query hint, where the value is the name of a cache region to use instead of the default /org/hibernate/cache/StandardQueryCache. For example:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>@Entity
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Cache</span>(usage = CacheConcurrencyStrategy.<span xmlns="" class="perl_Function">TRANSACTIONAL</span>, region = <span xmlns="" class="perl_String">"Account"</span>)
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">NamedQueries</span>(
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>  @<span xmlns="" class="perl_Function">NamedQuery</span>(
+<span xmlns="" class="line">​</span>    name = <span xmlns="" class="perl_String">"account.bybranch"</span>,
+<span xmlns="" class="line">​</span>    query = <span xmlns="" class="perl_String">"select acct from Account as acct where acct.branch = ?1"</span>,
+<span xmlns="" class="line">​</span>    hints = 
+<span xmlns="" class="line">​</span>    {
+<span xmlns="" class="line">​</span>      @<span xmlns="" class="perl_Function">QueryHint</span>(name = <span xmlns="" class="perl_String">"org.hibernate.cacheable"</span>, value = <span xmlns="" class="perl_String">"true"</span>),
+<span xmlns="" class="line">​</span>      @<span xmlns="" class="perl_Function">QueryHint</span>(name = <span xmlns="" class="perl_String">"org.hibernate.cacheRegion"</span>, value = <span xmlns="" class="perl_String">"Queries"</span>)
+<span xmlns="" class="line">​</span>    }
+<span xmlns="" class="line">​</span>  )
+<span xmlns="" class="line">​</span>})
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> Account <span xmlns="" class="perl_Keyword">implements</span> Serializable
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">// ... ... </span>
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				The related eviction configuration:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"..."</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.Configuration"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    ... ...
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>       <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.EvictionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"wakeupInterval"</span><span xmlns="" class="perl_Keyword">&gt;</span>5000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Comment">&lt;!--  Overall default --&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"defaultEvictionRegionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.EvictionRegionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>               <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"regionName"</span><span xmlns="" class="perl_Keyword">&gt;</span>/<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>               <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                  <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.eviction.LRUAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"maxNodes"</span><span xmlns="" class="perl_Keyword">&gt;</span>5000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"timeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>1000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"minTimeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>120<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                  <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>               <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionRegionConfigs"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;list&gt;</span>
+<span xmlns="" class="line">​</span>               <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.EvictionRegionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"regionName"</span><span xmlns="" class="perl_Keyword">&gt;</span>/myprefix/Account<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.eviction.LRUAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"maxNodes"</span><span xmlns="" class="perl_Keyword">&gt;</span>10000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"timeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>5000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"minTimeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>120<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>                  <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>               <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>               <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.EvictionRegionConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"regionName"</span><span xmlns="" class="perl_Keyword">&gt;</span>/myprefix/Queries<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"evictionAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.eviction.LRUAlgorithmConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"maxNodes"</span><span xmlns="" class="perl_Keyword">&gt;</span>100<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"timeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>600<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"minTimeToLiveSeconds"</span><span xmlns="" class="perl_Keyword">&gt;</span>120<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>                  <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>               <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>                ... ...
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;/list&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+</pre></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="clustering-entity-21">
+      ⁠</a>24.2. Entity Beans in EJB 2.x</h1></div></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="important"><div class="admonition_header"><p><strong/></p></div><div class="admonition"><div class="para">
+				Clustering 2.x entity beans is is not advised.
+			</div><div class="para">
+				Doing so exposes elements that generally are too fine grained for use as remote objects to clustered remote objects and introduces data synchronization problems that are non-trivial.
+			</div><div class="para">
+				Do not use EJB 2.x entity bean clustering unless you are in the unique situation of using read-only, or one read-write node with read-only nodes synchronized with the cache invalidation services.
+			</div></div></div><div class="para">
+			To use a clustered entity bean, the application does not need to do anything special, except for looking up EJB 2.x remote bean references from the clustered HA-JNDI.
+		</div><div class="para">
+			To cluster EJB 2.x entity beans, you need to add the <code class="literal">&lt;clustered&gt;</code> element to the application's <code class="literal">jboss.xml</code> descriptor file. Below is a typical <code class="literal">jboss.xml</code> file.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;jboss&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;enterprise-beans&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;entity&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;ejb-name&gt;</span>nextgen.EnterpriseEntity<span xmlns="" class="perl_Keyword">&lt;/ejb-name&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;jndi-name&gt;</span>nextgen.EnterpriseEntity<span xmlns="" class="perl_Keyword">&lt;/jndi-name&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;clustered&gt;</span>True<span xmlns="" class="perl_Keyword">&lt;/clustered&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;cluster-config&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;partition-name&gt;</span>DefaultPartition<span xmlns="" class="perl_Keyword">&lt;/partition-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;home-load-balance-policy&gt;</span>org.jboss.ha.framework.interfaces.RoundRobin<span xmlns="" class="perl_Keyword">&lt;/home-load-balance-policy&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;bean-load-balance-policy&gt;</span>org.jboss.ha.framework.interfaces.FirstAvailable<span xmlns="" class="perl_Keyword">&lt;/bean-load-balance-policy&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/cluster-config&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/entity&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/enterprise-beans&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/jboss&gt;</span>
+</pre><div class="para">
+			The EJB 2.x entity beans are clustered for load balanced remote invocations. All the bean instances are synchronized to have the same contents on all nodes.
+		</div><div class="para">
+			However, clustered EJB 2.x Entity Beans do not have a distributed locking mechanism or a distributed cache. They can only be synchronized by using row-level locking at the database level (see <code class="literal">&lt;row-lock&gt;</code> in the CMP specification) or by setting the Transaction Isolation Level of your JDBC driver to be <code class="literal">TRANSACTION_SERIALIZABLE</code>. Because there is no supported distributed locking mechanism or distributed cache Entity Beans use Commit Option "B" by default (see <code class="literal">standardjboss.xml</code> and the container configurations Clustered CMP 2.x EntityBean, Clustered CMP EntityBean, or Clustered BMP EntityBean). It is not recommended that you use Commit Option "A" unless your Entity Bean is read-only. 
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+				If you are using Bean Managed Persistence (BMP), you are going to have to implement synchronization on your own. 
+			</div></div></div></div></div></body></html>

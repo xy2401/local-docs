@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 37. High Availability and Fail-over</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="High_Availability_and_Fail_Over">
+      ⁠</a>Chapter 37. High Availability and Fail-over</h1></div></div></div><div class="para">
+		High availability is defined as the ability for the system to continue functioning after failure of one or more of the servers.
+	</div><div class="para">
+		A part of high availability is <span class="emphasis"><em>fail-over</em></span> which is defined as the ability for client connections to migrate from one server to another in the event of server failure so that client applications can continue to operate.
+	</div><div xmlns:d="http://docbook.org/ns/docbook" class="warning"><div class="admonition_header"><p><strong>Warning</strong></p></div><div class="admonition"><div class="para">
+			HornetQ requires a stable, reliable connection to the file system where its journal is located. If connectivity between HornetQ and the journal is lost and later re-established, an I/O error for messaging will occur. This error is considered a "major event" and requires manual intervention with the messaging system in order to recover (i.e. the messaging system will need to be restarted). If this occurs on a cluster node, other nodes will take on the load of the failed node, providing they have been configured to do so.
+		</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139905846020704">
+      ⁠</a>37.1. Live - Backup Pairs</h1></div></div></div><div class="para">
+			HornetQ allows pairs of servers to be linked together as <span class="emphasis"><em>live - backup</em></span> pairs. In this release there is a single backup server for each live server. A backup server is owned by only one live server. Backup servers are not operational until fail-over occurs.
+		</div><div class="para">
+			Before fail-over, only the live server is serving the HornetQ clients while the backup servers remain passive or awaiting to become a backup server. When a live server crashes or is brought down in the correct mode, the backup server currently in passive mode will become live and another backup server will become passive. If a live server restarts after a fail-over then it will have priority and be the next server to become live when the current live server goes down, if the current live server is configured to allow automatic fail back then it will detect the live server coming back up and automatically stop.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="ha.mode">
+      ⁠</a>37.1.1. HA modes</h2></div></div></div><div class="para">
+				HornetQ provides only <span class="emphasis"><em>shared store</em></span> in this release.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+					Only persistent message data will survive fail-over. Non-persistent message data is lost after fail-over occurs.
+				</div></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="ha.mode.shared">
+      ⁠</a>37.1.2. Shared Store</h2></div></div></div><div class="para">
+				When using a shared store, both live and backup servers share the <span class="emphasis"><em>same</em></span> entire data directory using a shared file system. This means the paging directory, journal directory, large messages and binding journal.
+			</div><div class="para">
+				When fail-over occurs and the backup server takes over, it will load the persistent storage from the shared file system and clients can connect to it.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="important"><div class="admonition_header"><p><strong>HornetQ HA supported shared stores</strong></p></div><div class="admonition"><div class="para">
+					HornetQ HA supports shared store on GFS2 on SAN.
+				</div></div></div><div class="para">
+				This style of high availability differs from data replication in that it requires a shared file system which is accessible by both the live and backup nodes. Typically this will be some kind of high performance Storage Area Network (SAN). Do not use NFS mounts to store any shared journal when using NIO (non-blocking I/O). Also consider that NFS is not ideal due to the data transfer rate of this standard.
+			</div><div class="para">
+				The advantage of shared-store high availability is that no replication occurs between the live and backup nodes, this means it does not suffer any performance penalties due to the overhead of replication during normal operation.
+			</div><div class="para">
+				The disadvantage of shared store replication is that it requires a shared file system, and when the backup server activates it needs to load the journal from the shared store which can take some time depending on the amount of data in the store.
+			</div><div class="para">
+				If the highest performance during normal operation is required and there is access to a fast SAN, and a slightly slower fail-over is acceptable (depending on amount of data), shared store high availability is recommended.
+			</div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="hamode.shared.configuration">
+      ⁠</a>37.1.2.1. Configuration</h3></div></div></div><div class="para">
+					To configure the live and backup server to share their store, configure both <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code> files on each node:
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;shared-store&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/shared-store&gt;</span></pre><div class="para">
+					Additionally, the backup server must be flagged explicitly as a backup:
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;backup&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/backup&gt;</span></pre><div class="para">
+					In order for live - backup pairs to operate properly with a shared store, both servers must have configured the location of journal directory to point to the <span class="emphasis"><em>same shared location</em></span> (as explained in <a class="xref" href="persistence.html#configuring.message.journal">Section 13.3, “Configuring the message journal”</a>)
+				</div><div class="para">
+					The Live and Backup pair must have a cluster connection defined, even if the pair is not part of a cluster. The Cluster Connection info defines how backup servers announce their presence to a live server or any other nodes in the cluster. Refer to <a class="xref" href="clusters.html">Chapter 36, <em>Clusters</em></a> for details on how to configure this.
+				</div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="idm139905839019056">
+      ⁠</a>37.1.2.2. Failing Back to Live Server</h3></div></div></div><div class="para">
+					After a live server has failed and a backup has taken over its duties, you may want to restart the live server and have clients fail back. To do this, restart the original live server and stop the new live server. You can do this by terminating the process itself or waiting for the server to shut down.
+				</div><div class="para">
+					It is also possible to cause fail-over to occur on normal server shutdown, to enable this set the following property to true in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code>:
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;failover-on-shutdown&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/failover-on-shutdown&gt;</span></pre><div class="para">
+					You can force the new live server to shutdown when the old live server comes back up allowing the original live server to take over automatically by setting the following property in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code> as follows:
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;allow-failback&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/allow-failback&gt;</span></pre></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="failover">
+      ⁠</a>37.2. Fail-over Modes</h1></div></div></div><div class="para">
+			HornetQ defines two types of client fail-over:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					Automatic client fail-over
+				</div></li><li class="listitem"><div class="para">
+					Application-level client fail-over
+				</div></li></ul></div><div class="para">
+			HornetQ provides transparent automatic reattachment of connections to the same server (for example, in case of transient network problems). This is similar to fail-over, except the connection is reconnecting to the same server. More information on this topic is discussed in <a class="xref" href="client-reconnection.html">Chapter 32, <em>Client Reconnection and Session Reattachment</em></a>.
+		</div><div class="para">
+			During fail-over, if the client has consumers on any non persistent or temporary queues, those queues will be automatically recreated during fail-over on the backup node, since the backup node will not have any knowledge of non persistent queues.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="ha.automatic.failover">
+      ⁠</a>37.2.1. Automatic Client fail-over</h2></div></div></div><div class="para">
+				HornetQ clients can be configured with knowledge of live and backup servers, so that in event of connection failure at the client - live server connection, the client will detect this and reconnect to the backup server. The backup server will then automatically recreate any sessions and consumers that existed on each connection before fail-over, thus saving the user from having to hand-code manual reconnection logic.
+			</div><div class="para">
+				HornetQ clients detect connection failure when it has not received packets from the server within the time given by <code class="literal">client-failure-check-period</code> as explained in section <a class="xref" href="connection-ttl.html">Chapter 15, <em>Detecting Dead Connections</em></a>. If the client does not receive data in good time, it will assume the connection has failed and attempt fail-over.
+			</div><div class="para">
+				HornetQ clients can be configured with the list of live-backup server pairs in a number of different ways. They can be configured explicitly or probably the most common way of doing this is to use <span class="emphasis"><em>server discovery</em></span> for the client to automatically discover the list. For full details on how to configure server discovery, refer to <a class="xref" href="clusters.html#clusters.server-discovery">Section 36.2, “Server discovery”</a>. Alternatively, the clients can explicitly specify pairs of live-backup server as explained in <a class="xref" href="clusters.html#clusters.static.servers">Section 36.5.2, “Specifying a Static Cluster Server List”</a>.
+			</div><div class="para">
+				To enable automatic client fail-over, the client must be configured to allow non-zero reconnection attempts (as explained in <a class="xref" href="client-reconnection.html">Chapter 32, <em>Client Reconnection and Session Reattachment</em></a>).
+			</div><div class="para">
+				Sometimes it is desirable for a client to fail-over onto a backup server even if the live server is just cleanly shutdown rather than having crashed or the connection failed. To configure this set the property <code class="literal">FailoverOnServerShutdown</code> to true either on the <code class="literal">HornetQConnectionFactory</code> if using JMS or in the <code class="filename"><em class="replaceable">JBOSS_DIST</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-jms.xml</code> file when defining the connection factory, or if using core by setting the property directly on the <code class="literal">ClientSessionFactoryImpl</code> instance after creation. The default value for this property is <code class="literal">false</code>, this means that by default HornetQ clients <span class="emphasis"><em>will not</em></span> fail-over to a backup server if the live server is shutdown cleanly.
+			</div><div class="para">
+				<div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+						Cleanly shutting down the server will not trigger fail-over on the client by default. For the client to fail-over when its server is cleanly shutdown, set the property <em class="parameter"><code>FailoverOnServerShutdown</code></em> to <span class="property">true</span>.
+					</div><div class="para">
+						Using <span class="keycap"><strong>Ctrl</strong></span>+<span class="keycap"><strong>C</strong></span> (in a Linux terminal) causes the server to cleanly shut down, so client fail-over is not triggered unless this property is correctly configured.
+					</div></div></div>
+
+			</div><div class="para">
+				By default fail-over will only occur after at least one connection has been made to the live server. Applying this logic practically means that fail-over will not occur if the client fails to make an initial connection to the live server. The client will retry connecting to the live server according to the reconnect-attempts property and fail after this number of attempts.
+			</div><div class="para">
+				In some cases, you may want the client to automatically try the backup server it fails to make an initial connection to the live server. In this case, set the property <code class="literal">FailoverOnInitialConnection</code>, or <code class="literal">failover-on-initial-connection</code> in XML, on the <code class="literal">ClientSessionFactoryImpl</code> or <code class="literal">HornetQConnectionFactory</code>. The default value for this parameter is <code class="literal">false</code>.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note - Server Replication Support</strong></p></div><div class="admonition"><div class="para">
+					HornetQ does not replicate full server state between live and backup servers. When the new session is automatically recreated on the backup it will not have any knowledge of messages already sent or acknowledged in that session. Any in-flight sends or acknowledgments at the time of fail-over might also be lost.
+				</div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="ha.automatic.failover.blockingcalls">
+      ⁠</a>37.2.1.1. Handling Blocking Calls During fail-over</h3></div></div></div><div class="para">
+					If the client code is in a blocking call to the server, waiting for a response to continue its execution, when fail-over occurs, the new session will not have any knowledge of the call that was in progress. This call might otherwise hang for ever, waiting for a response that will never come.
+				</div><div class="para">
+					To prevent this, HornetQ will unblock any blocking calls that were in progress at the time of fail-over by making them throw a <code class="literal">javax.jms.JMSException</code> (if using JMS), or a <code class="literal">HornetQException</code> with error code <code class="literal">HornetQException.UNBLOCKED</code>. It is up to the client code to catch this exception and retry any operations if desired.
+				</div><div class="para">
+					If the method being unblocked is a call to commit(), or prepare(), then the transaction will be automatically rolled back and HornetQ will throw a <code class="literal">javax.jms.TransactionRolledBackException</code> (if using JMS), or a <code class="literal">HornetQException</code> with error code <code class="literal">HornetQException.TRANSACTION_ROLLED_BACK</code> if using the core API.
+				</div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="ha.automatic.failover.transactions">
+      ⁠</a>37.2.1.2. Handling fail-over With Transactions</h3></div></div></div><div class="para">
+					If the session is transactional and messages have already been sent or acknowledged in the current transaction, then the server cannot be sure that messages sent or acknowledgments have not been lost during the fail-over.
+				</div><div class="para">
+					Consequently the transaction will be marked as rollback-only, and any subsequent attempt to commit will throw a <code class="literal">javax.jms.TransactionRolledBackException</code> (if using JMS), or a <code class="literal">HornetQException</code> with error code <code class="literal">HornetQException.TRANSACTION_ROLLED_BACK</code> if using the core API.
+				</div><div class="para">
+					It is up to the user to catch the exception, and perform any client side local rollback code as necessary. There is no need to manually rollback the session - it is already rolled back. The user can then just retry the transactional operations again on the same session.
+				</div><div class="para">
+					If fail-over occurs when a commit call is being executed, the server, as previously described, will unblock the call to prevent a hang, since no response will come back. In this case it is not easy for the client to determine whether the transaction commit was actually processed on the live server before failure occurred.
+				</div><div class="para">
+					To remedy this, the client can enable duplicate detection (<a class="xref" href="duplicate-detection.html">Chapter 35, <em>Duplicate Message Detection</em></a>) in the transaction, and retry the transaction operations again after the call is unblocked. If the transaction had indeed been committed on the live server successfully before fail-over, then when the transaction is retried, duplicate detection will ensure that any durable messages resent in the transaction will be ignored on the server to prevent them getting sent more than once.
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+						By catching the rollback exceptions and retrying, catching unblocked calls and enabling duplicate detection, once and only once delivery guarantees for messages can be provided in the case of failure, guaranteeing 100% no loss or duplication of messages.
+					</div></div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="ha.automatic.failover.nontransactional">
+      ⁠</a>37.2.1.3. Handling fail-over With Non Transactional Sessions</h3></div></div></div><div class="para">
+					If the session is non transactional, messages or acknowledgments can be lost in the event of fail-over.
+				</div><div class="para">
+					To provide <span class="emphasis"><em>once and only once</em></span> delivery guarantees for non transacted sessions too, enabled duplicate detection, and catch unblock exceptions as described in <a class="xref" href="High_Availability_and_Fail_Over.html#ha.automatic.failover.blockingcalls">Section 37.2.1.1, “Handling Blocking Calls During fail-over”</a>
+				</div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139905852668672">
+      ⁠</a>37.2.2. Getting Notified of Connection Failure</h2></div></div></div><div class="para">
+				JMS provides a standard mechanism for getting notified asynchronously of connection failure: <code class="classname">java.jms.ExceptionListener</code>. For more information about ExceptionListener, refer to the <a href="http://download.oracle.com/javaee/1.3/api/javax/jms/package-summary.html">Oracle javax.jms Javadoc</a>.
+			</div><div class="para">
+				The HornetQ core API also provides a similar feature in the form of the class <code class="classname">org.hornet.core.client.SessionFailureListener</code>
+			</div><div class="para">
+				Any JMS <code class="classname">ExceptionListener</code> or Core <code class="classname">SessionFailureListener</code> instance will always be called by HornetQ in the event of connection failure, irrespective of whether the connection was successfully failed over, reconnected or reattached.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139905846152800">
+      ⁠</a>37.2.3. Application-Level fail-over</h2></div></div></div><div class="para">
+				In some cases automatic client fail-over may not be desirable, and you may prefer to handle any connection failure yourself, and code your own manual reconnection logic in your own failure handler. This defined as <span class="emphasis"><em>application-level</em></span> fail-over, since the fail-over is handled at the user application level.
+			</div><div class="para">
+				To implement application-level fail-over, if using JMS, set an <code class="literal">ExceptionListener</code> class on the JMS connection. The <code class="literal">ExceptionListener</code> will be called by HornetQ in the event that connection failure is detected. In <code class="literal">ExceptionListener</code>, close the old JMS connections, potentially look up new connection factory instances from JNDI and creating new connections. In this case you may well be using HA-JNDI to ensure that the new connection factory is looked up from a different server.
+			</div><div class="para">
+				If using the core API, the procedure is very similar: set a <code class="literal">SessionFailureListener</code> on the core <code class="literal">ClientSession</code> instances.
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Fencing">
+      ⁠</a>37.3. Fencing</h1></div></div></div><div class="para">
+			<em class="firstterm">Fencing nodes</em> in a cluster is implemented to isolate a malfunctioning node from the rest of a cluster. This is important to prevent the scenario where a malfunctioning node assumes the rest of a the cluster is in error, and tries to fail over the cluster to the malfunctioning node. This scenario could create a race condition and cause extensive data corruption.
+		</div><div class="para">
+			While HornetQ can operate in a fenced environment, configuration varies depending on what fencing agent you choose, and how the fencing agent is configured.
+		</div><div class="para">
+			If your server cluster is running on Red Hat Enterprise Linux, Red Hat provides fencing support through the High Availability Add-On. You must have an entitlement to use this product in the <a href="http://access.redhat.com">Customer Support Portal</a> .
+		</div><div class="para">
+			For detailed information about configuring fencing using the High Availability Add-On, refer to the Red Hat Enterprise Linux <a href="https://docs.redhat.com/docs/en-US/Red_Hat_Enterprise_Linux/index.html"> <em class="citetitle">Cluster Administration Guide</em> </a> for the version of Red Hat Enterprise Linux installed on your cluster infrastructure. The sections "Configuring Fence Devices", and "Configuring Fencing for Cluster Members" will help you configure fencing correctly.
+		</div></div></div></body></html>

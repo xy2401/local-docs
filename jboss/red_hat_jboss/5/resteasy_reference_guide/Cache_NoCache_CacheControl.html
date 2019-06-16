@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 27. RESTEasy Caching Features</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="Cache_NoCache_CacheControl">
+      ⁠</a>Chapter 27. RESTEasy Caching Features</h1></div></div></div><div class="para">
+		RESTEasy provides a number of annotations to support HTTP caching semantics, to simplify processes such as setting Cache-Control headers, and to make both server-side and client-side in-memory caches available.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Cache_Annotation">
+      ⁠</a>27.1. @Cache and @NoCache Annotations</h1></div></div></div><div class="para">
+			RESTEasy provides an extension to JAX-RS that lets you set <code class="literal">Cache-Control</code> headers on successful GET requests. It can only be used on methods annotated with <code class="literal">@GET</code>. Successful get requests return a response of <code class="literal">200 OK</code>.
+		</div><pre class="programlisting">
+package org.jboss.resteasy.annotations.cache;
+
+public @interface Cache
+{
+   int maxAge() default -1;
+   int sMaxAge() default -1;
+   boolean noStore() default false;
+   boolean noTransform() default false;
+   boolean mustRevalidate() default false;
+   boolean proxyRevalidate() default false;
+   boolean isPrivate() default false;
+}
+
+public @interface NoCache
+{
+   String[] fields() default {};
+}
+
+</pre><div class="para">
+			<code class="literal">@Cache</code> builds a complex <code class="literal">Cache-Control</code> header; <code class="literal">@NoCache</code> specifies that you do not want anything to be cached. (That is, <code class="literal">Cache-Control: nocache</code>.)
+		</div><div class="para">
+			You can place these annotations on the resource class or interface, or place them on each individual <code class="literal">@GET</code> resource method. They specify a default cache value for each <code class="literal">@GET</code> resource method.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="client_cache">
+      ⁠</a>27.2. Client "Browser" Cache</h1></div></div></div><div class="para">
+			RESTEasy can create a client-side, browser-like cache for use with the Client Proxy Framework or with raw <code class="literal">ClientRequest</code>s. This cache locates <code class="literal">Cache-Control</code> headers that are returned with a server response. If the <code class="literal">Cache-Control</code> headers specify that the client may cache the response, RESTEasy caches it within local memory. This cache obeys <code class="literal">max-age</code> requirements, and automatically performs HTTP 1.1 cache revalidation if either or both of the <code class="literal">Last-Modified</code> or <code class="literal">ETag</code> headers are returned with the original response. (See the HTTP 1.1 specification for details about <code class="literal">Cache-Control</code> or cache revalidation.)
+		</div><div class="para">
+			Enabling RESTEasy caching is simple. The following shows the client cache being used with the Client Proxy Framework:
+		</div><pre class="programlisting">
+@Path("/orders")
+public interface OrderServiceClient {
+
+   @Path("{id}")
+   @GET
+   @Produces("application/xml")
+   public Order getOrder(@PathParam("id") String id);
+}
+</pre><div class="para">
+			You can create a proxy for this interface and enable caching for that proxy like so:
+		</div><pre class="programlisting">
+import org.jboss.resteasy.client.ProxyFactory;
+import org.jboss.resteasy.client.cache.CacheFactory;
+import org.jboss.resteasy.client.cache.LightweightBrowserCache;
+
+public static void main(String[] args) throws Exception
+{
+      RegisterBuiltin.register(ResteasyProviderFactory.getInstance());
+      OrderServiceClient proxy = ProxyFactory.create(OrderServiceClient.class, generateBaseUrl());
+
+      // This line enables caching
+      LightweightBrowserCache cache = CacheFactory.makeCacheable(proxy);
+}
+</pre><div class="para">
+			If you are using the <code class="literal">ClientRequest</code> class instead of the proxy server to perform invocations, you can enable the cache like so:
+		</div><pre class="programlisting">
+import org.jboss.resteasy.client.ProxyFactory;
+import org.jboss.resteasy.client.cache.CacheFactory;
+import org.jboss.resteasy.client.cache.LightweightBrowserCache;
+
+public static void main(String[] args) throws Exception
+{
+      RegisterBuiltin.register(ResteasyProviderFactory.getInstance());
+
+      // This line enables caching
+      LightweightBrowserCache cache = new LightweightBrowserCache();
+
+      ClientRequest request = new ClientRequest("http://example.com/orders/333");
+      CacheFactory.makeCacheable(request, cache);
+}
+</pre><div class="para">
+			By default, the <code class="literal">LightweightBrowserCache</code> has a maximum caching space of two megabytes. You can change this programmatically by calling the <code class="literal">setMaxBytes()</code> method. <span class="emphasis"><em>If the cache becomes full, all cached data will be deleted automatically.</em></span> For more complex caching solutions, or support for third-party cache options, contact the resteasy-development list and discuss your ideas with the community. 
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="server_cache">
+      ⁠</a>27.3. Local Server-Side Response Cache</h1></div></div></div><div class="para">
+			RESTEasy has a local, server-side, in-memory cache for your JAX-RS services. It automatically caches marshaled responses from HTTP GET JAX-RS invocations if your JAX-RS resource method sets a <code class="literal">Cache-Control</code> header. When a GET is received, the RESTEasy Server Cache checks whether the URI is stored in the cache. If true, the marshaled response is returned without invoking your JAX-RS method. Each cache entry has a <span class="emphasis"><em>maximum age</em></span> for which the specifications in the <code class="literal">Cache-Control</code> header of the initial request are valid. The cache also automatically generates an <code class="literal">ETag</code> using an MD5 hash on the response body. This lets the client perform HTTP 1.1 cache revalidation with the <code class="literal">IF-NONE-MATCH</code> header. The cache will also perform revalidation if there is no initial cache hit, but the JAX-RS method returns a body with the same <code class="literal">ETag</code>.
+		</div><div class="para">
+			To set up the server-side cache with Maven, you must use the <code class="literal">resteasy-cache-core</code> artifact:
+		</div><pre class="programlisting">
+&lt;dependency&gt;
+   &lt;groupId&gt;org.jboss.resteasy&lt;/groupId&gt;
+   &lt;artifactId&gt;resteasy-cache-core&lt;/artifactId&gt;
+   &lt;version&gt;1.1.GA&lt;/version&gt;
+&lt;/dependency&gt;
+</pre><div class="para">
+			Next, add a <code class="literal">ServletContextListener</code>: <code class="literal">org.jboss.resteasy.plugins.cache.server.ServletServerCache</code>. You must specify this after the <code class="literal">ResteasyBootstrap</code> listener in your <code class="filename">web.xml</code> file.
+		</div><pre class="programlisting">
+&lt;web-app&gt;
+    &lt;listener&gt;
+        &lt;listener-class&gt;
+            org.jboss.resteasy.plugins.server.servlet.ResteasyBootstrap
+        &lt;/listener-class&gt;
+    &lt;/listener&gt;
+
+    &lt;context-param&gt;
+        &lt;param-name&gt;resteasy.server.cache.maxsize&lt;/param-name&gt;
+        &lt;param-value&gt;1000&lt;/param-value&gt;
+    &lt;/context-param&gt;
+
+    &lt;context-param&gt;
+        &lt;param-name&gt;resteasy.server.cache.eviction.wakeup.interval&lt;/param-name&gt;
+        &lt;param-value&gt;5000&lt;/param-value&gt;
+    &lt;/context-param&gt;
+
+    &lt;listener&gt;
+        &lt;listener-class&gt;
+            org.jboss.resteasy.plugins.cache.server.ServletServerCache
+        &lt;/listener-class&gt;
+    &lt;/listener&gt;
+
+    &lt;servlet&gt;
+        &lt;servlet-name&gt;Resteasy&lt;/servlet-name&gt;
+        &lt;servlet-class&gt;
+            org.jboss.resteasy.plugins.server.servlet.HttpServletDispatcher
+        &lt;/servlet-class&gt;
+    &lt;/servlet&gt;
+
+    &lt;servlet-mapping&gt;
+        &lt;servlet-name&gt;Resteasy&lt;/servlet-name&gt;
+        &lt;url-pattern&gt;/rest-services/*&lt;/url-pattern&gt;
+    &lt;/servlet-mapping&gt;
+
+&lt;/web-app&gt;
+</pre><div class="para">
+			The cache implementation is based on the <a href="http://jboss.org/jbosscache">JBoss Cache project</a>. You can set two <code class="literal">context-param</code> configuration variables: <code class="literal">resteasy.server.cache.maxsize</code> sets the number of elements that can be cached, and <code class="literal">resteasy.server.cache.eviction.wakeup.interval</code> sets the rate at which the background eviction thread runs to purge the cache of stale entries.
+		</div></div></div></body></html>

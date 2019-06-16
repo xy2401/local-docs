@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 2. Architecture</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="search-architecture">
+      ⁠</a>Chapter 2. Architecture</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140635474739760">
+      ⁠</a>2.1. Overview</h1></div></div></div><div class="para">
+			Hibernate Search consists of an indexing component and an index search component. Both are backed by Apache Lucene.
+		</div><div class="para">
+			Each time an entity is inserted, updated or removed in/from the database, Hibernate Search keeps track of this event (through the Hibernate event system) and schedules an index update. All the index updates are handled without you having to use the Apache Lucene APIs (see <a class="xref" href="search-configuration.html#search-configuration-event">Section 3.7, “Enabling Hibernate Search and automatic indexing”</a>).
+		</div><div class="para">
+			To interact with Apache Lucene indexes, Hibernate Search has the notion of <code class="classname">DirectoryProvider</code>s. A directory provider will manage a given Lucene <code class="classname">Directory</code> type. You can configure directory providers to adjust the directory target (see <a class="xref" href="search-configuration.html#search-configuration-directory">Section 3.1, “Directory configuration”</a>).
+		</div><div class="para">
+			Hibernate Search uses the Lucene index to search an entity and return a list of managed entities saving you the tedious object to Lucene document mapping. The same persistence context is shared between Hibernate and Hibernate Search. As a matter of fact, the <code class="classname">FullTextSession</code> is built on top of the Hibernate Session. so that the application code can use the unified <code class="classname">org.hibernate.Query</code> or <code class="classname">javax.persistence.Query</code> APIs exactly the way a HQL, JPA-QL or native queries would do.
+		</div><div class="para">
+			To be more efficient, Hibernate Search batches the write interactions with the Lucene index. There is currently two types of batching depending on the expected scope. Outside a transaction, the index update operation is executed right after the actual database operation. This scope is really a no scoping setup and no batching is performed. However, it is recommended - for both your database and Hibernate Search - to execute your operation in a transaction be it JDBC or JTA. When in a transaction, the index update operation is scheduled for the transaction commit phase and discarded in case of transaction rollback. The batching scope is the transaction. There are two immediate benefits:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					Performance: Lucene indexing works better when operation are executed in batch.
+				</div></li><li class="listitem"><div class="para">
+					ACIDity: The work executed has the same scoping as the one executed by the database transaction and is executed if and only if the transaction is committed. This is not ACID in the strict sense of it, but ACID behavior is rarely useful for full text search indexes since they can be rebuilt from the source at any time.
+				</div></li></ul></div><div class="para">
+			You can think of those two scopes (no scope vs transactional) as the equivalent of the (infamous) autocommit vs transactional behavior. From a performance perspective, the <span class="emphasis"><em>in transaction</em></span> mode is recommended. The scoping choice is made transparently. Hibernate Search detects the presence of a transaction and adjust the scoping.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+				Hibernate Search works perfectly fine in the Hibernate/EntityManager long conversation pattern aka. atomic conversation. Also, depending on user demand, additional scoping will be considered, the pluggability mechanism being already in place.
+			</div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140635508816592">
+      ⁠</a>2.2. Back end</h1></div></div></div><div class="para">
+			Hibernate Search offers the ability to let the scoped work being processed by different back ends. Two back ends are provided out of the box for two different scenarios.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140635521614080">
+      ⁠</a>2.2.1. Back end types</h2></div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="idm140635475784656">
+      ⁠</a>2.2.1.1. Lucene</h3></div></div></div><div class="para">
+					In this mode, all index update operations applied on a given node (JVM) will be executed to the Lucene directories (through the directory providers) by the same node. This mode is typically used in non clustered environment or in clustered environments where the directory store is shared.
+				</div><div class="mediaobject" style="text-align: center"><img src="images/lucene-backend.png" align="middle" width="250" alt="Lucene" style="text-align: middle"/><div class="caption"><div class="para">
+						Lucene back end configuration.
+					</div></div></div><div class="para">
+					This mode targets non clustered applications, or clustered applications where the Directory is taking care of the locking strategy.
+				</div><div class="para">
+					The main advantage is simplicity and immediate visibility of the changes in Lucene queries (a requirement in some applications).
+				</div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="idm140635531194176">
+      ⁠</a>2.2.1.2. JMS</h3></div></div></div><div class="para">
+					All index update operations applied on a given node are sent to a JMS queue. A unique reader will then process the queue and update the master index. The master index is then replicated on a regular basis to the slave copies. This is known as the master/slaves pattern. The master is the sole responsible for updating the Lucene index. The slaves can accept read as well as write operations. However, they only process the read operation on their local index copy and delegate the update operations to the master.
+				</div><div class="mediaobject" style="text-align: center"><img src="images/jms-backend.png" align="middle" width="250" alt="JMS" style="text-align: middle"/><div class="caption"><div class="para">
+						JMS back end configuration.
+					</div></div></div><div class="para">
+					This mode targets clustered environments where throughput is critical, and index update delays are affordable. Reliability is ensured by the JMS provider and by having the slaves working on a local copy of the index.
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+						Hibernate Search is an extensible architecture. Feel free to drop ideas for other third party back ends to <code class="literal">hibernate-dev@lists.jboss.org</code>.
+					</div></div></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140635503732048">
+      ⁠</a>2.2.2. Work execution</h2></div></div></div><div class="para">
+				The indexing work (done by the back end) can be executed synchronously with the transaction commit (or update operation if out of transaction), or asynchronously.
+			</div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="idm140635503730608">
+      ⁠</a>2.2.2.1. Synchronous</h3></div></div></div><div class="para">
+					This is the safe mode where the back end work is executed in concert with the transaction commit. Under highly concurrent environment, this can lead to throughput limitations (due to the Apache Lucene lock mechanism) and it can increase the system response time if the back end is significantly slower than the transactional process and if a lot of IO operations are involved.
+				</div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="idm140635503728800">
+      ⁠</a>2.2.2.2. Asynchronous</h3></div></div></div><div class="para">
+					This mode delegates the work done by the back end to a different thread. That way, throughput and response time are (to a certain extend) decorrelated from the back end performance. The drawback is that a small delay appears between the transaction commit and the index update and a small overhead is introduced to deal with thread management.
+				</div><div class="para">
+					It is recommended to use synchronous execution first and evaluate asynchronous execution if performance problems occur and after having set up a proper benchmark (ie not a lonely cowboy hitting the system in a completely unrealistic way).
+				</div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="search-architecture-readerstrategy">
+      ⁠</a>2.3. Reader strategy</h1></div></div></div><div class="para">
+			When executing a query, Hibernate Search interacts with the Apache Lucene indexes through a reader strategy. Choosing a reader strategy will depend on the profile of the application (frequent updates, read mostly, asynchronous index update etc). See also <a class="xref" href="search-configuration.html#configuration-reader-strategy">Section 3.6, “Reader strategy configuration”</a>
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140635514098464">
+      ⁠</a>2.3.1. Shared</h2></div></div></div><div class="para">
+				With this strategy, Hibernate Search will share the same <code class="classname">IndexReader</code>, for a given Lucene index, across multiple queries and threads provided that the <code class="classname">IndexReader</code> is still up-to-date. If the <code class="classname">IndexReader</code> is not up-to-date, a new one is opened and provided. Each <code class="classname">IndexReader</code> is made of several <code class="classname">SegmentReader</code>s. This strategy only reopens segments that have been modified or created after last opening and shares the already loaded segments from the previous instance. This strategy is the default.
+			</div><div class="para">
+				The name of this strategy is <code class="literal">shared</code>.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140635514262720">
+      ⁠</a>2.3.2. Not-shared</h2></div></div></div><div class="para">
+				Every time a query is executed, a Lucene <code class="classname">IndexReader</code> is opened. This strategy is not the most efficient since opening and warming up an <code class="classname">IndexReader</code> can be a relatively expensive operation.
+			</div><div class="para">
+				The name of this strategy is <code class="literal">not-shared</code>.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140635514259488">
+      ⁠</a>2.3.3. Custom</h2></div></div></div><div class="para">
+				You can write your own reader strategy that suits your application needs by implementing <code class="classname">org.hibernate.search.reader.ReaderProvider</code>. The implementation must be thread safe.
+			</div></div></div></div></body></html>

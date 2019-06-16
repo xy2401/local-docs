@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 33. Clustering and EJB Passivation</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="ClusteringAndEJBPassivation">
+      ⁠</a>Chapter 33. Clustering and EJB Passivation</h1></div></div></div><div class="para">
+		Web clustering and EJB passivation share a common solution in Seam, so they are addressed together. This chapter focuses on the programming model and how it is affected by the use of clustering and EJB passivation. You will learn how Seam passivates component and entity instances, how passivation relates to clustering, and how to enable passivation. You will also learn how to deploy a Seam application into a cluster and verify that HTTP session replication is working correctly.
+	</div><div class="para">
+		First, we will take you through some background information on clustering and show you an example deployment of a Seam application to an EAP cluster.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="clustering">
+      ⁠</a>33.1. Clustering</h1></div></div></div><div class="para">
+			Clustering, also known as <span class="emphasis"><em>web clustering</em></span>, lets an application run on two or more parallel servers (<span class="emphasis"><em>nodes</em></span>), while providing a client with a uniform view of the application. Load is distributed across servers such that if one or more servers fail, the application can still be accessed through any surviving nodes. This is crucial for scalable enterprise applications, since performance and availability can be improved just by adding nodes. However, this also provokes the question of what happens to state held on a server that fails.
+		</div><div class="para">
+			So far, you know that Seam provides state management by including additional scopes and governing the life cycles of stateful (scoped) components. But Seam's state management goes beyond creating, storing, and destroying instances. Seam tracks changes to JavaBean components and stores those changes at strategic points during a request so that changes can be restored when the request shifts to a secondary node in the cluster. Monitoring and replicating stateful EJB components is already handled by the EJB server; Seam state management provides the same feature for stateful JavaBeans.
+		</div><div class="para">
+			In addition to monitoring JavaBean components, Seam ensures that managed entity instances (that is, JPA and Hibernate entities) are not attached during replication. Seam keeps a record of entities to be loaded, and loads them automatically on the secondary node. <span class="emphasis"><em>You must be using a Seam-managed persistence context to use this feature.</em></span> More information is provided later in this chapter.
+		</div><div class="para">
+			Next we will take you through how to program for clustering.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="clustering.programming">
+      ⁠</a>33.1.1. Programming for clustering</h2></div></div></div><div class="para">
+				Any session- or conversation-scoped mutable JavaBean component to be used in a clustered environment must implement the <code class="literal">org.jboss.seam.core.Mutable</code> interface from the Seam API. As part of the contract, the component must maintain a <code class="literal">dirtyflag</code> event, which indicates whether the user has made changes to the form that must be saved. This event is reported and reset by the <code class="literal">clearDirty()</code> method, which is called to determine whether the component must be replicated. This lets you avoid using the Servlet API to add and remove the session attribute for every change to an object.
+			</div><div class="para">
+				You must also make sure that all session- and conversation-scoped JavaBean components are <span class="emphasis"><em>serializable</em></span>. All fields of a stateful component (EJB or JavaBean) must be serializable, unless marked <span class="emphasis"><em>transient</em></span> or set to null in a <code class="literal">@PrePassivate</code> method. You can restore the value of a transient or nullified field in a <code class="literal">@PostActivate</code> method.
+			</div><div class="para">
+				One area that can be problematic is in using <code class="literal">List.subList</code> to create a list, because the list created is not serializable. A similar situation can occur for a number of methods that create objects automatically. If you encounter a <code class="exceptionname">java.io.NotSerializableException</code>, you can place a breakpoint on this exception and run the application server in debug mode to find the problem method.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+					Clustering does not work with components that are hot-deployed. Further, you should avoid using hot-deployable components in non-development environments.
+				</div></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="clustering.deployment">
+      ⁠</a>33.1.2. Deploying a Seam application to a EAP cluster with session replication</h2></div></div></div><div class="para">
+				The following procedure has been validated against a <span class="application"><strong>seam-gen</strong></span> application and the Seam Booking example.
+			</div><div class="para">
+				This section assumes that the IP addresses of the master and slave servers are <code class="literal">192.168.1.2</code> and <code class="literal">192.168.1.3</code>, respectively. The <code class="literal">mod_jk</code> load balancer was not use intentionally to make it easier to validate that both nodes are responding to requests and interchanging sessions.
+			</div><div class="para">
+				The following log messages were generated out of the deployment of a WAR application, <code class="filename">vehicles.war</code>, and its corresponding datasource, <code class="literal">vehiclesDatasource</code>. The Booking example fully supports this process, and you can find instructions about deploying it to a cluster in the <code class="filename">examples/booking/readme.txt</code> file.
+			</div><div class="para">
+				These instructions use the farm deployment method, but you can also deploy the application normally and let the two servers negotiate a master/slave relationship based on start order.
+			</div><div class="para">
+				All timestamps in this tutorial have been replaced with zeroes to reduce noise.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>A note about SELinux</strong></p></div><div class="admonition"><div class="para">
+					If your nodes are on different machines that run Red Hat Enterprise Linux or Fedora, they may not acknowledge each other automatically. EAP clustering relies on the UDP (User Datagram Protocol) multi-casting provided by jGroups. The SELinux configuration that ships with Red Hat Enterprise Linux and Fedora blocks these packets by default. To allow the packets, modify the <code class="literal">iptables</code> rules (as root). The following commands apply to an IP address that matches <code class="literal">192.168.1.x</code>:
+				</div><pre class="screen">
+  /sbin/iptables -I RH-Firewall-1-INPUT 5 -p udp -d 224.0.0.0/4 -j ACCEPT
+  /sbin/iptables -I RH-Firewall-1-INPUT 9 -p udp -s 192.168.1.0/24 -j ACCEPT
+  /sbin/iptables -I RH-Firewall-1-INPUT 10 -p tcp -s 192.168.1.0/24 -j ACCEPT
+  /etc/init.d/iptables save
+</pre></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>A note about Stateful Session Beans</strong></p></div><div class="admonition"><div class="para">
+					If you are deploying an application with stateful session beans and HTTP Session replication to a EAP cluster, your stateful session bean classes must be annotated with <code class="literal">@Clustered</code> (from the JBoss EJB 3.0 annotation API) or marked as <code class="literal">clustered</code> in the <code class="filename">jboss.xml</code> descriptor. For details, see the Booking example.
+				</div></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="clustering.tutorial">
+      ⁠</a>33.1.3. Tutorial</h2></div></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="orderedlist"><ol><li class="listitem"><div class="para">
+						Create two instances of JBoss Enterprise Application Platform. (To do so, just extract the <code class="filename">zip</code> twice.)
+					</div><div class="para">
+						Deploy the JDBC driver to <code class="filename">server/all/lib/</code> on both instances if you are not using HSQLDB.
+					</div></li><li class="listitem"><div class="para">
+						Add <code class="literal">&lt;distributable/&gt;</code> as the first child element in <code class="filename">WEB-INF/web.xml</code>.
+					</div></li><li class="listitem"><div class="para">
+						Set the <code class="varname">distributable</code> property on <code class="literal">org.jboss.seam.core.init</code> to <code class="literal">true</code> to enable the <code class="literal">ManagedEntityInterceptor</code> (that is, <code class="code">&lt;core:init distributable="true"&gt;</code> in <code class="filename">WEB-INF/components.xml</code>).
+					</div></li><li class="listitem"><div class="para">
+						Ensure that you have two IP addresses available (two computers, two network cards, or two IP addresses bound to the same interface). We assume that these two IP addresses are <code class="literal">192.168.1.2</code> and <code class="literal">192.168.1.3</code>.
+					</div></li><li class="listitem"><div class="para">
+						Start the master JBoss Enterprise Application Platform instance on the first IP:
+					</div><pre class="screen">  ./bin/run.sh -c all -b 192.168.1.2</pre><div class="para">
+						The log should report one cluster member and zero other members.
+					</div></li><li class="listitem"><div class="para">
+						Verify that the <code class="filename">server/all/farm</code> directory in the slave JBoss Enterprise Application Platform instance is empty.
+					</div></li><li class="listitem"><div class="para">
+						Start the slave JBoss Enterprise Application Platform instance on the second IP:
+					</div><pre class="screen">  ./bin/run.sh -c all -b 192.168.1.3</pre><div class="para">
+						The log should report two cluster members and one other member. It should also show the state being retrieved from the master instance.
+					</div></li><li class="listitem"><div class="para">
+						Deploy the <code class="filename">-ds.xml</code> to the <code class="filename">server/all/farm</code> of the master instance.
+					</div><div class="para">
+						In the log of the master instance you should see acknowledgement of this deployment. You should see a corresponding message acknowledging deployment to the slave instance.
+					</div></li><li class="listitem"><div class="para">
+						Deploy the application to the server/all/farm directory. You should see acknowledgement of deployment in the log of the master instance after normal application start messages have finished. The slave instance log should show a corresponding message acknowledging deployment. (You may need to wait up to three minutes for the deployed archive to be transferred.)
+					</div></li></ol></div><div class="para">
+				Your application is now running in a cluster with HTTP Session replication. The next step is to validate that the clustering is working correctly.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="clustering.validation">
+      ⁠</a>33.1.4. Validating the distributable services of an application running in a EAP cluster </h2></div></div></div><div class="para">
+				Your application now starts successfully on two different JBoss Enterprise Application Platform servers, but it is important to validate that the two instances are exchanging HTTP Sessions correctly, so that the application continues to operate with the slave instance if the master instance is stopped.
+			</div><div class="para">
+				First, browse to the application on the master instance to start the first HTTP Session. On the same instance, open the JBoss Enterprise Application Platform JMX Console and navigate to the following managed bean:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<span class="emphasis"><em>Category:</em></span> jboss.cache
+					</div></li><li class="listitem"><div class="para">
+						<span class="emphasis"><em>Entry:</em></span> config=standard-session-cache,service=Cache
+					</div></li><li class="listitem"><div class="para">
+						<span class="emphasis"><em>Method:</em></span> printDetails()
+					</div></li></ul></div><div class="para">
+				Invoke the <code class="literal">printDetails()</code> method. This will present you with a tree of active HTTP Sessions. Verify that the session used by your browser corresponds to one of the sessions on the tree.
+			</div><div class="para">
+				Next, switch to the slave instance and invoke the same method in the JMX Console. You should see an identical tree under this application's context path.
+			</div><div class="para">
+				That these trees are identical proves that both servers claim to have identical sessions. Next, we must test that the data is serializing and unserializing correctly.
+			</div><div class="para">
+				Sign in via the URL of the master instance. Then, construct a URL for the second instance by placing the <code class="literal">;jsessionid=XXXX</code> immediately after the Servlet path and changing the IP address. (You should see that the session has carried over to the other instance.)
+			</div><div class="para">
+				Now, kill the master instance and check that you can continue to use the application from the slave instance. Then, remove the deployed applications from the <code class="filename">server/all/farm</code> directory and restart the instance.
+			</div><div class="para">
+				Change the IP in the URL back to that of the master instance, and browse to the new URL — you should see that the original session ID is still being used.
+			</div><div class="para">
+				You can watch objects passivate and activate by creating a session- or conversation-scoped Seam component and implementing the appropriate life-cycle methods. You can use methods from the <code class="literal">HttpSessionActivationListener</code> interface (which is automatically registered on all non-EJB components):
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">sessionWillPassivate</span>(HttpSessionEvent e);
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">sessionDidActivate</span>(HttpSessionEvent e);</pre><div class="para">
+				Alternatively, you can mark two public void methods (without arguments) with <code class="literal">@PrePassivate</code> and <code class="literal">@PostActivate</code> respectively. Remember that passivation will occur at the end of every request, while activation will occur when a node is called.
+			</div><div class="para">
+				In order to make replication transparent, Seam automatically keeps track of objects that have been changed. All that you need to do is maintain a <code class="literal">dirtyflag</code> on your session- or conversation-scoped component, and Seam will handle JPA entity instances for you.
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139690458106592">
+      ⁠</a>33.2. EJB Passivation and the ManagedEntityInterceptor</h1></div></div></div><div class="para">
+			The <code class="literal">ManagedEntityInterceptor</code> (MEI) is an optional interceptor in Seam. When enabled, it is applied to conversation-scoped components. To enable the MEI, set <code class="varname">distributable</code> to <code class="literal">true</code> on the <code class="literal">org.jboss.seam.init.core</code> component. You can also add or update the following component declaration in your <code class="filename">components.xml</code> file:
+		</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;core:init</span><span xmlns="" class="perl_Others"> distributable=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">/&gt;</span></pre><div class="para">
+			This does not enable HTTP Session replication, but it does let Seam handle the passivation of either EJB components or components in the HTTP Session.
+		</div><div class="para">
+			The MEI ensures that, throughout the life of a conversation with at least one extended persistence context, any entity instances loaded by the persistence context remain managed — that is, they are not prematurely detached by a passivation event. This ensures the integrity of the extended persistence context, and therefore the integrity of its guarantees.
+		</div><div class="para">
+			There are two situations that threaten integrity: the passivation of a stateful session bean that hosts an extended persistence context, and the passivation of the HTTP Session.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690525037904">
+      ⁠</a>33.2.1. The friction between passivation and persistence</h2></div></div></div><div class="para">
+				The <span class="emphasis"><em>persistence context</em></span> is used to store entity instances (objects) that the persistence manager has loaded from the database. There is only ever one object per unique database record in a persistence context. It is often referred to as the <span class="emphasis"><em>first-level cache</em></span> because it allows an application to avoid a call to the database when a record has been loaded into the persistence context.
+			</div><div class="para">
+				Objects in the persistence context can be modified, and once modified they are considered <span class="emphasis"><em>dirty</em></span>. Changes are tracked by the persistence manager, which then migrates these changes to the database when necessary. The persistence context, therefore, maintains a set of pending changes to the database.
+			</div><div class="para">
+				Database-oriented applications capture transactional information that must be transferred into the database immediately. This information cannot always be captured in one screen, and the user may need to decide whether to accept or reject the pending changes.
+			</div><div class="para">
+				These aspects of transactions have not necessarily been apparent from the user's perspective. The extended persistence context extends the user's understanding of transactions. It can hold changes for as long as the application requires, and then push these pending changes to the database via built-in persistence manager capabilities (<code class="literal">EntityManager#flush()</code>).
+			</div><div class="para">
+				The persistence manager is linked to an entity instance via an <span class="emphasis"><em>object reference</em></span>. Entity instances can be serialized, but the persistence manager cannot. Serialization can occur when either a stateful session bean or the HTTP Session is passivated. For the application to continue its activity, the relationship between the persistence manager and its entity instances must be maintained. MEI provides this support.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690514517744">
+      ⁠</a>33.2.2. Case #1: Surviving EJB passivation</h2></div></div></div><div class="para">
+				Conversations were initially designed for stateful session beans because the EJB3 specification defines stateful session beans as the hosts of the extended persistence context. Seam introduces the <span class="emphasis"><em>Seam-managed persistence context</em></span>, which works around a number of limitations in the specification. Both contexts can be used with stateful session beans.
+			</div><div class="para">
+				For a stateful session bean to remain active, a client must hold a reference to the stateful session bean. Seam's conversation context is an ideal location for this reference, which means that the stateful session bean remains active for the duration of the conversation context. Further, <code class="literal">EntityManager</code>s that are injected into the stateful session bean with the <code class="literal">@PersistenceContext(EXTENDED)</code> annotation will be bound to the stateful session bean and remain active for the bean's lifetime. <code class="literal">EntityManager</code>s injected with the <code class="literal">@In</code> annotation are maintained by Seam and stored directly in the conversation context, so they remain active for the duration of the <span class="emphasis"><em>conversation</em></span>, independent of the stateful session bean.
+			</div><div class="para">
+				The Java EE container can also passivate a stateful session bean, but this method can be problematic. Rather than making the container responsible for this process, after each invocation of the stateful session bean, Seam transfers the reference to the entity instance from the stateful session bean to the current conversation, and therefore into the HTTP Session. This nullifies the associated fields on the stateful session bean. Seam then restores these references at the beginning of the subsequent invocation. Because Seam already stores the persistence manager in the conversation, stateful session bean passivation and activation has no adverse effect on the application.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="important"><div class="admonition_header"><p><strong>Important</strong></p></div><div class="admonition"><div class="para">
+					If your application uses stateful session beans that hold references to extended persistence contexts, and those beans can passivate, then you <span class="emphasis"><em>must</em></span> use the MEI, regardless of whether you use a single instance or a cluster.
+				</div></div></div><div class="para">
+				 You can disable passivation on stateful session beans. See the <a href="http://www.jboss.org/community/docs/DOC-9656">Ejb3DisableSfsbPassivation</a> page on the JBoss Wiki for details.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690522266464">
+      ⁠</a>33.2.3. Case #2: Surviving HTTP session replication</h2></div></div></div><div class="para">
+				The HTTP Session is used when passivating stateful session beans, but in clustered environments that have enabled session replication, the HTTP Session can also be passivated. Since the persistence manager cannot be serialized, passivating the HTTP Session would normally involve destroying the persistence manager.
+			</div><div class="para">
+				When an entity instance is first placed into a conversation, Seam embeds the instance in a wrapper that contains information about reassociating the instance with the persistence manager post-serialization. When the application changes nodes (when a server fails, for instance), Seam's MEI reconstructs the persistence context. The persistence context is reconstructed from the database, so pending changes to the instance are lost. However, Seam's optimistic locking ensures that, where files have changed, only the most recent changes are accepted where multiple versions of an instance occur.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="important"><div class="admonition_header"><p><strong>Important</strong></p></div><div class="admonition"><div class="para">
+					If your application is deployed in a cluster with HTTP Session replication, you <span class="emphasis"><em>must</em></span> use the MEI.
+				</div></div></div></div></div></div></body></html>

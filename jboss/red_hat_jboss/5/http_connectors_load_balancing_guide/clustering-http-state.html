@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 17. HTTP session state replication</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="clustering-http-state">
+      ⁠</a>Chapter 17. HTTP session state replication</h1></div></div></div><div class="para">
+			HTTP session state replication is a means of distributing clients' state across multiple servers. The following terms are important in understanding load balancing. Refer to the Clustering Guide part of the <em class="citetitle">Administration and Configuration Guide</em> for details of associated JBoss Enterprise Application Platform high availability options.
+		</div><div class="para"><div xmlns:d="http://docbook.org/ns/docbook" class="title">Software Load Balancer</div>
+				A dedicated software-based service designed to distribute HTTP client session requests across multiple computer servers (cluster). The primary directive of a software load balancer is to maximize resource utilization, reduce request response times, and prevent server overload. The load balancer forwards client session requests to a server cluster, based on server load and availability.
+			</div><div class="para"><div xmlns:d="http://docbook.org/ns/docbook" class="title">Client Session</div>
+				A semi-permanent connection between the client (an application) and the server. The load balancer determines whether the client session is created with persistence, or whether a client session is redistributed based on server load and availability.
+			</div><div class="para"><div xmlns:d="http://docbook.org/ns/docbook" class="title">Session Persistence</div>
+				Session persistence is a feature where information about a client's session is stored by the server so that if the client's connection is interrupted temporarily, the session can continue at the time the connection error occurred. A persistent session is also commonly known as a <em class="firstterm"> sticky session </em> .
+			</div><div class="para"><div xmlns:d="http://docbook.org/ns/docbook" class="title">Sticky Session</div>
+				See Session Persistence.
+			</div><div class="para">
+			<a class="xref" href="Apache_HTTP_Configure.html#clustering-http-nodes">Section 3.1, “Configure worker nodes in mod_jk”</a> describes how to configure session state persistence in the load balancer to ensure a client in a session is always routed to the same server node.
+		</div><div class="para">
+			Session persistence on its own is not a best-practice solution because if a server fails, all session state data is lost. For example, if a customer is about to make a purchase on a web site, and the server hosting the shopping cart instance fails, session state data associated with the cart is lost permanently.
+		</div><div class="para">
+			One way of preventing client session data loss is to replicate session data across the servers in the cluster. If a server node fails or is shut down, the load balancer can fail over the next client request to any server node and obtain the same session state.
+		</div><div class="para">
+			Using a load balancer that supports session persistence, but not configuring web applications for session replication, allows you to scale your implementation by avoiding the cost of session state replication: each request for a session will always be handled by the same node.
+		</div><div class="para">
+			Session state replication is more expensive than basic session persistence, but the reliability it provides for session state data makes it important when creating a load balanced cluster.
+		</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="clustering-http-app">
+      ⁠</a>17.1. Enabling session replication in your application</h1></div></div></div><div class="para">
+				To enable replication of your web application you must tag the application as distributable in the <code class="literal">web.xml</code> descriptor. Here's an example:
+			</div><pre class="programlisting">&lt;?xml version="1.0"?&gt; 
+&lt;web-app  xmlns="http://java.sun.com/xml/ns/j2ee"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+          xsi:schemaLocation="http://java.sun.com/xml/ns/j2ee 
+                              http://java.sun.com/xml/ns/j2ee/web-app_2_4.xsd" 
+          version="2.4"&gt;
+          
+      &lt;distributable/&gt;
+    
+&lt;/web-app&gt;</pre><div class="para">
+				You can further configure session replication using the <code class="literal">replication-config</code> element in the <code class="literal">jboss-web.xml</code> file. However, the <code class="literal">replication-config</code> element only needs to be set if one or more of the default values described below is unacceptable. All of the configuration elements are optional, and can be omitted if the default value is acceptable.
+			</div><div class="para">
+				Here is an example:
+			</div><pre class="programlisting">&lt;!DOCTYPE jboss-web PUBLIC
+    "-//JBoss//DTD Web Application 5.0//EN"
+    "http://www.jboss.org/j2ee/dtd/jboss-web_5_0.dtd"&gt;
+
+&lt;jboss-web&gt;
+   
+   &lt;replication-config&gt;
+      &lt;cache-name&gt;custom-session-cache&lt;/cache-name&gt;
+      &lt;replication-trigger&gt;SET&lt;/replication-trigger&gt;
+      &lt;replication-granularity&gt;ATTRIBUTE&lt;/replication-granularity&gt;
+      &lt;replication-field-batch-mode&gt;true&lt;/replication-field-batch-mode&gt;
+      &lt;use-jk&gt;false&lt;/use-jk&gt;
+      &lt;max-unreplicated-interval&gt;30&lt;/max-unreplicated-interval&gt;
+      &lt;snapshot-mode&gt;INSTANT&lt;/snapshot-mode&gt;
+      &lt;snapshot-interval&gt;1000&lt;/snapshot-interval&gt;
+      &lt;session-notification-policy&gt;com.example.CustomSessionNotificationPolicy&lt;/session-notification-policy&gt;
+   &lt;/replication-config&gt;
+
+&lt;/jboss-web&gt;</pre><div class="variablelist"><dl class="variablelist"><dt><span class="term"> <span class="markup"> &lt;replication-trigger&gt; </span> </span></dt><dd><div class="para">
+							element determines when the container should consider that session data must be replicated across the cluster. The rationale for this setting is that after a mutable object stored as a session attribute is accessed from the session, in the absence of a <code class="literal">setAttribute</code> call, the container has no clear way to know if the object (and hence the session state) has been modified and needs to be replicated. This element has 3 valid values:
+						</div><div class="para">
+							<span class="bold bold"><strong>SET_AND_GET</strong></span> is conservative but not optimal (performance-wise): it will always replicate session data even if its content has only been accessed and not modified. This setting made (a little) sense in JBoss Enterprise Application Platform 4 since using it was a way to ensure that every request triggered replication of the session's timestamp. Since setting <code class="literal">max_unreplicated_interval</code> to 0 accomplishes the same thing at much lower cost, using <code class="literal">SET_AND_GET</code> makes no sense with JBoss Enterprise Application Platform 5 or JBoss Enterprise Web Platform 5.
+						</div><div class="para">
+							<span class="bold bold"><strong>SET_AND_NON_PRIMITIVE_GET</strong></span> is conservative but will only replicate if an object of a non-primitive type has been accessed (in effect, the object is not of a well-known immutable JDK type such as <code class="literal">Integer</code>, <code class="literal">Long</code>, <code class="literal">String</code>, etc.) This is the default value.
+						</div><div class="para">
+							<span class="bold bold"><strong>SET</strong></span> assumes that the developer will explicitly call <code class="literal">setAttribute</code> on the session if the data needs to be replicated. This setting prevents unnecessary replication and can have a major beneficial impact on performance, but requires very good coding practices to ensure <code class="literal">setAttribute</code> is always called whenever a mutable object stored in the session is modified.
+						</div><div class="para">
+							In all cases, calling <code class="literal">setAttribute</code> marks the session as needing replication.
+						</div></dd></dl></div><div class="variablelist"><dl class="variablelist"><dt><span class="term"><span class="markup"> &lt;cacheName&gt; </span></span></dt><dd><div class="para">
+							Specifies the name of the JBoss Cache configuration that should be used for storing distributable sessions and replicating them around the cluster. This element lets web applications that require different caching characteristics specify the use of separate, differently configured, JBoss Cache instances. In JBoss Enterprise Application Platform 4 the cache to use was a server-wide configuration that could not be changed per web application. The default value is <code class="literal">standard-session-cache</code>. See <a class="xref" href="clustering-http-state.html#clustering-http-state-cacheconfig">Section 17.3, “Configure the JBoss Cache instance used for session state replication”</a> for more details on JBoss Cache configuration for web-tier clustering.
+						</div></dd><dt><span class="term">&lt;replication-field-batch-mode&gt;</span></dt><dd><div class="para">
+							Specifies whether all replication messages associated with a request will be batched into one message. This is applicable only if <code class="literal">replication-granularity</code> is <code class="literal">FIELD</code>. If <code class="literal">replication-field-batch-mode</code> is set to <code class="literal">true</code>, fine-grained changes made to objects stored in the session attribute map will replicate only when the HTTP request is finished; otherwise they replicate as they occur. Setting this to <code class="literal">false</code> is not advised because it increases the number of replication requests and the chance of session state being out of sync. Default is <code class="literal">true</code>.
+						</div><div xmlns:d="http://docbook.org/ns/docbook" class="important"><div class="admonition_header"><p><strong>FIELD Deprecated</strong></p></div><div class="admonition"><div class="para">
+								The <code class="literal">FIELD</code> granularity option is now deprecated as JBoss Cache, which provides this feature, is to be subsituted by Infinispan (Infinispan does not support this granularity).
+							</div></div></div></dd><dt><span class="term">&lt;useJK&gt;</span></dt><dd><div class="para">
+							Specifies whether the container should assume that a JK-based software load balancer (for example,. mod_jk, mod_proxy, mod_cluster) is being used for load balancing for this web application. If set to <code class="literal">true</code>, the container will examine the session ID associated with every request and replace the <code class="literal">jvmRoute</code> portion of the session ID if it detects a failover.
+						</div><div class="para">
+							You need only set this to <code class="literal">false</code> for web applications whose URL cannot be handled by the JK load balancer.
+						</div></dd><dt><span class="term">&lt;max-unreplicated-interval&gt;</span></dt><dd><div class="para">
+							Specifies the maximum interval between requests, in seconds, after which a request will trigger replication of the session's timestamp regardless of whether the request has otherwise made the session dirty. Such replication ensures that other nodes in the cluster are aware of the most recent value for the session's timestamp and will not incorrectly expire an unreplicated session upon failover. It also results in correct values for <code class="literal">HttpSession.getLastAccessedTime()</code> calls following failover.
+						</div><div class="para">
+							The default value is <code class="literal">null</code> (in effect, unspecified). In this case the session manager will use the presence or absence of a <code class="literal">jvmRoute</code> configuration on its enclosing JBoss Web <code class="literal">Engine</code> (see <a class="xref" href="Apache_HTTP_Configure.html#clustering-http-jboss">Section 3.2, “Configuring JBoss to work with mod_jk”</a>) to determine whether JK is used.
+						</div><div class="para">
+							A value of <code class="literal">0</code> means the timestamp will be replicated whenever the session is accessed. A value of <code class="literal">-1</code> means the timestamp will be replicated only if some other activity during the request (for example,. modifying an attribute) has resulted in other replication work involving the session. A positive value greater than the <code class="literal">HttpSession.getMaxInactiveInterval()</code> value will be treated as probable misconfiguration and converted to <code class="literal">0</code>; (in effect, replicate the metadata on every request). Default value is <code class="literal">60</code>.
+						</div></dd><dt><span class="term">&lt;snapshot-mode&gt;</span></dt><dd><div class="para">
+							Specifies when sessions are replicated to the other nodes. Possible values are <code class="literal">INSTANT</code> (the default) and <code class="literal">INTERVAL</code>.
+						</div><div class="para">
+							The typical value, <code class="literal">INSTANT</code>, replicates changes to the other nodes at the end of requests, using the request processing thread to perform the replication. In this case, the <code class="literal">snapshot-interval</code> property is ignored.
+						</div><div class="para">
+							With <code class="literal">INTERVAL</code> mode, a background task is created that runs every <code class="literal">snapshot-interval</code> milliseconds, checking for modified sessions and replicating them.
+						</div><div class="para">
+							Note that this property has no effect if <code class="literal">replication-granularity</code> is set to <code class="literal">FIELD</code>. If it is <code class="literal">FIELD</code>, <code class="literal">INSTANT</code> mode will be used.
+						</div></dd><dt><span class="term">&lt;snapshot-interval&gt;</span></dt><dd><div class="para">
+							Specifies how often (in milliseconds) the background task that replicates modified sessions should be started for this web application. Only meaningful if <code class="literal">snapshot-mode</code> is set to <code class="literal">INTERVAL</code>.
+						</div></dd><dt><span class="term">&lt;session-notification-policy&gt;</span></dt><dd><div class="para">
+							Specifies the fully qualified class name of the implementation of the <code class="literal">ClusteredSessionNotificationPolicy</code> interface that should be used to govern whether servlet specification notifications should be emitted to any registered <code class="literal">HttpSessionListener</code>, <code class="literal">HttpSessionAttributeListener</code> and/or <code class="literal">HttpSessionBindingListener</code>.
+						</div><div xmlns:d="http://docbook.org/ns/docbook" class="important"><div class="admonition_header"><p><strong>Important</strong></p></div><div class="admonition"><div class="para">
+								Event notifications that may be appropriate in non-clustered environment may not necessarily be appropriate in a clustered environment; see <a href="https://jira.jboss.org/jira/browse/JBAS-5778">https://jira.jboss.org/jira/browse/JBAS-5778</a> for an example of why a notification may not be desired. Configuring an appropriate <code class="literal">ClusteredSessionNotificationPolicy</code> gives the application author fine-grained control over what notifications are issued.
+							</div></div></div></dd></dl></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="clustering-http-passivation">
+      ⁠</a>17.2. HttpSession passivation and activation</h1></div></div></div><div class="para"><div xmlns:d="http://docbook.org/ns/docbook" class="title">Passivation</div>
+					The process of controlling memory usage by removing relatively unused sessions from memory while storing them in persistent storage.
+				</div><div class="para">
+				If a passivated session is requested by a client, it can be "activated" back into memory and removed from the persistent store. JBoss Enterprise Application Platform 5 supports HttpSession passivation from clustered web applications where the <code class="literal">web.xml</code> file includes the <code class="literal">distributable</code> directive.
+			</div><div class="para">
+				Passivation occurs at three points during the life cycle of a web application:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						When the container requests the creation of a new session. If the number of currently active sessions exceeds a configurable limit, an attempt is made to passivate sessions to make room in memory.
+					</div></li><li class="listitem"><div class="para">
+						Periodically (by default every ten seconds) as the JBoss Web background task thread runs.
+					</div></li><li class="listitem"><div class="para">
+						When the web application is deployed and a backup copy of sessions active on other servers is acquired by the newly deploying web application's session manager.
+					</div></li></ul></div><div class="para">
+				A session is passivated if one of the following conditions is true:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						The session has not been in use for longer than a configurable maximum idle time.
+					</div></li><li class="listitem"><div class="para">
+						The number of active sessions exceeds a configurable maximum and the session has not been in use for longer than a configurable minimum idle time.
+					</div></li></ul></div><div class="para">
+				In both cases, sessions are passivated on a Least Recently Used (LRU) basis.
+			</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="clustering-http-passivation-config">
+      ⁠</a>17.2.1. Configuring HttpSession passivation</h2></div></div></div><div class="para">
+					Session passivation behavior is configured in the <code class="literal">jboss-web.xml</code> deployment descriptor in your web application's <code class="literal">WEB-INF</code> directory.
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_DataType">&lt;!DOCTYPE </span>jboss-web PUBLIC
+<span xmlns="" class="line">​</span>    "-//JBoss//DTD Web Application 5.0//EN"
+<span xmlns="" class="line">​</span>    "http://www.jboss.org/j2ee/dtd/jboss-web_5_0.dtd"<span xmlns="" class="perl_DataType">&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;jboss-web&gt;</span>
+<span xmlns="" class="line">​</span>   
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;max-active-sessions&gt;</span>20<span xmlns="" class="perl_Keyword">&lt;/max-active-sessions&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;passivation-config&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;use-session-passivation&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/use-session-passivation&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;passivation-min-idle-time&gt;</span>60<span xmlns="" class="perl_Keyword">&lt;/passivation-min-idle-time&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;passivation-max-idle-time&gt;</span>600<span xmlns="" class="perl_Keyword">&lt;/passivation-max-idle-time&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/passivation-config&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/jboss-web&gt;</span></pre><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+							<span class="bold bold"><strong>max-active-sessions</strong></span>
+						</div><div class="para">
+							Determines the maximum number of active sessions allowed. If the number of sessions managed by the session manager exceeds this value and passivation is enabled, the excess will be passivated based on the configured <code class="literal">passivation-min-idle-time</code>. If after passivation is completed (or if passivation is disabled), the number of active sessions still exceeds this limit, attempts to create new sessions will be rejected. If set to <code class="literal">-1</code> (the default), there is no limit.
+						</div><div class="para">
+							The total number of sessions in memory includes sessions replicated from other cluster nodes that are not being accessed on this node. Take this into account when setting <code class="literal">max-active-sessions</code>. Whether or not <span class="emphasis"><em>buddy replication</em></span> is enabled will also affect the number of sessions replicated from other nodes.
+						</div><div class="para">
+							Say, for example, that you have an eight node cluster, and each node handles requests from 100 users. With <span class="emphasis"><em>total replication</em></span>, each node would store 800 sessions in memory. With <span class="emphasis"><em>buddy replication</em></span> enabled, and the default <code class="literal">numBuddies</code> setting (<code class="literal">1</code>), each node will store 200 sessions in memory.
+						</div></li><li class="listitem"><div class="para">
+							<span class="bold bold"><strong>use-session-passivation</strong></span>
+						</div><div class="para">
+							Determines whether session passivation will be enabled for the web application. Default is <code class="literal">false</code>.
+						</div></li><li class="listitem"><div class="para">
+							<span class="bold bold"><strong>passivation-min-idle-time</strong></span>
+						</div><div class="para">
+							Determines the minimum time (in seconds) that a session must have been inactive before the container will consider passivating it in order to reduce the active session count to obey the value defined by <code class="literal">max-active-sessions</code>. A value of <code class="literal">-1</code> (the default) disables passivating sessions before <code class="literal">passivation-max-idle-time</code>. Neither a value of <code class="literal">-1</code> nor a high value are recommended if <code class="literal">max-active-sessions</code> is set.
+						</div></li><li class="listitem"><div class="para">
+							<span class="bold bold"><strong>passivation-max-idle-time</strong></span>
+						</div><div class="para">
+							Determines the maximum time (in seconds) that a session can be inactive before the container should attempt to passivate it to save memory. Passivation of such sessions will take place regardless of whether the active session count exceeds <code class="literal">max-active-sessions</code>. Should be less than the <code class="literal">session-timeout</code> setting in <code class="filename">web.xml</code> . A value of <code class="literal">-1</code> (the default) disables passivation based on maximum inactivity.
+						</div></li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="clustering-http-state-cacheconfig">
+      ⁠</a>17.3. Configure the JBoss Cache instance used for session state replication</h1></div></div></div><div class="para">
+				The container for a distributable web application makes use of JBoss Cache to provide HTTP session replication services around the cluster. It integrates with the CacheManager service to obtain a reference to a JBoss Cache instance. For more information, refer to the <em class="citetitle"> Distributed Caching with JBoss Cache </em> and <em class="citetitle"> JBoss Cache Configuration and Deployment </em> chapters in the <em class="citetitle"> Administration and Configuration Guide </em>
+			</div><div class="para">
+				The name of the JBoss Cache configuration to use is controlled by the <code class="literal">cacheName</code> element in the application's <code class="literal">jboss-web.xml</code> (see <a class="xref" href="clustering-http-state.html#clustering-http-app">Section 17.1, “Enabling session replication in your application”</a>). In most cases this does not need to be set because the default value of <code class="literal">standard-session-cache</code> is appropriate.
+			</div><div class="para">
+				The JBoss Cache configurations in the <code class="classname">CacheManager</code> service expose a number of options.
+			</div><div class="para">
+				The <code class="literal">standard-session-cache</code> configuration is already optimized for the web session replication use case, and most of the settings should not be altered. Administrators may be interested in altering the following settings:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>cacheMode</strong></span>
+					</div><div class="para">
+						The default is <code class="literal">REPL_ASYNC</code>, which specifies that a session replication message sent to the cluster does not wait for responses from other cluster nodes confirming that the message has been received and processed. The alternative mode, <code class="literal">REPL_SYNC</code>, offers a greater degree of confirmation that session state has been received, but reduces performance significantly.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>enabled</strong></span> property in the <span class="bold bold"><strong>buddyReplicationConfig</strong></span> section
+					</div><div class="para">
+						Set to <code class="literal">true</code> to enable buddy replication. Default is <code class="literal">false</code>.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>numBuddies</strong></span> property in the <span class="bold bold"><strong>buddyReplicationConfig</strong></span> section
+					</div><div class="para">
+						Set to a value greater than the default (<code class="literal">1</code>) to increase the number of backup nodes onto which sessions are replicated. Only relevant if buddy replication is enabled.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>buddyPoolName</strong></span> property in the <span class="bold bold"><strong>buddyReplicationConfig</strong></span> section
+					</div><div class="para">
+						A way to specify a preferred replication group when buddy replication is enabled. JBoss Cache tries to pick a buddy who shares the same pool name (falling back to other buddies if not available). Only relevant if buddy replication is enabled.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>multiplexerStack</strong></span>
+					</div><div class="para">
+						Name of the JGroups protocol stack the cache should use.
+					</div></li><li class="listitem"><div class="para">
+						<span class="bold bold"><strong>clusterName</strong></span>
+					</div><div class="para">
+						Identifying name JGroups will use for this cache's channel. Only change this if you create a new cache configuration, in which case this property should have a different value from all other cache configurations.
+					</div></li></ul></div><div class="para">
+				If you wish to use a completely new JBoss Cache configuration rather than editing one of the existing ones, refer to <em class="citetitle"> Deployment via the CacheManager Service </em> section in the <em class="citetitle"> Administration and Configuration Guide </em> .
+			</div></div></div></body></html>

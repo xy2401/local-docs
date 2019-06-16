@@ -1,0 +1,436 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 36. Clusters</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="clusters">
+      ⁠</a>Chapter 36. Clusters</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Clusters_Overview">
+      ⁠</a>36.1. Clusters Overview</h1></div></div></div><div class="para">
+			HornetQ clusters allow groups of HornetQ servers to be grouped together in order to share message processing load. Each active node in the cluster is an active HornetQ server which manages its own messages and handles its own connections. A server must be configured to be clustered, you will need to set the <code class="literal">clustered</code> element in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code> to <code class="literal">true</code> (<code class="literal">false</code> by default).
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="important"><div class="admonition_header"><p><strong>Important - Clustering Not Available on Some Server Profiles</strong></p></div><div class="admonition"><div class="para">
+				You must enable clustering on those profiles that already contain a <code class="filename">/hornetq</code> directory, which is all profiles excluding <code class="literal">Minimal</code> and <code class="literal">Web</code>. Those profiles not containing a <code class="filename">/hornetq</code> directory do not natively contain the correct components to support a cluster.
+			</div></div></div><div class="para">
+			The cluster is formed by each node declaring <span class="emphasis"><em>cluster connections</em></span> to other nodes in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code>. When a node forms a cluster connection to another node, internally it creates a <span class="emphasis"><em>core bridge</em></span> (as described in <a class="xref" href="core-bridges.html">Chapter 34, <em>Core Bridges</em></a>) connection between it and the other node, this is done transparently behind the scenes - you do not need to declare an explicit bridge for each node. These cluster connections allow messages to flow between the nodes of the cluster to balance load.
+		</div><div class="para">
+			Nodes can be connected together to form a cluster in many different topologies. Common topologies are discussed later in this chapter.
+		</div><div class="para">
+			Client side load balancing is discussed, where client connections can be balanced across the nodes of the cluster. Message redistribution where HornetQ will redistribute messages between nodes to avoid starvation is also covered.
+		</div><div class="para">
+			Another important part of clustering is <span class="emphasis"><em>server discovery</em></span> where servers can broadcast their connection details so clients or other servers can connect to them with the minimum of configuration.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="warning"><div class="admonition_header"><p><strong>Warning - Cluster Isolation</strong></p></div><div class="admonition"><div class="para">
+				If you start a JBoss Enterprise Application Platform instance with a HornetQ server bound to 'localhost', the HornetQ instance could form a cluster with another HornetQ instance on the same network. Binding to localhost does not provide cluster isolation for HornetQ servers.
+			</div><div class="para">
+				To correctly isolate clusters, refer to <a class="xref" href="clusters.html#clusters.broadcast-groups">Section 36.2.1, “Broadcast Groups”</a> to correctly configure the broadcast and discovery addresses of each server.
+			</div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="clusters.server-discovery">
+      ⁠</a>36.2. Server discovery</h1></div></div></div><div class="para">
+			Server discovery is a mechanism by which servers can propagate their connection details to:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					Messaging clients. A messaging client wants to be able to connect to the servers of the cluster without having specific knowledge of which servers in the cluster are up at any one time.
+				</div></li><li class="listitem"><div class="para">
+					Other servers. Servers in a cluster want to be able to create cluster connections to each other without having prior knowledge of all the other servers in the cluster.
+				</div></li></ul></div><div class="para">
+			Server discovery uses User Datagram Protocol (UDP) multicast to broadcast server connection settings. If UDP is disabled on your network you will not be able to use this, and will have to specify servers explicitly when setting up a cluster or using a messaging client.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="clusters.broadcast-groups">
+      ⁠</a>36.2.1. Broadcast Groups</h2></div></div></div><div class="para">
+				A broadcast group is the means by which a server broadcasts connectors over the network. A connector defines a way in which a client (or other server) can make connections to the server. For more information on what a connector is, refer to <a class="xref" href="configuring-transports.html">Chapter 14, <em>Configuring the Transport</em></a>.
+			</div><div class="para">
+				The broadcast group takes a set of connector pairs, each connector pair contains connection settings for a live and (optional) backup server and broadcasts them on the network. It also defines the UDP address and port settings.
+			</div><div class="para">
+				Broadcast groups are defined in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code>. There can be many broadcast groups per HornetQ server. All broadcast groups must be defined in a <code class="literal">broadcast-groups</code> element.
+			</div><div class="para">
+				Let us take a look at an example broadcast group from <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code>:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;broadcast-groups&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;broadcast-group</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"my-broadcast-group"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;local-bind-address&gt;</span>172.16.9.3<span xmlns="" class="perl_Keyword">&lt;/local-bind-address&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;local-bind-port&gt;</span>5432<span xmlns="" class="perl_Keyword">&lt;/local-bind-port&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;group-address&gt;</span>231.7.7.7<span xmlns="" class="perl_Keyword">&lt;/group-address&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;group-port&gt;</span>9876<span xmlns="" class="perl_Keyword">&lt;/group-port&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;broadcast-period&gt;</span>2000<span xmlns="" class="perl_Keyword">&lt;/broadcast-period&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;connector-ref&gt;</span>netty<span xmlns="" class="perl_Keyword">&lt;/connector-ref&gt;</span> 
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/broadcast-group&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/broadcast-groups&gt;</span></pre><div class="para">
+				Some of the broadcast group parameters are optional and the defaults will normally be used, but all are specified in the above example for clarity. Each are covered below.
+			</div><div class="variablelist"><p class="title"><strong>Broadcast Group Parameters</strong></p><dl class="variablelist"><dt><span class="term"> <code class="varname">name</code> </span></dt><dd><div class="para">
+							Each broadcast group in the server must have a unique name in the server.
+						</div></dd><dt><span class="term"> <code class="varname">local-bind-address</code> </span></dt><dd><div class="para">
+							This is the local bind address that the datagram socket is bound to. If you have multiple network interfaces on your server, you would specify which one you wish to use for broadcasts by setting this property. If this property is not specified then the socket will be bound to the wildcard address, an IP address chosen by the kernel.
+						</div></dd><dt><span class="term"> <code class="varname">local-bind-port</code> </span></dt><dd><div class="para">
+							If you want to specify a local port to which the datagram socket is bound you can specify it here. Normally you would just use the default value of <code class="literal">-1</code> which signifies that an anonymous port should be used. This parameter is always specified in conjunction with <code class="literal">local-bind-address</code>.
+						</div><div class="para">
+							If you are behind a firewall you can utilize <em class="parameter"><code>local-bind-address</code></em> and <em class="parameter"><code>local-bind-port</code></em> to specify a static host and port. However, it is highly unlikely that a cluster would be configured with server instances outside a firewall which would need to communicate with the server which are behind the firewall.
+						</div></dd><dt><span class="term"> <code class="varname">group-address</code> </span></dt><dd><div class="para">
+							This is the multicast address to which the data will be broadcast. It is a class D IP address in the range <code class="literal"> 224.0.0.0</code> to <code class="literal">239.255.255.255</code>, inclusive. The address <code class="literal">224.0.0.0</code> is reserved and is not available for use. This parameter is mandatory.
+						</div></dd><dt><span class="term"> <code class="varname">group-port</code> </span></dt><dd><div class="para">
+							This is the UDP port number used for broadcasting. This parameter is mandatory.
+						</div></dd><dt><span class="term"> <code class="varname">broadcast-period</code> </span></dt><dd><div class="para">
+							This is the period in milliseconds between consecutive broadcasts. This parameter is optional, the default value is <code class="literal">2000</code> milliseconds.
+						</div></dd><dt><span class="term"> <code class="varname">connector-ref</code> </span></dt><dd><div class="para">
+							This specifies the connector and optional backup connector that will be broadcast (see <a class="xref" href="configuring-transports.html">Chapter 14, <em>Configuring the Transport</em></a> for more information on connectors).
+						</div></dd></dl></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="clusters.discovery-groups">
+      ⁠</a>36.2.2. Discovery Groups</h2></div></div></div><div class="para">
+				While the broadcast group defines how connector information is broadcast from a server, a discovery group defines how connector information is received from a multicast address.
+			</div><div class="para">
+				A discovery group maintains a list of connector pairs - one for each broadcast by a different server. As it receives broadcasts on the multicast group address from a particular server it updates its entry in the list for that server.
+			</div><div class="para">
+				If it has not received a broadcast from a particular server for a length of time it will remove that server's entry from its list.
+			</div><div class="para">
+				Discovery groups are used in two places in HornetQ:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						By cluster connections so they know what other servers in the cluster they should make connections to.
+					</div></li><li class="listitem"><div class="para">
+						By messaging clients so they can discover what servers in the cluster they can connect to.
+					</div></li></ul></div><div class="para">
+				Although a discovery group will always accept broadcasts, its current list of available live and backup servers is only ever used when an initial connection is made, from then server discovery is done over the normal HornetQ connections.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139905843291232">
+      ⁠</a>36.2.3. Defining Discovery Groups on the Server</h2></div></div></div><div class="para">
+				For cluster connections, discovery groups are defined in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code>. All discovery groups must be defined inside a <code class="literal">discovery-groups</code> element. There can be many discovery groups defined by HornetQ server. Let us look at an example:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;discovery-groups&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;discovery-group</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"my-discovery-group"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;local-bind-address&gt;</span>172.16.9.7<span xmlns="" class="perl_Keyword">&lt;/local-bind-address&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;group-address&gt;</span>231.7.7.7<span xmlns="" class="perl_Keyword">&lt;/group-address&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;group-port&gt;</span>9876<span xmlns="" class="perl_Keyword">&lt;/group-port&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;refresh-timeout&gt;</span>10000<span xmlns="" class="perl_Keyword">&lt;/refresh-timeout&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/discovery-group&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/discovery-groups&gt;</span></pre><div class="para">
+				Each parameter of the discovery group is considered as follows:
+			</div><div class="variablelist"><p class="title"><strong>Discovery Group Parameters</strong></p><dl class="variablelist"><dt><span class="term"> <code class="varname">name</code> </span></dt><dd><div class="para">
+							Each discovery group must have a unique name per server.
+						</div></dd><dt><span class="term"> <code class="varname">local-bind-address</code> </span></dt><dd><div class="para">
+							If you are running with multiple network interfaces on the same machine, you may want to specify that the discovery group only listens on a specific interface. To do this you can specify the interface address with this parameter. This parameter is optional.
+						</div></dd><dt><span class="term"> <code class="varname">group-address</code> </span></dt><dd><div class="para">
+							This is the multicast IP address of the group to listen on. It should match the <code class="literal">group-address</code> in the broadcast group that you wish to listen from. This parameter is mandatory.
+						</div></dd><dt><span class="term"> <code class="varname">group-port</code> </span></dt><dd><div class="para">
+							This is the UDP port of the multicast group. It should match the <code class="literal">group-port</code> in the broadcast group that you wish to listen from. This parameter is mandatory.
+						</div></dd><dt><span class="term"> <code class="varname">refresh-timeout</code> </span></dt><dd><div class="para">
+							This is the period the discovery group waits after receiving the last broadcast from a particular server before removing that server's connector pair entry from its list. You would normally set this to a value significantly higher than the <code class="literal"> broadcast-period</code> on the broadcast group otherwise servers might intermittently disappear from the list even though they are still broadcasting due to slight differences in timing. This parameter is optional, the default value is <code class="literal">10000</code> milliseconds (10 seconds).
+						</div></dd></dl></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="clusters-discovery.groups.clientside">
+      ⁠</a>36.2.4. Discovery Groups on the Client Side</h2></div></div></div><div class="para">
+				Let us discuss how to configure a HornetQ client to use discovery to discover a list of servers to which it can connect. The way to do this differs depending on whether you are using JMS or the core API.
+			</div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="idm139905807041456">
+      ⁠</a>36.2.4.1. Configuring client discovery using JMS</h3></div></div></div><div class="para">
+					If you are using JMS and you are also using the JMS Service on the server to load your JMS connection factory instances into JNDI, then you can specify which discovery group to use for your JMS connection factory in the server side XML configuration <code class="filename"><em class="replaceable">JBOSS_DIST</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-jms.xml</code>. Let us take a look at an example:
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;connection-factory</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"ConnectionFactory"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;discovery-group-ref</span><span xmlns="" class="perl_Others"> discovery-group-name=</span><span xmlns="" class="perl_String">"my-discovery-group"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;entries&gt;</span>
+<span xmlns="" class="line">​</span>       <span xmlns="" class="perl_Keyword">&lt;entry</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"/ConnectionFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/entries&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/connection-factory&gt;</span></pre><div class="para">
+					The element <code class="literal">discovery-group-ref</code> specifies the name of a discovery group defined in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code>.
+				</div><div class="para">
+					When this connection factory is downloaded from JNDI by a client application and JMS connections are created from it, those connections will be load-balanced across the list of servers that the discovery group maintains by listening on the multicast address specified in the discovery group configuration.
+				</div><div class="para">
+					If you are using JMS, but you are not using JNDI to lookup a connection factory - you are instantiating the JMS connection factory directly then you can specify the discovery group parameters directly when creating the JMS connection factory. Here is an example:
+				</div><pre class="programlisting">final String groupAddress = "231.7.7.7";
+
+final int groupPort = 9876;
+
+ConnectionFactory jmsConnectionFactory = 
+   HornetQJMSClient.createConnectionFactory(groupAddress, groupPort);
+
+Connection jmsConnection1 = jmsConnectionFactory.createConnection();
+
+Connection jmsConnection2 = jmsConnectionFactory.createConnection();</pre><div class="para">
+					The <code class="literal">refresh-timeout</code> can be set directly on the connection factory by using the setter method <code class="literal">setDiscoveryRefreshTimeout()</code> if you want to change the default value.
+				</div><div class="para">
+					There is also a further parameter settable on the connection factory using the setter method <code class="literal">setDiscoveryInitialWaitTimeout()</code>. If the connection factory is used immediately after creation then it may not have had enough time to receive broadcasts from all the nodes in the cluster. On first usage, the connection factory will make sure it waits this long since creation before creating the first connection. The default value for this parameter is <code class="literal">10000</code> milliseconds.
+				</div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="idm139905851576352">
+      ⁠</a>36.2.4.2. Configuring client discovery using Core</h3></div></div></div><div class="para">
+					If you are using the core API to directly instantiate <code class="literal">ClientSessionFactory</code> instances, then you can specify the discovery group parameters directly when creating the session factory. Here is an example:
+				</div><pre class="programlisting">final String groupAddress = "231.7.7.7"; 
+final int groupPort = 9876;
+SessionFactory factory = HornetQClient.createClientSessionFactory
+  (groupAddress, groupPort);
+ClientSession session1 = factory.createClientSession(...); 
+ClientSession session2 = factory.createClientSession(...);</pre><div class="para">
+					The <code class="literal">refresh-timeout</code> can be set directly on the session factory by using the setter method <code class="literal">setDiscoveryRefreshTimeout()</code> if you want to change the default value.
+				</div><div class="para">
+					There is also a further parameter settable on the session factory using the setter method <code class="literal">setDiscoveryInitialWaitTimeout()</code>. If the session factory is used immediately after creation then it may not have had enough time to receive broadcasts from all the nodes in the cluster. On first usage, the session factory will make sure it waits this long since creation before creating the first session. The default value for this parameter is <code class="literal">10000</code> milliseconds.
+				</div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139905871685152">
+      ⁠</a>36.3. Server-Side Message Load Balancing</h1></div></div></div><div class="para">
+			If cluster connections are defined between nodes of a cluster, then HornetQ will load balance messages arriving at a particular node from a client.
+		</div><div class="para">
+			Let us take a simple example of a cluster of four nodes A, B, C, and D arranged in a <span class="emphasis"><em>symmetric cluster</em></span> (described in <a class="xref" href="clusters.html#symmetric-cluster">Section 36.7.1, “Symmetric cluster”</a>). A queue called <code class="literal">OrderQueue</code> is deployed on each node of the cluster.
+		</div><div class="para">
+			A client Ca is connected to node A, sending orders to the server. Also, order processor clients Pa, Pb, Pc, and Pd are connected to each of the nodes A, B, C, D. If no cluster connection was defined on node A, as order messages arrive on node A they will all end up in the <code class="literal">OrderQueue</code> on node A, so they will get consumed by the order processor client attached to node A, Pa.
+		</div><div class="para">
+			If a cluster connection on node A is defined, as ordered messages arrive on node A, they are distributed in a round-robin fashion between all the nodes of the cluster, instead of all of them going into the local <code class="literal">OrderQueue</code> instance. The messages are forwarded from the receiving node to other nodes of the cluster. This is all done on the server side, the client maintains a single connection to node A.
+		</div><div class="para">
+			For example, messages arriving on node A might be distributed in the following order between the nodes: B, D, C, A, B, D, C, A, B, D. The exact order depends on the order the nodes started up, but the algorithm used is round robin.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="clusters.cluster-connections">
+      ⁠</a>36.3.1. Configuring Cluster Connections</h2></div></div></div><div class="para">
+				Cluster connections group servers into clusters so that messages can be load balanced between the nodes of the cluster. Typical cluster connections are defined in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code> inside a <code class="literal">cluster-connection</code> element. There can be zero or more cluster connections defined per HornetQ server.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;cluster-connections&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;cluster-connection</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"my-cluster"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;address&gt;</span>jms<span xmlns="" class="perl_Keyword">&lt;/address&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;retry-interval&gt;</span>500<span xmlns="" class="perl_Keyword">&lt;/retry-interval&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;use-duplicate-detection&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/use-duplicate-detection&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;forward-when-no-consumers&gt;</span>false<span xmlns="" class="perl_Keyword">&lt;/forward-when-no-consumers&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;max-hops&gt;</span>1<span xmlns="" class="perl_Keyword">&lt;/max-hops&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;discovery-group-ref</span><span xmlns="" class="perl_Others"> discovery-group-name=</span><span xmlns="" class="perl_String">"my-discovery-group"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/cluster-connection&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/cluster-connections&gt;</span></pre><div class="para">
+				In the above cluster connection all parameters have been explicitly specified. In practice you might use the defaults for some.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<code class="literal">address</code>. Each cluster connection only applies to messages sent to an address that starts with this value.
+					</div><div class="para">
+						In this case, this cluster connection will load balance messages sent to address that start with <code class="literal">jms</code>. This cluster connection, applies to all JMS queue and topic subscriptions since they map to core queues that start with the substring "jms".
+					</div><div class="para">
+						The address can be any value and you can have many cluster connections with different values of <code class="literal">address</code>, simultaneously balancing messages for those addresses, potentially to different clusters of servers. By having multiple cluster connections on different addresses a single HornetQ Server can effectively take part in multiple clusters simultaneously.
+					</div><div class="para">
+						Be careful not to have multiple cluster connections with overlapping values of <code class="literal">address</code>, (for example, "europe" and "europe.news") since this could result in the same messages being distributed between more than one cluster connection, possibly resulting in duplicate deliveries.
+					</div><div class="para">
+						This parameter is mandatory.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">discovery-group-ref</code>. This parameter determines which discovery group is used to obtain the list of other servers in the cluster to which this cluster connection will make connections.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">forward-when-no-consumers</code>. This parameter determines whether messages will be distributed round robin between other nodes of the cluster <span class="emphasis"><em>irrespective</em></span> of whether there are matching or indeed any consumers on other nodes.
+					</div><div class="para">
+						If this is set to <code class="literal">true</code> then each incoming message will be processed in a round robin style even though the same queues on the other nodes of the cluster may have no consumers at all, or they may have consumers that have non matching message filters (selectors). Note that HornetQ will <span class="emphasis"><em>not</em></span> forward messages to other nodes if there are no <span class="emphasis"><em>queues</em></span> of the same name on the other nodes, even if this parameter is set to <code class="literal">true</code>.
+					</div><div class="para">
+						If this is set to <code class="literal">false</code> then HornetQ will only forward messages to other nodes of the cluster if the address to which they are being forwarded has queues which have consumers, and if those consumers have message filters (selectors) at least one of those selectors must match the message.
+					</div><div class="para">
+						This parameter is optional and the default value is <code class="literal">false</code>.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">max-hops</code>. When a cluster connection decides the set of nodes to which it might load balance a message, those nodes do not have to be directly connected to it via a cluster connection. HornetQ can be configured to also load balance messages to nodes which might be connected to it only indirectly with other HornetQ servers as intermediates in a chain.
+					</div><div class="para">
+						This allows HornetQ to be configured in more complex topologies and still provide message load balancing. This is covered later in this chapter.
+					</div><div class="para">
+						The default value for this parameter is <code class="literal">1</code>, which means messages are only load balanced to other HornetQ serves which are directly connected to this server. This parameter is optional.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">min-large-message-size</code>. This parameter determines the size threshold above which a message will be split into multiple packages when sent over the cluster. This parameter is optional and the default is <code class="literal">100 kB</code>.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">reconnect-attempts</code>. This parameter determines the number of times the system will try to connect a node on the cluster. If the max-retry is achieved this node will be considered permanently down and the system will stop routing messages to it. This parameter is optional and the default is <code class="literal">-1</code> (infinite retries).
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">retry-interval</code>. Internally, cluster connections cause bridges to be created between the nodes of the cluster. If the cluster connection is created and the target node has not been started, or say, is being rebooted, then the cluster connections from other nodes will retry connecting to the target until it comes back up, in the same way as a bridge does.
+					</div><div class="para">
+						This parameter determines the interval in milliseconds between retry attempts. It has the same meaning as the <code class="literal">retry-interval</code> on a bridge (as described in <a class="xref" href="core-bridges.html">Chapter 34, <em>Core Bridges</em></a>).
+					</div><div class="para">
+						This parameter is optional and its default value is <code class="literal">500</code> milliseconds.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">use-duplicate-detection</code>. Internally cluster connections use bridges to link the nodes, and bridges can be configured to add a duplicate id property in each message that is forwarded. If the target node of the bridge crashes and then recovers, messages might be resent from the source node. By enabling duplicate detection any duplicate messages will be filtered out and ignored on receipt at the target node.
+					</div><div class="para">
+						This parameter has the same meaning as <code class="literal">use-duplicate-detection</code> on a bridge. For more information on duplicate detection, refer to <a class="xref" href="duplicate-detection.html">Chapter 35, <em>Duplicate Message Detection</em></a>.
+					</div><div class="para">
+						This parameter is optional and has a default value of <code class="literal">true</code>.
+					</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="clusters.clusteruser">
+      ⁠</a>36.3.2. Cluster User Credentials</h2></div></div></div><div class="para">
+				When creating connections between nodes of a cluster to form a cluster connection, HornetQ uses a cluster user and cluster password which is defined in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code>:
+			</div><pre class="programlisting">
+                &lt;cluster-user&gt;HORNETQ.CLUSTER.ADMIN.USER&lt;/cluster-user&gt;
+                &lt;cluster-password&gt;CHANGE ME!!&lt;/cluster-password&gt;
+</pre><div xmlns:d="http://docbook.org/ns/docbook" class="warning"><div class="admonition_header"><p><strong>Warning</strong></p></div><div class="admonition"><div class="para">
+					It is imperative that these values are changed from their default, or remote clients will be able to make connections to the server using the default values. If they are not changed from the default, HornetQ will detect this and pester you with a warning on every start-up.
+				</div></div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="clusters.client.loadbalancing">
+      ⁠</a>36.4. Client-Side Load balancing</h1></div></div></div><div class="para">
+			With HornetQ client-side load balancing, subsequent sessions created using a single session factory can be connected to different nodes of the cluster. This allows sessions to spread smoothly across the nodes of a cluster and not be "clumped" on any particular node.
+		</div><div class="para">
+			The load balancing policy to be used by the client factory is configurable. HornetQ provides two out-of-the-box load balancing policies and you can also implement your own and use that.
+		</div><div class="para">
+			The out-of-the-box policies are:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					Round Robin. With this policy the first node is chosen randomly then each subsequent node is chosen sequentially in the same order.
+				</div><div class="para">
+					For example nodes might be chosen in the order B, C, D, A, B, C, D, A, B or D, A, B, C, A, B, C, D, A or C, D, A, B, C, D, A, B, C, D, A.
+				</div></li><li class="listitem"><div class="para">
+					Random. With this policy each node is chosen randomly.
+				</div></li></ul></div><div class="para">
+			It is possible to implement your own policy by implementing the interface <code class="classname">org.hornetq.api.core.client.loadbalance.ConnectionLoadBalancingPolicy</code>
+		</div><div class="para">
+			Specifying which load balancing policy to use differs whether you are using JMS or the core API. If you do not specify a policy then the default will be used which is <code class="classname">org.hornetq.api.core.client.loadbalance.RoundRobinConnectionLoadBalancingPolicy</code>.
+		</div><div class="para">
+			If you are using JMS, and you are using JNDI on the server to put your JMS connection factories into JNDI, then you can specify the load balancing policy directly in the <code class="filename"><em class="replaceable">JBOSS_DIST</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-jms.xml</code> configuration file on the server as follows: 
+<pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;connection-factory</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"ConnectionFactory"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;discovery-group-ref</span><span xmlns="" class="perl_Others"> discovery-group-name=</span><span xmlns="" class="perl_String">"my-discovery-group"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;entries&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;entry</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"/ConnectionFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/entries&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;ha&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/ha&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;connection-load-balancing-policy-class-name&gt;</span>
+<span xmlns="" class="line">​</span>    org.hornetq.api.core.client.loadbalance.RandomConnectionLoadBalancingPolicy
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/connection-load-balancing-policy-class-name&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/connection-factory&gt;</span></pre>
+			 The above example would deploy a JMS connection factory that uses the random connection load balancing policy.
+		</div><div class="para">
+			If you are using JMS but you are instantiating your connection factory directly on the client side then you can set the load balancing policy using the setter on the <code class="literal">HornetQConnectionFactory</code> before using it: 
+<pre class="programlisting">ConnectionFactory jmsConnectionFactory = HornetQJMSClient.createConnectionFactory(...);
+jmsConnectionFactory.setLoadBalancingPolicyClassName("com.acme.MyLoadBalancingPolicy");</pre>
+
+		</div><div class="para">
+			If you are using the core API, you can set the load balancing policy directly on the <code class="literal">ClientSessionFactory</code> instance you are using: 
+<pre class="programlisting">ClientSessionFactory factory = HornetQClient.createClientSessionFactory(...);
+factory.setLoadBalancingPolicyClassName("com.acme.MyLoadBalancingPolicy");</pre>
+
+		</div><div class="para">
+			The set of servers over which the factory load balances can be determined in one of two ways:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					Specifying servers explicitly
+				</div></li><li class="listitem"><div class="para">
+					Using discovery.
+				</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139905849471664">
+      ⁠</a>36.5. Specifying Members of a Cluster Explicitly</h1></div></div></div><div class="para">
+			Sometimes UDP is not enabled on a network so it is not possible to use UDP server discovery for clients to discover the list of servers in the cluster, or for servers to discover what other servers are in the cluster.
+		</div><div class="para">
+			In this case, the list of servers in the cluster can be specified explicitly on each node and on the client side. This is done as follows:
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139905849469600">
+      ⁠</a>36.5.1. Specify List of Servers on the Client Side</h2></div></div></div><div class="para">
+				This differs depending on whether you are using JMS or the Core API.
+			</div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="idm139905849468384">
+      ⁠</a>36.5.1.1. Specifying List of Servers using JMS</h3></div></div></div><div class="para">
+					If using JMS and the JMS Service to load your JMS connection factory instances directly into JNDI on the server, then you can specify the list of servers in the server side configuration file <code class="filename"><em class="replaceable">JBOSS_DIST</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-jms.xml</code>. Let us take a look at an example:
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;connection-factory</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"ConnectionFactory"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;connectors&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;connector-ref</span><span xmlns="" class="perl_Others"> connector-name=</span><span xmlns="" class="perl_String">"my-connector1"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">       backup-connector-name=</span><span xmlns="" class="perl_String">"my-backup-connector1"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;connector-ref</span><span xmlns="" class="perl_Others"> connector-name=</span><span xmlns="" class="perl_String">"my-connector2"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">       backup-connector-name=</span><span xmlns="" class="perl_String">"my-backup-connector2"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;connector-ref</span><span xmlns="" class="perl_Others"> connector-name=</span><span xmlns="" class="perl_String">"my-connector3"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">       backup-connector-name=</span><span xmlns="" class="perl_String">"my-backup-connector3"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/connectors&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;entries&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;entry</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"/ConnectionFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/entries&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/connection-factory&gt;</span></pre><div class="para">
+					The <code class="literal">connection-factory</code> element can contain zero or more <code class="literal">connector-ref</code> elements, each one of which specifies a <code class="literal">connector-name</code> attribute and an optional <code class="literal">backup-connector-name</code> attribute. The <code class="literal">connector-name</code> attribute references a connector defined in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code> which will be used as a live connector. The <code class="literal">backup-connector-name</code> is optional, and if specified it also references a connector defined in <code class="literal">hornetq-configuration.xml</code>. For more information on connectors refer to <a class="xref" href="configuring-transports.html">Chapter 14, <em>Configuring the Transport</em></a>.
+				</div><div class="para">
+					The connection factory thus maintains a list of [connector, backup connector] pairs, these pairs are then used by the client connection load balancing policy on the client side when creating connections to the cluster.
+				</div><div class="para">
+					If you are using JMS but you are not using JNDI then you can also specify the list of [connector, backup connector] pairs directly when instantiating the <code class="literal">HornetQConnectionFactory</code>. Here is an example: 
+<pre class="programlisting">List&lt;Pair&lt;TransportConfiguration, TransportConfiguration&gt;&gt; serverList = 
+        new ArrayList&lt;Pair&lt;TransportConfiguration, TransportConfiguration&gt;&gt;();
+
+serverList.add(new Pair&lt;TransportConfiguration, 
+        TransportConfiguration&gt;(liveTC0, backupTC0));
+serverList.add(new Pair&lt;TransportConfiguration, 
+        TransportConfiguration&gt;(liveTC1, backupTC1));
+serverList.add(new Pair&lt;TransportConfiguration, 
+        TransportConfiguration&gt;(liveTC2, backupTC2));
+
+ConnectionFactory jmsConnectionFactory = HornetQJMSClient.createConnectionFactory(serverList);
+
+Connection jmsConnection1 = jmsConnectionFactory.createConnection();
+
+Connection jmsConnection2 = jmsConnectionFactory.createConnection();</pre>
+
+				</div><div class="para">
+					The above snippet creates a list of pairs of <code class="literal">TransportConfiguration</code> objects. Each <code class="literal">TransportConfiguration</code> object contains knowledge of how to make a connection to a specific server.
+				</div><div class="para">
+					Create a <code class="literal">HornetQConnectionFactory</code> instance, passing the list of servers in the constructor. Any connections subsequently created by this factory will create connections according to the client connection load balancing policy applied to that list of servers.
+				</div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="idm139905849221712">
+      ⁠</a>36.5.1.2. Specifying List of Servers using the Core API</h3></div></div></div><div class="para">
+					Specify the list of servers directly when creating the <code class="literal">ClientSessionFactory</code> instance as in the following example:
+				</div><pre class="programlisting">List&lt;Pair&lt;TransportConfiguration, TransportConfiguration&gt;&gt; serverList = 
+        new ArrayList&lt;Pair&lt;TransportConfiguration, TransportConfiguration&gt;&gt;();
+
+serverList.add(new Pair&lt;TransportConfiguration, 
+        TransportConfiguration&gt;(liveTC0, backupTC0));
+serverList.add(new Pair&lt;TransportConfiguration, 
+        TransportConfiguration&gt;(liveTC1, backupTC1));
+serverList.add(new Pair&lt;TransportConfiguration, 
+        TransportConfiguration&gt;(liveTC2, backupTC2));
+
+ClientSessionFactory factory = HornetQClient.createClientSessionFactory(serverList);
+
+ClientSession session1 = factory.createClientSession(...);
+
+ClientSession session2 = factory.createClientSession(...);</pre><div class="para">
+					The above snippet creates a list of pairs of <code class="literal">TransportConfiguration</code> objects. Each <code class="literal">TransportConfiguration</code> object contains knowledge of how to make a connection to a specific server. For more information on this, refer to <a class="xref" href="configuring-transports.html">Chapter 14, <em>Configuring the Transport</em></a>.
+				</div><div class="para">
+					A <code class="literal">ClientSessionFactoryImpl</code> instance is then created passing the list of servers in the constructor. Any sessions subsequently created by this factory will create sessions according to the client connection load balancing policy applied to that list of servers.
+				</div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="clusters.static.servers">
+      ⁠</a>36.5.2. Specifying a Static Cluster Server List</h2></div></div></div><div class="para">
+				It is possible to define a symmetric cluster and not use static server discovery so each node can in turn discover available nodes. Configuring each cluster connection to have explicit knowledge of all the other nodes in the cluster is required.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="important"><div class="admonition_header"><p><strong>Important</strong></p></div><div class="admonition"><div class="para">
+					Fail-over is not supported for clusters defined using a static cluster server list. To support fail-over between cluster nodes, the nodes must be configured to use a discovery group.
+				</div></div></div><div class="task"><p class="title"><strong>Task: Specify Cluster Server List without Auto Discovery</strong></p><div class="tasksummary"> <div class="para">
+				Complete this task to specify a static cluster server list instead of using server auto discovery.
+			</div>
+			 </div><div class="taskprerequisites"><a id="idm139905862860592">
+      ⁠</a><p class="title"><strong>Prerequisites</strong></p><div class="taskprerequisites-contents"> 
+			 <div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						The <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code> file open, ready to add directives.
+					</div></li><li class="listitem"><div class="para">
+						Understand the <code class="filename">hornetq-configuration.xml</code> configuration directives, as detailed in <a class="xref" href="appe-configuration_index.html#hornetq-configuration_xml_Reference">Section A.1.1, “hornetq-configuration.xml”</a>.
+					</div></li></ul></div>
+			 </div></div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><ol class="1"><li class="step"><p class="title"><strong>Define Connectors</strong></p><div class="para">
+						In the <code class="filename">hornetq-configuraton.xml</code> file, insert a <span class="markup">&lt;connectors&gt;</span> directive block defining the remoting connector factory, the names of connectors, and the ports each connector will use.
+					</div><div class="para">
+						Each connector must use a unique port.
+					</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;connectors&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;connector</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"netty-connector"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;factory-class&gt;</span>
+<span xmlns="" class="line">​</span>     org.hornetq.core.remoting.impl.netty.NettyConnectorFactory
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/factory-class&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;param</span><span xmlns="" class="perl_Others"> key=</span><span xmlns="" class="perl_String">"port"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"5445"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/connector&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- connector to the server1 --&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;connector</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"server1-connector"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;factory-class&gt;</span>
+<span xmlns="" class="line">​</span>     org.hornetq.core.remoting.impl.netty.NettyConnectorFactory
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/factory-class&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;param</span><span xmlns="" class="perl_Others"> key=</span><span xmlns="" class="perl_String">"port"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"5446"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/connector&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- connector to the server2 --&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;connector</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"server2-connector"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;factory-class&gt;</span>
+<span xmlns="" class="line">​</span>     org.hornetq.core.remoting.impl.netty.NettyConnectorFactory
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/factory-class&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;param</span><span xmlns="" class="perl_Others"> key=</span><span xmlns="" class="perl_String">"port"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"5447"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/connector&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/connectors&gt;</span></pre></li><li class="step"><p class="title"><strong>Define Cluster Connection</strong></p><div class="para">
+						Insert a <span class="markup">&lt;cluster-connection&gt;</span> directive block. The block must contain mandatory clustering directives, and the <span class="markup">&lt;connector-ref&gt;</span> directives set in the previous step. The <span class="markup">&lt;connector-ref&gt;</span> directives use the name attribute set in the &lt;connector&gt; directives.
+					</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;cluster-connections&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;cluster-connection</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"my-cluster"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;address&gt;</span>jms<span xmlns="" class="perl_Keyword">&lt;/address&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;connector-ref&gt;</span>netty-connector<span xmlns="" class="perl_Keyword">&lt;/connector-ref&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;retry-interval&gt;</span>500<span xmlns="" class="perl_Keyword">&lt;/retry-interval&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;use-duplicate-detection&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/use-duplicate-detection&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;forward-when-no-consumers&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/forward-when-no-consumers&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;max-hops&gt;</span>1<span xmlns="" class="perl_Keyword">&lt;/max-hops&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;static-connectors&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;connector-ref&gt;</span>server1-connector<span xmlns="" class="perl_Keyword">&lt;/connector-ref&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;connector-ref&gt;</span>server2-connector<span xmlns="" class="perl_Keyword">&lt;/connector-ref&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/static-connectors&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/cluster-connection&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/cluster-connections&gt;</span></pre></li><li class="step"><p class="title"><strong>Result</strong></p><div class="para">
+						The cluster is now defined with the directives required for server discovery using explicit server names.
+					</div></li></ol></div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="clusters.message-redistribution">
+      ⁠</a>36.6. Message Redistribution</h1></div></div></div><div class="para">
+			Another important part of clustering is message redistribution. Earlier, it was demonstrated how server side message load balancing round robins or directs messages to all nodes across the cluster. If <code class="literal">forward-when-no-consumers</code> is false, messages will not be forwarded to nodes which do not have matching consumers. This ensures that messages do not arrive on a queue which has no consumers to consume them, however there is a situation it does not solve: What happens if the consumers on a queue close after the messages have been sent to the node? If there are no consumers on the queue the message will not get consumed and a <span class="emphasis"><em>starvation</em></span> situation will be created.
+		</div><div class="para">
+			Message redistribution addresses this and HornetQ can be configured to automatically <span class="emphasis"><em>redistribute</em></span> messages from queues which have no consumers to other nodes in the cluster which <span class="emphasis"><em>do</em></span> have matching consumers.
+		</div><div class="para">
+			Message redistribution can be configured to act immediately after the last consumer on a queue is closed, or to wait for a configurable delay after the last consumer on a queue is closed before redistributing. By default, message redistribution is enabled with a delay of 60000 milliseconds (1 minute).
+		</div><div class="para">
+			Message redistribution can be configured on a per address basis, by specifying the redistribution delay in the address settings. For more information on configuring address settings, refer to <a class="xref" href="queue-attributes.html">Chapter 23, <em>Queue Attributes</em></a>.
+		</div><div class="para">
+			An address settings snippet from <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code> showing how message redistribution is enabled for a set of queues follows:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;address-settings&gt;</span>     
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;address-setting</span><span xmlns="" class="perl_Others"> match=</span><span xmlns="" class="perl_String">"jms.#"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;redistribution-delay&gt;</span>0<span xmlns="" class="perl_Keyword">&lt;/redistribution-delay&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/address-setting&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/address-settings&gt;</span></pre><div class="para">
+			The above <code class="literal">address-settings</code> block would set a <code class="literal">redistribution-delay</code> of <code class="literal">0</code> for any queue which is bound to an address that starts with "jms.". All JMS queues and topic subscriptions are bound to addresses that start with "jms.", so the above would enable instant (no delay) redistribution for all JMS queues and topic subscriptions.
+		</div><div class="para">
+			The attribute <code class="literal">match</code> can be an exact match or it can be a string that conforms to the HornetQ wildcard syntax (described in <a class="xref" href="wildcard-syntax.html">Chapter 11, <em>Understanding the HornetQ Wildcard Syntax</em></a>).
+		</div><div class="para">
+			The element <code class="literal">redistribution-delay</code> defines the delay in milliseconds after the last consumer is closed on a queue before redistributing messages from that queue to other nodes of the cluster which do have matching consumers. A delay of zero means the messages will be immediately redistributed. A value of <code class="literal">-1</code> signifies that messages will never be redistributed.
+		</div><div class="para">
+			It often makes sense to introduce a delay before redistributing as it is a common case that a consumer closes but another one quickly is created on the same queue, in such a case you probably do not want to redistribute immediately since the new consumer will arrive shortly.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Cluster_Topologies">
+      ⁠</a>36.7. Cluster topologies</h1></div></div></div><div class="para">
+			HornetQ clusters can be connected together in many different topologies, let us consider the two most common ones here:
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="symmetric-cluster">
+      ⁠</a>36.7.1. Symmetric cluster</h2></div></div></div><div class="para">
+				A symmetric cluster is probably the most common cluster topology, and you will be familiar with if you have had experience of JBoss Application Server clustering.
+			</div><div class="para">
+				With a symmetric cluster every node in the cluster is connected to every other node in the cluster: every node in the cluster is no more than one hop away from every other node.
+			</div><div class="para">
+				To form a symmetric cluster every node in the cluster defines a cluster connection with the attribute <code class="literal">max-hops</code> set to <code class="literal">1</code>. Typically the cluster connection will use server discovery in order to know what other servers in the cluster it should connect to, although it is possible to explicitly define each target server too in the cluster connection if, for example, UDP is not available on your network.
+			</div><div class="para">
+				With a symmetric cluster each node knows about all the queues that exist on all the other nodes and what consumers they have. With this knowledge it can determine how to load balance and redistribute messages around the nodes.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139905811477456">
+      ⁠</a>36.7.2. Chain cluster</h2></div></div></div><div class="para">
+				With a chain cluster, each node in the cluster is not connected to every node in the cluster directly, instead the nodes form a chain with a node on each end of the chain and all other nodes just connecting to the previous and next nodes in the chain.
+			</div><div class="para">
+				An example of this would be a three node chain consisting of nodes A, B and C. Node A is hosted in one network and has many producer clients connected to it sending order messages. Due to corporate policy, the order consumer clients need to be hosted in a different network, and that network is only accessible via a third network. In this setup node B acts as a mediator with no producers or consumers on it. Any messages arriving on node A will be forwarded to node B, which will in turn forward them to node C where they can get consumed. Node A does not need to directly connect to C, but all the nodes can still act as a part of the cluster.
+			</div><div class="para">
+				To set up a cluster in this way, node A would define a cluster connection that connects to node B, and node B would define a cluster connection that connects to node C. In this case, cluster connections are only desired in one direction since messages are only moving from node A-&gt;B-&gt;C and never from C-&gt;B-&gt;A.
+			</div><div class="para">
+				For this topology, set <code class="literal">max-hops</code> to <code class="literal">2</code>. With a value of <code class="literal">2</code> the knowledge of what queues and consumers that exist on node C would be propagated from node C to node B to node A. Node A would then know to distribute messages to node B when they arrive, even though node B has no consumers itself, it would know that a further hop away is node C which does have consumers.
+			</div></div></div></div></body></html>

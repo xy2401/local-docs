@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 11. Transactions and Concurrency</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="transactions">
+      ⁠</a>Chapter 11. Transactions and Concurrency</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="transactions.concurrent">
+      ⁠</a>11.1. Concurrent Access</h1></div></div></div><div class="para">
+			JBoss Cache is a thread safe caching API, and uses its own efficient mechanisms of controlling concurrent access. It uses an innovative implementation of multi-versioned concurrency control (<a href="http://en.wikipedia.org/wiki/Multiversion_concurrency_control">MVCC</a>) as the default locking scheme. Versions of JBoss Cache prior to 3.x offered Optimistic and Pessimistic Locking schemes, both of which are now deprecated in favor of MVCC.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="transactions.locks.mvcc">
+      ⁠</a>11.1.1. Multi-Version Concurrency Control (MVCC)</h2></div></div></div><div class="para">
+				<a href="http://en.wikipedia.org/wiki/Multiversion_concurrency_control">MVCC</a> is a locking scheme commonly used by modern database implementations to control fast, safe concurrent access to shared data.
+			</div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="mvcc.concepts">
+      ⁠</a>11.1.1.1. MVCC Concepts</h3></div></div></div><div class="para">
+					MVCC is designed to provide the following features for concurrent access:
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+							Readers that do not block writers
+						</div></li><li class="listitem"><div class="para">
+							Writers that fail fast
+						</div></li></ul></div><div class="para">
+					and achieves this by using data versioning and copying for concurrent writers. The theory is that readers continue reading shared state, while writers copy the shared state, increment a version id, and write that shared state back after verifying that the version is still valid (i.e., another concurrent writer has not changed this state first).
+				</div><div class="para">
+					This allows readers to continue reading while not preventing writers from writing, and repeatable read semantics are maintained by allowing readers to read off the old version of the state.
+				</div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="mvcc.impl">
+      ⁠</a>11.1.1.2. MVCC Implementation</h3></div></div></div><div class="para">
+					JBoss Cache's implementation of MVCC is based on a few features:
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+							Readers do not acquire any locks
+						</div></li><li class="listitem"><div class="para">
+							Only one additional version is maintained for shared state, for a single writer
+						</div></li><li class="listitem"><div class="para">
+							All writes happen sequentially, to provide fail-fast semantics
+						</div></li></ul></div><div class="para">
+					The extremely high performance of JBoss Cache's MVCC implementation for reading threads is achieved by not requiring any synchronization or locking for readers. For each reader thread, the <code class="literal">MVCCLockingInterceptor</code> wraps state in a lightweight container object, which is placed in the thread's <code class="literal">InvocationContext</code> (or <code class="literal">TransactionContext</code> if running in a transaction). All subsequent operations on the state happens via the container object. This use of Java references allows for repeatable read semantics even if the actual state changes simultaneously.
+				</div><div class="para">
+					Writer threads, on the other hand, need to acquire a lock before any writing can commence. Currently, we use lock striping to improve the memory performance of the cache, and the size of the shared lock pool can be tuned using the <code class="literal">concurrencyLevel</code> attribute of the <code class="literal">locking</code> element. See the <a class="xref" href="configuration_reference_chapter.html">Chapter 12, <em>Configuration References</em></a> for details. After acquiring an exclusive lock on an Fqn, the writer thread then wraps the state to be modified in a container as well, just like with reader threads, and then copies this state for writing. When copying, a reference to the original version is still maintained in the container (for rollbacks). Changes are then made to the copy and the copy is finally written to the data structure when the write completes.
+				</div><div class="para">
+					This way, subsequent readers see the new version while existing readers still hold a reference to the original version in their context.
+				</div><div class="para">
+					If a writer is unable to acquire the write lock after some time, a <code class="literal">TimeoutException</code> is thrown. This lock acquisition timeout defaults to 10000 milliseconds and can be configured using the <code class="literal">lockAcquisitionTimeout</code> attribute of the <code class="literal">locking</code> element. See the <a class="xref" href="configuration_reference_chapter.html">Chapter 12, <em>Configuration References</em></a> for details.
+				</div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="mvcc.iso">
+      ⁠</a>11.1.1.2.1. Isolation Levels</h4></div></div></div><div class="para">
+						JBoss Cache 3.x supports two isolation levels: REPEATABLE_READ and READ_COMMITTED, which correspond in semantic to <a href="http://en.wikipedia.org/wiki/Isolation_level">database-style isolation levels</a>. Previous versions of JBoss Cache supported all 5 database isolation levels, and if an unsupported isolation level is configured, it is either upgraded or downgraded to the closest supported level.
+					</div><div class="para">
+						REPEATABLE_READ is the default isolation level, to maintain compatibility with previous versions of JBoss Cache. READ_COMMITTED, while providing a slightly weaker isolation, has a significant performance benefit over REPEATABLE_READ.
+					</div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="mvcc.writeskew">
+      ⁠</a>11.1.1.2.2. Concurrent Writers and Write-Skews</h4></div></div></div><div class="para">
+						Although MVCC forces writers to obtain a write lock, a phenomenon known as write skews may occur when using REPEATABLE_READ:
+					</div><div class="mediaobject"><img src="images/writeskew.png" alt="Concurrent Writers and Write-Skews"/></div><div class="para">
+						This happens when concurrent transactions performing a read and then a write, based on the value that was read. Since reads involve holding on to the reference to the state in the transaction context, a subsequent write would work off that original state read, which may now be stale.
+					</div><div class="para">
+						The default behavior with dealing with a write skew is to throw a <code class="literal">DataVersioningException</code>, when it is detected when copying state for writing. However, in most applications, a write skew may not be an issue (for example, if the state written has no relationship to the state originally read) and should be allowed. If your application does not care about write skews, you can allow them to happen by setting the <code class="literal">writeSkewCheck</code> configuration attribute to <code class="literal">false</code>. See the <a class="xref" href="configuration_reference_chapter.html">Chapter 12, <em>Configuration References</em></a> for details.
+					</div><div class="para">
+						Note that write skews cannot happen when using READ_COMMITTED since threads always work off committed state.
+					</div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="mvcc.cfg">
+      ⁠</a>11.1.1.3. Configuring Locking</h3></div></div></div><div class="para">
+					Configuring MVCC involves using the <code class="literal">&lt;locking /&gt; </code> configuration tag, as follows:
+				</div><pre class="programlisting XML">
+   &lt;locking
+      isolationLevel="REPEATABLE_READ"
+      lockAcquisitionTimeout="10234"
+      nodeLockingScheme="mvcc"
+      writeSkewCheck="false"
+      concurrencyLevel="1000" /&gt;
+</pre><div class="para">
+					<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+								<code class="literal">nodeLockingScheme</code> - the node locking scheme used. Defaults to MVCC if not provided, deprecated schemes such as <code class="literal">pessimistic</code> or <code class="literal">optimistic</code> may be used but is not encouraged.
+							</div></li><li class="listitem"><div class="para">
+								<code class="literal">isolationLevel</code> - transaction isolation level. Defaults to REPEATABLE_READ if not provided.
+							</div></li><li class="listitem"><div class="para">
+								<code class="literal">writeSkewCheck</code> - defaults to <code class="literal">true</code> if not provided.
+							</div></li><li class="listitem"><div class="para">
+								<code class="literal">concurrencyLevel</code> - defaults to 500 if not provided.
+							</div></li><li class="listitem"><div class="para">
+								<code class="literal">lockAcquisitionTimeout</code> - only applies to writers when using MVCC. Defaults to 10000 if not provided.
+							</div></li></ul></div>
+
+				</div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="transactions.locks.dep">
+      ⁠</a>11.1.2. Pessimistic and Optimistic Locking Schemes</h2></div></div></div><div class="para">
+				From JBoss Cache 3.x onwards, pessimistic and optimistic locking schemes are deprecated in favor of <a class="xref" href="transactions.html#transactions.locks.mvcc">Section 11.1.1, “Multi-Version Concurrency Control (MVCC)”</a>. It is recommended that existing applications move off these legacy locking schemes as support for them will eventually be dropped altogether in future releases.
+			</div><div class="para">
+				Documentation for legacy locking schemes are not included in this user guide, and if necessary, can be referenced in previous versions of this document, which can be found on <a href="http://www.jboss.org/jbosscache">the JBoss Cache website</a>.
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="transactions.jta">
+      ⁠</a>11.2. JTA Support</h1></div></div></div><div class="para">
+			JBoss Cache can be configured to use and participate in JTA compliant transactions. Alternatively, if transaction support is disabled, it is equivalent to using autocommit in JDBC calls, where modifications are potentially replicated after every change (if replication is enabled).
+		</div><div class="para">
+			What JBoss Cache does on every incoming call is:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="orderedlist"><ol><li class="listitem"><div class="para">
+					Retrieve the current <code class="literal">javax.transaction.Transaction</code> associated with the thread
+				</div></li><li class="listitem"><div class="para">
+					If not already done, register a <code class="literal">javax.transaction.Synchronization</code> with the transaction manager to be notified when a transaction commits or is rolled back.
+				</div></li></ol></div><div class="para">
+			In order to do this, the cache has to be provided with a reference to environment's <code class="literal">javax.transaction.TransactionManager</code>. This is usually done by configuring the cache with the class name of an implementation of the <code class="literal">TransactionManagerLookup</code> interface. When the cache starts, it will create an instance of this class and invoke its <code class="literal">getTransactionManager()</code> method, which returns a reference to the <code class="literal">TransactionManager</code>.
+		</div><div class="mediaobject"><img src="images/TransactionLookup.png" alt="JTA Support"/></div><div class="para">
+			JBoss Cache ships with <code class="literal">JBossTransactionManagerLookup</code> and <code class="literal">GenericTransactionManagerLookup</code>. The <code class="literal">JBossTransactionManagerLookup</code> is able to bind to a running EAP instance and retrieve a <code class="literal">TransactionManager</code> while the <code class="literal">GenericTransactionManagerLookup</code> is able to bind to most popular Java EE application servers and provide the same functionality. A dummy implementation - <code class="literal">DummyTransactionManagerLookup</code> - is also provided for unit tests. Being a dummy, this is not recommended for production use a it has some severe limitations to do with concurrent transactions and recovery.
+		</div><div class="para">
+			An alternative to configuring a <code class="literal">TransactionManagerLookup</code> is to programmatically inject a reference to the <code class="literal">TransactionManager</code> into the <code class="literal">Configuration</code> object's <code class="literal">RuntimeConfig</code> element:
+		</div><pre class="programlisting JAVA">
+   TransactionManager tm = getTransactionManager(); // magic method
+   cache.getConfiguration().getRuntimeConfig().setTransactionManager(tm);
+</pre><div class="para">
+			Injecting the <code class="literal">TransactionManager</code> is the recommended approach when the <code class="literal">Configuration</code> is built by some sort of IOC container that already has a reference to the <code class="literal">TransactionManager</code>.
+		</div><div class="para">
+			When the transaction commits, we initiate either a one-phase or two-phase commit protocol. See <a class="xref" href="clustering.html#replication.tx">Section 8.1.2.1, “Replicated Caches and Transactions”</a> for details.
+		</div></div></div></body></html>

@@ -1,0 +1,323 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 5. Deploying JBoss Cache</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="deployment">
+      ⁠</a>Chapter 5. Deploying JBoss Cache</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="deployment.standalone">
+      ⁠</a>5.1. Standalone Use/Programatic Deployment</h1></div></div></div><div class="para">
+			When used in a standalone Java program, all that needs to be done is to instantiate the cache using the <code class="literal">CacheFactory</code> and a <code class="literal">Configuration</code> instance or an XML file, as discussed in the <a class="xref" href="api.html#api.create_start">Section 2.2, “Instantiating and Starting the Cache”</a> and <a class="xref" href="configuration.html#configuration.creation">Section 3.2, “Creating a <code class="literal">Configuration</code> ”</a> chapters.
+		</div><div class="para">
+			The same techniques can be used when an application running in an application server wishes to programmatically deploy a cache rather than relying on an application server's deployment features. An example of this would be a webapp deploying a cache via a <code class="literal">javax.servlet.ServletContextListener</code>.
+		</div><div class="para">
+			After creation, you could share your cache instance among different application components either by using an IOC container such as JBoss Microcontainer, or by binding it to JNDI, or simply holding a static reference to the cache.
+		</div><div class="para">
+			If, after deploying your cache you wish to expose a management interface to it in JMX, see <a class="xref" href="deployment.html#jmx.registration">Section 5.4.2, “Registering the CacheJmxWrapper with the MBeanServer”</a>.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="deployment.microcontainer">
+      ⁠</a>5.2. Via JBoss Microcontainer (EAP 5.x)</h1></div></div></div><div class="para">
+			Beginning with version 5, EAP supports deployment of POJO services via deployment of a file whose name ends with <code class="literal">-jboss-beans.xml</code>. A POJO service is one whose implementation is via a "Plain Old Java Object", meaning a simple java bean that is not required to implement any special interfaces or extend any particular superclass. A <code class="literal">Cache</code> is a POJO service, and all the components in a <code class="literal">Configuration</code> are also POJOs, so deploying a cache in this way is a natural step.
+		</div><div class="para">
+			Deployment of the cache is done using the JBoss Microcontainer that forms the core of EAP. JBoss Microcontainer is a sophisticated IOC framework similar to Spring. A <code class="literal">-jboss-beans.xml</code> file is basically a descriptor that tells the IOC framework how to assemble the various beans that make up a POJO service.
+		</div><div class="para">
+			For each configurable option exposed by the <code class="literal">Configuration</code> components, a getter/setter must be defined in the configuration class. This is required so that JBoss Microcontainer can, in typical IOC way, call these methods when the corresponding properties have been configured.
+		</div><div class="para">
+			You need to ensure that the <code class="literal">jbosscache-core.jar</code> and <code class="literal">jgroups.jar</code> libraries are in your server's <code class="literal">lib</code> directory. This is usually the case when you use EAP in its <code class="literal">all</code> configuration. Note that you will have to bring in any optional jars you require, such as <code class="literal">jdbm.jar</code> based on your cache configuration.
+		</div><div class="para">
+			The following is an example <code class="literal">-beans.xml</code> file. If you look in the <code class="literal">server/all/deploy</code> directory of a EAP 5 installation, you can find several more examples.
+		</div><pre class="programlisting XML">
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+
+&lt;deployment xmlns="urn:jboss:bean-deployer:2.0"&gt;
+
+   &lt;!-- First we create a Configuration object for the cache --&gt;
+   &lt;bean name="ExampleCacheConfig"
+   		 class="org.jboss.cache.config.Configuration"&gt;
+      
+      &lt;!-- Externally injected services --&gt;  
+      &lt;property name="runtimeConfig"&gt;
+         &lt;bean class="org.jboss.cache.config.RuntimeConfig"&gt;
+            &lt;property name="transactionManager"&gt;
+               &lt;inject bean="jboss:service=TransactionManager" 
+                       property="TransactionManager"/&gt;
+            &lt;/property&gt;
+            &lt;property name="muxChannelFactory"&gt;&lt;inject bean="JChannelFactory"/&gt;&lt;/property&gt;
+         &lt;/bean&gt;
+      &lt;/property&gt;
+      
+      &lt;property name="multiplexerStack"&gt;udp&lt;/property&gt;
+
+      &lt;property name="clusterName"&gt;Example-EntityCache&lt;/property&gt;
+        
+      &lt;property name="isolationLevel"&gt;REPEATABLE_READ&lt;/property&gt;
+
+      &lt;property name="cacheMode"&gt;REPL_SYNC&lt;/property&gt;
+
+      &lt;property name="stateRetrievalTimeout"&gt;15000&lt;/property&gt;
+
+      &lt;property name="syncReplTimeout"&gt;20000&lt;/property&gt;
+
+      &lt;property name="lockAcquisitionTimeout"&gt;15000&lt;/property&gt;
+        
+      &lt;property name="exposeManagementStatistics"&gt;true&lt;/property&gt;
+   &lt;/bean&gt;
+   
+   &lt;!-- Factory to build the Cache. --&gt;
+   &lt;bean name="DefaultCacheFactory" class="org.jboss.cache.DefaultCacheFactory"&gt;      
+      &lt;constructor factoryClass="org.jboss.cache.DefaultCacheFactory"
+                   factoryMethod="getInstance" /&gt;
+   &lt;/bean&gt;
+   
+   &lt;!-- The cache itself --&gt;
+   &lt;bean name="ExampleCache" class="org.jboss.cache.Cache"&gt;
+      
+      &lt;constructor factoryMethod="createCache"&gt;
+          &lt;factory bean="DefaultCacheFactory"/&gt;
+          &lt;parameter class="org.jboss.cache.config.Configuration"&gt;&lt;inject bean="ExampleCacheConfig"/&gt;&lt;/parameter&gt;
+          &lt;parameter class="boolean"&gt;false&lt;/parameter&gt;
+      &lt;/constructor&gt;
+          
+   &lt;/bean&gt;
+
+&lt;/deployment&gt;
+</pre><div class="para">
+			See <a href="http://www.jboss.org/jbossmc">the JBoss Microcontainer documentation</a> for details on the above syntax. Basically, each <code class="literal">bean</code> element represents an object and is used to create a <code class="literal">Configuration</code> and its <a class="xref" href="configuration.html#configuration.elements">Section 3.3, “Composition of a <code class="literal">Configuration</code> Object ”</a> The <code class="literal">DefaultCacheFactory</code> bean constructs the cache, conceptually doing the same thing as is shown in the <a class="xref" href="api.html#api.create_start">Section 2.2, “Instantiating and Starting the Cache”</a> chapter.
+		</div><div class="para">
+			An interesting thing to note in the above example is the use of the <code class="literal">RuntimeConfig</code> object. External resources like a <code class="literal">TransactionManager</code> and a JGroups <code class="literal">ChannelFactory</code> that are visible to the microcontainer are dependency injected into the <code class="literal">RuntimeConfig</code>. The assumption here is that in some other deployment descriptor in the AS, the referenced beans have already been described.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140486342219184">
+      ⁠</a>5.3. Automatic binding to JNDI in EAP</h1></div></div></div><div class="para">
+			This feature is not available as of the time of this writing. We will add a wiki page describing how to use it once it becomes available.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140486342217648">
+      ⁠</a>5.4. Runtime Management Information</h1></div></div></div><div class="para">
+			JBoss Cache includes JMX MBeans to expose cache functionality and provide statistics that can be used to analyze cache operations. JBoss Cache can also broadcast cache events as MBean notifications for handling via JMX monitoring tools.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="jmx.mbeans">
+      ⁠</a>5.4.1. JBoss Cache MBeans</h2></div></div></div><div class="para">
+				JBoss Cache provides an MBean that can be registered with your environments JMX server to allow access to the cache instance via JMX. This MBean is the <code class="literal">org.jboss.cache.jmx.CacheJmxWrapper</code>. It is a StandardMBean, so its MBean interface is <code class="literal">org.jboss.cache.jmx.CacheJmxWrapperMBean</code>. This MBean can be used to: 
+				<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+							Get a reference to the underlying <code class="literal">Cache</code>.
+						</div></li><li class="listitem"><div class="para">
+							Invoke create/start/stop/destroy lifecycle operations on the underlying <code class="literal">Cache</code>.
+						</div></li><li class="listitem"><div class="para">
+							Inspect various details about the cache's current state (number of nodes, lock information, etc.)
+						</div></li><li class="listitem"><div class="para">
+							See numerous details about the cache's configuration, and change those configuration items that can be changed when the cache has already been started.
+						</div></li></ul></div>
+				 See the <code class="literal">CacheJmxWrapperMBean</code> Javadoc for more details.
+			</div><div class="para">
+				If a <code class="literal">CacheJmxWrapper</code> is registered, JBoss Cache also provides MBeans for several other internal components and subsystems. These MBeans are used to capture and expose statistics related to the subsystems they represent. They are hierarchically associated with the <code class="literal">CacheJmxWrapper</code> MBean and have service names that reflect this relationship. For example, a replication interceptor MBean for the <code class="literal">jboss.cache:service=TomcatClusteringCache</code> instance will be accessible through the service named <code class="literal">jboss.cache:service=TomcatClusteringCache,cache-interceptor=ReplicationInterceptor</code>.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="jmx.registration">
+      ⁠</a>5.4.2. Registering the CacheJmxWrapper with the MBeanServer</h2></div></div></div><div class="para">
+				The best way to ensure the <code class="literal">CacheJmxWrapper</code> is registered in JMX depends on how you are deploying your cache.
+			</div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="jmx.registration.programmatic.construct">
+      ⁠</a>5.4.2.1. Programatic Registration with a Cache instance</h3></div></div></div><div class="para">
+					Simplest way to do this is to create your <code class="literal">Cache</code> and pass it to the <code class="literal">JmxRegistrationManager</code> constructor.
+				</div><pre class="programlisting JAVA">
+   CacheFactory factory = new DefaultCacheFactory();
+   // Build but do not start the cache
+   // (although it would work OK if we started it)
+   Cache cache = factory.createCache("cache-configuration.xml");
+
+   MBeanServer server = getMBeanServer(); // however you do it
+   ObjectName on = new ObjectName("jboss.cache:service=Cache");
+   
+   JmxRegistrationManager jmxManager = new JmxRegistrationManager(server, cache, on);
+   jmxManager.registerAllMBeans();
+
+   ... use the cache
+
+   ... on application shutdown
+
+   jmxManager.unregisterAllMBeans();
+   cache.stop();
+
+</pre></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="jmx.registration.programmatic.cfg">
+      ⁠</a>5.4.2.2. Programatic Registration with a Configuration instance</h3></div></div></div><div class="para">
+					Alternatively, build a <code class="literal">Configuration</code> object and pass it to the <code class="literal">CacheJmxWrapper</code>. The wrapper will construct the <code class="literal">Cache</code> on your behalf.
+				</div><pre class="programlisting JAVA">
+   Configuration config = buildConfiguration(); // whatever it does
+
+   CacheJmxWrapperMBean wrapper = new CacheJmxWrapper(config);
+   MBeanServer server = getMBeanServer(); // however you do it
+   ObjectName on = new ObjectName("jboss.cache:service=TreeCache");
+   server.registerMBean(wrapper, on);
+
+   // Call to wrapper.create() will build the Cache if one wasn't injected
+   wrapper.create();
+   wrapper.start();
+
+   // Now that it's built, created and started, get the cache from the wrapper
+   Cache cache = wrapper.getCache();
+
+   ... use the cache
+
+   ... on application shutdown
+
+   wrapper.stop();
+   wrapper.destroy();
+</pre></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="idm140486280485552">
+      ⁠</a>5.4.2.3. JMX-Based Deployment in EAP (EAP 5.x)</h3></div></div></div><div class="para">
+					<code class="literal">CacheJmxWrapper</code> is a POJO, so the microcontainer has no problem creating one. The trick is getting it to register your bean in JMX. This can be done by specifying the <code class="literal">org.jboss.aop.microcontainer.aspects.jmx.JMX</code> annotation on the <code class="literal">CacheJmxWrapper</code> bean:
+				</div><pre class="programlisting XML">
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+
+&lt;deployment xmlns="urn:jboss:bean-deployer:2.0"&gt;
+
+   &lt;!-- First we create a Configuration object for the cache --&gt;
+   &lt;bean name="ExampleCacheConfig"
+   		 class="org.jboss.cache.config.Configuration"&gt;
+      
+      ... build up the Configuration
+      
+   &lt;/bean&gt;
+   
+   &lt;!-- Factory to build the Cache. --&gt;
+   &lt;bean name="DefaultCacheFactory" class="org.jboss.cache.DefaultCacheFactory"&gt;      
+      &lt;constructor factoryClass="org.jboss.cache.DefaultCacheFactory"
+                   factoryMethod="getInstance" /&gt;
+   &lt;/bean&gt;
+   
+   &lt;!-- The cache itself --&gt;
+   &lt;bean name="ExampleCache" class="org.jboss.cache.CacheImpl"&gt;
+      
+      &lt;constructor factoryMethod="createnewInstance"&gt;
+          &lt;factory bean="DefaultCacheFactory"/&gt;
+          &lt;parameter&gt;&lt;inject bean="ExampleCacheConfig"/&gt;&lt;/parameter&gt;
+          &lt;parameter&gt;false&lt;/parameter&gt;
+      &lt;/constructor&gt;
+          
+   &lt;/bean&gt;
+   
+   &lt;!-- JMX Management --&gt;
+   &lt;bean name="ExampleCacheJmxWrapper" class="org.jboss.cache.jmx.CacheJmxWrapper"&gt;
+      
+      &lt;annotation&gt;@org.jboss.aop.microcontainer.aspects.jmx.JMX(name="jboss.cache:service=ExampleTreeCache", 
+                         exposedInterface=org.jboss.cache.jmx.CacheJmxWrapperMBean.class, 
+                         registerDirectly=true)&lt;/annotation&gt;
+      
+      &lt;constructor&gt;
+          &lt;parameter&gt;&lt;inject bean="ExampleCache"/&gt;&lt;/parameter&gt;
+      &lt;/constructor&gt;
+          
+   &lt;/bean&gt;
+
+&lt;/deployment&gt;
+</pre><div class="para">
+					As discussed in the <a class="xref" href="deployment.html#jmx.registration">Section 5.4.2, “Registering the CacheJmxWrapper with the MBeanServer”</a> section, <code class="literal">CacheJmxWrapper</code> can do the work of building, creating and starting the <code class="literal">Cache</code> if it is provided with a <code class="literal">Configuration</code>. With the microcontainer, this is the preferred approach, as it saves the boilerplate XML needed to create the <code class="literal">CacheFactory</code>.
+				</div><pre class="programlisting XML">
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+
+&lt;deployment xmlns="urn:jboss:bean-deployer:2.0"&gt;
+
+   &lt;!-- First we create a Configuration object for the cache --&gt;
+   &lt;bean name="ExampleCacheConfig"
+   		 class="org.jboss.cache.config.Configuration"&gt;
+      
+      ... build up the Configuration
+      
+   &lt;/bean&gt;
+    
+   &lt;bean name="ExampleCache" class="org.jboss.cache.jmx.CacheJmxWrapper"&gt;
+      
+      &lt;annotation&gt;@org.jboss.aop.microcontainer.aspects.jmx.JMX
+        (name="jboss.cache:service=ExampleTreeCache", 
+        exposedInterface=org.jboss.cache.jmx.CacheJmxWrapperMBean.class, 
+        registerDirectly=true)&lt;/annotation&gt;
+      
+      &lt;constructor&gt;
+          &lt;parameter&gt;&lt;inject bean="ExampleCacheConfig"/&gt;&lt;/parameter&gt;
+      &lt;/constructor&gt;
+          
+   &lt;/bean&gt;
+
+&lt;/deployment&gt;
+</pre></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="jmx.statistics">
+      ⁠</a>5.4.3. JBoss Cache Statistics</h2></div></div></div><div class="para">
+				JBoss Cache captures statistics in its interceptors and various other components, and exposes these statistics through a set of MBeans. Gathering of statistics is enabled by default; this can be disabled for a specific cache instance through the <code class="literal">Configuration.setExposeManagementStatistics()</code> setter. Note that the majority of the statistics are provided by the <code class="literal">CacheMgmtInterceptor</code>, so this MBean is the most significant in this regard. If you want to disable all statistics for performance reasons, you set <code class="literal">Configuration.setExposeManagementStatistics(false)</code> and this will prevent the <code class="literal">CacheMgmtInterceptor</code> from being included in the cache's interceptor stack when the cache is started.
+			</div><div class="para">
+				If a <code class="literal">CacheJmxWrapper</code> is registered with JMX, the wrapper also ensures that an MBean is registered in JMX for each interceptor and component that exposes statistics. 
+				<div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+						Note that if the <code class="literal">CacheJmxWrapper</code> is not registered in JMX, the interceptor MBeans will not be registered either. The JBoss Cache 1.4 releases included code that would try to "discover" an <code class="literal">MBeanServer</code> and automatically register the interceptor MBeans with it. For JBoss Cache 2.x we decided that this sort of "discovery" of the JMX environment was beyond the proper scope of a caching library, so we removed this functionality.
+					</div></div></div>
+				 . Management tools can then access those MBeans to examine the statistics. See the section in the <a class="xref" href="jmx_reference.html#jmx_reference.statistics">Section 13.1, “JBoss Cache Statistics”</a> pertaining to the statistics that are made available via JMX.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486338245104">
+      ⁠</a>5.4.4. Receiving JMX Notifications</h2></div></div></div><div class="para">
+				JBoss Cache users can register a listener to receive cache events described earlier in the <a class="xref" href="api.html#api.listener">Section 2.7, “ Adding a Cache Listener - registering for cache events ”</a> chapter. Users can alternatively utilize the cache's management information infrastructure to receive these events via JMX notifications. Cache events are accessible as notifications by registering a <code class="literal">NotificationListener</code> for the <code class="literal">CacheJmxWrapper</code>.
+			</div><div class="para">
+				See the section in the <a class="xref" href="jmx_reference.html#jmx_reference.notifications">Section 13.2, “JMX MBean Notifications”</a> pertaining to JMX notifications for a list of notifications that can be received through the <code class="literal">CacheJmxWrapper</code>.
+			</div><div class="para">
+				The following is an example of how to programmatically receive cache notifications when running in a EAP environment. In this example, the client uses a filter to specify which events are of interest.
+			</div><pre class="programlisting JAVA">
+   MyListener listener = new MyListener();
+   NotificationFilterSupport filter = null;
+
+   // get reference to MBean server
+   Context ic = new InitialContext();
+   MBeanServerConnection server = (MBeanServerConnection)ic.lookup("jmx/invoker/RMIAdaptor");
+
+   // get reference to CacheMgmtInterceptor MBean
+   String cache_service = "jboss.cache:service=TomcatClusteringCache";
+   ObjectName mgmt_name = new ObjectName(cache_service);
+
+   // configure a filter to only receive node created and removed events
+   filter = new NotificationFilterSupport();
+   filter.disableAllTypes();
+   filter.enableType(CacheNotificationBroadcaster.NOTIF_NODE_CREATED);
+   filter.enableType(CacheNotificationBroadcaster.NOTIF_NODE_REMOVED);
+
+   // register the listener with a filter
+   // leave the filter null to receive all cache events
+   server.addNotificationListener(mgmt_name, listener, filter, null);
+
+   // ...
+
+   // on completion of processing, unregister the listener
+   server.removeNotificationListener(mgmt_name, listener, filter, null);
+</pre><div class="para">
+				The following is the simple notification listener implementation used in the previous example.
+			</div><pre class="programlisting JAVA">
+   private class MyListener implements NotificationListener, Serializable
+   {
+      public void handleNotification(Notification notification, Object handback)
+      {
+         String message = notification.getMessage();
+         String type = notification.getType();
+         Object userData = notification.getUserData();
+
+         System.out.println(type + ": " + message);
+
+         if (userData == null)
+         {
+            System.out.println("notification data is null");
+         }
+         else if (userData instanceof String)
+         {
+            System.out.println("notification data: " + (String) userData);
+         }
+         else if (userData instanceof Object[])
+         {
+            Object[] ud = (Object[]) userData;
+            for (Object data : ud)
+            {
+               System.out.println("notification data: " + data.toString());
+            }
+         }
+         else
+         {
+            System.out.println("notification data class: " + userData.getClass().getName());
+         }
+      }
+   }
+</pre><div class="para">
+				Note that the JBoss Cache management implementation only listens to cache events after a client registers to receive MBean notifications. As soon as no clients are registered for notifications, the MBean will remove itself as a cache listener.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="jconsole">
+      ⁠</a>5.4.5. Accessing Cache MBeans in a Standalone Environment using the <code class="literal">jconsole</code> Utility</h2></div></div></div><div class="para">
+				JBoss Cache MBeans are easily accessed when running cache instances in an application server that provides an MBean server interface such as JBoss JMX Console. Refer to your server documentation for instructions on how to access MBeans running in a server's MBean container.
+			</div><div class="para">
+				In addition, though, JBoss Cache MBeans are also accessible when running in a non-server environment using your JDK's <code class="literal">jconsole</code> tool. When running a standalone cache outside of an application server, you can access the cache's MBeans as follows.
+			</div><div class="para">
+				<div xmlns:d="http://docbook.org/ns/docbook" class="orderedlist"><ol><li class="listitem"><div class="para">
+							Set the system property <code class="literal">-Dcom.sun.management.jmxremote</code> when starting the JVM where the cache will run.
+						</div></li><li class="listitem"><div class="para">
+							Once the JVM is running, start the <code class="literal">jconsole</code> utility, located in your JDK's <code class="literal">/bin</code> directory.
+						</div></li><li class="listitem"><div class="para">
+							When the utility loads, you will be able to select your running JVM and connect to it. The JBoss Cache MBeans will be available on the MBeans panel.
+						</div></li></ol></div>
+
+			</div><div class="para">
+				Note that the <code class="literal">jconsole</code> utility will automatically register as a listener for cache notifications when connected to a JVM running JBoss Cache instances.
+			</div></div></div></div></body></html>

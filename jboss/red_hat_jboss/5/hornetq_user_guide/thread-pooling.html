@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 40. Thread management</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="thread-pooling">
+      ⁠</a>Chapter 40. Thread management</h1></div></div></div><div class="para">
+		This chapter describes how HornetQ uses and pools threads and how to manage them.
+	</div><div class="para">
+		First we will discuss how threads are managed and used on the server side, then we will look at the client side.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139905846073664">
+      ⁠</a>40.1. Server-Side Thread Management</h1></div></div></div><div class="para">
+			Each HornetQ Server maintains a single thread pool for general use, and a scheduled thread pool for scheduled use. A Java scheduled thread pool cannot be configured to use a standard thread pool, otherwise we could use a single thread pool for both scheduled and non scheduled activity.
+		</div><div class="para">
+			When using old (blocking) IO, a separate thread pool is also used to service connections. Since old IO requires a thread per connection, it does not make sense to get them from the standard pool as the pool will easily get exhausted if too many connections are made, resulting in the server "hanging" since it has no remaining threads to do anything else. If you require the server to handle many concurrent connections, make sure to use NIO, not old IO.
+		</div><div class="para">
+			When using new IO (NIO), HornetQ will, by default, use a number of threads equal to three times the number of cores (or hyper-threads) as reported by Runtime.getRuntime().availableProcessors() for processing incoming packets. To override this value, set the number of threads by specifying the parameter <code class="literal">nio-remoting-threads</code> in the transport configuration. Refer to <a class="xref" href="configuring-transports.html">Chapter 14, <em>Configuring the Transport</em></a> for more information on this.
+		</div><div class="para">
+			There are also a small number of other places where threads are used directly:
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="server.scheduled.thread.pool">
+      ⁠</a>40.1.1. Server Scheduled Thread Pool</h2></div></div></div><div class="para">
+				The server scheduled thread pool is used for most activities on the server side that require running periodically or with delays. It maps internally to a <code class="literal">java.util.concurrent.ScheduledThreadPoolExecutor</code> instance.
+			</div><div class="para">
+				The maximum number of threads used by this pool is configured in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code> with the <code class="literal">scheduled-thread-pool-max-size</code> parameter. The default value is <code class="literal">5</code> threads. A small number of threads is usually sufficient for this pool.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139905851819808">
+      ⁠</a>40.1.2. General Purpose Server Thread Pool</h2></div></div></div><div class="para">
+				This general purpose thread pool is used for most asynchronous actions on the server side. It maps internally to a <code class="literal">java.util.concurrent.ThreadPoolExecutor</code> instance.
+			</div><div class="para">
+				The maximum number of threads used by this pool is configured in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-configuration.xml</code> with the <code class="literal">thread-pool-max-size</code> parameter.
+			</div><div class="para">
+				If a value of <code class="literal">-1</code> is specified, the thread pool has no upper bound and new threads will be created on demand if there are not enough threads available to satisfy a request. If activity later subsides then threads are timed-out and closed.
+			</div><div class="para">
+				If a value of <code class="literal">n</code> where <code class="literal">n</code> is a positive integer greater than zero is used this signifies that the thread pool is bounded. If more requests come in and there are no free threads in the pool and the pool is full then requests will block until a thread becomes available. It is recommended that a bounded thread pool is used with caution since it can lead to dead-lock situations if the upper bound is chosen to be too low.
+			</div><div class="para">
+				The default value for <code class="literal">thread-pool-max-size</code> is <code class="literal">30</code>.
+			</div><div class="para">
+				See the <a href="http://java.sun.com/j2se/1.5.0/docs/api/java/util/concurrent/ThreadPoolExecutor.html">J2SE Javadoc</a> for more information on unbounded (cached), and bounded (fixed) thread pools.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139905861504736">
+      ⁠</a>40.1.3. Expiry Reaper Thread</h2></div></div></div><div class="para">
+				A single thread is also used on the server side to scan for expired messages in queues. We cannot use either of the thread pools for this since this thread needs to run at its own configurable priority.
+			</div><div class="para">
+				For more information on configuring the reaper, refer to <a class="xref" href="message-expiry.html">Chapter 20, <em>Message Expiry</em></a>.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139905861502144">
+      ⁠</a>40.1.4. Asynchronous IO</h2></div></div></div><div class="para">
+				Asynchronous IO has a thread pool for receiving and dispatching events out of the native layer. You will find it on a thread dump with the prefix HornetQ-AIO-poller-pool. HornetQ uses one thread per opened file on the journal (there is usually one).
+			</div><div class="para">
+				There is also a single thread used to invoke writes on libaio, which avoids performance issues with context switching. You will find this thread on a thread dump with the prefix HornetQ-AIO-writer-pool.
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="thread-pooling.client.side">
+      ⁠</a>40.2. Client-Side Thread Management</h1></div></div></div><div class="para">
+			On the client side, HornetQ maintains a single static scheduled thread pool and a single static general thread pool for use by all clients using the same classloader in that JVM instance.
+		</div><div class="para">
+			The static scheduled thread pool has a maximum size of <code class="literal">5</code> threads, and the general purpose thread pool has an unbounded maximum size.
+		</div><div class="para">
+			If required HornetQ can also be configured so that each <code class="literal">ClientSessionFactory</code> instance does not use these static pools but instead maintains its own scheduled and general purpose pool. Any sessions created from that <code class="literal">ClientSessionFactory</code> will use those pools instead.
+		</div><div class="para">
+			To configure a <code class="literal">ClientSessionFactory</code> instance to use its own pools, use the appropriate setter methods immediately after creation. For example:
+		</div><pre class="programlisting">ClientSessionFactory myFactory = HornetQClient.createClientSessionFactory(...);
+myFactory.setUseGlobalPools(false);
+myFactory.setScheduledThreadPoolMaxSize(10);
+myFactory.setThreadPoolMaxSize(-1);</pre><div class="para">
+			When using the JMS API, set the same parameters on the ClientSessionFactory and use it to create the <code class="literal">ConnectionFactory</code> instance. For example:
+		</div><pre class="programlisting">ConnectionFactory myConnectionFactory = HornetQJMSClient.createConnectionFactory(myFactory);</pre><div class="para">
+			If you are using JNDI to instantiate <code class="literal">HornetQConnectionFactory</code> instances, you can also set these parameters in the <code class="filename"><em class="replaceable">JBOSS_DIST</em>/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/hornetq/hornetq-jms.xml</code> file where you describe your connection factory. For example:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;connection-factory</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"NettyConnectionFactory"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;connectors&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;connector-ref</span><span xmlns="" class="perl_Others"> connector-name=</span><span xmlns="" class="perl_String">"netty"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/connectors&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;entries&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;entry</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"/ConnectionFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;entry</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"/XAConnectionFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/entries&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;use-global-pools&gt;</span>false<span xmlns="" class="perl_Keyword">&lt;/use-global-pools&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;scheduled-thread-pool-max-size&gt;</span>10<span xmlns="" class="perl_Keyword">&lt;/scheduled-thread-pool-max-size&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;thread-pool-max-size&gt;</span>-1<span xmlns="" class="perl_Keyword">&lt;/thread-pool-max-size&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/connection-factory&gt;</span></pre></div></div></body></html>

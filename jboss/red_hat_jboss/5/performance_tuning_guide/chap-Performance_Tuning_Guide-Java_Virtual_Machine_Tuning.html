@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 9. Java Virtual Machine Tuning</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="chap-Performance_Tuning_Guide-Java_Virtual_Machine_Tuning">
+      ⁠</a>Chapter 9. Java Virtual Machine Tuning</h1></div></div></div><div class="para">
+		Java Virtual Machine tuning can be a complex task, given the number of configuration options and changes with each new release. As in similar situations, the best advice is to keep the configuration as simple as possible rather than trying to tweak every available setting. In this chapter several general options which apply to all workloads will be discussed, also the performance impact of a 32-bit versus 64-bit Java Virtual Machine.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-Performance_Tuning_Guide-Java_Virtual_Machine_Tuning-a32_bit_vs._64_bit_JVM">
+      ⁠</a>9.1. 32-bit vs. 64-bit JVM</h1></div></div></div><div class="para">
+			A question commonly raised when discussing performance is which gives better overall performance: 32-bit or 64-bit JVM? It would seem that a 64-bit JVM hosted by a 64-bit operating system should perform better than a 32-bit JVM on modern, 64-bit capable hardware. To try and provide some quantitative data on the topic, testing was performed with an industry standard workload. All tests were run on the same system, with the same operating system, JVM version and settings with one exception described below.
+		</div><div class="figure"><a id="figu-Performance_Tuning_Guide-a32_bit_vs._64_bit_JVM-JVM_Throughput_32_bit_versus_64_bit">
+      ⁠</a><div class="figure-contents"><div class="mediaobject"><img src="images/img-jvm_32bit_versus_64bit.png" width="444" alt="JVM Throughput - 32-bit versus 64-bit"/></div></div><p class="title"><strong>Figure 9.1. JVM Throughput - 32-bit versus 64-bit</strong></p></div><div class="para">
+			In the graph above you can see that the two JVMs are quite similar in throughput, with the 64-bit JVM approximately 3.9% faster than the 32-bit JVM using a 2GB heap size. The 2GB heap size was used as it's the common limit for a 32-bit JVM on many operating systems. Having said that, the 32-bit JVM cannot be that large on Windows 2008, and can be larger on Red Hat Enterprise Linux (around 2.4 to 2.6GB depending on version). The 64-bit JVM has improved markedly over the last couple of years, relative to the 32-bit JVM, mainly because of the introduction of compressed ordinary object pointers (OOPs). OOPs implements a compression of the internal memory pointers within the JVM for objects, reducing the size of the heap. Instead of using the native machine word size for pointers, it compresses them to be competitive with the 32-bit JVM. The following article is recommended reading on the topic of compressed OOPs: <a href="http://wikis.sun.com/display/HotSpotInternals/CompressedOops">http://wikis.sun.com/display/HotSpotInternals/CompressedOops</a>
+		</div><div class="para">
+			The real advantage of the 64-bit JVM is that heap sizes much larger than 2GB can be used. Large page memory with the 64-bit JVM give further optimizations. The following graph shows the results running from 4GB heap sizes, in two gigabyte increments, up to 20GB heap.
+		</div><div class="figure"><a id="figu-Performance_Tuning_Guide-a32_bit_vs._64_bit_JVM-JVM_Throughput_comparison_of_incrementally_larger_heap_sizes">
+      ⁠</a><div class="figure-contents"><div class="mediaobject"><img src="images/img-jvm_large_heap_sizes.png" width="444" alt="JVM Throughput - comparison of incrementally larger heap sizes"/></div></div><p class="title"><strong>Figure 9.2. JVM Throughput - comparison of incrementally larger heap sizes</strong></p></div><div class="para">
+			The difference in performance between 2GB and 4GB heap memory is a significant 6.11% higher throughput. For the remainder of the heap sizes increment, the incremental throughput improvements are smaller and between 18GB and 20GB heap sizes throughput drops slightly. With a 16GB heap the throughput is 9.64% higher, just a few percentage points higher than 4GB. It may not seem significant but those few percentage points in throughput equates to almost 23,000 operations per second faster. Since memory is relatively cheap, the increased throughput is more than justified. A larger heap size contributes to improved performance but further improvement requires use of a JVM and operating system feature called large page memory.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-Performance_Tuning_Guide-Java_Virtual_Machine_Tuning-Large_Page_Memory">
+      ⁠</a>9.2. Large Page Memory</h1></div></div></div><div class="para">
+			The default memory page size in most operating systems is 4 kilobytes (kb). For a 32-bit operating system the maximum amount of memory is 4 GB, which equates to 1,048,576 ((1024*1024*1024*4)/4096) memory pages. A 64-bit operating system can address 18 Exabytes of memory in theory which equates to a huge number of memory pages. The overhead of managing such a large number of memory pages is significant, regardless of the operating system. The largest heap size used for tests covered in this book was 20 GB, which equates to 5,242,880 memory pages, a five-fold increase over 4 GB.
+		</div><div class="para">
+			Large memory pages are pages of memory which are significantly larger than 4 kb, usually 2 Mb. In some instances it's configurable, from 2MB to 256MB. For the systems used in the tests for this book, the page size is 2MB. With 2MB pages, the number of pages for a 20GB heap memory drops from 5,242,880 to 10,240! A 99.8% reduction in the number of memory pages means significantly less management overhead for the underlying operating system.
+		</div><div class="para">
+			Large memory pages are locked in memory, and cannot be swapped to disk like regular memory pages which has both advantages and disadvantages. The advantage is that if the heap is using large page memory it can not be paged or swapped to disk so it's always readily available. For Linux the disadvantage is that for applications to use it they have to attach to it using the correct flag for the shmget() system call, also they need to have the proper security permissions for the memlock() system call. For any application that does not have the ability to use large page memory, the server will look and behave as if the large page memory does not exist, which could be a major problem. Care must be taken when configuring large page memory, depending on what else is running on your server besides the JVM.
+		</div><div class="para">
+			To enable large page memory, add the following option to the command-line used to start the platform:
+		</div><div class="para">
+			<code class="literal">-XX:+UseLargePages</code>
+		</div><div class="para">
+			This option applies to OpenJDK, and the Oracle proprietary HotSpot-based JVM but there are similar options for IBM's and Oracle's JRockit JVMs. Refer to their documentation for further details. It's also necessary to change the following parameters:
+		</div><div class="para">
+			<code class="literal">kernel.shmmax = n</code>
+		</div><div class="para">
+			Where n is equal to the number of bytes of the maximum shared memory segment allowed on the system. You should set it at least to the size of the largest heap size you want to use for the JVM, or alternatively you can set it to the total amount of memory in the system.
+		</div><div class="para">
+			<code class="literal">vm.nr_hugepages = <em class="replaceable">n</em></code>
+		</div><div class="para">
+			Where <em class="replaceable">n</em> is equal to the number of large pages. You will need to look up the large page size in /proc/meminfo.
+		</div><div class="para">
+			<code class="literal">vm.huge_tlb_shm_group = <em class="replaceable">gid</em></code>
+		</div><div class="para">
+			Where <em class="replaceable">gid</em> is a shared group id for the users you want to have access to the large pages.
+		</div><div class="para">
+			The next step is adding the following in <code class="filename">/etc/security/limits.conf</code>:
+		</div><pre class="programlisting">
+  &lt;username&gt;     soft     memlock     n
+  &lt;username&gt;     hard     memlock     n
+</pre><div class="para">
+			Where <em class="replaceable">&lt;username&gt;</em> is the runtime user of the JVM and <em class="replaceable">n</em> is the number of pages from vm.nr_hugepages * the page size in KB from /proc/meminfo.
+		</div><div class="para">
+			Instead of setting n to a specific value, this can be set to <code class="literal">unlimited</code>, which reduces maintenance.
+		</div><div class="para">
+			Enter the command <code class="literal">sysctl -p</code> and these settings will be persistent. To confirm that this had taken effect, check that in the statistics available via /proc/meminfo, HugePages_Total is greater than 0. If HugePages_Total is either zero (0) or less than the value you configured, there are one of two things that could be wrong:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					the specified number of memory pages was greater than was available;
+				</div></li><li class="listitem"><div class="para">
+					there were not enough contiguous memory pages available.
+				</div></li></ul></div><div class="para">
+			When large page memory is allocated by the operating system, it must be in contiguous space. While the operating system is running, memory pages get fragmented. If the request failed because of this it may be necessary to reboot, so that the allocation of memory pages occurs before applications are started.
+		</div><div class="para">
+			With the release of Red Hat Enterprise Linux 6, a new operating system capability called transparent huge pages (huge pages are the same as large pages) is available. This feature gives the operating system the ability to combine standard memory pages and make them large pages dynamically and without configuration. It enables the option of using large page memory for any application, even if it's not directly supported. Consider using this option since it reduces the configuration effort at a relatively small performance cost. Consult the Red Hat Enterprise Linux 6 documentation for specific configuration instructions.
+		</div><div class="para">
+			The graph below shows the performance difference of the standard workload used in the 32-bit vs. 64-bit JVM comparison section.
+		</div><div class="figure"><a id="figu-Performance_Tuning_Guide-Large_Page_Memory-JVM_Throughput_32_bit_versus_64_bit">
+      ⁠</a><div class="figure-contents"><div class="mediaobject"><img src="images/img-jvm_transparent_huge_pages.png" width="444" alt="JVM Throughput - 32-bit versus 64-bit"/></div></div><p class="title"><strong>Figure 9.3. JVM Throughput - 32-bit versus 64-bit</strong></p></div><div class="para">
+			The peak line that was created with the 16GB heap is included to illustrate the difference. All heap sizes, even down to 4GB were substantially faster than the best without large page memory. The peak was actually the 18GB heap size run, which had 6.58% higher throughput than the 4GB result. This result was also 17.48% more throughput than the 16GB test run without large page memory. In these results it's evident that using large page memory is worthwhile, even for rather small heap sizes.
+		</div><div class="figure"><a id="figu-Performance_Tuning_Guide-Large_Page_Memory-JVM_Throughput_comparison_of_with_and_without_large_pages_enabled">
+      ⁠</a><div class="figure-contents"><div class="mediaobject"><img src="images/img-jvm_with_and_without_large_pages_enabled.png" width="444" alt="JVM Throughput - comparison of with and without large pages enabled"/></div></div><p class="title"><strong>Figure 9.4. JVM Throughput - comparison of with and without large pages enabled</strong></p></div><div class="para">
+			This graph compares two runs, with and without large page memory, using the EJB 3 OLTP application that has been referenced throughout this book. The results are similar to what we saw in the Java only workload. When executing this test, using the same 12GB heap size but without large page memory, the result was just under 3,900 transactions per second (3,899.02 to be exact). With large page memory enabled the result was over 4,100 transactions per second (4.143.25 to be exact). This represents a 6.26% throughput improvement which is not as large as the Java-only workload but this is to be expected, as this is a more complex workload, with a fairly large percentage of the time not even in the JVM itself. It's still significant however, because it equates to 244+ transactions per second more or 14,000+ extra transactions per minute. In real terms this means more work (processing) can be done in the same amount of time.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-Performance_Tuning_Guide-Java_Virtual_Machine_Tuning-Garbage_Collection_and_Performance_Tuning">
+      ⁠</a>9.3. Garbage Collection and Performance Tuning</h1></div></div></div><div class="para">
+			For all the tests referred to in this book the JVM garbage collection option used was: <em class="parameter"><code>-XX:+UseParallelOldGC</code></em>. Many people choose the Concurrent Mark and Sweep (CMS) collector, collection is slower on both the Eden space and Old generation. The following graph shows the difference between using the throughput collector with parallel collection on the Old generation in comparison to using the CMS collector, which works on the Old generation and parallel collection on the Eden space.
+		</div><div class="figure"><a id="figu-Performance_Tuning_Guide-Garbage_Collection_and_Performance_Tuning-Transactional_OLTP_Workload">
+      ⁠</a><div class="figure-contents"><div class="mediaobject"><img src="images/img-transactional_oltp_workload.png" width="444" alt="Transactional OLTP Workload"/></div></div><p class="title"><strong>Figure 9.5. Transactional OLTP Workload</strong></p></div><div class="para">
+			The difference in performance between the Parallel Garbage Collector and the Concurrent Mark and Sweep Garbage collector can be explained by their underlying design. If you do not specify the option <em class="parameter"><code>-XX:+UseParallelOldGC</code></em>, the throughput collector defaults to parallel collection on the Eden space, and single threaded collection on the Old generation. With a 12GB heap, the Old generation is 8GB in size, which is a lot of memory to garbage collect in a single thread fashion. By specifying that the Old generation should also be collected in parallel, the collection algorithms designed for the highest throughput is used, hence the name "throughput collector". When the option -XX:+UseParallelOldGC is specified it also enables the option <em class="parameter"><code>-XX:+UseParNewGC</code></em>. In comparison, the CMS collector is not optimized for throughput but instead for more predictable response times. The focus of this book is tuning for throughput, not response time. The choice of garbage collector depends on whether higher throughput or more predictable response times benefits the application most. For real-time systems, the trade-off is usually lower throughput for more deterministic results in response times.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-Performance_Tuning_Guide-Java_Virtual_Machine_Tuning-Other_JVM_Options_To_Consider">
+      ⁠</a>9.4. Other JVM Options To Consider</h1></div></div></div><div class="para">
+			This section covers some additional JVM options:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					-XX:+CompressedOops
+				</div></li><li class="listitem"><div class="para">
+					-XX:+AggressiveOpts
+				</div></li><li class="listitem"><div class="para">
+					-XX:+DoEscapeAnalysis
+				</div></li><li class="listitem"><div class="para">
+					-XX:+UseBiasedLocking
+				</div></li><li class="listitem"><div class="para">
+					-XX:+EliminateLocks
+				</div></li></ul></div><div xmlns:d="http://docbook.org/ns/docbook" class="warning"><div class="admonition_header"><p><strong>Warning</strong></p></div><div class="admonition"><div class="para">
+				When considering the JVM options covered in this section, be aware that their behavior is subject to change depending on the version, therefore the effect of each should be tested before being implemented in a production environment.
+			</div></div></div><div class="para">
+			Compressed OOPs, covered briefly in <a class="xref" href="chap-Performance_Tuning_Guide-Java_Virtual_Machine_Tuning.html#sect-Performance_Tuning_Guide-Java_Virtual_Machine_Tuning-a32_bit_vs._64_bit_JVM">Section 9.1, “32-bit vs. 64-bit JVM”</a>, implements a compression of the internal memory pointers within the JVM for objects and so reduces the heap. From JVM revision 1.6.0_20 and above compressed OOPs is on by default but if an earlier revision of the JDK is being used this option should be used for heap sizes 32GB and lower.
+		</div><div class="para">
+			Aggressive optimizations, -XX:+AggressiveOpts, enables additional Hotspot JVM optimizations that are not enabled by default. The behavior enabled by this option is subject to change with each JVM release and so its effects should be tested prior to implementing it in production.
+		</div><div class="para">
+			The final options are locking based options, -XX:+DoEscapeAnalysis, -XX:+UseBiasedLocking and -XX:+EliminateLocks. They are designed to work together to eliminate locking overhead. Their effect on performance is unpredictable for specific workloads and so require testing prior to being implemented. Reduced locking should improve concurrency and, on current multi-core hardware, improve throughput.
+		</div><div class="para">
+			In summary, all these options should be considered on their merits. To accurately judge their impact on performance they should be tested independently of each other.
+		</div></div></div></body></html>

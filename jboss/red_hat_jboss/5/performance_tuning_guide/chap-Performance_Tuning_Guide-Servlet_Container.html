@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 3. Servlet Container</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="chap-Performance_Tuning_Guide-Servlet_Container">
+      ⁠</a>Chapter 3. Servlet Container</h1></div></div></div><div class="para">
+		There are two main configuration parameters that have a direct effect on performance and scalability: cached connection manager and HTTP session replication.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-Performance_Tuning_Guide-Servlet_Container-Cached_Connection_Manager">
+      ⁠</a>3.1. Cached Connection Manager</h1></div></div></div><div class="para">
+			The Cached Connection Manager is used for debugging data source connections and supporting lazy enlistment of a data source connection in a transaction, tracking whether they are used and released properly by the application. At the cost of some overhead, it can provide tracing of the usage, and make sure that connections from a data source are not leaked by your application. Although that seems like an advantage, in some instances it's considered an anti-pattern and so to be avoided. If you are using bean managed transactions (BMT), it allows you to do the following (shown in pseudo-code):
+		</div><pre class="programlisting">
+Connection connection = dataSource.getConnection();
+transaction.begin();
+&lt;Do some work&gt;
+transaction.commit();
+</pre><div class="para">
+			Instead of:
+		</div><pre class="programlisting">
+transaction.begin();
+Connection connection = datasource.getConnection();
+&lt;Do some work&gt;
+transaction.commit();
+</pre><div class="para">
+			The first option is very useful for debugging purposes but should not be used in a production environment. In the <code class="literal">default</code>, <code class="literal">standard</code> and <code class="literal">all</code> configurations, the CachedConnectionManager is configured to be in the servlet container in debug mode. It's also configured in the <code class="literal">production</code> configuration but with debug mode off. If you do not use BMT, and/or you do not have the anti-pattern, described earlier, it's best to remove the CachedConnectionManager. The configuration is in the file <code class="filename">server.xml</code> in the directory <code class="filename">JBOSS_EAP_DIST/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/jbossweb.sar</code>. Note that the <code class="literal">minimal</code> configuration does <span class="emphasis"><em>not</em></span> include JBoss Web.
+		</div><div class="para">
+			Below is an extract from <code class="filename">server.xml</code> in which the CachedConnectionManager is enabled.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- Check for unclosed connections and transaction terminated checks in servlets/jsps.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">Important: The dependency on the CachedConnectionManager in META-INF/jboss-service.xml must be uncommented, too --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;Valve</span><span xmlns="" class="perl_Others"> className=</span><span xmlns="" class="perl_String">"org.jboss.web.tomcat.service.jca.CachedConnectionValve"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">   cachedConnectionManagerObjectName=</span><span xmlns="" class="perl_String">"jboss.jca:service=CachedConnectionManager"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">   transactionManagerObjectName=</span><span xmlns="" class="perl_String">"jboss:service=TransactionManager"</span> <span xmlns="" class="perl_Keyword">/&gt;</span>
+</pre><div class="para">
+			To disable the CachedConnectionManager, comment the last three lines, as per the following example:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- Check for unclosed connections and transaction terminated checks in servlets/jsps.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">Important: The dependency on the CachedConnectionManager in META-INF/jboss-service.xml must be uncommented, too</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;Valve className="org.jboss.web.tomcat.service.jca.CachedConnectionValve"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">                           cachedConnectionManagerObjectName="jboss.jca:service=CachedConnectionManager"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">                           transactionManagerObjectName="jboss:service=TransactionManager" /&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">--&gt;</span>
+</pre><div class="para">
+			Another configuration file also needs to be edited: <code class="filename">jboss-beans.xml</code> in the <code class="filename">JBOSS_EAP_DIST/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/jbossweb.sar/META-INF</code> directory. Note that the <code class="literal">minimal</code> configuration does <span class="emphasis"><em>not</em></span> include JBoss Web. This file is used by the micro-container for JBoss Web’s integration with it, and it specifies the connections between the dependent components. In this case, the CachedConnectionManager’s valve is dependent on the transaction manager. So, in order to get rid of the valve properly, we have to remove the dependency information from this configuration file. The pertinent information is at the top of the file, and it looks like the following:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- Only needed if the org.jboss.web.tomcat.service.jca.CachedConnectionValve</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">         is enabled in the tomcat server.xml file.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">    -→</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">    &lt;depends&gt;jboss.jca:service=CachedConnectionManager&lt;/depends&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!</span><span xmlns="" class="perl_Error">--</span><span xmlns="" class="perl_Comment"> Transaction manager for unfinished transaction checking in the CachedConnectionValve --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;depends&gt;</span>jboss:service=TransactionManager<span xmlns="" class="perl_Keyword">&lt;/depends&gt;</span>
+</pre><div class="para">
+			Comment these lines as in the following example:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- Only needed if the org.jboss.web.tomcat.service.jca.CachedConnectionValve</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">           is enabled in the tomcat server.xml file.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">      -→</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">      &lt;!</span><span xmlns="" class="perl_Error">--</span><span xmlns="" class="perl_Comment">&lt;depends&gt;jboss.jca:service=CachedConnectionManager&lt;/depends&gt; -→</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">      &lt;!</span><span xmlns="" class="perl_Error">--</span><span xmlns="" class="perl_Comment"> Transaction manager for unfinished transaction checking in the CachedConnectionValve --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!--&lt;depends&gt;jboss:service=TransactionManager&lt;/depends&gt;--&gt;</span>
+</pre><div class="para">
+			When editing XML, comments cannot be nested so it's important to get this correct. Refer to the section on the EJB 3 container for instructions on removing the CachedConnectionManager from there.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-Performance_Tuning_Guide-Servlet_Container-HTTP_Session_Replication">
+      ⁠</a>3.2. HTTP Session Replication</h1></div></div></div><div class="para">
+			For the servlet container, when deployed using clustering and a cluster aware application, HTTP session replication becomes a key aspect of performance and scalability across the cluster. There are two main methods for HTTP session replication: full replication, in which HTTP sessions are replicated to all nodes in the cluster, and buddy replication, where each node has at least one buddy, with one being the default. Each replication method has the ability to do full object replication, and fined grained replication, where only changes in the HTTP session are replicated.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-Performance_Tuning_Guide-HTTP_Session_Replication-Full_Replication">
+      ⁠</a>3.2.1. Full Replication</h2></div></div></div><div class="para">
+				Full replication is the default configuration because with most clusters having only a few nodes it provides maximum benefit with minimum configuration overhead. When there are more than two nodes, the method of replication needs to be considered as each option offers different benefits. Although full replication requires the least configuration, as the number of nodes increases the overhead of maintaining inter-node connections increases. Factors which need to be considered include: how often new sessions are created, how often old sessions are removed, how often the data in the HTTP session changes, and the session's size. Making a decision requires answers to these questions and relies on knowledge of each applications' usage pattern of HTTP sessions.
+			</div><div class="para">
+				To illustrate this with a practical example, consider a clustered application which uses the HTTP session to store a reference to a single stateful session bean. The bean is reused by the client to scroll through a result set derived from a database query. Even when the result set is no longer needed, and replaced within the stateful session bean with another result set, the stateful session bean session is not canceled, but instead a method is called that resets the state. So the HTTP session stays the same for the duration of the clients' requests, no matter how many are made and how long they are active. This usage pattern is very static, and involves a very small amount of data. It will scale very well with full replication, as the default network protocol is a reliable multicast over UDP. One packet (even assuming a 1,500 byte Ethernet frame size) will be sent over the network for all nodes to retrieve when a new HTTP session is created, and when one is removed for each user. In this case it's an efficient operation even across a fairly large cluster because the memory overhead is very small since the HTTP session is just holding a single reference. The size of the HTTP session is just one factor to consider. Even if the HTTP session is moderate in size, the amount is memory used calculated as:
+			</div><pre class="programlisting">
+  HTTP session size
+x active sessions
+x number of nodes
+</pre><div class="para">
+				As the number of clients and/or cluster nodes increases, the amount of memory in use across all nodes rapidly increases. The amount of memory in use is the same across all cluster nodes because they each need to maintain the same information, despite the fact that each client is communicating with only one node at a time.
+			</div><div class="para">
+				In summary, whether you should use the default configuration of full replication is really up to your particular workload. If you have multiple applications deployed at the same time, the complexity increases, as you might have applications that behave quite differently between each other, where the HTTP session is concerned. If you have a cluster larger than two nodes, and you are doing HTTP session replication, then consider buddy replication as your starting point.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-Performance_Tuning_Guide-HTTP_Session_Replication-Buddy_Replication">
+      ⁠</a>3.2.2. Buddy Replication</h2></div></div></div><div class="para">
+				Buddy replication is a configuration in which state replication is limited to two or more cluster nodes, although the default is paired nodes. When failover occurs it's not limited to that node's buddy but can occur to any node and session information migrated to the new node if necessary. This method of replication is very scalable because the overhead in memory usage and network traffic is significantly decreased. Buddy replication is configured in a file called <code class="filename">jboss-cache-manager-jboss-beans.xml</code>, in the directory: <code class="filename">JBOSS_EAP_DIST/jboss-as/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/cluster/jboss-cache-manager.sar/META-INF</code>. Note that the <code class="literal">default</code>, <code class="literal">standard</code> and <code class="literal">minimal</code> configurations do not have the clustering configuration, nor do they have clustering code deployed.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- Standard cache used for web sessions --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;entry&gt;&lt;key&gt;</span>standard-session-cache<span xmlns="" class="perl_Keyword">&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;value&gt;</span>
+<span xmlns="" class="line">​</span>       <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"StandardSessionCacheConfig"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.Configuration"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>               ...
+<span xmlns="" class="line">​</span>               <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"buddyReplicationConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                     <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.cache.config.BuddyReplicationConfig"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Comment">&lt;!--  Just set to true to turn on buddy replication --&gt;</span>
+<span xmlns="" class="line">​</span>                        <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"enabled"</span><span xmlns="" class="perl_Keyword">&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span></pre><div class="para">
+				For buddy replication to work as advertised, it is highly recommended that you use sticky sessions. In other words, once a session is created in a node on the cluster, repeated requests will continue to go to the same node in the cluster. If you don’t do this, you will defeat the advantages of buddy replication, as requests going to another node, let’s say in a round robin fashion, will not have the state information, and the state will have to be migrated, similar to a fail-over scenario.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-Performance_Tuning_Guide-Monitoring_JGroups_via_JMX">
+      ⁠</a>3.2.3. Monitoring JGroups via JMX</h2></div></div></div><div class="para">
+				When the Enterprise Application Platform clustering services create a JGroups Channel to use for intra-cluster communication, they also register with the JMX server a number of MBeans related to that channel; one for the channel itself and one for each of its constituent protocols. For users interested in monitoring the performance-related behavior of a channel, a number of MBean attributes may prove useful.
+			</div><div class="variablelist"><dl class="variablelist"><dt><span class="term"> <span class="bold bold"><strong>jboss.jgroups:cluster=&lt;cluster_name&gt;,protocol=UDP,type=protocol</strong></span> </span></dt><dd><div class="para">
+							Provides statistical information on the sending and receipt of messages over the network, along with statistics on the behavior of the two thread pools used to carry incoming messages up the channel's protocol stack.
+						</div><div class="para">
+							Useful attributes directly related to the rate of transmission and receipt include <code class="literal">MessagesSent</code>, <code class="literal">BytesSent</code>, <code class="literal">MessagesReceived</code> and <code class="literal">BytesReceived</code>.
+						</div><div class="para">
+							Useful attributes related to the behavior of the thread pool used to carry ordinary incoming messages up the protocol stack include <code class="literal">IncomingPoolSize</code> and <code class="literal">IncomingQueueSize</code>. Equivalent attributes for the pool of threads used to carry special, unordered "out-of-band" messages up the protocol stack include <code class="literal">OOBPoolSize</code> and <code class="literal">OOBQueueSize</code>. Note that <code class="literal">OOBQueueSize</code> will typically be <code class="literal">0</code> as the standard JGroups configurations do not use a queue for OOB messages.
+						</div></dd><dt><span class="term"> <span class="bold bold"><strong>jboss.jgroups:cluster=&lt;cluster_name&gt;,protocol=UNICAST,type=protocol</strong></span> </span></dt><dd><div class="para">
+							Provides statistical information on the behavior of the protocol responsible for ensuring lossless, ordered delivery of unicast (i.e. point-to-point) messages.
+						</div><div class="para">
+							The ratio of <code class="literal">NumRetransmissions</code> to <code class="literal">MessagesSent</code> can be tracked to see how frequently messages are not being received by peers and need to be retransmitted. The <code class="literal">NumberOfMessagesInReceiveWindows</code> attribute can be monitored to track how many messages are queuing up on a recipient node waiting for a message with an earlier sequence number to be received. A high number indicates messages are being dropped and need to be retransmitted.
+						</div></dd><dt><span class="term"> <span class="bold bold"><strong>jboss.jgroups:cluster=&lt;cluster_name&gt;,protocol=NAKACK,type=protocol</strong></span> </span></dt><dd><div class="para">
+							Provides statistical information on the behavior of the protocol responsible for ensuring lossless, ordered delivery of multicast (i.e. point-to-multipoint) messages.
+						</div><div class="para">
+							Use the <code class="literal">XmitRequestsReceived</code> attribute to track how often a node is being asked to re-transmit a messages it sent; use <code class="literal">XmitRequestsSent</code> to track how often a node is needing to request retransmission of a message.
+						</div></dd><dt><span class="term"> <span class="bold bold"><strong>jboss.jgroups:cluster=&lt;cluster_name&gt;,protocol=FC,type=protocol</strong></span> </span></dt><dd><div class="para">
+							Provides statistical information on the behavior of the protocol responsible for ensuring fast message senders do not overwhelm slow receivers.
+						</div><div class="para">
+							Attributes useful for monitoring whether threads seeking to send messages are having to block while waiting for credits from receivers include <code class="literal">Blockings</code>, <code class="literal">AverageTimeBlocked</code> and <code class="literal">TotalTimeBlocked</code>.
+						</div></dd></dl></div></div></div></div></body></html>

@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 28. Interceptors</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="Interceptors">
+      ⁠</a>Chapter 28. Interceptors</h1></div></div></div><div class="para">
+		RESTEasy can intercept JAX-RS invocations and route them through listener-like objects called <span class="emphasis"><em>interceptors</em></span>. There are four interception points on the server side:
+	</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+				wrapping around <code class="literal">MessageBodyWriter</code> invocations
+			</div></li><li class="listitem"><div class="para">
+				wrapping around <code class="literal">MessageBodyReader</code> invocations
+			</div></li><li class="listitem"><div class="para">
+				through <span class="emphasis"><em>pre-processors</em></span>, which intercept the incoming request before unmarshaling occurs
+			</div></li><li class="listitem"><div class="para">
+				through <span class="emphasis"><em>post-processors</em></span>, which are invoked immediately after the JAX-RS method finishes
+			</div></li></ul></div><div class="para">
+		You can also intercept <code class="literal">MessageBodyReader</code>, <code class="literal">MessageBodyWriter</code>, and the remote invocation to the server on the client side.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="MessageBodyInterceptors">
+      ⁠</a>28.1. MessageBodyReader/Writer Interceptors</h1></div></div></div><div class="para">
+			<code class="literal">MessageBodyReader</code> and <code class="literal">MessageBodyWriter</code> interceptors wrap around the invocation of <code class="literal">MessageBodyReader.readFrom()</code> or <code class="literal">MessageBodyWriter.writeTo()</code>. They are used to wrap the <code class="literal">Output</code> or <code class="literal">InputStream</code>. For example, RESTEasy GZIP support contains interceptors that create and override the default <code class="literal">Output</code> and <code class="literal">InputStream</code> with a <code class="literal">GzipOutputStream</code> or <code class="literal">GzipInputStream</code> so that GZIP encoding can work. You can also use interceptors to append headers to the response (or, on the client side, the outgoing request).
+		</div><div class="para">
+			To use an interceptor, implement the <code class="literal">org.jbos.resteasy.spi.interception.MessageBodyReaderInterceptor</code> or <code class="literal">MessageBodyWriterInterceptor</code>.
+		</div><pre class="programlisting">
+public interface MessageBodyReaderInterceptor
+{
+   Object read(MessageBodyReaderContext context) throws IOException, WebApplicationException;
+
+}
+
+public interface MessageBodyWriterInterceptor
+{
+   void write(MessageBodyWriterContext context) throws IOException, WebApplicationException;
+
+}
+</pre><div class="para">
+			Interceptors are driven by the <code class="literal">MessageBodyWriterContext</code> or <code class="literal">MessageBodyReaderContext</code>. They are invoked together in a Java call stack. You must call <code class="literal">MessageBodyReaderContext.proceed()</code> or <code class="literal">MessageBodyWriterContext.proceed()</code> to add subsequent interceptors. When there are no more interceptors to invoke, call the <code class="literal">readFrom()</code> or <code class="literal">writeTo()</code> method of the <code class="literal">MessageBodyReader</code> or <code class="literal">MessageBodyWriter</code>. This wrapping lets you modify objects before they reach the Reader or Writer, and clean up when <code class="literal">proceed()</code> returns. The <code class="literal">Context</code> objects also possess methods that modify the parameters sent to the Reader or Writer.
+		</div><pre class="programlisting">
+public interface MessageBodyReaderContext
+{
+   Class getType();
+
+   void setType(Class type);
+
+   Type getGenericType();
+
+   void setGenericType(Type genericType);
+
+   Annotation[] getAnnotations();
+
+   void setAnnotations(Annotation[] annotations);
+
+   MediaType getMediaType();
+
+   void setMediaType(MediaType mediaType);
+
+   MultivaluedMap&lt;String, String&gt; getHeaders();
+
+   InputStream getInputStream();
+
+   void setInputStream(InputStream is);
+
+   Object proceed() throws IOException, WebApplicationException;
+}
+
+public interface MessageBodyWriterContext
+{
+   Object getEntity();
+
+   void setEntity(Object entity);
+
+   Class getType();
+
+   void setType(Class type);
+
+   Type getGenericType();
+
+   void setGenericType(Type genericType);
+
+   Annotation[] getAnnotations();
+
+   void setAnnotations(Annotation[] annotations);
+
+   MediaType getMediaType();
+
+   void setMediaType(MediaType mediaType);
+
+   MultivaluedMap&lt;String, Object&gt; getHeaders();
+
+   OutputStream getOutputStream();
+
+   public void setOutputStream(OutputStream os);
+
+   void proceed() throws IOException, WebApplicationException;
+}
+</pre><div class="para">
+			<code class="literal">MessageBodyReaderInterceptor</code>s and <code class="literal">MessageBodyWriterInterceptor</code>s can be use on the server or the client side. They must be annotated with <code class="literal">@org.jboss.resteasy.annotations.interception.ServerInterceptor</code> or <code class="literal">@org.jboss.resteasy.annotations.interception.ClientInterceptor</code> so that RESTEasy adds them to the correct interceptor list. If your interceptor classes are not annotated with one or both of these annotations, a deployment error will occur. Interceptors should also be annotated with <code class="literal">@Provider</code>, like so:
+		</div><pre class="programlisting">
+@Provider
+@ServerInterceptor
+public class MyHeaderDecorator implements MessageBodyWriterInterceptor {
+
+    public void write(MessageBodyWriterContext context) throws IOException, WebApplicationException
+    {
+       context.getHeaders().add("My-Header", "custom");
+       context.proceed();
+    }
+}
+</pre><div class="para">
+			This is a server-side interceptor that adds a header value to the response. It is annotated with <code class="literal">@Provider</code> and <code class="literal">@ServerInterceptor</code>. It must modify the header before calling <code class="literal">context.proceed()</code>, because the response may be committed after the <code class="literal">MessageBodyReader</code> runs.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="important"><div class="admonition_header"><p><strong>Important</strong></p></div><div class="admonition"><div class="para">
+				You must call <code class="literal">context.proceed()</code>, or your invocation will not occur.
+			</div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="PreProcessInterceptors">
+      ⁠</a>28.2. PreProcessInterceptor</h1></div></div></div><div class="para">
+			The <code class="literal">org.jboss.resteasy.spi.interception.PreProcessInterceptor</code> runs after a JAX-RS resource method is located, but before the method is invoked. They can only be used on the server, but you must still annotate them with <code class="literal">@ServerInterceptor</code>. They can be used to implement security features or to preempt the Java request. The RESTEasy security implementation uses these interceptors to abort requests prior to invocation if the user does not pass authorization. The RESTEasy caching framework uses them to return cached responses, to avoid invoking methods multiple times. The interceptor interface is as follows:
+		</div><pre class="programlisting">
+    public interface PreProcessInterceptor
+    {
+       ServerResponse preProcess(HttpRequest request, ResourceMethod method) throws Failure, WebApplicationException;
+    }
+
+</pre><div class="para">
+			<code class="literal">PreProcessInterceptor</code>s run in sequence and do not wrap the actual JAX-RS invocation. To illustrate:
+		</div><pre class="programlisting">
+    for (PreProcessInterceptor interceptor : preProcessInterceptors) {
+       ServerResponse response = interceptor.preProcess(request, method);
+       if (response != null) return response;
+    }
+    executeJaxrsMethod(...);
+</pre><div class="para">
+			If the <code class="literal">preProcess()</code> method returns a <code class="literal">ServerResponse</code> then the underlying JAX-RS method will not be invoked and the runtime will process the response and return to the client.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="PostProcessInterceptors">
+      ⁠</a>28.3. PostProcessInterceptors</h1></div></div></div><div class="para">
+			The <code class="literal">org.jboss.resteasy.spi.interception.PostProcessInterceptor</code> runs after the JAX-RS method is invoked but before <code class="literal">MessageBodyWriter</code>s are invoked. They can only be used on the server side, and exist to provide symmetry with <code class="literal">PreProcessInterceptor</code>. They are used to set response headers when there is a possibility that no <code class="literal">MessageBodyWriter</code> will be invoked. They do not wrap any object, and are invoked in order, like <code class="literal">PreProcessInterceptor</code>s.
+		</div><pre class="programlisting">
+    public interface PostProcessInterceptor
+    {
+       void postProcess(ServerResponse response);
+    }
+
+</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ClientExecutionInterceptors">
+      ⁠</a>28.4. ClientExecutionInterceptors</h1></div></div></div><div class="para">
+			<code class="literal">org.jboss.resteasy.spi.interception.ClientExecutionInterceptor</code> classes are client-side only. They run after the <code class="literal">MessageBodyWriter</code>, and after the <code class="literal">ClientRequest</code> has been built on the client side. They wrap the HTTP invocation that is sent to the server. In RESTEasy GZIP support, they set the <code class="literal">Accept</code> header to contain <code class="literal">gzip, deflate</code> before the request is sent. In the RESTEasy client cache, they check that the cache contains a resource before attempting to act on a resource. These interceptors must be annotated with both <code class="literal">@ClientInterceptor</code> and <code class="literal">@Provider</code>.
+		</div><pre class="programlisting">
+    public interface ClientExecutionInterceptor
+    {
+       ClientResponse execute(ClientExecutionContext ctx) throws Exception;
+    }
+
+    public interface ClientExecutionContext
+    {
+       ClientRequest getRequest();
+
+       ClientResponse proceed() throws Exception;
+    }
+
+</pre><div class="para">
+			They work similarly to <code class="literal">MessageBodyReader</code> in that you must call <code class="literal">proceed()</code> or the invocation will be aborted.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="BindingInterceptors">
+      ⁠</a>28.5. Binding Interceptors</h1></div></div></div><div class="para">
+			By default, any registered interceptor will be invoked for every request. You can alter this by having your interceptors implement the <code class="literal">org.jboss.resteasy.spi.AcceptedByMethod</code> interface:
+		</div><pre class="programlisting">
+    public interface AcceptedByMethod
+    {
+       public boolean accept(Class declaring, Method method);
+    }
+
+</pre><div class="para">
+			If your interceptor implements this interface, RESTEasy invokes the <code class="literal">accept()</code> method. If this method returns <code class="literal">true</code>, RESTEasy adds that interceptor to the JAX-RS method's call chain. If it returns <code class="literal">false</code>, the interceptor will not be added to the call chain. For example:
+		</div><pre class="programlisting">
+@Provider
+@ServerInterceptor
+public class MyHeaderDecorator implements MessageBodyWriterInterceptor, AcceptedByMethod {
+
+    public boolean accept(Class declaring, Method method) {
+       return method.isAnnotationPresent(GET.class);
+    }
+
+   public void write(MessageBodyWriterContext context) throws IOException, WebApplicationException
+   {
+      context.getHeaders().add("My-Header", "custom");
+      context.proceed();
+   }
+}
+</pre><div class="para">
+			In this example, the <code class="literal">accept()</code> method checks whether the <code class="literal">@GET</code> annotation exists in the JAX-RS method. If it does, the interceptor will be applied to that method's call chain.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="registering">
+      ⁠</a>28.6. Registering Interceptors</h1></div></div></div><div class="para">
+			When your interceptors are annotated as <code class="literal">@Provider</code>s, they can be listed in the <code class="literal">resteasy.providers context-param</code> in <code class="filename">web.xml</code>, or returned as a class or object in the <code class="literal">Application.getClasses()</code> or <code class="literal">Application.getSingletons()</code> method.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="interceptorPrecedence">
+      ⁠</a>28.7. Interceptor Ordering and Precedence</h1></div></div></div><div class="para">
+			Some interceptors are sensitive to the order in which they are invoked. For example, your security interceptor should always be invoked first. Other interceptors' behavior can be triggered by an interceptor that adds a header. By default, you have no control over the order in which registered interceptors are invoked, but you can specify interceptor <span class="emphasis"><em>precedence</em></span>.
+		</div><div class="para">
+			Interceptor precedence is not specified by listing interceptor classes. Instead, a particular interceptor class is associated with a <span class="emphasis"><em>precedence family</em></span> with the <code class="literal">@org.jboss.resteasy.annotations.interception.Precedence</code> annotation. Specifying precedence through a family structure protects the built-in interceptors that are sensitive to ordering and simplifies configuration.
+		</div><div class="para">
+			The families are listed here in execution order:
+		</div><pre class="programlisting">
+    SECURITY
+    HEADER_DECORATOR
+    ENCODER
+    REDIRECT
+    DECODER
+</pre><div class="para">
+			Any interceptor not associated with a precedence family will be invoked last. <code class="literal">SECURITY</code> usually includes <code class="literal">PreProcessInterceptor</code>s. These should be invoked first so that as little as possible occurs prior to authorization. <code class="literal">HEADER_DECORATOR</code>s are interceptors that add headers to a response or an outgoing request. These are next in precedence because the added headers may affect the behavior of other interceptors. <code class="literal">ENCODER</code> interceptors change the <code class="literal">OutputStream</code>. For example, the GZIP interceptor creates a <code class="literal">GZIPOutputStream</code> to wrap the real <code class="literal">OutputStream</code> for compression. <code class="literal">REDIRECT</code> interceptors are usually used in <code class="literal">PreProcessInterceptor</code>s because they can reroute the request and bypass the JAX-RS method. <code class="literal">DECODER</code> interceptors wrap the <code class="literal">InputStream</code>. For example, the GZIP interceptor decoder wraps the <code class="literal">InputStream</code> in a <code class="literal">GzipInputStream</code> instance.
+		</div><div class="para">
+			To associate your custom interceptors with a particular family, annotate it with <code class="literal">@org.jboss.resteasy.annotations.interception.Precendence annotation</code>.
+		</div><pre class="programlisting">
+@Provider
+@ServerInterceptor
+@ClientInterceptor
+@Precedence("ENCODER")
+public class MyCompressionInterceptor implements MessageBodyWriterInterceptor {...}
+</pre><div class="para">
+			There are convenience annotations in the <code class="literal">org.jboss.resteasy.annotations.interception</code> package to provide complete type safety: <code class="literal">@DecoredPrecedence</code>, <code class="literal">@EncoderPrecedence</code>, <code class="literal">@HeaderDecoratorPrecedence</code>, <code class="literal">@RedirectPrecedence</code>, and <code class="literal">@SecurityPrecedence</code>. Use these instead of the <code class="literal">@Precedence</code> annotation
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="customprecedence">
+      ⁠</a>28.7.1. Custom Precedence</h2></div></div></div><div class="para">
+				You can define your own precedence families and apply them with the <code class="literal">@Precedence</code> annotation.
+			</div><pre class="programlisting">
+ @Provider
+ @ServerInterceptor
+ @Precedence("MY_CUSTOM_PRECEDENCE")
+ public class MyCustomInterceptor implements MessageBodyWriterInterceptor {...}
+</pre><div class="para">
+				You can create your own convenience annotation by using <code class="literal">@Precedence</code> as a meta-annotation.
+			</div><pre class="programlisting">
+@Target({ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Precedence("MY_CUSTOM_PRECEDENCE")
+public @interface MyCustomPrecedence {}
+</pre><div class="para">
+				You must register your custom precedence, or RESTEasy will show an error at deployment time. You can register your custom precendence with the context parameters:
+			</div><pre class="programlisting">
+resteasy.append.interceptor.precedence
+resteasy.interceptor.before.precedence
+resteasy.interceptor.after.precedence</pre><div class="para">
+				<code class="literal">resteasy.append.interceptor.precedence</code> appends the precedence family to the list. <code class="literal">resteasy.interceptor.before.precedence</code> lets you specify a family for your precendence to fall ahead of. <code class="literal">resteasy.interceptor.after.precedence</code> lets you specify a family for your precedence to follow after. For example:
+			</div><pre class="programlisting">
+&lt;web-app&gt;
+    &lt;display-name&gt;Archetype RestEasy Web Application&lt;/display-name&gt;
+
+    &lt;!-- testing configuration --&gt;
+    &lt;context-param&gt;
+        &lt;param-name&gt;resteasy.append.interceptor.precedence&lt;/param-name&gt;
+        &lt;param-value&gt;END&lt;/param-value&gt;
+    &lt;/context-param&gt;
+    &lt;context-param&gt;
+        &lt;param-name&gt;resteasy.interceptor.before.precedence&lt;/param-name&gt;
+        &lt;param-value&gt;ENCODER : BEFORE_ENCODER&lt;/param-value&gt;
+    &lt;/context-param&gt;
+
+    &lt;context-param&gt;
+        &lt;param-name&gt;resteasy.interceptor.after.precedence&lt;/param-name&gt;
+        &lt;param-value&gt;ENCODER : AFTER_ENCODER&lt;/param-value&gt;
+    &lt;/context-param&gt;
+
+    &lt;context-param&gt;
+        &lt;param-name&gt;resteasy.servlet.mapping.prefix&lt;/param-name&gt;
+        &lt;param-value&gt;/test&lt;/param-value&gt;
+    &lt;/context-param&gt;
+
+    &lt;listener&gt;
+        &lt;listener-class&gt;org.jboss.resteasy.plugins.server.servlet.ResteasyBootstrap&lt;/listener-class&gt;
+    &lt;/listener&gt;
+
+    &lt;servlet&gt;
+        &lt;servlet-name&gt;Resteasy&lt;/servlet-name&gt;
+        &lt;servlet-class&gt;org.jboss.resteasy.plugins.server.servlet.HttpServletDispatcher&lt;/servlet-class&gt;
+    &lt;/servlet&gt;
+
+    &lt;servlet-mapping&gt;
+        &lt;servlet-name&gt;Resteasy&lt;/servlet-name&gt;
+        &lt;url-pattern&gt;/test/*&lt;/url-pattern&gt;
+    &lt;/servlet-mapping&gt;
+
+&lt;/web-app&gt;
+</pre><div class="para">
+				In this <code class="filename">web.xml</code> file, we have defined three new precedence families: <code class="literal">END</code>, <code class="literal">BEFORE_ENCODER</code>, and <code class="literal">AFTER_ENCODER</code>. With this configuration, the family order would look like this:
+			</div><pre class="programlisting">
+SECURITY
+HEADER_DECORATOR
+BEFORE_ENCODER
+ENCODER
+AFTER_ENCODER
+REDIRECT
+DECODER
+END
+</pre></div></div></div></body></html>

@@ -1,0 +1,439 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 15. Securing the EJB RMI transport layer</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="chap-Secure_Socket_Layer">
+      ⁠</a>Chapter 15. Securing the EJB RMI transport layer</h1></div></div></div><div class="para">
+		JBoss Application Server uses a socket-based invoker layer for Remote Method Invocation (RMI) of EJB2 and EJB3 Beans. This network traffic is not encrypted by default. Follow the instructions in this chapter to use Secure Sockets Layer (SSL) to encrypt this network traffic.
+	</div><div class="para"><div xmlns:d="http://docbook.org/ns/docbook" class="title">Transport options for EJB3 via SSL</div>
+			This chapter describes configuration of two different arrangements for Remote Method Invocation of EJB3s over an encrypted transport: RMI + SSL and RMI via HTTPS. HTTPS is an option as the transport for RMI when firewall configuration prevents use of the RMI ports.
+		</div><div class="para">
+		Generating a key pair for SSL is covered in <a class="xref" href="chap-Secure_Socket_Layer.html#sect-generate-keys-and-cert">Section 15.2, “Generate encryption keys and certificate”</a> .
+	</div><div class="para">
+		Configuring RMI + SSL for EJB3 is covered in <a class="xref" href="chap-Secure_Socket_Layer.html#RMI_SSL_EJB3">Section 15.3, “EJB3 RMI + SSL Configuration”</a> .
+	</div><div class="para">
+		Configuring RMI via HTTPS for EJB3 is covered in <a class="xref" href="chap-Secure_Socket_Layer.html#EJB3_RMI_HTTPS">Section 15.4, “EJB3 RMI via HTTPS Configuration”</a> .
+	</div><div class="para">
+		Configuring RMI + SLL for EJB2 is covered in <a class="xref" href="chap-Secure_Socket_Layer.html#EJB2_SSL">Section 15.5, “EJB2 RMI + SSL Configuration”</a> .
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-keystore-background">
+      ⁠</a>15.1. SSL Encryption overview</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-keypairs_and_certificates">
+      ⁠</a>15.1.1. Key pairs and Certificates</h2></div></div></div><div class="para">
+				Secure Sockets Layer (SSL) encrypts network traffic between two systems. Traffic between the two systems is encrypted using a two-way key, generated during the <em class="firstterm"> handshake </em> phase of the connection and known only by those two systems.
+			</div><div class="para">
+				For secure exchange of the two-way encryption key, SSL makes use of Public Key Infrastructure (PKI), a method of encryption that utilizes a <em class="firstterm"> key pair </em> . A key pair consists of two separate but matching cryptographic keys - a public key and a private key. The public key is shared with others and is used to encrypt data, and the private key is kept secret and is used to decrypt data that has been encrypted using the public key.
+			</div><div class="para">
+				When a client requests a secure connection, a handshake phase takes place before secure communication can begin. During the SSL handshake the server passes its public key to the client in the form of a certificate. The certificate contains the identity of the server (its URL), the public key of the server, and a digital signature that validates the certificate. The client then validates the certificate and makes a decision about whether the certificate is trusted or not. If the certificate is trusted, the client generates the two-way encryption key for the SSL connection, encrypts it using the public key of the server, and sends it back to the server. The server decrypts the two-way encryption key, using its private key, and further communication between the two machines over this connection is encrypted using the two-way encryption key.
+			</div><div class="para">
+				On the server, public/private key pairs are stored in a <em class="firstterm"> key store </em> , an encrypted file that stores key pairs and trusted certificates. Each key pair within the key store is identified by an <em class="firstterm"> alias </em> - a unique name that is used when storing or requesting a key pair from the key store. The public key is distributed to clients in the form of a <em class="firstterm"> certificate </em> , a digital signature which binds together a public key and an identity. On the client, certificates of known validity are kept in the default key store known as a <em class="firstterm"> trust store </em> .
+			</div><div class="para"><div xmlns:d="http://docbook.org/ns/docbook" class="title">CA-signed and self-signed certificates</div>
+					Public Key Infrastructure relies on a chain of trust to establish the credentials of unknown machines. The use of public keys not only encrypts traffic between machines, but also functions to establish the identity of the machine at the other end of a network connection. A "Web of Trust" is used to verify the identity of servers. A server may be unknown to you, but if its public key is signed by someone that you trust, you extend that trust to the server. Certificate Authorities are commercial entities who verify the identity of customers and issue them signed certificates. The JDK includes a <code class="filename">cacerts</code> file with the certificates of several trusted Certificate Authorities (CAs). Any keys signed by these CAs are automatically trusted. Large organizations may have their own internal Certificate Authority, for example using Red Hat Certificate System. In this case the signing certificate of the internal Certificate Authority is typically installed on clients as part of a Corporate Standard Build, and then all certificates signed with that certificate are trusted. CA-signed certificates are best practice for production scenarios.
+				</div><div class="para">
+				During development and testing, or for small-scale or internal-only production scenarios, you may use a <em class="firstterm"> self-signed certificate </em> . This is certificate that is not signed by a Certificate Authority, but rather with a locally generated certificate. Since a locally generated certificate is not in the <code class="filename">cacerts</code> file of clients, you need to export a certificate for that key on the server, and import that certificate on any client that connects via SSL.
+			</div><div class="para">
+				The JDK includes <code class="filename">keytool</code> , a command line tool for generating key pairs and certificates. The certificates generated by <code class="filename">keytool</code> can be sent for signing by a CA or can be distributed to clients as a self-signed certificate.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						Generating a self-signed certificate for development use and importing that certificate to a client is described in <a class="xref" href="chap-Secure_Socket_Layer.html#sect-generate-self-signed-cert">Section 15.2.1, “Generate a self-signed certificate with keytool”</a> .
+					</div></li><li class="listitem"><div class="para">
+						Generating a certificate and having it signed by a CA for production use is beyond the scope of this edition. Refer to the <span class="emphasis"><em>man page</em></span> for keytool for further information on performing this task.
+					</div></li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-generate-keys-and-cert">
+      ⁠</a>15.2. Generate encryption keys and certificate</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-generate-self-signed-cert">
+      ⁠</a>15.2.1. Generate a self-signed certificate with keytool</h2></div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="idm139921696448160">
+      ⁠</a>15.2.1.1. Generate a key pair</h3></div></div></div><div class="para">
+					The <span class="application"><strong>keytool</strong></span> command, part of the JDK, is used to generate a new key pair. Keytool can either add the new key pair to an existing key store, or create a new key store at the same time as the key pair.
+				</div><div class="para">
+					This key pair will be used to negotiate SSL encryption between the server and remote clients. The following procedure generates a key pair and stores it in a key store called <code class="filename">localhost.keystore</code> . You will need to make this key store available to the EJB3 invoker on the server. The key pair in our example will be saved in the key store under the alias 'ejb-ssl'. We will need this key alias, and the key pair password you supply (if any), when configuring the EJB3 Remoting connector in <a class="xref" href="chap-Secure_Socket_Layer.html#sect-create-ejb3-remoting-connector">Create a secure remoting connector for RMI</a> .
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><a id="proc-generate-new-key-pair">
+      ⁠</a><p class="title"><strong>Procedure 15.1. Generate a new key pair and add it to the key store "localhost.keystore" in the <code class="filename">conf</code> directory.</strong></p><div class="para">
+						This procedure generates a new key pair for SSL encryption.
+					</div><ul><li class="step"><div class="para">
+							The following command will create a key pair for use with SSL encryption:
+						</div><pre class="programlisting">keytool -genkey -alias ejb-ssl -keystore localhost.keystore -storepass <em class="replaceable">KEYSTORE_PASSWORD</em>
+  -keypass <em class="replaceable">EJB-SSL_KEYPAIR_PASSWORD</em>
+  -dname "CN=<em class="replaceable">SERVER_NAME</em>,OU=QE,O=<em class="replaceable">example.com</em>,L=<em class="replaceable">Brno</em>,C=<em class="replaceable">CZ</em>"</pre><div class="para"><div class="title">Result:</div>
+								A key pair will be added to the key store <code class="filename">localhost.keystore</code> under the alias <code class="literal">ejb-ssl</code> .
+							</div><div class="para">
+							The parameters for this command are explained in <a class="xref" href="chap-Secure_Socket_Layer.html#keytool_params"><code class="command">keytool</code> parameters</a>
+						</div></li></ul></div><div class="variablelist"><a id="keytool_params">
+      ⁠</a><p class="title"><strong><code class="command">keytool</code> parameters</strong></p><dl class="variablelist"><dt><span class="term">alias</span></dt><dd><div class="para">
+								An alphanumeric token used to identify the key pair within the key store. A key store can contain multiple keys. The alias provides a means to uniquely identify a key pair within a key store. The alias for a key pair must by unique within a key store.
+							</div></dd><dt><span class="term">keystore</span></dt><dd><div class="para">
+								The key store that will be used to store the key pair. This can be a relative or absolute file path.
+							</div></dd><dt><span class="term">storepass</span></dt><dd><div class="para">
+								The password for key store. If the key store already exists, this must be the existing password for the key store. If the key store specified does not already exist, it will be created and this password will be the new password. This password is needed to access the key store to retrieve or store keys and certificates.
+							</div></dd><dt><span class="term">keypass</span></dt><dd><div class="para">
+								The password for the new key pair. This password must be supplied to use the key pair in the future.
+							</div></dd><dt><span class="term">dname</span></dt><dd><div class="para">
+								The identifying details of the certificate.
+							</div></dd><dt><span class="term">CN</span></dt><dd><div class="para">
+								Common Name: the name of the server. This must match the server name as returned to clients in a JNDI lookup. If a client attempts to make an SSL connection to the server using one name from JNDI, and receives a certificate with a different name, the connection will fail.
+							</div></dd><dt><span class="term">OU</span></dt><dd><div class="para">
+								Organizational Unit: the name of the organizational unit that is responsible for the server.
+							</div></dd><dt><span class="term">O</span></dt><dd><div class="para">
+								Organization: The name of the organization, sometimes expressed as a URL.
+							</div></dd><dt><span class="term">L</span></dt><dd><div class="para">
+								Location: the location of the server.
+							</div></dd><dt><span class="term">C</span></dt><dd><div class="para">
+								Country: two letter country code
+							</div></dd></dl></div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+						For best security practice, store key store files on a secure file system, readable only by the owner of the JBoss Application Server process.
+					</div></div></div><div class="para">
+					Note that if no key store is specified on the command line, <code class="command">keytool</code> adds the key pair to a new key store called <code class="filename">keystore</code> in the current user's home directory. This key store file is a hidden file.
+				</div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="sect-export-self-signed-cert">
+      ⁠</a>15.2.1.2. Export a self-signed certificate</h3></div></div></div><div class="para">
+					Once a key pair has been generated for the server to use, a certificate must be created. <a class="xref" href="chap-Secure_Socket_Layer.html#proc-export-self-signed-cert">Procedure 15.2, “Export a certificate”</a> details the steps to export the <code class="filename">ejb-ssl</code> key from the key store named <code class="filename">localhost.keystore</code> .
+				</div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><a id="proc-export-self-signed-cert">
+      ⁠</a><p class="title"><strong>Procedure 15.2. Export a certificate</strong></p><div class="para">
+						This procedure exports a certificate from a key store into a file.
+					</div><ol class="1"><li class="step"><div class="para">
+							Issue the following command:
+						</div><pre class="screen"><code class="command">keytool -export -alias ejb-ssl -file mycert.cer -keystore localhost.keystore</code></pre></li><li class="step"><div class="para">
+							Enter the key store password
+						</div><div class="para"><div class="title">Result:</div>
+								A certificate is exported to the file <code class="filename">mycert.cer</code> .
+							</div></li></ol></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139921628690544">
+      ⁠</a>15.2.2. Configure a client to accept a self-signed server certificate</h2></div></div></div><div class="para">
+				To make remote method invocations over SSL, a client needs to trust the certificate of the server. The certificate we generated is self-signed and does not have a chain of trust to a known certificate authority. With a self-signed certificate the client must be explicitly configured to trust the certificate; otherwise the connection fails. To configure a client to trust a self-signed certificate, import the self-signed server certificate to a <em class="firstterm"> trust store </em> on the client.
+			</div><div class="para">
+				A trust store is a key store that contains trusted certificates. Certificates that are in the local trust store are accepted as valid. If your server uses a self-signed certificate then any client that makes remote method calls over SSL requires that certificate in its trust store. Export your public key as a certificate, and then import that certificate to the trust store on those clients.
+			</div><div class="para">
+				The certificate created in <a class="xref" href="chap-Secure_Socket_Layer.html#sect-export-self-signed-cert">Section 15.2.1.2, “Export a self-signed certificate”</a> must be copied to the client in order to perform the steps detailed in <a class="xref" href="chap-Secure_Socket_Layer.html#import-cert-to-trust-store">Procedure 15.3, “Import the certificate to the trust store "localhost.truststore"”</a> .
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><a id="import-cert-to-trust-store">
+      ⁠</a><p class="title"><strong>Procedure 15.3. Import the certificate to the trust store "localhost.truststore"</strong></p><div class="para">
+					This procedure imports a certificate that was previously exported on a server to the trust store on a client.
+				</div><ol class="1"><li class="step"><div class="para">
+						Issue the following command on the client:
+					</div><pre class="screen"><code class="command">keytool -import -alias ejb-ssl -file mycert.cer -keystore localhost.truststore</code></pre></li><li class="step"><div class="para">
+						Enter the password for this trust store if it already exists; otherwise enter and re-enter the password for a new trust store.
+					</div></li><li class="step"><div class="para">
+						Verify the details of the certificate. If it is the correct one, type 'yes' to import it to the trust store.
+					</div><div class="para"><div class="title">Result:</div>
+							The certificate is imported to the trust store, and a secure connection can now be established with a server that uses this certificate.
+						</div></li></ol></div><div class="para">
+				As with the key store, if the trust store specified does not already exist, it is created. However, in contrast with the key store, there is no default trust store and the command fails if one is not specified.
+			</div><div class="para"><div xmlns:d="http://docbook.org/ns/docbook" class="title">Configure Client to use localhost.truststore</div>
+					Now that you have imported the self-signed server certificate to a trust store on the client, you must instruct the client to use this trust store. Do this by passing the <code class="filename">localhost.truststore</code> location to the application using the <code class="classname">javax.net.ssl.trustStore</code> property, and the trust store password using the <code class="classname">javax.net.ssl.trustStorePassword</code> property. <a class="xref" href="chap-Secure_Socket_Layer.html#ex-Invoke-with-trust-store">Example 15.1, “Invoking the com.acme.Runclient application with a specific trust store”</a> is an example command that invokes the application <span class="application"><strong>com.acme.RunClient</strong></span> , a hypothetical application that makes remote method calls to an EJB on a JBoss Application Server. This command is run from the root of the application's package directory (the directory containing <code class="filename">com</code> directory in the file path <code class="filename">com/acme/RunClient.class</code> ).
+				</div><div class="example"><a id="ex-Invoke-with-trust-store">
+      ⁠</a><p class="title"><strong>Example 15.1. Invoking the com.acme.Runclient application with a specific trust store</strong></p><div class="example-contents"><pre class="screen">java -cp <em class="replaceable">$JBOSS_HOME</em>/client/jbossall-client.jar:. -Djavax.net.ssl.trustStore=${resources}/localhost.truststore \
+    -Djavax.net.ssl.trustStorePassword=<em class="replaceable">TRUSTSTORE_PASSWORD</em> com.acme.RunClient</pre></div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="RMI_SSL_EJB3">
+      ⁠</a>15.3. EJB3 RMI + SSL Configuration</h1></div></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><a id="idm139921694746592">
+      ⁠</a><p class="title"><strong>Procedure 15.4. Configure RMI + SSL for EJB3 Overview</strong></p><div class="para">
+				This procedure configures SSL encryption of Remote Method Invocation traffic between EJB3 beans on the server and a fat client running on another machine on the network.
+			</div><ol class="1"><li class="step"><div class="para">
+					Generate encryption keys and certificate
+				</div></li><li class="step"><div class="para">
+					Configure a secure remote connector for RMI
+				</div></li><li class="step"><div class="para">
+					Annotate EJB3 beans to use the secure RMI connector
+				</div></li></ol></div><div class="para">
+			Generating encryption keys and certificates is covered in <a class="xref" href="chap-Secure_Socket_Layer.html#sect-generate-keys-and-cert">Section 15.2, “Generate encryption keys and certificate”</a> .
+		</div><div class="para"><a id="sect-create-ejb3-remoting-connector">
+      ⁠</a><div xmlns:d="http://docbook.org/ns/docbook" class="title">Create a secure remoting connector for RMI</div>
+				The file <code class="filename">ejb3-connectors-jboss-beans.xml </code> in a JBoss Application Server profile <code class="filename">deploy</code> directory contains JBoss Remoting connector definitions for EJB3 remote method invocation.
+			</div><div class="example"><a id="example-ejb3-remoting-connector">
+      ⁠</a><p class="title"><strong>Example 15.2. Sample Secure EJB3 Connector</strong></p><div class="example-contents"><div class="para">
+				The beans described in the code sample are appended to the <code class="filename">ejb3-connectors-jboss-beans.xml</code> file. Both beans are required to configure a secure connector for EJB3 using the key pair created in <a class="xref" href="chap-Secure_Socket_Layer.html#proc-generate-new-key-pair">Procedure 15.1, “Generate a new key pair and add it to the key store "localhost.keystore" in the <code class="filename">conf</code> directory.”</a>.
+			</div><div class="para">
+				The <code class="classname">keyPassword</code> property in the sample configuration is the key pair password specified when the key pair was created.
+			</div><div class="para">
+				The sample configuration creates a connector that listens for SSL connections on port 3843. This port needs to be open on the server firewall for access by clients.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>&lt;bean name=<span xmlns="" class="perl_String">"EJB3SSLRemotingConnector"</span> <span xmlns="" class="perl_Keyword">class</span>=<span xmlns="" class="perl_String">"org.jboss.remoting.transport.Connector"</span>&gt;
+<span xmlns="" class="line">​</span>	&lt;property name=<span xmlns="" class="perl_String">"invokerLocator"</span>&gt;sslsocket:<span xmlns="" class="perl_Comment">//${jboss.bind.address}:3843&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>	&lt;property name=<span xmlns="" class="perl_String">"serverConfiguration"</span>&gt;
+<span xmlns="" class="line">​</span>		&lt;inject bean=<span xmlns="" class="perl_String">"ServerConfiguration"</span> /&gt;
+<span xmlns="" class="line">​</span>	&lt;/property&gt;
+<span xmlns="" class="line">​</span>	&lt;property name=<span xmlns="" class="perl_String">"serverSocketFactory"</span>&gt;
+<span xmlns="" class="line">​</span>		&lt;inject bean=<span xmlns="" class="perl_String">"sslServerSocketFactory"</span> /&gt;
+<span xmlns="" class="line">​</span>	&lt;/property&gt;
+<span xmlns="" class="line">​</span>&lt;/bean&gt;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>&lt;bean name=<span xmlns="" class="perl_String">"sslServerSocketFactory"</span> <span xmlns="" class="perl_Keyword">class</span>=<span xmlns="" class="perl_String">"org.jboss.security.ssl.DomainServerSocketFactory"</span>&gt;
+<span xmlns="" class="line">​</span>	 &lt;constructor&gt;
+<span xmlns="" class="line">​</span>			&lt;parameter&gt;&lt;inject bean=<span xmlns="" class="perl_String">"EJB3SSLDomain"</span>/&gt;&lt;/parameter&gt;
+<span xmlns="" class="line">​</span>	 &lt;/constructor&gt;
+<span xmlns="" class="line">​</span>&lt;/bean&gt;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>&lt;bean name=<span xmlns="" class="perl_String">"EJB3SSLDomain"</span> <span xmlns="" class="perl_Keyword">class</span>=<span xmlns="" class="perl_String">"org.jboss.security.plugins.JaasSecurityDomain"</span>&gt;
+<span xmlns="" class="line">​</span>	 &lt;constructor&gt;
+<span xmlns="" class="line">​</span>			&lt;parameter&gt;EJB3SSLDomain&lt;/parameter&gt;
+<span xmlns="" class="line">​</span>	 &lt;/constructor&gt;
+<span xmlns="" class="line">​</span>	 &lt;property name=<span xmlns="" class="perl_String">"keyStoreURL"</span>&gt;resource:localhost.<span xmlns="" class="perl_Function">keystore</span>&lt;/property&gt;
+<span xmlns="" class="line">​</span>	 &lt;property name=<span xmlns="" class="perl_String">"keyStorePass"</span>&gt;KEYSTORE_PASSWORD&lt;/property&gt;
+<span xmlns="" class="line">​</span>&lt;/bean&gt;</pre></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Multiple Key Pairs in the Key Store</strong></p></div><div class="admonition"><div class="para">
+				The key store (<code class="literal">localhost.keystore</code>) may contain multiple key pairs. The EJB connector will use the key pair with the defined <span class="property">keyAlias</span> (<code class="literal">ejb-ssl</code>).
+			</div></div></div><div class="para"><div xmlns:d="http://docbook.org/ns/docbook" class="title">Configure EJB3 Beans for SSL Transport</div>
+				All EJB3 beans use the unsecured RMI connector by default. To enable remote invocation of a bean via SSL, annotate the bean with <code class="classname">@org.jboss.annotation.ejb.RemoteBinding</code> .
+			</div><div class="example"><a id="example-ejb3-annotation">
+      ⁠</a><p class="title"><strong>Example 15.3. EJB3 bean annotation to enable secure remote invocation</strong></p><div class="example-contents"><div class="para">
+				The annotation binds an EJB3 bean to the JNDI name <code class="classname">StatefulSSL</code> . The proxy implementing the remote interface, returned to a client when the bean is requested from JNDI, communicates with the server via SSL.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">RemoteBinding</span>(clientBindUrl=<span xmlns="" class="perl_String">"sslsocket://0.0.0.0:3843"</span>, jndiBinding=<span xmlns="" class="perl_String">"StatefulSSL"</span>)
+<span xmlns="" class="line">​</span>  @<span xmlns="" class="perl_Function">Remote</span>(BusinessInterface.<span xmlns="" class="perl_Function">class</span>)
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> StatefulBean <span xmlns="" class="perl_Keyword">implements</span> BusinessInterface
+<span xmlns="" class="line">​</span>  {
+<span xmlns="" class="line">​</span>     ...
+<span xmlns="" class="line">​</span>  }</pre></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+				In <a class="xref" href="chap-Secure_Socket_Layer.html#example-ejb3-annotation">Example 15.3, “EJB3 bean annotation to enable secure remote invocation”</a> the IP address is specified as 0.0.0.0, meaning "all interfaces". Change this to the value of the ${jboss.bind.address} system property.
+			</div></div></div><div class="para"><div xmlns:d="http://docbook.org/ns/docbook" class="title">Enabling both secure and insecure invocation of an EJB3 bean</div>
+				You can enable both secure and insecure remote method invocation of the same EJB3 bean. <a class="xref" href="chap-Secure_Socket_Layer.html#example-secure-and-insecure-ejb3-annotation">Example 15.4, “EJB3 Bean annotation for secure and unsecured invocation”</a> demonstrates the annotations to do this.
+			</div><div class="example"><a id="example-secure-and-insecure-ejb3-annotation">
+      ⁠</a><p class="title"><strong>Example 15.4. EJB3 Bean annotation for secure and unsecured invocation</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span> @<span xmlns="" class="perl_Function">RemoteBindings</span>({
+<span xmlns="" class="line">​</span>     @<span xmlns="" class="perl_Function">RemoteBinding</span>(clientBindUrl=<span xmlns="" class="perl_String">"sslsocket://0.0.0.0:3843"</span>, jndiBinding=<span xmlns="" class="perl_String">"StatefulSSL"</span>)
+<span xmlns="" class="line">​</span>     @<span xmlns="" class="perl_Function">RemoteBinding</span>(jndiBinding=<span xmlns="" class="perl_String">"StatefulNormal"</span>)
+<span xmlns="" class="line">​</span>  })
+<span xmlns="" class="line">​</span>  @<span xmlns="" class="perl_Function">Remote</span>(BusinessInterface.<span xmlns="" class="perl_Function">class</span>)
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> StatefulBean <span xmlns="" class="perl_Keyword">implements</span> BusinessInterface
+<span xmlns="" class="line">​</span>  {
+<span xmlns="" class="line">​</span>     ...
+<span xmlns="" class="line">​</span>  }
+</pre></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+				In <a class="xref" href="chap-Secure_Socket_Layer.html#example-secure-and-insecure-ejb3-annotation">Example 15.4, “EJB3 Bean annotation for secure and unsecured invocation”</a>, the IP address is specified as <code class="literal">0.0.0.0</code>, meaning "all interfaces". Change this to the value of the ${jboss.bind.address} system property.
+			</div></div></div><div class="para">
+			If a client requests <code class="classname">StatefulNormal</code> from JNDI, the returned proxy implementing the remote interface communicates with the server via the unencrypted socket protocol; and if <code class="classname">StatefulSSL</code> is requested, the returned proxy implementing the remote interface communicates with the server via SSL.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="EJB3_RMI_HTTPS">
+      ⁠</a>15.4. EJB3 RMI via HTTPS Configuration</h1></div></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><a id="idm139921668445200">
+      ⁠</a><p class="title"><strong>Procedure 15.5. Configure EJB3 RMI via HTTPS Overview</strong></p><div class="para">
+				This procedure configures tunneling of Remote Method Invocation traffic over SSL-encrypted HTTP. This has the dual effect of encrypting the traffic and allowing it to traverse firewalls that block the RMI port.
+			</div><ol class="1"><li class="step"><div class="para">
+					Generate encryption keys and certificates.
+				</div></li><li class="step"><div class="para">
+					Configure RMI via HTTPS web connector.
+				</div></li><li class="step"><div class="para">
+					Configure Servlets.
+				</div></li><li class="step"><div class="para">
+					Configure secure remoting connector for RMI via HTTPS.
+				</div></li><li class="step"><div class="para">
+					Configure EJB3 beans for HTTPS transport.
+				</div></li><li class="step"><div class="para">
+					Configure clients for RMI via HTTPS.
+				</div></li></ol></div><div class="para">
+			Generating encryption keys and certificates is covered in <a class="xref" href="chap-Secure_Socket_Layer.html#sect-generate-keys-and-cert">Section 15.2, “Generate encryption keys and certificate”</a> .
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><a id="idm139921669133376">
+      ⁠</a><p class="title"><strong>Procedure 15.6. Configure RMI via HTTPS web connector</strong></p><div class="para">
+				This procedure creates a web connector that listens on port 8443 and accepts SSL connections from clients.
+			</div><ul><li class="step"><div class="para">
+					Edit the file <code class="filename">jboss-as/server/<em class="replaceable">$PROFILE</em>/deploy/jbossweb.sar/server.xml</code> and uncomment the HTTPS connector.
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- SSL/TLS Connector configuration using the admin devl guide keystore --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;Connector</span><span xmlns="" class="perl_Others"> protocol=</span><span xmlns="" class="perl_String">"HTTP/1.1"</span><span xmlns="" class="perl_Others"> SSLEnabled=</span><span xmlns="" class="perl_String">"true"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">   port=</span><span xmlns="" class="perl_String">"8443"</span><span xmlns="" class="perl_Others"> address=</span><span xmlns="" class="perl_String">"${jboss.bind.address}"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">   scheme=</span><span xmlns="" class="perl_String">"https"</span><span xmlns="" class="perl_Others"> secure=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Others"> clientAuth=</span><span xmlns="" class="perl_String">"false"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">   keystoreFile=</span><span xmlns="" class="perl_String">"${jboss.server.home.dir}/conf/localhost.keystore"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">   keystorePass=</span><span xmlns="" class="perl_String">"KEYSTORE_PASSWORD"</span><span xmlns="" class="perl_Others"> sslProtocol</span> <span xmlns="" class="perl_Others">=</span> <span xmlns="" class="perl_String">"TLS"</span> <span xmlns="" class="perl_Keyword">/&gt;</span></pre></li></ul></div><div class="para"><div xmlns:d="http://docbook.org/ns/docbook" class="title">Result:</div>
+				You create a web connector to accept SSL connections.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><a id="idm139921673269152">
+      ⁠</a><p class="title"><strong>Procedure 15.7. Configure Servlets</strong></p><div class="para">
+				This procedure configures a servlet that passes requests from the web connector to the <code class="classname">ServletServerInvoker</code> .
+			</div><ol class="1"><li class="step"><div class="para">
+					Create a directory named <code class="filename">servlet-invoker.war</code> in <code class="filename">jboss-as/server/<em class="replaceable">$PROFILE</em>/deploy/</code>.
+				</div></li><li class="step"><div class="para">
+					Create a <code class="filename">WEB-INF</code> directory in the <code class="filename">servlet-invoker.war</code> directory.
+				</div></li><li class="step"><div class="para">
+					Create a file named <code class="filename">web.xml</code> in that <code class="filename">WEB-INF</code> directory, with the following content:
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;?xml</span> version="1.0" encoding="UTF-8"<span xmlns="" class="perl_Keyword">?&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_DataType">&lt;!DOCTYPE </span>web-app PUBLIC
+<span xmlns="" class="line">​</span>   "-//Sun Microsystems, Inc.//DTD Web Application 2.3//EN"
+<span xmlns="" class="line">​</span>   "http://java.sun.com/dtd/web-app_2_3.dtd"<span xmlns="" class="perl_DataType">&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;web-app&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;servlet&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;servlet-name&gt;</span>ServerInvokerServlet<span xmlns="" class="perl_Keyword">&lt;/servlet-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;description&gt;</span>The ServerInvokerServlet receives requests via HTTP
+<span xmlns="" class="line">​</span>           protocol from within a web container and passes it onto the
+<span xmlns="" class="line">​</span>           ServletServerInvoker for processing.
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/description&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;servlet-class&gt;</span>org.jboss.remoting.transport.servlet.web.ServerInvokerServlet<span xmlns="" class="perl_Keyword">&lt;/servlet-class&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;init-param&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;param-name&gt;</span>locatorUrl<span xmlns="" class="perl_Keyword">&lt;/param-name&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;param-value&gt;</span>servlet://${jboss.bind.address}:8080/servlet-invoker/ServerInvokerServlet<span xmlns="" class="perl_Keyword">&lt;/param-value&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;description&gt;</span>The servlet server invoker<span xmlns="" class="perl_Keyword">&lt;/description&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/init-param&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;load-on-startup&gt;</span>1<span xmlns="" class="perl_Keyword">&lt;/load-on-startup&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/servlet&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;servlet&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;servlet-name&gt;</span>SSLServerInvokerServlet<span xmlns="" class="perl_Keyword">&lt;/servlet-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;description&gt;</span>The ServerInvokerServlet receives requests via HTTPS
+<span xmlns="" class="line">​</span>           protocol from within a web container and passes it onto the
+<span xmlns="" class="line">​</span>           ServletServerInvoker for processing.
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/description&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;servlet-class&gt;</span>org.jboss.remoting.transport.servlet.web.ServerInvokerServlet<span xmlns="" class="perl_Keyword">&lt;/servlet-class&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;init-param&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;param-name&gt;</span>locatorUrl<span xmlns="" class="perl_Keyword">&lt;/param-name&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;param-value&gt;</span>sslservlet://${jboss.bind.address}:8443/servlet-invoker/SSLServerInvokerServlet<span xmlns="" class="perl_Keyword">&lt;/param-value&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;description&gt;</span>The servlet server invoker<span xmlns="" class="perl_Keyword">&lt;/description&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/init-param&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;load-on-startup&gt;</span>2<span xmlns="" class="perl_Keyword">&lt;/load-on-startup&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/servlet&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;servlet-mapping&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;servlet-name&gt;</span>ServerInvokerServlet<span xmlns="" class="perl_Keyword">&lt;/servlet-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;url-pattern&gt;</span>/ServerInvokerServlet/*<span xmlns="" class="perl_Keyword">&lt;/url-pattern&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/servlet-mapping&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;servlet-mapping&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;servlet-name&gt;</span>SSLServerInvokerServlet<span xmlns="" class="perl_Keyword">&lt;/servlet-name&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;url-pattern&gt;</span>/SSLServerInvokerServlet/*<span xmlns="" class="perl_Keyword">&lt;/url-pattern&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/servlet-mapping&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/web-app&gt;</span></pre><div class="para"><div class="title">Result:</div>
+						You create a servlet to forward SSL requests from the web container to a server invoker.
+					</div></li></ol></div><div class="para">
+			The <code class="classname">locatorUrl</code> is used to connect the servlet to the remoting connector through the " <code class="classname">InvokerLocator</code> attribute of the remoting connector we define in <a class="xref" href="chap-Secure_Socket_Layer.html#remote_connector_RMI_HTTPS">Procedure 15.8, “Configure secure remoting connector for RMI via HTTPS”</a> .
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><a id="remote_connector_RMI_HTTPS">
+      ⁠</a><p class="title"><strong>Procedure 15.8. Configure secure remoting connector for RMI via HTTPS</strong></p><div class="para">
+				This procedure creates the Server Invoker that implements RMI.
+			</div><ul><li class="step"><div class="para">
+					Create a file named <code class="filename">servlet-invoker-service.xml</code> in <code class="filename">jboss-as/server/<em class="replaceable">$PROFILE</em>/deploy/</code>, with the following content:
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;?xml</span> version="1.0" encoding="UTF-8"<span xmlns="" class="perl_Keyword">?&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;server&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;mbean</span><span xmlns="" class="perl_Others"> code=</span><span xmlns="" class="perl_String">"org.jboss.remoting.transport.Connector"</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"jboss.remoting:service=connector,transport=servlet"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">    display-name=</span><span xmlns="" class="perl_String">"Servlet transport Connector"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"InvokerLocator"</span><span xmlns="" class="perl_Keyword">&gt;</span>servlet://${jboss.bind.address}:8080/servlet-invoker/ServerInvokerServlet<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"Configuration"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;handlers&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;handler</span><span xmlns="" class="perl_Others"> subsystem=</span><span xmlns="" class="perl_String">"AOP"</span><span xmlns="" class="perl_Keyword">&gt;</span>org.jboss.aspects.remoting.AOPRemotingInvocationHandler<span xmlns="" class="perl_Keyword">&lt;/handler&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;/handlers&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/mbean&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;mbean</span><span xmlns="" class="perl_Others"> code=</span><span xmlns="" class="perl_String">"org.jboss.remoting.transport.Connector"</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"jboss.remoting:service=connector,transport=sslservlet"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">    display-name=</span><span xmlns="" class="perl_String">"Servlet transport Connector"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"InvokerLocator"</span><span xmlns="" class="perl_Keyword">&gt;</span>sslservlet://${jboss.bind.address}:8443/servlet-invoker/SSLServerInvokerServlet<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"Configuration"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;handlers&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;handler</span><span xmlns="" class="perl_Others"> subsystem=</span><span xmlns="" class="perl_String">"AOP"</span><span xmlns="" class="perl_Keyword">&gt;</span>org.jboss.aspects.remoting.AOPRemotingInvocationHandler<span xmlns="" class="perl_Keyword">&lt;/handler&gt;</span>
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;/handlers&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/mbean&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/server&gt;</span></pre></li></ul></div><div class="para"><div xmlns:d="http://docbook.org/ns/docbook" class="title">Result:</div>
+				You create a remoting connector that can receive requests from a servlet, and invoke methods of an EJB3.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><a id="idm139921659713712">
+      ⁠</a><p class="title"><strong>Procedure 15.9. Configure EJB3 beans for HTTPS transport</strong></p><div class="para">
+				This procedure configures the EJB3 to bind to the HTTPS transport.
+			</div><ul><li class="step"><div class="para">
+					Annotate the bean for RMI via HTTPS:
+				</div><div class="example"><a id="idm139921672563920">
+      ⁠</a><p class="title"><strong>Example 15.5. Annotating an EJB3 for RMI via HTTPS</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// RMI tunneled over HTTPS</span>
+<span xmlns="" class="line">​</span>@Stateless
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">RemoteBinding</span>(clientBindUrl = <span xmlns="" class="perl_String">"https://0.0.0.0:8443/servlet-invoker/SSLServerInvokerServlet"</span>)
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Remote</span>(Calculator.<span xmlns="" class="perl_Function">class</span>)
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">SecurityDomain</span>(<span xmlns="" class="perl_String">"other"</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> CalculatorHttpsBean <span xmlns="" class="perl_Keyword">implements</span> Calculator
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>....</pre></div></div><div class="para"><div class="title">Result:</div>
+						The EJB3 is now available for remote invocation via HTTPS.
+					</div></li></ul></div><div class="para"><div xmlns:d="http://docbook.org/ns/docbook" class="title">Annotating a bean for RMI via HTTP</div>
+				Optionally, you can annotate the bean for invocation via RMI via HTTP. This can be useful for testing, as it allows you to tunnel RMI calls through firewalls that block RMI ports, but removes the extra layer of the security configuration.
+			</div><div class="example"><a id="idm139921673736368">
+      ⁠</a><p class="title"><strong>Example 15.6. Annotating a bean for RMI via HTTP</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// RMI tunneled over HTTP</span>
+<span xmlns="" class="line">​</span>@Stateless
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">RemoteBinding</span>(clientBindUrl = <span xmlns="" class="perl_String">"http://0.0.0.0:8080/servlet-invoker/ServerInvokerServlet"</span>)
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Remote</span>(Calculator.<span xmlns="" class="perl_Function">class</span>)
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">SecurityDomain</span>(<span xmlns="" class="perl_String">"other"</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> CalculatorHttpBean <span xmlns="" class="perl_Keyword">extends</span> CalculatorImpl
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>....
+</pre></div></div><div class="para"><div xmlns:d="http://docbook.org/ns/docbook" class="title">Configure clients for RMI via HTTPS</div>
+				The EJB client should use the following properties for the JNDI lookup when looking up beans:
+			</div><div class="variablelist"><a id="Client_access_HTTPS">
+      ⁠</a><p class="title"><strong>Client access to RMI via HTTP(S)</strong></p><dl class="variablelist"><dt><span class="term">HTTPS</span></dt><dd><pre class="programlisting"><span xmlns="" class="line">​</span>Properties props = <span xmlns="" class="perl_Keyword">new</span> Properties();
+<span xmlns="" class="line">​</span>props.<span xmlns="" class="perl_Function">put</span>(<span xmlns="" class="perl_String">"java.naming.factory.initial"</span>, <span xmlns="" class="perl_String">"org.jboss.naming.HttpNamingContextFactory"</span>);
+<span xmlns="" class="line">​</span>props.<span xmlns="" class="perl_Function">put</span>(<span xmlns="" class="perl_String">"java.naming.provider.url"</span>, <span xmlns="" class="perl_String">"https://localhost:8443/invoker/JNDIFactory"</span>);
+<span xmlns="" class="line">​</span>props.<span xmlns="" class="perl_Function">put</span>(<span xmlns="" class="perl_String">"java.naming.factory.url.pkgs"</span>, <span xmlns="" class="perl_String">"org.jboss.naming"</span>);
+<span xmlns="" class="line">​</span>Context ctx = <span xmlns="" class="perl_Keyword">new</span> InitialContext(props);
+<span xmlns="" class="line">​</span>props.<span xmlns="" class="perl_Function">put</span>(Context.<span xmlns="" class="perl_Function">SECURITY_PRINCIPAL</span>, username);
+<span xmlns="" class="line">​</span>props.<span xmlns="" class="perl_Function">put</span>(Context.<span xmlns="" class="perl_Function">SECURITY_CREDENTIALS</span>, password);
+<span xmlns="" class="line">​</span>Calculator calculator = (Calculator) ctx.<span xmlns="" class="perl_Function">lookup</span>(jndiName);
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// use the bean to do any operations</span></pre></dd><dt><span class="term">HTTP</span></dt><dd><pre class="programlisting"><span xmlns="" class="line">​</span>Properties props = <span xmlns="" class="perl_Keyword">new</span> Properties();
+<span xmlns="" class="line">​</span>props.<span xmlns="" class="perl_Function">put</span>(<span xmlns="" class="perl_String">"java.naming.factory.initial"</span>, <span xmlns="" class="perl_String">"org.jboss.naming.HttpNamingContextFactory"</span>);
+<span xmlns="" class="line">​</span>props.<span xmlns="" class="perl_Function">put</span>(<span xmlns="" class="perl_String">"java.naming.provider.url"</span>, <span xmlns="" class="perl_String">"http://localhost:8080/invoker/JNDIFactory"</span>);
+<span xmlns="" class="line">​</span>props.<span xmlns="" class="perl_Function">put</span>(<span xmlns="" class="perl_String">"java.naming.factory.url.pkgs"</span>, <span xmlns="" class="perl_String">"org.jboss.naming"</span>);
+<span xmlns="" class="line">​</span>Context ctx = <span xmlns="" class="perl_Keyword">new</span> InitialContext(props);
+<span xmlns="" class="line">​</span>props.<span xmlns="" class="perl_Function">put</span>(Context.<span xmlns="" class="perl_Function">SECURITY_PRINCIPAL</span>, username);
+<span xmlns="" class="line">​</span>props.<span xmlns="" class="perl_Function">put</span>(Context.<span xmlns="" class="perl_Function">SECURITY_CREDENTIALS</span>, password);
+<span xmlns="" class="line">​</span>Calculator calculator = (Calculator) ctx.<span xmlns="" class="perl_Function">lookup</span>(jndiName);
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// use the bean to do any operations</span></pre></dd></dl></div><div class="para">
+			In <a class="xref" href="chap-Secure_Socket_Layer.html#Client_access_HTTPS">Client access to RMI via HTTP(S)</a> , the <em class="replaceable">user name</em> and <em class="replaceable">password</em> values correspond to a valid user name and password for the security domain that is used to secure the http-invoker. This security domain is set in <code class="filename"> jboss-as/<em class="replaceable">$PROFILE</em>/deploy/http-invoker.sar/invoker.war/WEB-INF/jboss-web.xml </code> .
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="EJB2_SSL">
+      ⁠</a>15.5. EJB2 RMI + SSL Configuration</h1></div></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><a id="idm139921667271344">
+      ⁠</a><p class="title"><strong>Procedure 15.10. Configure SSL for EJB2 Overview</strong></p><ol class="1"><li class="step"><div class="para">
+					Generate encryption keys and certificate
+				</div></li><li class="step"><div class="para">
+					Configure Unified Invoker for SSL
+				</div></li></ol></div><div class="para">
+			Generating encryption keys and certificates is covered in <a class="xref" href="chap-Secure_Socket_Layer.html#sect-generate-keys-and-cert">Section 15.2, “Generate encryption keys and certificate”</a> .
+		</div><div class="para"><div xmlns:d="http://docbook.org/ns/docbook" class="title">Configured Unified Invoker for SSL</div>
+				EJB2 remote invocation uses a single unified invoker, which runs by default on port 4446. The configuration of the unified invoker used for EJB2 remote method invocation is defined in the <code class="filename">$JBOSS_HOME/server/deploy/remoting-jboss-beans.xml</code> file of a JBoss Application Server profile. Add the following SSL Socket Factory bean and an SSL Domain bean in this file.
+			</div><div class="example"><a id="idm139921692199152">
+      ⁠</a><p class="title"><strong>Example 15.7. SSL Server Factory for EJB2</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"sslServerSocketFactoryEJB2"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.security.ssl.DomainServerSocketFactory"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;constructor&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;parameter&gt;&lt;inject</span><span xmlns="" class="perl_Others"> bean=</span><span xmlns="" class="perl_String">"EJB2SSLDomain"</span><span xmlns="" class="perl_Keyword">/&gt;&lt;/parameter&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/constructor&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"EJB2SSLDomain"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.security.plugins.JaasSecurityDomain"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;constructor&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;parameter&gt;</span>EJB2SSLDomain<span xmlns="" class="perl_Keyword">&lt;/parameter&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/constructor&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"keyStoreURL"</span><span xmlns="" class="perl_Keyword">&gt;</span>resource:localhost.keystore<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"keyStorePass"</span><span xmlns="" class="perl_Keyword">&gt;</span>changeit<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"keyAlias"</span><span xmlns="" class="perl_Keyword">&gt;</span>ejb-ssl<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"keyPassword"</span><span xmlns="" class="perl_Keyword">&gt;</span>EJB-SSL_KEYPAIR_PASSWORD<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+</pre></div></div><div class="para">
+			Now customize the SSLSocketBuilder, by adding the following to the <code class="filename">$JBOSS_HOME/server/<em class="replaceable">$PROFILE</em>/conf/jboss-service.xml</code> file of a JBoss Application Server profile:
+		</div><div class="example"><a id="idm139921696764368">
+      ⁠</a><p class="title"><strong>Example 15.8. SSLSocketBuilder configuration</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- This section is for custom (SSL) server socket factory  --&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;mbean</span><span xmlns="" class="perl_Others"> code=</span><span xmlns="" class="perl_String">"org.jboss.remoting.security.SSLSocketBuilder"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">      name=</span><span xmlns="" class="perl_String">"jboss.remoting:service=SocketBuilder,type=SSL"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">      display-name=</span><span xmlns="" class="perl_String">"SSL Server Socket Factory Builder"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!-- IMPORTANT - If making ANY customizations, this MUST be set to false. --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!-- Otherwise, will used default settings and the following attributes will be ignored. --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"UseSSLServerSocketFactory"</span><span xmlns="" class="perl_Keyword">&gt;</span>false<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!-- This is the url string to the key store to use --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"KeyStoreURL"</span><span xmlns="" class="perl_Keyword">&gt;</span>localhost.keystore<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!-- The password for the key store --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"KeyStorePassword"</span><span xmlns="" class="perl_Keyword">&gt;</span>sslsocket<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!-- The password for the keys (will use KeystorePassword if this is not set explicitly. --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"KeyPassword"</span><span xmlns="" class="perl_Keyword">&gt;</span>sslsocket<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!-- The protocol for the SSLContext.  Default is TLS. --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"SecureSocketProtocol"</span><span xmlns="" class="perl_Keyword">&gt;</span>TLS<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!-- The algorithm for the key manager factory.  Default is SunX509. --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"KeyManagementAlgorithm"</span><span xmlns="" class="perl_Keyword">&gt;</span>SunX509<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!-- The type to be used for the key store. --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!-- Defaults to JKS.  Some acceptable values are JKS (Java Keystore - Sun's keystore format), --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!-- JCEKS (Java Cryptography Extension keystore - More secure version of JKS), and --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!-- PKCS12 (Public-Key Cryptography Standards #12</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">                 keystore - RSA's Personal Information Exchange Syntax Standard). --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!-- These are not case sensitive. --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"KeyStoreType"</span><span xmlns="" class="perl_Keyword">&gt;</span>JKS<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/mbean&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;mbean</span><span xmlns="" class="perl_Others"> code=</span><span xmlns="" class="perl_String">"org.jboss.remoting.security.SSLServerSocketFactoryService"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">     name=</span><span xmlns="" class="perl_String">"jboss.remoting:service=ServerSocketFactory,type=SSL"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">     display-name=</span><span xmlns="" class="perl_String">"SSL Server Socket Factory"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_Keyword">&lt;depends</span><span xmlns="" class="perl_Others"> optional-attribute-name=</span><span xmlns="" class="perl_String">"SSLSocketBuilder"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">        proxy-type=</span><span xmlns="" class="perl_String">"attribute"</span><span xmlns="" class="perl_Keyword">&gt;</span>jboss.remoting:service=SocketBuilder,type=SSL<span xmlns="" class="perl_Keyword">&lt;/depends&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/mbean&gt;</span>
+</pre></div></div><div class="para"><div xmlns:d="http://docbook.org/ns/docbook" class="title">Configure SSL Transport for Beans</div>
+				In the <code class="filename">deploy/remoting-jboss-beans.xml</code> file in the JBoss Application Server profile, update the code to reflect the information below:
+			</div><div class="example"><a id="idm139921688835680">
+      ⁠</a><p class="title"><strong>Example 15.9. SSL Transport for Beans</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span>...
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"UnifiedInvokerConnector"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.remoting.transport.Connector"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;annotation&gt;</span>@org.jboss.aop.microcontainer.aspects.jmx.JMX(name="jboss.remoting:service=Connector,transport=socket", exposedInterface=org.jboss.remoting.transport.ConnectorMBean.class,registerDirectly=true)
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/annotation&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"serverConfiguration"</span><span xmlns="" class="perl_Keyword">&gt;&lt;inject</span><span xmlns="" class="perl_Others"> bean=</span><span xmlns="" class="perl_String">"UnifiedInvokerConfiguration"</span><span xmlns="" class="perl_Keyword">/&gt;&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"serverSocketFactory"</span><span xmlns="" class="perl_Keyword">&gt;&lt;inject</span><span xmlns="" class="perl_Others"> bean=</span><span xmlns="" class="perl_String">"sslServerSocketFactoryEJB2"</span><span xmlns="" class="perl_Keyword">/&gt;&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">&lt;!-- add this to configure the SSL socket for the UnifiedInvoker --&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>   ...
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"UnifiedInvokerConfiguration"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.remoting.ServerConfiguration"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;constructor&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">&lt;!-- transport: Others include sslsocket, bisocket, sslbisocket, http, https, rmi, sslrmi, servlet, sslservlet. --&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;parameter&gt;</span>sslsocket<span xmlns="" class="perl_Keyword">&lt;/parameter&gt;</span><span xmlns="" class="perl_Comment">&lt;!-- changed from socket to sslsocket --&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/constructor&gt;</span>
+<span xmlns="" class="line">​</span>      ...
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>   ...</pre></div></div></div></div></body></html>

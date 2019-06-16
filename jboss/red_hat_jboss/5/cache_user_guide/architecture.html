@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 7. Architecture</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="architecture">
+      ⁠</a>Chapter 7. Architecture</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="architecture.tree_structure">
+      ⁠</a>7.1. Data Structures Within The Cache</h1></div></div></div><div class="para">
+			A <code class="literal">Cache</code> consists of a collection of <code class="literal">Node</code> instances, organized in a tree structure. Each <code class="literal">Node</code> contains a <code class="literal">Map</code> which holds the data objects to be cached. It is important to note that the structure is a mathematical tree, and not a graph; each <code class="literal">Node</code> has one and only one parent, and the root node is denoted by the constant fully qualified name, <code class="literal">Fqn.ROOT</code>.
+		</div><div class="para">
+			<div class="figure"><a id="idm140486339479216">
+      ⁠</a><div class="figure-contents"><div class="mediaobject"><img src="images/TreeCacheArchitecture.png" alt="Data structured as a tree"/></div></div><p class="title"><strong>Figure 7.1. Data structured as a tree</strong></p></div>
+			 In the diagram above, each box represents a JVM. You see 2 caches in separate JVMs, replicating data to each other.
+		</div><div class="para">
+			Any modifications (see <a class="xref" href="api.html">Chapter 2, <em>User API</em></a>) in one cache instance will be replicated to the other cache. Naturally, you can have more than 2 caches in a cluster. Depending on the transactional settings, this replication will occur either after each modification or at the end of a transaction, at commit time. When a new cache is created, it can optionally acquire the contents from one of the existing caches on start up.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="architecture.SPI_interfaces">
+      ⁠</a>7.2. SPI Interfaces</h1></div></div></div><div class="para">
+			In addition to <code class="literal">Cache</code> and <code class="literal">Node</code> interfaces, JBoss Cache exposes more powerful <code class="literal">CacheSPI</code> and <code class="literal">NodeSPI</code> interfaces, which offer more control over the internals of JBoss Cache. These interfaces are not intended for general use, but are designed for people who wish to extend and enhance JBoss Cache, or write custom <code class="literal">Interceptor</code> or <code class="literal">CacheLoader</code> instances.
+		</div><div class="figure"><a id="idm140486289527264">
+      ⁠</a><div class="figure-contents"><div class="mediaobject"><img src="images/SPI.png" alt="SPI Interfaces"/></div></div><p class="title"><strong>Figure 7.2. SPI Interfaces</strong></p></div><div class="para">
+			The <code class="literal">CacheSPI</code> interface cannot be created, but is injected into <code class="literal">Interceptor</code> and <code class="literal">CacheLoader</code> implementations by the <code class="literal">setCache(CacheSPI cache)</code> methods on these interfaces. <code class="literal">CacheSPI</code> extends <code class="literal">Cache</code> so all the functionality of the basic API is also available.
+		</div><div class="para">
+			Similarly, a <code class="literal">NodeSPI</code> interface cannot be created. Instead, one is obtained by performing operations on <code class="literal">CacheSPI</code>, obtained as above. For example, <code class="literal">Cache.getRoot() : Node</code> is overridden as <code class="literal">CacheSPI.getRoot() : NodeSPI</code>.
+		</div><div class="para">
+			It is important to note that directly casting a <code class="literal">Cache</code> or <code class="literal">Node</code> to its SPI counterpart is not recommended and is bad practice, since the inheritance of interfaces it is not a contract that is guaranteed to be upheld moving forward. The exposed public APIs, on the other hand, is guaranteed to be upheld.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="architecture.invocations">
+      ⁠</a>7.3. Method Invocations On Nodes</h1></div></div></div><div class="para">
+			Since the cache is essentially a collection of nodes, aspects such as clustering, persistence, eviction, etc. need to be applied to these nodes when operations are invoked on the cache as a whole or on individual nodes. To achieve this in a clean, modular and extensible manner, an interceptor chain is used. The chain is built up of a series of interceptors, each one adding an aspect or particular functionality. The chain is built when the cache is created, based on the configuration used.
+		</div><div class="para">
+			It is important to note that the <code class="literal">NodeSPI</code> offers some methods (such as the <code class="literal">xxxDirect()</code> method family) that operate on a node directly without passing through the interceptor stack. Plug-in authors should note that using such methods will affect the aspects of the cache that may need to be applied, such as locking, replication, etc. To put it simply, do not use such methods unless you <span class="emphasis"><em>really</em></span> know what you are doing!
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="architecture.interceptors">
+      ⁠</a>7.3.1. Interceptors</h2></div></div></div><div class="para">
+				JBoss Cache essentially is a core data structure - an implementation of <code class="literal">DataContainer</code> - and aspects and features are implemented using interceptors in front of this data structure. A <code class="literal">CommandInterceptor</code> is an abstract class, interceptor implementations extend this.
+			</div><div class="para">
+				<code class="literal">CommandInterceptor</code> implements the <code class="literal">Visitor</code> interface so it is able to alter commands in a strongly typed manner as the command makes its way to the data structure. More on visitors and commands in the next section.
+			</div><div class="para">
+				Interceptor implementations are chained together in the <code class="literal">InterceptorChain</code> class, which dispatches a command across the chain of interceptors. A special interceptor, the <code class="literal">CallInterceptor</code>, always sits at the end of this chain to invoke the command being passed up the chain by calling the command's <code class="literal">process()</code> method.
+			</div><div class="para">
+				JBoss Cache ships with several interceptors, representing different behavioral aspects, some of which are: 
+				<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+							<code class="literal">TxInterceptor</code> - looks for ongoing transactions and registers with transaction managers to participate in synchronization events
+						</div></li><li class="listitem"><div class="para">
+							<code class="literal">ReplicationInterceptor</code> - replicates state across a cluster using the RpcManager class
+						</div></li><li class="listitem"><div class="para">
+							<code class="literal">CacheLoaderInterceptor</code> - loads data from a persistent store if the data requested is not available in memory
+						</div></li></ul></div>
+				 The interceptor chain configured for your cache instance can be obtained and inspected by calling <code class="literal">CacheSPI.getInterceptorChain()</code>, which returns an ordered <code class="literal">List</code> of interceptors in the order in which they would be encountered by a command.
+			</div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="architecture.custom_interceptors">
+      ⁠</a>7.3.1.1. Writing Custom Interceptors</h3></div></div></div><div class="para">
+					Custom interceptors to add specific aspects or features can be written by extending <code class="literal">CommandInterceptor</code> and overriding the relevant <code class="literal">visitXXX()</code> methods based on the commands you are interested in intercepting. There are other abstract interceptors you could extend instead, such as the <code class="literal">PrePostProcessingCommandInterceptor</code> and the <code class="literal">SkipCheckChainedInterceptor</code>. Please see their respective javadocs for details on the extra features provided.
+				</div><div class="para">
+					The custom interceptor will need to be added to the interceptor chain by using the <code class="literal">Cache.addInterceptor()</code> methods. See the javadocs on these methods for details.
+				</div><div class="para">
+					Adding custom interceptors via XML is also supported, please see the <a class="xref" href="configuration_reference_chapter.html">Chapter 12, <em>Configuration References</em></a> for details.
+				</div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="architecture.commands">
+      ⁠</a>7.3.2. Commands and Visitors</h2></div></div></div><div class="para">
+				Internally, JBoss Cache uses a command/visitor pattern to execute API calls. Whenever a method is called on the cache interface, the <code class="literal">CacheInvocationDelegate</code>, which implements the <code class="literal">Cache</code> interface, creates an instance of <code class="literal">VisitableCommand</code> and dispatches this command up a chain of interceptors. Interceptors, which implement the <code class="literal">Visitor</code> interface, are able to handle <code class="literal">VisitableCommand</code>s they are interested in, and add behavior to the command.
+			</div><div class="para">
+				Each command contains all knowledge of the command being executed such as parameters used and processing behavior, encapsulated in a <code class="literal">process()</code> method. For example, the <code class="literal">RemoveNodeCommand</code> is created and passed up the interceptor chain when <code class="literal">Cache.removeNode()</code> is called, and <code class="literal">RemoveNodeCommand.process()</code> has the necessary knowledge of how to remove a node from the data structure.
+			</div><div class="para">
+				In addition to being visitable, commands are also replicable. The JBoss Cache marshalers know how to efficiently marshal commands and invoke them on remote cache instances using an internal RPC mechanism based on JGroups.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="architecture.invocationcontext">
+      ⁠</a>7.3.3. InvocationContexts</h2></div></div></div><div class="para">
+				<code class="literal">InvocationContext</code> holds intermediate state for the duration of a single invocation, and is set up and destroyed by the <code class="literal">InvocationContextInterceptor</code> which sits at the start of the interceptor chain.
+			</div><div class="para">
+				<code class="literal">InvocationContext</code>, as its name implies, holds contextual information associated with a single cache method invocation. Contextual information includes associated <code class="literal">javax.transaction.Transaction</code> or <code class="literal">org.jboss.cache.transaction.GlobalTransaction</code>, method invocation origin ( <code class="literal">InvocationContext.isOriginLocal()</code> ) as well as <a class="xref" href="configuration.html#configuration.options">Section 3.4.1, “Overriding the Configuration via the Option API”</a>, and information around which nodes have been locked, etc.
+			</div><div class="para">
+				The <code class="literal">InvocationContext</code> can be obtained by calling <code class="literal">Cache.getInvocationContext()</code>.
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="architecture.managers">
+      ⁠</a>7.4. Managers For Subsystems</h1></div></div></div><div class="para">
+			Some aspects and functionality is shared by more than a single interceptor. Some of these have been encapsulated into managers, for use by various interceptors, and are made available by the <code class="literal">CacheSPI</code> interface.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="architecture.rpcmanager">
+      ⁠</a>7.4.1. RpcManager</h2></div></div></div><div class="para">
+				This class is responsible for calls made via the JGroups channel for all RPC calls to remote caches, and encapsulates the JGroups channel used.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="architecture.buddymanager">
+      ⁠</a>7.4.2. BuddyManager</h2></div></div></div><div class="para">
+				This class manages buddy groups and invokes group organization remote calls to organize a cluster of caches into smaller sub-groups.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="architecture.cacheloadermanager">
+      ⁠</a>7.4.3. CacheLoaderManager</h2></div></div></div><div class="para">
+				Sets up and configures cache loaders. This class wraps individual <code class="literal">CacheLoader</code> instances in delegating classes, such as <code class="literal">SingletonStoreCacheLoader</code> or <code class="literal">AsyncCacheLoader</code>, or may add the <code class="literal">CacheLoader</code> to a chain using the <code class="literal">ChainingCacheLoader</code>.
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="architecture.marshaling">
+      ⁠</a>7.5. Marshaling And Wire Formats</h1></div></div></div><div class="para">
+			Early versions of JBoss Cache simply wrote cached data to the network by writing to an <code class="literal">ObjectOutputStream</code> during replication. Over various releases in the JBoss Cache 1.x.x series this approach was gradually deprecated in favor of a more mature marshaling framework. In the JBoss Cache 2.x.x series, this is the only officially supported and recommended mechanism for writing objects to datastreams.
+		</div><div class="figure"><a id="idm140486321432880">
+      ⁠</a><div class="figure-contents"><div class="mediaobject"><img src="images/Marshaller.png" alt="The Marshaler interface"/></div></div><p class="title"><strong>Figure 7.3. The Marshaler interface</strong></p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486279996128">
+      ⁠</a>7.5.1. The Marshaler Interface</h2></div></div></div><div class="para">
+				The <code class="literal">Marshaler</code> interface extends <code class="literal">RpcDispatcher.Marshaler</code> from JGroups. This interface has two main implementations - a delegating <code class="literal">VersionAwareMarshaller</code> and a concrete <code class="literal">CacheMarshaller300</code> .
+			</div><div class="para">
+				The Marshaler can be obtained by calling <code class="literal">CacheSPI.getMarshaller()</code>, and defaults to the <code class="literal">VersionAwareMarshaller</code>. Users may also write their own marshalers by implementing the <code class="literal">Marshaler</code> interface or extending the <code class="literal">AbstractMarshaller</code> class, and adding it to their configuration by using the <code class="literal">Configuration.setMarshallerClass()</code> setter.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486322569808">
+      ⁠</a>7.5.2. VersionAwareMarshaller</h2></div></div></div><div class="para">
+				As the name suggests, this Marshaler adds a version <code class="literal">short</code> to the start of any stream when writing, enabling similar <code class="literal">VersionAwareMarshaller</code> instances to read the version short and know which specific Marshaler implementation to delegate the call to. For example, <code class="literal">CacheMarshaller200</code> is the Marshaler for JBoss Cache 2.0.x. JBoss Cache 3.0.x ships with <code class="literal">CacheMarshaller300</code> with an improved wire protocol. Using a <code class="literal">VersionAwareMarshaller</code> helps achieve wire protocol compatibility between minor releases but still affords us the flexibility to tweak and improve the wire protocol between minor or micro releases.
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="architecture.regions">
+      ⁠</a>7.6. Class Loading and Regions</h1></div></div></div><div class="para">
+			When used to cluster state of application servers, applications deployed in the application tend to put instances of objects specific to their application in the cache (or in an <code class="literal">HttpSession</code> object) which would require replication. It is common for application servers to assign separate <code class="literal">ClassLoader</code> instances to each application deployed, but have JBoss Cache libraries referenced by the application server's <code class="literal">ClassLoader</code>.
+		</div><div class="para">
+			To enable us to successfully marshal and unmarshal objects from such class loaders, we use a concept called regions. A region is a portion of the cache which share a common class loader (a region also has other uses - see <a class="xref" href="eviction_policies.html">Chapter 10, <em>Eviction</em></a>).
+		</div><div class="para">
+			A region is created by using the <code class="literal">Cache.getRegion(Fqn fqn, boolean createIfNotExists)</code> method, and returns an implementation of the <code class="literal">Region</code> interface. Once a region is obtained, a class loader for the region can be set or unset, and the region can be activated/deactivated. By default, regions are active unless the <code class="literal">InactiveOnStartup</code> configuration attribute is set to <code class="literal">true</code>.
+		</div></div></div></body></html>

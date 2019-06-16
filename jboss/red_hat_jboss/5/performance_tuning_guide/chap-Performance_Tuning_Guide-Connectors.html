@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 2. Connectors</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="chap-Performance_Tuning_Guide-Connectors">
+      ⁠</a>Chapter 2. Connectors</h1></div></div></div><div class="para">
+		Two main web connectors will be covered in this chapter: the Java I/O connector, using Java I/O to serve HTTP(s) connections directly to the platform and a native connector that uses Apache’s Portable Runtime (APR) native code library. An Apache web server can be used to serve all HTTP(S) requests, using mod_jk or mod_cluster connect to the platform. In this scenario the tuning of the thread pool used for serving requests via the Apache Jserv Protocol (AJP) will be covered.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-Performance_Tuning_Guide-Connectors-Java_IO_Connector">
+      ⁠</a>2.1. Java I/O Connector</h1></div></div></div><div class="para">
+			The Java I/O Connector is used when clients send HTTP requests directly to the platform, and not to a front end HTTPD server such as an Apache web server. To use this connector the libraries of the native connector must be removed because they're used by default if detected by the platform. Many configuration options are available, including the following performance-related options:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					maxKeepAliveRequests
+				</div></li><li class="listitem"><div class="para">
+					maxThreads
+				</div></li><li class="listitem"><div class="para">
+					minSpareThreads
+				</div></li></ul></div><div class="para">
+			All of these parameters are configured in the <code class="filename">server.xml</code> file for the JBoss Web embedded servlet container: <code class="filename">JBOSS_EAP_DIST/jboss-as/server/<em class="replaceable">PROFILE</em>/deploy/jbossweb.sar</code>. Near the top of this file is the <code class="literal">Connector</code> section, where these parameters are configured. Note that the <code class="literal">minimal</code> configuration does <span class="emphasis"><em>not</em></span> include JBoss Web.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- A HTTP/1.1 Connector on port 8080 --&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;Connector</span><span xmlns="" class="perl_Others"> protocol=</span><span xmlns="" class="perl_String">"HTTP/1.1"</span><span xmlns="" class="perl_Others"> port=</span><span xmlns="" class="perl_String">"8080"</span><span xmlns="" class="perl_Others"> address=</span><span xmlns="" class="perl_String">"${jboss.bind.address}"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">      connectionTimeout=</span><span xmlns="" class="perl_String">"20000"</span><span xmlns="" class="perl_Others"> redirectPort=</span><span xmlns="" class="perl_String">"8443"</span> <span xmlns="" class="perl_Keyword">/&gt;</span>
+</pre><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-Performance_Tuning_Guide-Java_IO_Connector-maxKeepAliveRequests">
+      ⁠</a>2.1.1. maxKeepAliveRequests</h2></div></div></div><div class="para">
+				The <em class="parameter"><code>maxKeepAliveRequests</code></em> parameter specifies how many pipe-lined requests a user agent can send over a persistent HTTP connection (which is the default in HTTP 1.1) before it will close the connection. A persistent connection is one which the client expects to remain open once established, instead of closing and reestablishing the connection with each request. Typically the client (a browser, for example) will send an HTTP header called a “Connection” with a token called "keep-alive" to specify a persistent connection. This was one of the major improvements of the HTTP protocol in version 1.1 over 1.0 because it improves scalability of the server considerably, especially as the number of clients increases. To close the connection, the client or the server can include the “Connection” attribute in its header, with a token called “close”. This signals either side that after the request is completed, the connection is to be closed. The client, or user agent, can even specify the “close” token on its “Connection” header with its initial request, specifying that it does not want to use a persistent connection.
+			</div><div class="para">
+				The default value for maxKeepAliveRequests is 100, so after an initial request from a client creates a persistent connection, it can send 100 requests over that connection before the server will close the connection.
+			</div><div class="para">
+				Below is an extract from an actual client request which illustrates an HTTP POST with <code class="literal">Connection: keep-alive</code> content in the header, followed by an HTTP POST, again with <code class="literal">Connection: keep-alive</code> specified. This is the 100th client request so in the response to the HTTP POST is the instruction <code class="literal">Connection: close</code>.
+			</div><pre class="screen">
+POST /Order/NewOrder HTTP/1.1
+Connection: keep-alive
+Cookie: $Version=0; JSESSIONID=VzNmllbAmPDMInSJQ152bw__; $Path=/Order
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 262
+User-Agent: Jakarta Commons-HttpClient/3.1
+Host: 192.168.1.22:8080
+
+customerid=86570&amp;productid=1570&amp;quantity=6&amp;productid=6570&amp;quantity=19&amp;productid=11570&amp;quantity=29&amp;productid=16570&amp;quantity=39&amp;productid=21570&amp;quantity=49&amp;productid=26570&amp;quantity=59&amp;productid=&amp;quantity=&amp;productid=&amp;quantity=&amp;productid=&amp;quantity=&amp;NewOrder=NewOrderGET /Order/OrderInquiry?customerId=86570 HTTP/1.1
+Connection: keep-alive
+Cookie: $Version=0; JSESSIONID=VzNmllbAmPDMInSJQ152bw__; $Path=/Order
+User-Agent: Jakarta Commons-HttpClient/3.1
+Host: 192.168.1.22:8080
+
+[1181 bytes missing in capture file]HTTP/1.1 200 OK
+Server: Apache-Coyote/1.1
+X-Powered-By: Servlet 2.5; JBoss-5.0/JBossWeb-2.1
+Content-Type: text/html;charset=ISO-8859-1
+Content-Length: 1024
+Date: Wed, 26 Jan 2011 17:10:40 GMT
+Connection: close
+</pre><div class="para">
+				To put this in real-life terms, imagine a test run during which 1,800 users process 3.6 million transactions (all via HTTP POST and GET requests) with maxKeepAliveRequests set to the default value of 100. With 1,800 clients, each performing 2,000 requests (3.6 million/ 1,800 = 2,000), the number of times connections are closed is 36,000 (3.0 million / 100). Depending on the number of clients, type of clients (browsers tend to open multiple connections on multiple threads for performance reasons), and type of content being served to the client, this can be significantly higher. Besides the overhead of tearing down, and creating new connections, there is also the overhead, although small, of tracking how many requests have been made over each persistent connection.
+			</div><div class="para">
+				There are three options to consider for maxKeepAliveRequests:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						set it to a specific value, higher than the default;
+					</div></li><li class="listitem"><div class="para">
+						disable persistent connections by setting the value <code class="literal">1</code>;
+					</div></li><li class="listitem"><div class="para">
+						set persistent connections to unlimited by setting the value <code class="literal">-1</code>.
+					</div></li></ul></div><div class="para">
+				Setting maxKeepAliveRequests to the value <code class="literal">1</code> in effect disables persistent connections because this sets the limit to 1. The other options of raising the limit to a specific value and unlimited require further analysis of the situation. Setting the value to unlimited is easiest because the platform will use whatever it calculates to be the optimal value for the current workload. However it's possible to run out of operating system file descriptors, if there are more concurrent clients than there are file descriptors available. Choosing a specific value is a more conservative approach and is less risky than using unlimited. The best method of finding the most suitable value is to monitor the maximum number of connections used and if this is higher than what's available, set it higher then do performance testing.
+			</div><div class="para">
+				The importance of tuning the maxKeepAliveRequests value can be revealed in conducting performance tests. In a repeat of the above test, maxKeepAliveRequests was set to 1 (disabled) and the tests re-run. After only a little over 58,000 transactions, processing stopped because of I/O errors at the client. With maxKeepAliveRequests set to unlimited and the same tests run again, a 1.2% increase in throughput was gained. Although this may seem a small increase, it can be significant. For example, if you take into account the 1.2% increase in the number of transactions that can be processed in this test, over a 12 hour period (e.g. one business day), it adds up to over 1.5 million more transactions that can be processed.
+			</div><div class="para">
+				Below is an extract from <code class="filename">server.xml</code> in which maxKeepAliveRequests is set to <code class="literal">-1</code> or unlimited.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- A HTTP/1.1 Connector on port 8080 --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;Connector</span><span xmlns="" class="perl_Others"> protocol=</span><span xmlns="" class="perl_String">"HTTP/1.1"</span><span xmlns="" class="perl_Others"> port=</span><span xmlns="" class="perl_String">"8080"</span><span xmlns="" class="perl_Others"> address=</span><span xmlns="" class="perl_String">"${jboss.bind.address}"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">   connectionTimeout=</span><span xmlns="" class="perl_String">"20000"</span><span xmlns="" class="perl_Others"> redirectPort=</span><span xmlns="" class="perl_String">"8443"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">   maxKeepAliveRequests=</span><span xmlns="" class="perl_Error">”-1”</span> <span xmlns="" class="perl_Error">/&gt;</span>
+</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-Performance_Tuning_Guide-Java_IO_Connector-maxThreads">
+      ⁠</a>2.1.2. maxThreads</h2></div></div></div><div class="para">
+				The <code class="literal">maxThreads</code> parameter creates the thread pool that sits directly behind the connector, and actually processes the request. It’s very important to set this for most workloads as the default is quite low, currently 200 threads. If no threads are available when the request is made, the request is refused so getting this value right is critical. In the event the maximum number of threads is reached, this will be noted in the log:
+			</div><pre class="screen">
+2011-01-27 16:18:08,881 INFO  [org.apache.tomcat.util.net.JIoEndpoint] (http-192.168.1.22-8080-Acceptor-0) Maximum number of threads (200) created for connector with address /192.168.1.22 and port 8080
+</pre><div class="para">
+				The thread pool can be monitored via the administration console, as per the following screenshot:
+			</div><div class="figure"><a id="figu-Performance_Tuning_Guide-maxThreads-Connectors_metrics">
+      ⁠</a><div class="figure-contents"><div class="mediaobject"><img src="images/img-admin_console_connectors_metrics.png" width="444" alt="Connectors metrics"/></div></div><p class="title"><strong>Figure 2.1. Connectors metrics</strong></p></div><div class="para">
+				On the left hand navigation pane, you can clearly see the connector, listening on port 8080, and in the metrics tab you can see the current utilization. On initial start of the platform, the thread pool is empty, and it creates threads on demand, based on incoming requests. This needs to be taken into consideration operationally, not necessarily performance wise. On start up there is some overhead in creating the thread pool but afterward there is no further overhead of servicing requests. On Linux, the overhead is quite low because the thread library can create and destroy native threads very quickly, but other operating systems have significant overhead, so the load will vary depending on which operating system the platform is hosted on.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-Performance_Tuning_Guide-Java_IO_Connector-minSpareThreads">
+      ⁠</a>2.1.3. minSpareThreads</h2></div></div></div><div class="para">
+				The <code class="literal">minSpareThreads</code> parameter specifies the minimum number of threads that must be maintained in the thread pool. If sufficient resources are available set minSpareThreads to the same value as maxThreads. If maxThreads is set to represent a peak, but that peak does not last very long, set minSpareThreads to a lower value. That way, the platform can reclaim those resources as threads sit idle. There are a couple of ways to look at the interaction between these two parameters. If resource consumption is not an issue, set minSpareThreads to what you need to process at peak loads, but allow for an increase by setting maxThreads between 10% and 25% higher. If resource consumption is a concern, then set the maxThreads to only what you need for peak, and set the minSpareThreads to a value that won’t hurt overall throughput after a drop in load occurs. Most applications have large swings in load over the course of a given day.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+					From a performance testing perspective, its also important to consider this thread creation overhead. It's best practice to allow an initial warm-up period, on start up of the platform, before making performance measurements. The measurement period should also be long enough to allow garbage collection to occur for all heap spaces, including Eden, Survivor, and Old generation. If this advice is not followed, results will be skewed by start up activity instead of reflecting sustained throughput and response times.
+				</div></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="sect-Performance_Tuning_Guide-Java_IO_Connector-Tuning_the_thread_pool">
+      ⁠</a>2.1.4. Tuning the thread pool</h2></div></div></div><div class="para">
+				To size the thread pool correctly, you need to consider how many concurrent clients you will be serving through this connector. The number could vary greatly depending on what executes behind the HTTP request, and what response times are required. Setting the pool large is a reasonable option because threads are only created on demand. It's best to monitor the pool through the administration console, as the metrics tab shows the number of active threads, and how many it created. If the number of active threads reaches the maximum defined by the <code class="literal">maxThreads</code> parameter, it needs to be increased and again monitored.
+			</div><div class="para">
+				Below is an extract from the <code class="filename">server.xml</code> configuration file in which all three parameters are assigned specific values.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- A HTTP/1.1 Connector on port 8080 --&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;Connector</span><span xmlns="" class="perl_Others"> protocol=</span><span xmlns="" class="perl_String">"HTTP/1.1"</span><span xmlns="" class="perl_Others"> port=</span><span xmlns="" class="perl_String">"8080"</span><span xmlns="" class="perl_Others"> address=</span><span xmlns="" class="perl_String">"${jboss.bind.address}"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">   connectionTimeout=</span><span xmlns="" class="perl_String">"20000"</span><span xmlns="" class="perl_Others"> redirectPort=</span><span xmlns="" class="perl_String">"8443"</span><span xmlns="" class="perl_Others"> maxThreads=</span><span xmlns="" class="perl_String">"3000"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">   minSpareThreads=</span><span xmlns="" class="perl_String">"2000"</span><span xmlns="" class="perl_Others"> maxKeepAliveRequests=</span><span xmlns="" class="perl_String">"-1"</span> <span xmlns="" class="perl_Keyword">/&gt;</span>
+</pre></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-Performance_Tuning_Guide-Connectors-AJP_Connector">
+      ⁠</a>2.2. AJP Connector</h1></div></div></div><div class="para">
+			The AJP (Apache JServ Protocol) connector is typically used when a web server, such as Apache web server, is placed in front of the platform. Since AJP is its own binary protocol, configuration is different, but shares quite a bit of commonality in what can be configured with the Java I/O Endpoint. The following configuration parameters will be discussed:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					maxThreads
+				</div></li><li class="listitem"><div class="para">
+					minSpareThreads
+				</div></li></ul></div><div class="para">
+			Two of these parameters - maxThreads and minSpareThreads - are common with the Java I/O Connector. The AJP protocol also has a keep alive parameter but its default behavior is to always keep connections open, which avoids the overhead of setting up and tearing down connections. A common configuration is to have the front-end web server in a DMZ, with a firewall allowing only incoming HTTP(S) to the web server, and another firewall between the web server and the platform, allowing only AJP traffic. Maintaining persistent connections in such a configuration is more efficient than the cost of constantly connecting and disconnecting the various components. Firewall configuration is another factor to consider because some firewalls close connections when no traffic has passed over a connection in a certain period.
+		</div><div class="para">
+			The same considerations for the AJP connector apply as for the Java I/O connector. The thread pool is monitored in the same way in the administration console. The values set are also set in the same configuration file: <code class="filename">server.xml</code>. Below is an extract from <code class="filename">server.xml</code> in which both <code class="literal">maxThreads</code> and <code class="literal">minSpareThreads</code> have been configured:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;!-- A AJP 1.3 Connector on port 8009 --&gt;</span>
+<span xmlns="" class="line">​</span>      redirectPort="8443" maxThreads="3000" minSpareThreads="2000" /&gt;
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;Connector</span><span xmlns="" class="perl_Others"> protocol=</span><span xmlns="" class="perl_String">"AJP/1.3"</span><span xmlns="" class="perl_Others"> port=</span><span xmlns="" class="perl_String">"8009"</span><span xmlns="" class="perl_Others"> address=</span><span xmlns="" class="perl_String">"${jboss.bind.address}"</span>
+</pre></div></div></body></html>

@@ -1,0 +1,290 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 35. Testing Seam applications</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="testing">
+      ⁠</a>Chapter 35. Testing Seam applications</h1></div></div></div><div class="para">
+		Most Seam applications will require at least two kinds of automated tests: <em class="firstterm">unit tests</em>, which test a particular Seam component in isolation, and scripted <em class="firstterm">integration tests</em>, which exercise all Java layers of the application (that is, everything except the view pages).
+	</div><div class="para">
+		Both test types are easily written.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139690530249872">
+      ⁠</a>35.1. Unit testing Seam components</h1></div></div></div><div class="para">
+			All Seam components are POJOs (Plain Old Java Objects), which simplifies unit testing. Since Seam also emphasizes the use of bijection for component interaction and contextual object access, testing Seam components outside their normal runtime environments is very easy.
+		</div><div class="para">
+			The following Seam Component which creates a statement of account for a customer:
+		</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@Stateless
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Scope</span>(EVENT)
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Name</span>(<span xmlns="" class="perl_String">"statementOfAccount"</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> StatementOfAccount {
+<span xmlns="" class="line">​</span>   
+<span xmlns="" class="line">​</span>  @<span xmlns="" class="perl_Function">In</span>(create=<span xmlns="" class="perl_Keyword">true</span>) EntityManager entityManager
+<span xmlns="" class="line">​</span>   
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">private</span> <span xmlns="" class="perl_DataType">double</span> statementTotal;
+<span xmlns="" class="line">​</span>   
+<span xmlns="" class="line">​</span>  @In
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">private</span> Customer customer;
+<span xmlns="" class="line">​</span>   
+<span xmlns="" class="line">​</span>  @Create
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">create</span>() {
+<span xmlns="" class="line">​</span>    List&lt;Invoice&gt; invoices = entityManager
+<span xmlns="" class="line">​</span>      .<span xmlns="" class="perl_Function">createQuery</span>(<span xmlns="" class="perl_String">"select invoice from Invoice invoice where "</span> + 
+<span xmlns="" class="line">​</span>                   <span xmlns="" class="perl_String">"invoice.customer = :customer"</span>)
+<span xmlns="" class="line">​</span>      .<span xmlns="" class="perl_Function">setParameter</span>(<span xmlns="" class="perl_String">"customer"</span>, customer)
+<span xmlns="" class="line">​</span>      .<span xmlns="" class="perl_Function">getResultList</span>();
+<span xmlns="" class="line">​</span>    statementTotal = <span xmlns="" class="perl_Function">calculateTotal</span>(invoices);
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>   
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">double</span> <span xmlns="" class="perl_Function">calculateTotal</span>(List&lt;Invoice&gt; invoices) {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_DataType">double</span> total = <span xmlns="" class="perl_Float">0.0</span>;
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">for</span> (Invoice invoice: invoices) {
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_DataType">double</span> += invoice.<span xmlns="" class="perl_Function">getTotal</span>();
+<span xmlns="" class="line">​</span>      }
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">return</span> total;
+<span xmlns="" class="line">​</span>     }
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Comment">// getter and setter for statementTotal</span>
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+			We can test the <code class="literal">calculateTotal</code> method, which tests the component's business logic, as follows:
+		</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> StatementOfAccountTest { 
+<span xmlns="" class="line">​</span>  @Test 
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> testCalculateTotal { 
+<span xmlns="" class="line">​</span>    List&lt;Invoice&gt; invoices = 
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Function">generateTestInvoices</span>(); <span xmlns="" class="perl_Comment">// A test data generator </span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_DataType">double</span> statementTotal = 
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">StatementOfAccount</span>().<span xmlns="" class="perl_Function">calculateTotal</span>(invoices); 
+<span xmlns="" class="line">​</span>    assert statementTotal = <span xmlns="" class="perl_Float">123.45</span>; 
+<span xmlns="" class="line">​</span>  }   
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+			Note that we are not testing data retrieval or persistence, or any of the functions provided by Seam. Here, we are testing only the logic of our POJOs. Seam components do not usually depend directly upon container infrastructure, so most unit tests are just as easy.
+		</div><div class="para">
+			If you do want to test the entire application, read the section following.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139690494025088">
+      ⁠</a>35.2. Integration testing Seam components</h1></div></div></div><div class="para">
+			Integration testing is more complicated. We cannot eliminate the container infrastructure, but neither do we want to deploy our application to an application server to run automated tests. Therefore, our testing environment must replicate enough container infrastructure that we can exercise the entire application, without impacting performance too heavily.
+		</div><div class="para">
+			Seam lets you use the JBoss Embedded container to test your components — see the configuration chapter for details. This means you can write tests to exercise your application fully within a minimized container:
+		</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> RegisterTest <span xmlns="" class="perl_Keyword">extends</span> SeamTest {
+<span xmlns="" class="line">​</span>   
+<span xmlns="" class="line">​</span>  @Test
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">testRegisterComponent</span>() <span xmlns="" class="perl_Keyword">throws</span> Exception {
+<span xmlns="" class="line">​</span>            
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">ComponentTest</span>() {
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">protected</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">testComponents</span>() <span xmlns="" class="perl_Keyword">throws</span> Exception {
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Function">setValue</span>(<span xmlns="" class="perl_String">"#{user.username}"</span>, <span xmlns="" class="perl_String">"1ovthafew"</span>);
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Function">setValue</span>(<span xmlns="" class="perl_String">"#{user.name}"</span>, <span xmlns="" class="perl_String">"Gavin King"</span>);
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Function">setValue</span>(<span xmlns="" class="perl_String">"#{user.password}"</span>, <span xmlns="" class="perl_String">"secret"</span>);
+<span xmlns="" class="line">​</span>        assert <span xmlns="" class="perl_Function">invokeMethod</span>(<span xmlns="" class="perl_String">"#{register.register}"</span>).<span xmlns="" class="perl_Function">equals</span>(<span xmlns="" class="perl_String">"success"</span>);
+<span xmlns="" class="line">​</span>        assert <span xmlns="" class="perl_Function">getValue</span>(<span xmlns="" class="perl_String">"#{user.username}"</span>).<span xmlns="" class="perl_Function">equals</span>(<span xmlns="" class="perl_String">"1ovthafew"</span>);
+<span xmlns="" class="line">​</span>        assert <span xmlns="" class="perl_Function">getValue</span>(<span xmlns="" class="perl_String">"#{user.name}"</span>).<span xmlns="" class="perl_Function">equals</span>(<span xmlns="" class="perl_String">"Gavin King"</span>);
+<span xmlns="" class="line">​</span>        assert <span xmlns="" class="perl_Function">getValue</span>(<span xmlns="" class="perl_String">"#{user.password}"</span>).<span xmlns="" class="perl_Function">equals</span>(<span xmlns="" class="perl_String">"secret"</span>);
+<span xmlns="" class="line">​</span>      }
+<span xmlns="" class="line">​</span>         
+<span xmlns="" class="line">​</span>    }.<span xmlns="" class="perl_Function">run</span>();
+<span xmlns="" class="line">​</span>      
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  ...
+<span xmlns="" class="line">​</span>   
+<span xmlns="" class="line">​</span>}
+</pre><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690504829488">
+      ⁠</a>35.2.1. Using mocks in integration tests</h2></div></div></div><div class="para">
+				You may need to replace Seam components requiring resources that are unavailable in the integration test environment. For example, suppose that you use the following Seam component as a facade to some payment processing system:
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Name</span>(<span xmlns="" class="perl_String">"paymentProcessor"</span>) 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> PaymentProcessor {
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">processPayment</span>(Payment payment) { .<span xmlns="" class="perl_Keyword">... </span>} 
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				For integration tests, we can make a mock component like so:
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Name</span>(<span xmlns="" class="perl_String">"paymentProcessor"</span>)
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Install</span>(precedence=MOCK)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> MockPaymentProcessor <span xmlns="" class="perl_Keyword">extends</span> PaymentProcessor {
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">processPayment</span>(Payment payment) {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">return</span> <span xmlns="" class="perl_Keyword">true</span>;
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				The <code class="literal">MOCK</code> precedence is higher than the default precedence of application components, so Seam will install the mock implementation whenever it is in the classpath. When deployed into production, the mock implementation is absent, so the real component will be installed.
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139690451480400">
+      ⁠</a>35.3. Integration testing Seam application user interactions</h1></div></div></div><div class="para">
+			It is more difficult to emulate user interactions, and to place assertions appropriately. Some test frameworks let us test the whole application by reproducing user interactions with the web browser. These are useful, but not appropriate during development.
+		</div><div class="para">
+			<code class="literal">SeamTest</code> lets you write <span class="emphasis"><em>scripted</em></span> tests in a simulated JSF environment. A scripted test reproduces the interaction between the view and the Seam components, so you play the role of the JSF implementation during testing. You can test everything but the view with this approach.
+		</div><div class="para">
+			Consider a JSP view for the component we unit tested above:
+		</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;html&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;head&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;title&gt;</span>Register New User<span xmlns="" class="perl_Keyword">&lt;/title&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/head&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;body&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;f:view&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;h:form&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;table</span><span xmlns="" class="perl_Others"> border=</span><span xmlns="" class="perl_String">"0"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;tr&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;td&gt;</span>Username<span xmlns="" class="perl_Keyword">&lt;/td&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;td&gt;&lt;h:inputText</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"#{user.username}"</span><span xmlns="" class="perl_Keyword">/&gt;&lt;/td&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;/tr&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;tr&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;td&gt;</span>Real Name<span xmlns="" class="perl_Keyword">&lt;/td&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;td&gt;&lt;h:inputText</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"#{user.name}"</span><span xmlns="" class="perl_Keyword">/&gt;&lt;/td&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;/tr&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;tr&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;td&gt;</span>Password<span xmlns="" class="perl_Keyword">&lt;/td&gt;</span>
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">&lt;td&gt;&lt;h:inputSecret</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"#{user.password}"</span><span xmlns="" class="perl_Keyword">/&gt;&lt;/td&gt;</span>
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Keyword">&lt;/tr&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;/table&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;h:messages/&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;h:commandButton</span><span xmlns="" class="perl_Others"> type=</span><span xmlns="" class="perl_String">"submit"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"Register"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">                         action=</span><span xmlns="" class="perl_String">"#{register.register}"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/h:form&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/f:view&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/body&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/html&gt;</span>
+</pre><div class="para">
+			We want to test the registration functionality of our application (that is, what happens when a user clicks the Register button). We will reproduce the JSF request life cycle in an automated TestNG test:
+		</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> RegisterTest <span xmlns="" class="perl_Keyword">extends</span> SeamTesFt {
+<span xmlns="" class="line">​</span>   
+<span xmlns="" class="line">​</span>  @Test
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">testRegister</span>() <span xmlns="" class="perl_Keyword">throws</span> Exception {
+<span xmlns="" class="line">​</span>            
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">FacesRequest</span>() {
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>      @Override
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">protected</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">processValidations</span>() <span xmlns="" class="perl_Keyword">throws</span> Exception {
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Function">validateValue</span>(<span xmlns="" class="perl_String">"#{user.username}"</span>, <span xmlns="" class="perl_String">"1ovthafew"</span>);
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Function">validateValue</span>(<span xmlns="" class="perl_String">"#{user.name}"</span>, <span xmlns="" class="perl_String">"Gavin King"</span>);
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Function">validateValue</span>(<span xmlns="" class="perl_String">"#{user.password}"</span>, <span xmlns="" class="perl_String">"secret"</span>);
+<span xmlns="" class="line">​</span>        assert !<span xmlns="" class="perl_Function">isValidationFailure</span>();
+<span xmlns="" class="line">​</span>      }
+<span xmlns="" class="line">​</span>         
+<span xmlns="" class="line">​</span>      @Override
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">protected</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">updateModelValues</span>() <span xmlns="" class="perl_Keyword">throws</span> Exception {
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Function">setValue</span>(<span xmlns="" class="perl_String">"#{user.username}"</span>, <span xmlns="" class="perl_String">"1ovthafew"</span>);
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Function">setValue</span>(<span xmlns="" class="perl_String">"#{user.name}"</span>, <span xmlns="" class="perl_String">"Gavin King"</span>);
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Function">setValue</span>(<span xmlns="" class="perl_String">"#{user.password}"</span>, <span xmlns="" class="perl_String">"secret"</span>);
+<span xmlns="" class="line">​</span>      }
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>      @Override
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">protected</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">invokeApplication</span>() {
+<span xmlns="" class="line">​</span>        assert <span xmlns="" class="perl_Function">invokeMethod</span>(<span xmlns="" class="perl_String">"#{register.register}"</span>).<span xmlns="" class="perl_Function">equals</span>(<span xmlns="" class="perl_String">"success"</span>);
+<span xmlns="" class="line">​</span>      }
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>      @Override
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">protected</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">renderResponse</span>() {
+<span xmlns="" class="line">​</span>        assert <span xmlns="" class="perl_Function">getValue</span>(<span xmlns="" class="perl_String">"#{user.username}"</span>).<span xmlns="" class="perl_Function">equals</span>(<span xmlns="" class="perl_String">"1ovthafew"</span>);
+<span xmlns="" class="line">​</span>        assert <span xmlns="" class="perl_Function">getValue</span>(<span xmlns="" class="perl_String">"#{user.name}"</span>).<span xmlns="" class="perl_Function">equals</span>(<span xmlns="" class="perl_String">"Gavin King"</span>);
+<span xmlns="" class="line">​</span>        assert <span xmlns="" class="perl_Function">getValue</span>(<span xmlns="" class="perl_String">"#{user.password}"</span>).<span xmlns="" class="perl_Function">equals</span>(<span xmlns="" class="perl_String">"secret"</span>);
+<span xmlns="" class="line">​</span>      }
+<span xmlns="" class="line">​</span>    }.<span xmlns="" class="perl_Function">run</span>();   
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>  ...
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+			Here, we extend <code class="literal">SeamTest</code> to provide a Seam environment for our components, and our test script is written as an anonymous class that extends <code class="literal">SeamTest.FacesRequest</code>, which provides an emulated JSF request life cycle. (There is also a <code class="literal">SeamTest.NonFacesRequest</code> for testing GET requests.) Our code includes methods named for various JSF phases, to emulate the calls that JSF would make to our components. We have then included various assertions. 
+		</div><div class="para">
+			The Seam example applications include integration tests demonstrating more complex cases. You can run these tests with Ant, or with the TestNG plug-in for Eclipse:
+		</div><div class="mediaobject" style="text-align: center"><img src="images/plugin-testng.png" align="middle" alt="Integration testing Seam application user interactions" style="text-align: middle"/></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690517656704">
+      ⁠</a>35.3.1. Configuration</h2></div></div></div><div class="para">
+				If you created your project with <span class="application"><strong>seam-gen</strong></span>, you can start writing tests immediately. Otherwise, you must first set up a testing environment in a build tool such as Ant, Maven, or Eclipse.
+			</div><div class="para">
+				You will require at <span class="emphasis"><em>least</em></span> the following dependencies:
+			</div><div class="table"><a id="idm139690511139136">
+      ⁠</a><p class="title"><strong>Table 35.1. </strong></p><div class="table-contents"><table xmlns:d="http://docbook.org/ns/docbook" class="lt-4-cols gt-7-rows" summary=""><colgroup><col/><col/><col/></colgroup><thead><tr><th> Group ID </th><th> Artifact ID </th><th> Location in Seam </th></tr></thead><tbody><tr><td> <code class="literal">org.jboss.seam.embedded</code> </td><td> <code class="literal">hibernate-all</code> </td><td> <code class="literal">lib/test/hibernate-all.jar</code> </td></tr><tr><td> <code class="literal">org.jboss.seam.embedded</code> </td><td> <code class="literal">jboss-embedded-all</code> </td><td> <code class="literal">lib/test/jboss-embedded-all.jar</code> </td></tr><tr><td> <code class="literal">org.jboss.seam.embedded</code> </td><td> <code class="literal">thirdparty-all</code> </td><td> <code class="literal">lib/test/thirdparty-all.jar</code> </td></tr><tr><td> <code class="literal">org.jboss.seam.embedded</code> </td><td> <code class="literal">jboss-embedded-api</code> </td><td> <code class="literal">lib/jboss-embedded-api.jar</code> </td></tr><tr><td> <code class="literal">org.jboss.seam</code> </td><td> <code class="literal">jboss-seam</code> </td><td> <code class="literal">lib/jboss-seam.jar</code> </td></tr><tr><td> <code class="literal">org.jboss.el</code> </td><td> <code class="literal">jboss-el</code> </td><td> <code class="literal">lib/jboss-el.jar</code> </td></tr><tr><td> <code class="literal">javax.faces</code> </td><td> <code class="literal">jsf-api</code> </td><td> <code class="literal">lib/jsf-api.jar</code> </td></tr><tr><td> <code class="literal">javax.el</code> </td><td> <code class="literal">el-api</code> </td><td> <code class="literal">lib/el-api.jar</code> </td></tr><tr><td> <code class="literal">javax.activation</code> </td><td> <code class="literal">javax.activation</code> </td><td> <code class="literal">lib/activation.jar</code> </td></tr></tbody></table></div></div><div class="para">
+				Do not put the compile-time JBoss Enterprise Application Platform dependencies from <code class="literal">lib/</code> (such as <code class="literal">jboss-system.jar</code>) on the classpath, as this will prevent Embedded JBoss from booting. Add dependencies such as Drools and jBPM as you require them.
+			</div><div class="para">
+				You must include the <code class="literal">bootstrap/</code> directory on the classpath, since it contains the configuration for Embedded JBoss.
+			</div><div class="para">
+				You must also include your built project, tests, and the <code class="filename">jar</code> for your test framework on the classpath, as well as configuration files for JPA and Seam. Seam asks Embedded JBoss to deploy any resource (JAR or directory) with <code class="literal">seam.properties</code> in its root. If the structure of the directory containing your built project does not resemble that of a deployable archive, you must include <code class="literal">seam.properties</code> in each resource.
+			</div><div class="para">
+				By default, a generated project uses the <code class="literal">java:/DefaultDS</code> (a built in HSQL datasource in Embedded JBoss) for testing. To use another datasource, place the <code class="literal">foo-ds.xml</code> into <code class="literal">bootstrap/deploy</code> directory.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690519302832">
+      ⁠</a>35.3.2. Using SeamTest with another test framework</h2></div></div></div><div class="para">
+				Seam provides TestNG support out of the box, but you can also use other test frameworks such as JUnit. To do so, you must provide an implementation of <code class="literal">AbstractSeamTest</code> that does the following:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						Calls <code class="literal">super.begin()</code> before every test method.
+					</div></li><li class="listitem"><div class="para">
+						Calls <code class="literal">super.end()</code> after every test method.
+					</div></li><li class="listitem"><div class="para">
+						Calls <code class="literal">super.setupClass()</code> to set up the integration test environment. This should be called prior to any test methods.
+					</div></li><li class="listitem"><div class="para">
+						Calls <code class="literal">super.cleanupClass()</code> to clean up the integration test environment.
+					</div></li><li class="listitem"><div class="para">
+						Calls <code class="literal">super.startSeam()</code> to start Seam when integration testing begins.
+					</div></li><li class="listitem"><div class="para">
+						Calls <code class="literal">super.stopSeam()</code> to cleanly shut down Seam at the end of integration testing.
+					</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690466895328">
+      ⁠</a>35.3.3. Integration Testing with Mock Data</h2></div></div></div><div class="para">
+				To insert or clean data in your database before each test, you can use Seam's integration with DBUnit. To do this, extend DBUnitSeamTest rather than <code class="literal">SeamTest</code>.
+			</div><div class="para">
+				You must provide a dataset for DBUnit.
+			</div><div class="para">
+				DBUnit supports two formats for dataset files, flat and XML. Seam's DBUnitSeamTest assumes that you use the flat format, so make sure that your dataset is in this format.
+			</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;dataset&gt;</span>
+<span xmlns="" class="line">​</span>   
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;ARTIST</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">    id=</span><span xmlns="" class="perl_String">"1"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">    dtype=</span><span xmlns="" class="perl_String">"Band"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">    name=</span><span xmlns="" class="perl_String">"Pink Floyd"</span> <span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>      
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;DISC</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">    id=</span><span xmlns="" class="perl_String">"1"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">    name=</span><span xmlns="" class="perl_String">"Dark Side of the Moon"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">    artist_id=</span><span xmlns="" class="perl_String">"1"</span> <span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>      
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/dataset&gt;</span>
+</pre><div class="para">
+				In your test class, configure your dataset by overriding <code class="literal">prepareDBUnitOperations()</code> as follows:
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">protected</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">prepareDBUnitOperations</span>() {
+<span xmlns="" class="line">​</span>  beforeTestOperations.<span xmlns="" class="perl_Function">add</span>(
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">DataSetOperation</span>(<span xmlns="" class="perl_String">"my/datasets/BaseData.xml"</span>)
+<span xmlns="" class="line">​</span>  );
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				<code class="literal">DataSetOperation</code> defaults to <code class="literal">DatabaseOperation.CLEAN_INSERT</code> if no other operation is specified as a constructor argument. The previous example cleans all tables defined <code class="literal">BaseData.xml</code>, then inserts all rows declared in <code class="literal">BaseData.xml</code> before each <code class="literal">@Test</code> method is invoked.
+			</div><div class="para">
+				If you require extra cleanup after a test method executes, add operations to the <code class="literal">afterTestOperations</code> list.
+			</div><div class="para">
+				You need to tell DBUnit about your datasource by setting a TestNG test parameter named <code class="literal">datasourceJndiName</code>:
+			</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;parameter</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"datasourceJndiName"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"java:/seamdiscsDatasource"</span><span xmlns="" class="perl_Keyword">/&gt;</span></pre><div class="para">
+				DBUnitSeamTest supports both MySQL and HSQL. You must tell it which database is being used, otherwise it defaults to HSQL:
+			</div><pre class="programlisting XML"><span xmlns="" class="line">​</span> <span xmlns="" class="perl_Keyword">&lt;parameter</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"database"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"MYSQL"</span> <span xmlns="" class="perl_Keyword">/&gt;</span>
+</pre><div class="para">
+				It also allows you to insert binary data into the test data set. (Note that this is <span class="emphasis"><em>untested on Windows</em></span>.) Tell DBUnitSeamTest where to find these resources on your classpath:
+			</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;parameter</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"binaryDir"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"images/"</span> <span xmlns="" class="perl_Keyword">/&gt;</span>
+</pre><div class="para">
+				You do not have to configure any of these parameters if you use HSQL and have no binary imports. However, unless you specify <code class="literal">datasourceJndiName</code> in your test configuration, you will have to call <code class="literal">setDatabaseJndiName()</code> before your test runs. If you are not using HSQL or MySQL, you need to override some methods. See the Javadoc of <code class="literal">DBUnitSeamTest</code> for more details.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="testing.mail">
+      ⁠</a>35.3.4. Integration Testing Seam Mail</h2></div></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="warning"><div class="admonition_header"><p><strong>Warning</strong></p></div><div class="admonition"><div class="para">
+					This feature is still under development.
+				</div></div></div><div class="para">
+				It is very easy to integration test your Seam Mail:
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> MailTest <span xmlns="" class="perl_Keyword">extends</span> SeamTest {
+<span xmlns="" class="line">​</span>    
+<span xmlns="" class="line">​</span>  @Test
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">testSimpleMessage</span>() <span xmlns="" class="perl_Keyword">throws</span> Exception {
+<span xmlns="" class="line">​</span>        
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">FacesRequest</span>() {
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>      @Override
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">protected</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">updateModelValues</span>() <span xmlns="" class="perl_Keyword">throws</span> Exception {
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Function">setValue</span>(<span xmlns="" class="perl_String">"#{person.firstname}"</span>, <span xmlns="" class="perl_String">"Pete"</span>);
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Function">setValue</span>(<span xmlns="" class="perl_String">"#{person.lastname}"</span>, <span xmlns="" class="perl_String">"Muir"</span>);
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Function">setValue</span>(<span xmlns="" class="perl_String">"#{person.address}"</span>, <span xmlns="" class="perl_String">"test@example.com"</span>);
+<span xmlns="" class="line">​</span>      }
+<span xmlns="" class="line">​</span>            
+<span xmlns="" class="line">​</span>      @Override
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">protected</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">invokeApplication</span>() <span xmlns="" class="perl_Keyword">throws</span> Exception {
+<span xmlns="" class="line">​</span>        MimeMessage renderedMessage = 
+<span xmlns="" class="line">​</span>          <span xmlns="" class="perl_Function">getRenderedMailMessage</span>(<span xmlns="" class="perl_String">"/simple.xhtml"</span>);
+<span xmlns="" class="line">​</span>        assert renderedMessage.<span xmlns="" class="perl_Function">getAllRecipients</span>().<span xmlns="" class="perl_Function">length</span> == <span xmlns="" class="perl_Float">1</span>;
+<span xmlns="" class="line">​</span>        InternetAddress to = 
+<span xmlns="" class="line">​</span>          (InternetAddress) renderedMessage.<span xmlns="" class="perl_Function">getAllRecipients</span>()[<span xmlns="" class="perl_Float">0</span>];
+<span xmlns="" class="line">​</span>        assert to.<span xmlns="" class="perl_Function">getAddress</span>().<span xmlns="" class="perl_Function">equals</span>(<span xmlns="" class="perl_String">"test@example.com"</span>);
+<span xmlns="" class="line">​</span>      }
+<span xmlns="" class="line">​</span>            
+<span xmlns="" class="line">​</span>    }.<span xmlns="" class="perl_Function">run</span>();       
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				Create a new <code class="literal">FacesRequest</code> as normal. Inside the <code class="literal">invokeApplication</code> hook, we render the message using <code class="literal">getRenderedMailMessage(viewId);</code>, which passes the <code class="literal">viewId</code> of he message to be rendered. The method returns the rendered message on which you can perform tests. You can also use any standard JSF life cycle method.
+			</div><div class="para">
+				There is no support for rendering standard JSF components, so you cannot easily test the contents of the mail message.
+			</div></div></div></div></body></html>

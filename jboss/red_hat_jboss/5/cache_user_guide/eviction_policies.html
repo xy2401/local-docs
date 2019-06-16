@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 10. Eviction</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="eviction_policies">
+      ⁠</a>Chapter 10. Eviction</h1></div></div></div><div class="para">
+		Eviction controls JBoss Cache's memory management by restricting how many nodes are allowed to be stored in memory, and for how long. Memory constraints on servers mean caches cannot grow indefinitely, so eviction needs to occur to prevent out of memory errors. Eviction is most often used alongside <a class="xref" href="cache_loaders.html">Chapter 9, <em>Cache Loaders</em></a>.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="eviction.design">
+      ⁠</a>10.1. Design</h1></div></div></div><div class="para">
+			Eviction in JBoss Cache is designed around four concepts: 
+			<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						1. Collecting statistics
+					</div></li><li class="listitem"><div class="para">
+						2. Determining which nodes to evict
+					</div></li><li class="listitem"><div class="para">
+						3. How nodes are evicted
+					</div></li><li class="listitem"><div class="para">
+						4. Eviction threads.
+					</div></li></ul></div>
+			 In addition, Regions play a key role in eviction, as eviction is always configured on a per-region basis so that different subtrees in the cache can have different eviction characteristics.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486322686608">
+      ⁠</a>10.1.1. Collecting Statistics</h2></div></div></div><div class="para">
+				This is done on the caller's thread whenever anyone interacts with the cache. If eviction is enabled, an <code class="literal">EvictionInterceptor</code> is added to the interceptor chain and events are recorded in an event queue. Events are denoted by the <code class="literal">EvictionEvent</code> class. Event queues are held on specific Regions so each region has its own event queue.
+			</div><div class="para">
+				This aspect of eviction is not configurable, except that the <code class="literal">EvictionInterceptor</code> is either added to the interceptor chain or not, depending on whether eviction is enabled.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486332655360">
+      ⁠</a>10.1.2. Determining Which Nodes to Evict</h2></div></div></div><div class="para">
+				An <code class="literal">EvictionAlgorithm</code> implementation processes the eviction queue to decide which nodes to evict. JBoss Cache ships with a number of implementations, including <code class="literal">FIFOAlgorithm</code>, <code class="literal">LRUAlgorithm</code>, <code class="literal">LFUAlgorithm</code>, etc. Each implementation has a corresponding <code class="literal">EvictionAlgorithmConfig</code> implementation with configuration details for the algorithm.
+			</div><div class="para">
+				Custom <code class="literal">EvictionAlgorithm</code> implementations can be provided by implementing the interface or extending one of the provided implementations.
+			</div><div class="para">
+				Algorithms are executed by calling its <code class="literal">process()</code> method and passing in the event queue to process. This is typically done by calling <code class="literal">Region.processEvictionQueues()</code>, which will locate the Algorithm assigned to the region.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486322922016">
+      ⁠</a>10.1.3. How Nodes are Evicted</h2></div></div></div><div class="para">
+				Once the <code class="literal">EvictionAlgorithm</code> decides which nodes to evict, it uses an implementation of <code class="literal">EvictionActionPolicy</code> to determine how to evict nodes. This is configurable on a per-region basis, and defaults to <code class="literal">DefaultEvictionActionPolicy</code>, which invokes <code class="literal">Cache.evict()</code> for each node that needs to be evicted.
+			</div><div class="para">
+				JBoss Cache also ships with <code class="literal">RemoveOnEvictActionPolicy</code>, which calls <code class="literal">Cache.removeNode()</code> for each node that needs to be evicted, instead of <code class="literal">Cache.evict()</code>.
+			</div><div class="para">
+				Custom <code class="literal">EvictionActionPolicy</code> implementations can be used as well.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486341409408">
+      ⁠</a>10.1.4. Eviction threads</h2></div></div></div><div class="para">
+				By default, a single cache-wide eviction thread is used to periodically iterate through registered regions and call <code class="literal">Region.processEvictionQueues()</code> on each region. The frequency with which this thread runs can be configured using the <code class="literal">wakeUpInterval</code> attribute in the <code class="literal">eviction</code> configuration element, and defaults to 5000 milliseconds if not specified.
+			</div><div class="para">
+				The eviction thread can be disabled by setting <code class="literal">wakeUpInterval</code> to <code class="literal">0</code>. This can be useful if you have your own periodic maintenance thread running and would like to iterate through regions and call <code class="literal">Region.processEvictionQueues()</code> yourself.
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="regions">
+      ⁠</a>10.2. Eviction Regions</h1></div></div></div><div class="para">
+			The concept of regions and the <code class="literal">Region</code> class were <a class="xref" href="architecture.html#architecture.regions">Section 7.6, “Class Loading and Regions”</a> when talking about marshaling. Regions are also used to define the eviction behavior for nodes within that region. In addition to using a region-specific configuration, you can also configure default, cache-wide eviction behavior for nodes that do not fall into predefined regions or if you do not wish to define specific regions. It is important to note that when defining regions using the configuration XML file, all elements of the <code class="literal">Fqn</code> that defines the region are <code class="literal">String</code> objects.
+		</div><div class="para">
+			For each region, you can define eviction parameters.
+		</div><div class="para">
+			It's possible to define regions that overlap. In other words, one region can be defined for <code class="literal">/a/b/c</code>, and another defined for <code class="literal">/a/b/c/d</code> (which is just the <span class="emphasis"><em>d</em></span> subtree of the <code class="literal">/a/b/c</code> sub-tree). The algorithm, in order to handle scenarios like this consistently, will always choose the first region it encounters. In this way, if the algorithm needed to decide how to handle node <code class="literal">/a/b/c/d/e</code>, it would start from there and work its way up the tree until it hits the first defined region - in this case <code class="literal">/a/b/c/d</code>.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486322881104">
+      ⁠</a>10.2.1. Resident Nodes</h2></div></div></div><div class="para">
+				Nodes marked as resident (using <code class="literal">Node.setResident()</code> API) will be ignored by the eviction policies both when checking whether to trigger the eviction and when proceeding with the actual eviction of nodes. E.g. if a region is configured to have a maximum of 10 nodes, resident nodes will not be counted when deciding whether to evict nodes in that region. In addition, resident nodes will not be considered for eviction when the region's eviction threshold is reached.
+			</div><div class="para">
+				In order to mark a node as resident the <code class="literal">Node.setResident()</code> API should be used. By default, the newly created nodes are not resident. The <code class="literal">resident</code> attribute of a node is neither replicated, persisted nor transaction-aware.
+			</div><div class="para">
+				A sample use case for resident nodes would be ensuring "path" nodes do not add "noise" to an eviction policy. E.g.,:
+			</div><pre class="programlisting JAVA">
+...
+   Map lotsOfData = generateData();
+   cache.put("/a/b/c", lotsOfData);
+   cache.getRoot().getChild("/a").setResident(true);
+   cache.getRoot().getChild("/a/b").setResident(true);
+...
+</pre><div class="para">
+				In this example, the nodes <code class="literal">/a</code> and <code class="literal">/a/b</code> are paths which exist solely to support the existence of node <code class="literal">/a/b/c</code> and do not hold any data themselves. As such, they are good candidates for being marked as resident. This would lead to better memory management as no eviction events would be generated when accessing <code class="literal">/a</code> and<code class="literal">/a/b</code>.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+					When adding attributes to a resident node, e.g. <code class="literal">cache.put("/a", "k", "v")</code> in the above example, it would make sense to mark the nodes as non-resident again and let them be considered for eviction.
+				</div></div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140486343488592">
+      ⁠</a>10.3. Configuring Eviction</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="eviction.basic_cfg">
+      ⁠</a>10.3.1. Basic Configuration</h2></div></div></div><div class="para">
+				The basic eviction configuration element looks like:
+			</div><pre class="programlisting XML">
+   ...
+   &lt;eviction wakeUpInterval="500" eventQueueSize="100000"&gt;
+      &lt;default algorithmClass="org.jboss.cache.eviction.LRUAlgorithm"&gt;
+         &lt;property name="maxNodes" value="5000" /&gt;
+         &lt;property name="timeToLive" value="1000" /&gt;
+      &lt;/default&gt;
+   &lt;/eviction&gt;
+   ...
+</pre><div class="para">
+				<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+							<code class="literal">wakeUpInterval</code> - this required parameter defines how often the eviction thread runs, in milliseconds.
+						</div></li><li class="listitem"><div class="para">
+							<code class="literal">eventQueueSize</code> - this optional parameter defines the size of the bounded queue which holds eviction events. If your eviction thread does not run often enough, you may find that the event queue fills up. It may then be necessary to get your eviction thread to run more frequently, or increase the size of your event queue. This configuration is just the <span class="emphasis"><em>default</em></span> event queue size, and can be overridden in specific eviction regions. If not specified, this defaults to <code class="literal">200000</code>.
+						</div></li><li class="listitem"><div class="para">
+							<code class="literal">algorithmClass</code> - this is required, unless you set individual <code class="literal">algorithmClass</code> attributes on each and every region. This defines the default eviction algorithm to use if one is not defined for a region.
+						</div></li><li class="listitem"><div class="para">
+							Algorithm configuration attributes - these are specific to the algorithm specified in <code class="literal">algorithmClass</code>. See the section specific to the algorithm you are interested in for details.
+						</div></li></ul></div>
+
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486343939232">
+      ⁠</a>10.3.2. Programmatic Configuration</h2></div></div></div><div class="para">
+				Configuring eviction using the <code class="literal">Configuration</code> object entails the use of the <code class="literal">org.jboss.cache.config.EvictionConfig</code> bean, which is passed into <code class="literal">Configuration.setEvictionConfig()</code>. See the <a class="xref" href="configuration.html">Chapter 3, <em>Configuration</em></a> for more on building a <code class="literal">Configuration</code> programmatically.
+			</div><div class="para">
+				The use of simple POJO beans to represent all elements in a cache's configuration also makes it fairly easy to programmatically add eviction regions after the cache is started. For example, assume we had an existing cache configured via XML with the EvictionConfig element shown above. Now at runtime we wished to add a new eviction region named "/org/jboss/fifo", using <code class="literal">LRUAlgorithm</code> but a different number of <code class="literal">maxNodes</code>:
+			</div><pre class="programlisting JAVA">
+   Fqn fqn = Fqn.fromString("/org/jboss/fifo");
+
+   // Create a configuration for an LRUPolicy
+   LRUAlgorithmConfig lruc = new LRUAlgorithmConfig();
+   lruc.setMaxNodes(10000);
+
+   // Create an eviction region config
+   EvictionRegionConfig erc = new EvictionRegionConfig(fqn, lruc);
+
+   // Create the region and set the config
+   Region region = cache.getRegion(fqn, true);
+   region.setEvictionRegionConfig(erc);
+</pre></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="eviction.shipped">
+      ⁠</a>10.4. Shipped Eviction Policies</h1></div></div></div><div class="para">
+			This section details the different algorithms shipped with JBoss Cache, and the various configuration parameters used for each algorithm.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486342628768">
+      ⁠</a>10.4.1. LRUAlgorithm - Least Recently Used</h2></div></div></div><div class="para">
+				<code class="literal">org.jboss.cache.eviction.LRUAlgorithm</code> controls both the node lifetime and age. This policy guarantees a constant order ( <code class="literal">O (1)</code> ) for adds, removals and lookups (visits). It has the following configuration parameters:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<code class="literal">maxNodes</code> - This is the maximum number of nodes allowed in this region. 0 denotes immediate expiry, -1 denotes no limit.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">timeToLive</code> - The amount of time a node is not written to or read (in milliseconds) before the node is swept away. 0 denotes immediate expiry, -1 denotes no limit.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">maxAge</code> - Lifespan of a node (in milliseconds) regardless of idle time before the node is swept away. 0 denotes immediate expiry, -1 denotes no limit.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">minTimeToLive</code> - the minimum amount of time a node must be allowed to live after being accessed before it is allowed to be considered for eviction. 0 denotes that this feature is disabled, which is the default value.
+					</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486325633616">
+      ⁠</a>10.4.2. FIFOAlgorithm - First In, First Out</h2></div></div></div><div class="para">
+				<code class="literal">org.jboss.cache.eviction.FIFOAlgorithm</code> controls the eviction in a proper first in first out order. This policy guarantees a constant order ( <code class="literal">O (1)</code> ) for adds, removals and lookups (visits). It has the following configuration parameters:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<code class="literal">maxNodes</code> - This is the maximum number of nodes allowed in this region. 0 denotes immediate expiry, -1 denotes no limit.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">minTimeToLive</code> - the minimum amount of time a node must be allowed to live after being accessed before it is allowed to be considered for eviction. 0 denotes that this feature is disabled, which is the default value.
+					</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486275345664">
+      ⁠</a>10.4.3. MRUAlgorithm - Most Recently Used</h2></div></div></div><div class="para">
+				<code class="literal">org.jboss.cache.eviction.MRUAlgorithm</code> controls the eviction in based on most recently used algorithm. The most recently used nodes will be the first to evict with this policy. This policy guarantees a constant order ( <code class="literal">O (1)</code> ) for adds, removals and lookups (visits). It has the following configuration parameters:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<code class="literal">maxNodes</code> - This is the maximum number of nodes allowed in this region. 0 denotes immediate expiry, -1 denotes no limit.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">minTimeToLive</code> - the minimum amount of time a node must be allowed to live after being accessed before it is allowed to be considered for eviction. 0 denotes that this feature is disabled, which is the default value.
+					</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486324641536">
+      ⁠</a>10.4.4. LFUAlgorithm - Least Frequently Used</h2></div></div></div><div class="para">
+				<code class="literal">org.jboss.cache.eviction.LFUAlgorithm</code> controls the eviction in based on least frequently used algorithm. The least frequently used nodes will be the first to evict with this policy. Node usage starts at 1 when a node is first added. Each time it is visited, the node usage counter increments by 1. This number is used to determine which nodes are least frequently used. LFU is also a sorted eviction algorithm. The underlying EvictionQueue implementation and algorithm is sorted in ascending order of the node visits counter. This class guarantees a constant order ( <code class="literal">O (1)</code> ) for adds, removal and searches. However, when any number of nodes are added/visited to the queue for a given processing pass, a single quasilinear ( <code class="literal">O (n * log n)</code> ) operation is used to resort the queue in proper LFU order. Similarly if any nodes are removed or evicted, a single linear ( <code class="literal">O (n)</code> ) pruning operation is necessary to clean up the EvictionQueue. LFU has the following configuration parameters:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<code class="literal">maxNodes</code> - This is the maximum number of nodes allowed in this region. 0 denotes immediate expiry, -1 denotes no limit.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">minNodes</code> - This is the minimum number of nodes allowed in this region. This value determines what the eviction queue should prune down to per pass. e.g. If minNodes is 10 and the cache grows to 100 nodes, the cache is pruned down to the 10 most frequently used nodes when the eviction timer makes a pass through the eviction algorithm.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">minTimeToLive</code> - the minimum amount of time a node must be allowed to live after being accessed before it is allowed to be considered for eviction. 0 denotes that this feature is disabled, which is the default value.
+					</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486274531456">
+      ⁠</a>10.4.5. ExpirationAlgorithm</h2></div></div></div><div class="para">
+				<code class="literal">org.jboss.cache.eviction.ExpirationAlgorithm</code> is a policy that evicts nodes based on an absolute expiration time. The expiration time is indicated using the <code class="literal">org.jboss.cache.Node.put()</code> method, using a String key <code class="literal">expiration</code> and the absolute time as a <code class="literal">java.lang.Long</code> object, with a value indicated as milliseconds past midnight January 1st, 1970 UTC (the same relative time as provided by <code class="literal">java.lang.System.currentTimeMillis()</code> ).
+			</div><div class="para">
+				This policy guarantees a constant order ( <code class="literal">O (1)</code> ) for adds and removals. Internally, a sorted set (TreeSet) containing the expiration time and Fqn of the nodes is stored, which essentially functions as a heap.
+			</div><div class="para">
+				This policy has the following configuration parameters:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<code class="literal">expirationKeyName</code> - This is the Node key name used in the eviction algorithm. The configuration default is <code class="literal">expiration</code> .
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">maxNodes</code> - This is the maximum number of nodes allowed in this region. 0 denotes immediate expiry, -1 denotes no limit.
+					</div></li></ul></div><div class="para">
+				The following listing shows how the expiration date is indicated and how the policy is applied:
+			</div><pre class="programlisting JAVA">
+   Cache cache = DefaultCacheFactory.createCache();
+   Fqn fqn1 = Fqn.fromString("/node/1");
+   Long future = new Long(System.currentTimeMillis() + 2000);
+
+   // sets the expiry time for a node
+   cache.getRoot().addChild(fqn1).put(ExpirationConfiguration.EXPIRATION_KEY, future);
+
+   assertTrue(cache.getRoot().hasChild(fqn1));
+   Thread.sleep(5000);
+
+   // after 5 seconds, expiration completes
+   assertFalse(cache.getRoot().hasChild(fqn1));
+</pre><div class="para">
+				Note that the expiration time of nodes is only checked when the region manager wakes up every <code class="literal">wakeUpIntervalSeconds</code> , so eviction may happen a few seconds later than indicated.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486315435488">
+      ⁠</a>10.4.6. ElementSizeAlgorithm - Eviction based on number of key/value pairs in a node</h2></div></div></div><div class="para">
+				<code class="literal">org.jboss.cache.eviction.ElementSizeAlgorithm</code> controls the eviction based on the number of key/value pairs in the node. The most recently used nodes will be the first to evict with this policy. It has the following configuration parameters:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<code class="literal">maxNodes</code> - This is the maximum number of nodes allowed in this region. 0 denotes immediate expiry, -1 denotes no limit.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">maxElementsPerNode</code> - This is the trigger number of attributes per node for the node to be selected for eviction. 0 denotes immediate expiry, -1 denotes no limit.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">minTimeToLive</code> - the minimum amount of time a node must be allowed to live after being accessed before it is allowed to be considered for eviction. 0 denotes that this feature is disabled, which is the default value.
+					</div></li></ul></div></div></div></div></body></html>

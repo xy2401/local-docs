@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 6. Manual indexing</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="search-batchindex">
+      ⁠</a>Chapter 6. Manual indexing</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="search-batchindex-indexing">
+      ⁠</a>6.1. Indexing</h1></div></div></div><div class="para">
+			It is sometimes useful to index an entity even if this entity is not inserted or updated to the database. This is for example the case when you want to build your index for the first time. <code class="classname">FullTextSession</code>.<code class="methodname">index()</code> allows you to do so.
+		</div><div class="example"><a id="idm140635506283936">
+      ⁠</a><p class="title"><strong>Example 6.1. Indexing an entity via <code class="methodname">FullTextSession.index()</code></strong></p><div class="example-contents"><pre class="programlisting">FullTextSession fullTextSession = Search.getFullTextSession(session);
+Transaction tx = fullTextSession.beginTransaction();
+for (Customer customer : customers) {
+    <span class="bold bold"><strong>fullTextSession.index(customer);</strong></span>
+}
+tx.commit(); //index are written at commit time</pre></div></div><div class="para">
+			For maximum efficiency, Hibernate Search batches index operations and executes them at commit time. If you expect to index a lot of data, however, you need to be careful about memory consumption since all documents are kept in a queue until the transaction commit. You can potentially face an <code class="classname">OutOfMemoryException</code>. To avoid this exception, you can use <code class="methodname">fullTextSession.flushToIndexes()</code>. Every time <code class="methodname">fullTextSession.flushToIndexes()</code> is called (or if the transaction is committed), the batch queue is processed (freeing memory) applying all index changes. Be aware that once flushed changes cannot be rolled back.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+				<code class="literal">hibernate.search.worker.batch_size</code> has been deprecated in favor of this explicit API which provides better control
+			</div></div></div><div class="para">
+			Other parameters which also can affect indexing time and memory consumption are:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					<code class="literal">hibernate.search.[default|&lt;indexname&gt;].indexwriter.[batch|transaction].max_buffered_docs</code>
+				</div></li><li class="listitem"><div class="para">
+					<code class="literal">hibernate.search.[default|&lt;indexname&gt;].indexwriter.[batch|transaction].max_field_length</code>
+				</div></li><li class="listitem"><div class="para">
+					<code class="literal">hibernate.search.[default|&lt;indexname&gt;].indexwriter.[batch|transaction].max_merge_docs</code>
+				</div></li><li class="listitem"><div class="para">
+					<code class="literal">hibernate.search.[default|&lt;indexname&gt;].indexwriter.[batch|transaction].merge_factor</code>
+				</div></li><li class="listitem"><div class="para">
+					<code class="literal">hibernate.search.[default|&lt;indexname&gt;].indexwriter.[batch|transaction].ram_buffer_size</code>
+				</div></li><li class="listitem"><div class="para">
+					<code class="literal">hibernate.search.[default|&lt;indexname&gt;].indexwriter.[batch|transaction].term_index_interval</code>
+				</div></li></ul></div><div class="para">
+			These parameters are Lucene specific and Hibernate Search is just passing these parameters through - see <a class="xref" href="search-configuration.html#lucene-indexing-performance">Section 3.8, “Tuning Lucene indexing performance”</a> for more details.
+		</div><div class="example"><a id="idm140635511776720">
+      ⁠</a><p class="title"><strong>Example 6.2. Efficiently indexing a given class (useful for index (re)initialization)</strong></p><div class="example-contents"><pre class="programlisting">fullTextSession.setFlushMode(FlushMode.MANUAL);
+fullTextSession.setCacheMode(CacheMode.IGNORE);
+transaction = fullTextSession.beginTransaction();
+//Scrollable results will avoid loading too many objects in memory
+ScrollableResults results = fullTextSession.createCriteria( Email.class )
+    .setFetchSize(BATCH_SIZE)
+    .scroll( ScrollMode.FORWARD_ONLY );
+int index = 0;
+while( results.next() ) {
+    index++;
+    fullTextSession.index( results.get(0) ); //index each element
+    if (index % BATCH_SIZE == 0) {
+        fullTextSession.flushToIndexes(); //apply changes to indexes
+        fullTextSession.clear(); //clear since the queue is processed
+    }
+}
+transaction.commit();</pre></div></div><div class="para">
+			Try to use a batch size that guarantees that your application will not run out of memory.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140635506619968">
+      ⁠</a>6.2. Purging</h1></div></div></div><div class="para">
+			It is equally possible to remove an entity or all entities of a given type from a Lucene index without the need to physically remove them from the database. This operation is named purging and is also done through the <code class="classname">FullTextSession</code>.
+		</div><div class="example"><a id="idm140635506618000">
+      ⁠</a><p class="title"><strong>Example 6.3. Purging a specific instance of an entity from the index</strong></p><div class="example-contents"><pre class="programlisting">FullTextSession fullTextSession = Search.getFullTextSession(session);
+Transaction tx = fullTextSession.beginTransaction();
+for (Customer customer : customers) {
+    <span class="bold bold"><strong>fullTextSession.purge( Customer.class, customer.getId() );</strong></span>
+}
+tx.commit(); //index are written at commit time</pre></div></div><div class="para">
+			Purging will remove the entity with the given id from the Lucene index but will not touch the database.
+		</div><div class="para">
+			If you need to remove all entities of a given type, you can use the <code class="methodname">purgeAll</code> method. This operation remove all entities of the type passed as a parameter as well as all its subtypes.
+		</div><div class="example"><a id="idm140635506614240">
+      ⁠</a><p class="title"><strong>Example 6.4. Purging all instances of an entity from the index</strong></p><div class="example-contents"><pre class="programlisting">FullTextSession fullTextSession = Search.getFullTextSession(session);
+Transaction tx = fullTextSession.beginTransaction();
+<span class="bold bold"><strong>fullTextSession.purgeAll( Customer.class );</strong></span>
+//optionally optimize the index
+//fullTextSession.getSearchFactory().optimize( Customer.class );
+tx.commit(); //index are written at commit time</pre></div></div><div class="para">
+			It is recommended to optimize the index after such an operation.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+				Methods <code class="methodname">index</code>, <code class="methodname">purge</code> and <code class="methodname">purgeAll</code> are available on <code class="classname">FullTextEntityManager</code> as well.
+			</div></div></div></div></div></body></html>

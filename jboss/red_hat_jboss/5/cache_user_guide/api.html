@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 2. User API</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="api">
+      ⁠</a>Chapter 2. User API</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140486309760208">
+      ⁠</a>2.1. API Classes</h1></div></div></div><div class="para">
+			The <code class="literal">Cache</code> interface is the primary mechanism for interacting with JBoss Cache. It is constructed and optionally started using the <code class="literal">CacheFactory</code>. The <code class="literal">CacheFactory</code> allows you to create a <code class="literal">Cache</code> either from a <code class="literal">Configuration</code> object or an XML file. The cache organizes data into a tree structure, made up of nodes. Once you have a reference to a <code class="literal">Cache</code>, you can use it to look up <code class="literal">Node</code> objects in the tree structure, and store data in the tree. 
+			<div class="mediaobject"><img src="images/PublicAPI.png" alt="API Classes"/></div>
+
+		</div><div class="para">
+			Note that the diagram above only depicts some of the more popular API methods. Reviewing the Javadoc for the above interfaces is the best way to learn the API. Below, we cover some of the main points.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="api.create_start">
+      ⁠</a>2.2. Instantiating and Starting the Cache</h1></div></div></div><div class="para">
+			An instance of the <code class="literal">Cache</code> interface can only be created via a <code class="literal">CacheFactory</code>. This is unlike JBoss Cache 1.x, where an instance of the old <code class="literal">TreeCache</code> class could be directly instantiated.
+		</div><div class="para">
+			The <code class="literal">CacheFactory</code> provides a number of overloaded methods for creating a <code class="literal">Cache</code>, but they all fundamentally do the same thing: 
+			<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						Gain access to a <code class="literal">Configuration</code>, either by having one passed in as a method parameter or by parsing XML content and constructing one. The XML content can come from a provided input stream, from a classpath or file system location. See the <a class="xref" href="configuration.html">Chapter 3, <em>Configuration</em></a> for more on obtaining a <code class="literal">Configuration</code>.
+					</div></li><li class="listitem"><div class="para">
+						Instantiate the <code class="literal">Cache</code> and provide it with a reference to the <code class="literal">Configuration</code>.
+					</div></li><li class="listitem"><div class="para">
+						Optionally invoke the cache's <code class="literal">create()</code> and <code class="literal">start()</code> methods.
+					</div></li></ul></div>
+
+		</div><div class="para">
+			Here is an example of the simplest mechanism for creating and starting a cache, using the default configuration values:
+		</div><pre class="programlisting JAVA">
+   CacheFactory factory = new DefaultCacheFactory();
+   Cache cache = factory.createCache();
+</pre><div class="para">
+			In this example, we tell the <code class="literal">CacheFactory</code> to find and parse a configuration file on the classpath:
+		</div><pre class="programlisting JAVA">
+   CacheFactory factory = new DefaultCacheFactory();
+   Cache cache = factory.createCache("cache-configuration.xml");
+</pre><div class="para">
+			In this example, we configure the cache from a file, but want to programmatically change a configuration element. So, we tell the factory not to start the cache, and instead do it ourselves:
+		</div><pre class="programlisting JAVA">
+   CacheFactory factory = new DefaultCacheFactory();
+   Cache cache = factory.createCache("/opt/configurations/cache-configuration.xml", false);
+   Configuration config = cache.getConfiguration();
+   config.setClusterName(this.getClusterName());
+
+   // Have to create and start cache before using it
+   cache.create();
+   cache.start();
+</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140486318452592">
+      ⁠</a>2.3. Caching and Retrieving Data</h1></div></div></div><div class="para">
+			Next, lets use the <code class="literal">Cache</code> API to access a <code class="literal">Node</code> in the cache and then do some simple reads and writes to that node.
+		</div><pre class="programlisting JAVA">
+   // Let us get a hold of the root node.
+   Node rootNode = cache.getRoot();
+
+   // Remember, JBoss Cache stores data in a tree structure.
+   // All nodes in the tree structure are identified by Fqn objects.
+   Fqn peterGriffinFqn = Fqn.fromString("/griffin/peter");
+
+   // Create a new Node
+   Node peterGriffin = rootNode.addChild(peterGriffinFqn);
+
+   // let us store some data in the node
+   peterGriffin.put("isCartoonCharacter", Boolean.TRUE);
+   peterGriffin.put("favoriteDrink", new Beer());
+
+   // some tests (just assume this code is in a JUnit test case)
+   assertTrue(peterGriffin.get("isCartoonCharacter"));
+   assertEquals(peterGriffinFqn, peterGriffin.getFqn());
+   assertTrue(rootNode.hasChild(peterGriffinFqn));
+
+   Set keys = new HashSet();
+   keys.add("isCartoonCharacter");
+   keys.add("favoriteDrink");
+
+   assertEquals(keys, peterGriffin.getKeys());
+
+   // let us remove some data from the node
+   peterGriffin.remove("favoriteDrink");
+
+   assertNull(peterGriffin.get("favoriteDrink");
+
+   // let us remove the node altogether
+   rootNode.removeChild(peterGriffinFqn);
+
+   assertFalse(rootNode.hasChild(peterGriffinFqn));
+</pre><div class="para">
+			The <code class="literal">Cache</code> interface also exposes put/get/remove operations that take an <a class="xref" href="api.html#basic_api.fqn">Section 2.4, “ The <code class="literal">Fqn</code> Class ”</a> as an argument, for convenience:
+		</div><pre class="programlisting JAVA">
+   Fqn peterGriffinFqn = Fqn.fromString("/griffin/peter");
+
+   cache.put(peterGriffinFqn, "isCartoonCharacter", Boolean.TRUE);
+   cache.put(peterGriffinFqn, "favoriteDrink", new Beer());
+
+   assertTrue(peterGriffin.get(peterGriffinFqn, "isCartoonCharacter"));
+   assertTrue(cache.getRootNode().hasChild(peterGriffinFqn));
+
+   cache.remove(peterGriffinFqn, "favoriteDrink");
+
+   assertNull(cache.get(peterGriffinFqn, "favoriteDrink");
+
+   cache.removeNode(peterGriffinFqn);
+
+   assertFalse(cache.getRootNode().hasChild(peterGriffinFqn));
+</pre><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486333219408">
+      ⁠</a>2.3.1. Organizing Your Data and Using the Node Structure</h2></div></div></div><div class="para">
+				A Node should be viewed as a named logical grouping of data. A node should be used to contain data for a single data record, for example information about a particular person or account. It should be kept in mind that all aspects of the cache - locking, cache loading, replication and eviction - happen on a per-node basis. As such, anything grouped together by being stored in a single node will be treated as a single atomic unit.
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="basic_api.fqn">
+      ⁠</a>2.4.  The <code class="literal">Fqn</code> Class </h1></div></div></div><div class="para">
+			The previous section used the <code class="literal">Fqn</code> class in its examples; now let us learn a bit more about that class.
+		</div><div class="para">
+			A Fully Qualified Name (Fqn) encapsulates a list of names which represent a path to a particular location in the cache's tree structure. The elements in the list are typically <code class="literal">String</code>s but can be any <code class="literal">Object</code> or a mix of different types.
+		</div><div class="para">
+			This path can be absolute (i.e., relative to the root node), or relative to any node in the cache. Reading the documentation on each API call that makes use of <code class="literal">Fqn</code> will tell you whether the API expects a relative or absolute <code class="literal">Fqn</code>.
+		</div><div class="para">
+			The <code class="literal">Fqn</code> class provides are variety of factory methods; see the Javadoc for all the possibilities. The following illustrates the most commonly used approaches to creating an Fqn:
+		</div><pre class="programlisting JAVA">
+   // Create an Fqn pointing to node 'Joe' under parent node 'Smith'
+   // under the 'people' section of the tree
+	    
+   // Parse it from a String
+   Fqn abc = Fqn.fromString("/people/Smith/Joe/");
+	    
+   // Here we want to use types other than String
+   Fqn acctFqn = Fqn.fromElements("accounts", "NY", new Integer(12345));
+</pre><div class="para">
+			Note that
+		</div><pre class="programlisting JAVA">Fqn f = Fqn.fromElements("a", "b", "c");</pre><div class="para">
+			is the same as
+		</div><pre class="programlisting JAVA">Fqn f = Fqn.fromString("/a/b/c");</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140486315729424">
+      ⁠</a>2.5. Stopping and Destroying the Cache</h1></div></div></div><div class="para">
+			It is good practice to stop and destroy your cache when you are done using it, particularly if it is a clustered cache and has thus used a JGroups channel. Stopping and destroying a cache ensures resources like network sockets and maintenance threads are properly cleaned up.
+		</div><pre class="programlisting JAVA">
+   cache.stop();
+   cache.destroy();
+</pre><div class="para">
+			Not also that a cache that has had <code class="literal">stop()</code> invoked on it can be started again with a new call to <code class="literal">start()</code> . Similarly, a cache that has had <code class="literal">destroy()</code> invoked on it can be created again with a new call to <code class="literal">create()</code> (and then started again with a <code class="literal">start()</code> call).
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140486278415216">
+      ⁠</a>2.6. Cache Modes</h1></div></div></div><div class="para">
+			Although technically not part of the API, the <span class="emphasis"><em>mode</em></span> in which the cache is configured to operate affects the cluster-wide behavior of any <code class="literal">put</code> or <code class="literal">remove</code> operation, so we will briefly mention the various modes here.
+		</div><div class="para">
+			JBoss Cache modes are denoted by the <code class="literal">org.jboss.cache.config.Configuration.CacheMode</code> enumeration. They consist of: 
+			<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<span class="emphasis"><em>LOCAL</em></span> - local, non-clustered cache. Local caches do not join a cluster and do not communicate with other caches in a cluster.
+					</div></li><li class="listitem"><div class="para">
+						<span class="emphasis"><em>REPL_SYNC</em></span> - synchronous replication. Replicated caches replicate all changes to the other caches in the cluster. Synchronous replication means that changes are replicated and the caller blocks until replication acknowledgements are received.
+					</div></li><li class="listitem"><div class="para">
+						<span class="emphasis"><em>REPL_ASYNC</em></span> - asynchronous replication. Similar to REPL_SYNC above, replicated caches replicate all changes to the other caches in the cluster. Being asynchronous, the caller does not block until replication acknowledgements are received.
+					</div></li><li class="listitem"><div class="para">
+						<span class="emphasis"><em>INVALIDATION_SYNC</em></span> - if a cache is configured for invalidation rather than replication, every time data is changed in a cache other caches in the cluster receive a message informing them that their data is now stale and should be evicted from memory. This reduces replication overhead while still being able to invalidate stale data on remote caches.
+					</div></li><li class="listitem"><div class="para">
+						<span class="emphasis"><em>INVALIDATION_ASYNC</em></span> - as above, except this invalidation mode causes invalidation messages to be broadcast asynchronously.
+					</div></li></ul></div>
+
+		</div><div class="para">
+			See the <a class="xref" href="clustering.html">Chapter 8, <em>Cache Modes and Clustering</em></a> for more details on how cache mode affects behavior. See the <a class="xref" href="configuration.html">Chapter 3, <em>Configuration</em></a> for info on how to configure things like cache mode.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="api.listener">
+      ⁠</a>2.7.  Adding a Cache Listener - registering for cache events </h1></div></div></div><div class="para">
+			JBoss Cache provides a convenient mechanism for registering notifications on cache events.
+		</div><pre class="programlisting JAVA">
+   Object myListener = new MyCacheListener();
+   cache.addCacheListener(myListener);
+</pre><div class="para">
+			Similar methods exist for removing or querying registered listeners. See the Javadocs on the <code class="literal">Cache</code> interface for more details.
+		</div><div class="para">
+			Basically any public class can be used as a listener, provided it is annotated with the <code class="literal">@CacheListener</code> annotation. In addition, the class needs to have one or more methods annotated with one of the method-level annotations (in the <code class="literal">org.jboss.cache.notifications.annotation</code> package). Methods annotated as such need to be public, have a void return type, and accept a single parameter of type <code class="literal">org.jboss.cache.notifications.event.Event</code> or one of its subtypes. 
+			<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<code class="literal">@CacheStarted</code> - methods annotated such receive a notification when the cache is started. Methods need to accept a parameter type which is assignable from <code class="literal">CacheStartedEvent</code> .
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">@CacheStopped</code> - methods annotated such receive a notification when the cache is stopped. Methods need to accept a parameter type which is assignable from <code class="literal">CacheStoppedEvent</code> .
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">@NodeCreated</code> - methods annotated such receive a notification when a node is created. Methods need to accept a parameter type which is assignable from <code class="literal">NodeCreatedEvent</code> .
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">@NodeRemoved</code> - methods annotated such receive a notification when a node is removed. Methods need to accept a parameter type which is assignable from <code class="literal">NodeRemovedEvent</code> .
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">@NodeModified</code> - methods annotated such receive a notification when a node is modified. Methods need to accept a parameter type which is assignable from <code class="literal">NodeModifiedEvent</code> .
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">@NodeMoved</code> - methods annotated such receive a notification when a node is moved. Methods need to accept a parameter type which is assignable from <code class="literal">NodeMovedEvent</code> .
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">@NodeVisited</code> - methods annotated such receive a notification when a node is started. Methods need to accept a parameter type which is assignable from <code class="literal">NodeVisitedEvent</code> .
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">@NodeLoaded</code> - methods annotated such receive a notification when a node is loaded from a <code class="literal">CacheLoader</code> . Methods need to accept a parameter type which is assignable from <code class="literal">NodeLoadedEvent</code> .
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">@NodeEvicted</code> - methods annotated such receive a notification when a node is evicted from memory. Methods need to accept a parameter type which is assignable from <code class="literal">NodeEvictedEvent</code> .
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">@NodeInvalidated</code> - methods annotated such receive a notification when a node is evicted from memory due to a remote invalidation event. Methods need to accept a parameter type which is assignable from <code class="literal">NodeInvalidatedEvent</code> .
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">@NodeActivated</code> - methods annotated such receive a notification when a node is activated. Methods need to accept a parameter type which is assignable from <code class="literal">NodeActivatedEvent</code> .
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">@NodePassivated</code> - methods annotated such receive a notification when a node is passivated. Methods need to accept a parameter type which is assignable from <code class="literal">NodePassivatedEvent</code> .
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">@TransactionRegistered</code> - methods annotated such receive a notification when the cache registers a <code class="literal">javax.transaction.Synchronization</code> with a registered transaction manager. Methods need to accept a parameter type which is assignable from <code class="literal">TransactionRegisteredEvent</code> .
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">@TransactionCompleted</code> - methods annotated such receive a notification when the cache receives a commit or rollback call from a registered transaction manager. Methods need to accept a parameter type which is assignable from <code class="literal">TransactionCompletedEvent</code> .
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">@ViewChanged</code> - methods annotated such receive a notification when the group structure of the cluster changes. Methods need to accept a parameter type which is assignable from <code class="literal">ViewChangedEvent</code> .
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">@CacheBlocked</code> - methods annotated such receive a notification when the cluster requests that cache operations are blocked for a state transfer event. Methods need to accept a parameter type which is assignable from <code class="literal">CacheBlockedEvent</code> .
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">@CacheUnblocked</code> - methods annotated such receive a notification when the cluster requests that cache operations are unblocked after a state transfer event. Methods need to accept a parameter type which is assignable from <code class="literal">CacheUnblockedEvent</code> .
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">@BuddyGroupChanged</code> - methods annotated such receive a notification when a node changes its buddy group, perhaps due to a buddy falling out of the cluster or a newer, closer buddy joining. Methods need to accept a parameter type which is assignable from <code class="literal">BuddyGroupChangedEvent</code>.
+					</div></li></ul></div>
+
+		</div><div class="para">
+			Refer to the Javadocs on the annotations as well as the <code class="literal">Event</code> subtypes for details of what is passed in to your method, and when.
+		</div><div class="para">
+			Example:
+		</div><pre class="programlisting JAVA">
+   @CacheListener
+   public class MyListener
+   {
+
+      @CacheStarted
+      @CacheStopped
+      public void cacheStartStopEvent(Event e)
+      {
+         switch (e.getType())
+         {
+            case CACHE_STARTED:
+               System.out.println("Cache has started");
+               break;
+            case CACHE_STOPPED:
+               System.out.println("Cache has stopped");
+               break;
+         }
+      }
+
+      @NodeCreated
+      @NodeRemoved
+      @NodeVisited
+      @NodeModified
+      @NodeMoved
+      public void logNodeEvent(NodeEvent ne)
+      {
+         log("An event on node " + ne.getFqn() + " has occured");
+      }
+   }
+</pre><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140486320050784">
+      ⁠</a>2.7.1. Synchronous and Asynchronous Notifications</h2></div></div></div><div class="para">
+				By default, all notifications are synchronous, in that they happen on the thread of the caller which generated the event. As such, it is good practice to ensure cache listener implementations do not hold up the thread in long-running tasks. Alternatively, you could set the <code class="literal">CacheListener.sync</code> attribute to <code class="literal">false</code>, in which case you will not be notified in the caller's thread. See the <a class="xref" href="configuration_reference_chapter.html#element.listeners">Table 12.13, “The <code class="literal">&lt;listeners /&gt;</code> Element”</a> on tuning this thread pool and size of blocking queue.
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140486315518336">
+      ⁠</a>2.8. Using Cache Loaders</h1></div></div></div><div class="para">
+			Cache loaders are an important part of JBoss Cache. They allow persistence of nodes to disk or to remote cache clusters, and allow for passivation when caches run out of memory. In addition, cache loaders allow JBoss Cache to perform 'warm starts', where in-memory state can be preloaded from persistent storage. JBoss Cache ships with a number of cache loader implementations. 
+			<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<code class="literal">org.jboss.cache.loader.FileCacheLoader</code> - a basic, file system based cache loader that persists data to disk. Non-transactional and not very performant, but a very simple solution. Used mainly for testing and not recommended for production use.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">org.jboss.cache.loader.JDBCCacheLoader</code> - uses a JDBC connection to store data. Connections could be created and maintained in an internal pool (uses the c3p0 pooling library) or from a configured DataSource. The database this CacheLoader connects to could be local or remotely located.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">org.jboss.cache.loader.BdbjeCacheLoader</code> - uses Oracle's BerkeleyDB file-based transactional database to persist data. Transactional and very performant, but potentially restrictive license.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">org.jboss.cache.loader.JdbmCacheLoader</code> - an open source alternative to the BerkeleyDB.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">org.jboss.cache.loader.tcp.TcpCacheLoader</code> - uses a TCP socket to "persist" data to a remote cluster, using <a href="http://www.jboss.org/community/docs/DOC-10292">a "far cache" pattern</a>.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">org.jboss.cache.loader.ClusteredCacheLoader</code> - used as a "read-only" cache loader, where other nodes in the cluster are queried for state. Useful when full state transfer is too expensive and it is preferred that state is lazily loaded.
+					</div></li></ul></div>
+			 These cache loaders, along with advanced aspects and tuning issues, are discussed in the <a class="xref" href="cache_loaders.html">Chapter 9, <em>Cache Loaders</em></a>.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140486312277856">
+      ⁠</a>2.9. Using Eviction Policies</h1></div></div></div><div class="para">
+			Eviction policies are the counterpart to cache loaders. They are necessary to make sure the cache does not run out of memory and when the cache starts to fill, an eviction algorithm running in a separate thread evicts in-memory state and frees up memory. If configured with a cache loader, the state can then be retrieved from the cache loader if needed.
+		</div><div class="para">
+			Eviction policies can be configured on a per-region basis, so different subtrees in the cache could have different eviction preferences. JBoss Cache ships with several eviction policies: 
+			<div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						<code class="literal">org.jboss.cache.eviction.LRUPolicy</code> - an eviction policy that evicts the least recently used nodes when thresholds are hit.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">org.jboss.cache.eviction.LFUPolicy</code> - an eviction policy that evicts the least frequently used nodes when thresholds are hit.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">org.jboss.cache.eviction.MRUPolicy</code> - an eviction policy that evicts the most recently used nodes when thresholds are hit.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">org.jboss.cache.eviction.FIFOPolicy</code> - an eviction policy that creates a first-in-first-out queue and evicts the oldest nodes when thresholds are hit.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">org.jboss.cache.eviction.ExpirationPolicy</code> - an eviction policy that selects nodes for eviction based on an expiry time each node is configured with.
+					</div></li><li class="listitem"><div class="para">
+						<code class="literal">org.jboss.cache.eviction.ElementSizePolicy</code> - an eviction policy that selects nodes for eviction based on the number of key/value pairs held in the node.
+					</div></li></ul></div>
+			 Detailed configuration and implementing custom eviction policies are discussed in the <a class="xref" href="eviction_policies.html">Chapter 10, <em>Eviction</em></a>.
+		</div></div></div></body></html>

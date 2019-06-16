@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 11. General Transaction Issues</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="idm140019158152336">
+      ⁠</a>Chapter 11. General Transaction Issues</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140019175927536">
+      ⁠</a>11.1. Advanced Transaction Issues with JBoss Transaction Service</h1></div></div></div><div class="para">
+			Transactions are used by both application programmers and class developers. You can make entire operations, or parts of operations, transactional. This chapter covers some of the more subtle issues involved with using transactions in general and, some particulars about JBoss Transaction Service.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019146824992">
+      ⁠</a>11.1.1. Checking Transactions</h2></div></div></div><div class="para">
+				In a multi-threaded application, multiple threads may be associated with a transaction during its lifetime, sharing the same context. Also, if one thread terminates a transaction, other threads may still be active within it. In a distributed environment, it is difficult to guarantee that no threads need a transaction when it is terminated. By default, JBoss Transaction Service issues a warning if a thread terminates a transaction when other threads are using it. However, it still allows the transaction to be terminated. Another possible behavior is to block terminating thread until all other threads have disassociated themselves from the transaction context. Therefore, JBoss Transaction Service provides the <code class="classname">com.arjuna.ats.arjuna.coordinator.CheckedAction</code> class, which allows you to override the thread/transaction termination policy. Each transaction has an instance of this class associated with it, and you can provide your own implementations on a per-transaction basis.
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> CheckedAction
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Function">CheckedAction</span> ();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">synchronized</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">check</span> (<span xmlns="" class="perl_DataType">boolean</span> isCommit, Uid actUid,
+<span xmlns="" class="line">​</span>				    BasicList list);
+<span xmlns="" class="line">​</span>};</pre><div class="para">
+				When a thread tries to terminate a transaction and there are active threads within it, the system invokes the <code class="methodname">check</code> method on the transaction’s <code class="classname">CheckedAction</code> object. The parameters to the check method are:
+			</div><div class="variablelist"><dl class="variablelist"><dt><span class="term"><em class="parameter"><code>isCommit</code></em></span></dt><dd><div class="para">
+							Indicates whether the transaction is in the process of committing or rolling back.
+						</div></dd><dt><span class="term">actUid</span></dt><dd><div class="para">
+							The transaction identifier.
+						</div></dd><dt><span class="term">list</span></dt><dd><div class="para">
+							A list of all of the threads currently active within this transaction.
+						</div></dd></dl></div><div class="para">
+				When the <code class="methodname">check</code> method returns, the transaction is terminated. The state of the transaction may have changed from when the <code class="methodname">check</code> method was called.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019180368528">
+      ⁠</a>11.1.2. Gathering Statistics</h2></div></div></div><div class="para">
+				By default, the JBoss Transaction Service does not maintain any historical information about transactions. You can turn on history tracking by setting the <code class="varname">com.arjuna.ats.arjuna.coordinator.enableStatistics</code> property variable to <code class="literal">YES</code>. This information includes the number of transactions created, and the outcomes of the transactions. You can request this information during the execution of a transactional application via the <code class="classname">com.arjuna.TxCore.Atomic.TxStats</code> class, as in <a class="xref" href="ch11.html#example-TxStats">Example 11.1, “Transaction Statistics”</a>.
+			</div><div class="example"><a id="example-TxStats">
+      ⁠</a><p class="title"><strong>Example 11.1. Transaction Statistics</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> TxStats
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">// Returns the number of transactions (top-level and nested)</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">// created so far.</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">static</span> <span xmlns="" class="perl_DataType">int</span> <span xmlns="" class="perl_Function">numberOfTransactions</span> ();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">// Returns the number of nested (sub) transactions created so far.</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">static</span> <span xmlns="" class="perl_DataType">int</span> <span xmlns="" class="perl_Function">numberOfNestedTransactions</span> ();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">// Returns the number of transactions which have terminated with</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">// heuristic outcomes.</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">static</span> <span xmlns="" class="perl_DataType">int</span> <span xmlns="" class="perl_Function">numberOfHeuristics</span> ();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">// Returns the number of committed transactions.</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">static</span> <span xmlns="" class="perl_DataType">int</span> <span xmlns="" class="perl_Function">numberOfCommittedTransactions</span> ();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">// Returns the number of transactions which have rolled back.</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">static</span> <span xmlns="" class="perl_DataType">int</span> <span xmlns="" class="perl_Function">numberOfAbortedTransactions</span> ();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>}</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019115343952">
+      ⁠</a>11.1.3. Last resource commit optimization</h2></div></div></div><div class="para">
+				In some cases, you may need enlist participants that are not <em class="wordasword">two-phase commit aware</em> into a two-phase commit transaction. If there is only a single resource, you do not need two-phase commit.If the transaction contains multiple transactions, the <em class="firstterm">Last Resource Commit Optimization</em> (<acronym class="acronym">LRCO</acronym>) becomes relevant. A single resource that is one-phase aware can only commit or roll back, with no prepare phase. Such a resource may be enlisted in a transaction with two-phase commit aware resources. The coordinator treats the one-phase aware resource slightly differently, by executing the prepare phase on all other resource first. Then,the one-phase aware transaction needs to commit the transaction, the coordinator passes control to it. If it commits, the coordinator logs the decision to commit and attempts to commit the other resources as well.
+			</div><div class="para">
+				To use the LRCO, your participant must implement the <code class="classname">com.arjuna.ats.arjuna.coordinator.OnePhase</code> interface and be registered with the transaction through the <code class="methodname">BasicAction.add</code> method. Since this operation expects instances of <code class="classname">AbstractRecord</code>, you need to create an instance of the <code class="classname">com.arjuna.ats.arjuna.LastResourceRecord</code> class and pass your participant as the constructor parameter, as shown in the <a class="xref" href="ch11.html#example-BasicAction.add">Example 11.2, “BasicAction.add Example”</a>.
+			</div><div class="example"><a id="example-BasicAction.add">
+      ⁠</a><p class="title"><strong>Example 11.2. BasicAction.add Example</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">try</span>
+<span xmlns="" class="line">​</span>    {
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_DataType">boolean</span> success = <span xmlns="" class="perl_Keyword">false</span>;
+<span xmlns="" class="line">​</span>	AtomicAction A = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">AtomicAction</span>();
+<span xmlns="" class="line">​</span>	OnePhase opRes = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">OnePhase</span>();  <span xmlns="" class="perl_Comment">// used OnePhase interface</span>
+<span xmlns="" class="line">​</span>      
+<span xmlns="" class="line">​</span>	System.<span xmlns="" class="perl_Function">err</span>.<span xmlns="" class="perl_Function">println</span>(<span xmlns="" class="perl_String">"Starting top-level action."</span>);
+<span xmlns="" class="line">​</span>      
+<span xmlns="" class="line">​</span>	A.<span xmlns="" class="perl_Function">begin</span>();
+<span xmlns="" class="line">​</span>	A.<span xmlns="" class="perl_Function">add</span>(<span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">LastResourceRecord</span>(opRes));
+<span xmlns="" class="line">​</span>	A.<span xmlns="" class="perl_Function">add</span>(<span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">ShutdownRecord</span>(ShutdownRecord.<span xmlns="" class="perl_Function">FAIL_IN_PREPARE</span>));
+<span xmlns="" class="line">​</span>      
+<span xmlns="" class="line">​</span>	A.<span xmlns="" class="perl_Function">commit</span>();
+<span xmlns="" class="line">​</span>    }</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019176697728">
+      ⁠</a>11.1.4. Nested Transactions</h2></div></div></div><div class="para">
+				You do not need to do anything special to nest transactions. If an action is begun while another action is running, it is automatically nested. This provides a modular structure to applications,meaning that the programmer of the object does not need to be concerned about whether the applications to use the object are also transactional.
+			</div><div class="para">
+				If a nested action is aborted then all of its work is rolled back. However, strict two-phase locking means that any locks the terminating transaction holds are retained until the top-level action commits or aborts. If a nested action commits, the work it has performed is only committed by the system if the top-level action commits. If the top-level action aborts, all the work is rolled back.
+			</div><div class="para">
+				Committing or aborting a nested action does not automatically affect the outcome of its parent action. You can choose to implement this behavior programmatically, controlling the way faults are contained or work is undone, for instance.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019154992688">
+      ⁠</a>11.1.5. Asynchronously Committing a Transaction</h2></div></div></div><div class="para">
+				By default, JBoss Transaction Service executes the <code class="methodname">commit</code> protocol of a top-level transaction in a synchronous, single-threaded manner. All registered resources are directed to prepare in order by a single thread, and then to commit or rollback. This has several possible disadvantages.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						Often, the <code class="methodname">prepare</code> operating is logically be invoked in parallel on each resource. The disadvantage is that if an early resource in the list of registered resource forces a rollback during <code class="methodname">prepare</code>, many unnecessary <code class="methodname">prepare</code> operations may have been performed.
+					</div></li><li class="listitem"><div class="para">
+						If your application does not need heuristic reporting, the second phase of the <code class="methodname">commit</code> protocol can be called asynchronously, since its success or failure is not important.
+					</div></li></ul></div><div class="para">
+				Therefore, JBoss Transaction Service provides runtime options to enable two threading optimizations, by setting specific variables.
+			</div><div class="variablelist"><dl class="variablelist"><dt><span class="term"><code class="varname">com.arjuna.ats.arjuna.coordinator.asyncPrepare</code></span></dt><dd><div class="para">
+							If set to <code class="literal">YES</code>, a separate thread is created during the <code class="methodname">prepare</code> phase, for each registered participant within the transaction.
+						</div></dd><dt><span class="term"><code class="varname">com.arjuna.ats.arjuna.coordinator.asyncCommit</code></span></dt><dd><div class="para">
+							If set to <code class="literal">YES</code>, a separate thread is created to complete the second phase of the transaction if you do not need information about heuristics outcomes.
+						</div></dd></dl></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019160775744">
+      ⁠</a>11.1.6. Independent Top-Level Transactions</h2></div></div></div><div class="para">
+				In addition to normal top-level and nested transactions, JBoss Transaction Service also supports independent top-level actions, which you can use to relax strict serializability in a controlled way. You can execute an independent top-level action from anywhere within another transaction, and it behaves exactly like a normal top-level action. Its results are made permanent when it commits and are not undone if any of its parent actions abort.
+			</div><div class="figure"><a id="image-independent-top-level-actions">
+      ⁠</a><div class="figure-contents"><div class="mediaobject" style="text-align: center"><img src="images/Independent_Top-Level.png" align="middle" alt="Independent Top-Level Actions" style="text-align: middle"/></div></div><p class="title"><strong>Figure 11.1. Independent Top-Level Actions</strong></p></div><div class="para">
+				<a class="xref" href="ch11.html#image-independent-top-level-actions">Figure 11.1, “Independent Top-Level Actions”</a> shows a typical nesting of transactions, where action B is nested within action A. Transaction C is logically nested within action B, because its <code class="methodname">Begin</code> operation is invoked while B is active. However, because it is an independent top-level action, it <code class="methodname">commit</code>s or <code class="methodname">abort</code>s independently of the other actions within the structure. Because of the nature of independent top-level actions, use them with caution and only after careful testing and observation.
+			</div><div class="para">
+				You can use top-level actions within an application by declaring and using instances of the <code class="classname">TopLevelTransaction</code> class, and using them in exactly the same way as other transactions.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019170223104">
+      ⁠</a>11.1.7. Transactions Within the <code class="methodname">save_state</code> and <code class="methodname">restore_state</code> Methods</h2></div></div></div><div class="para">
+				Exercise caution when you write the <code class="methodname">save_state</code> and <code class="methodname">restore_state</code> methods. Make sure not to start any atomic actions, either explicitly in the method, or implicitly through use of some other operation. The reason for this caution is that JBoss Transaction Service may invoke the <code class="methodname">restore_state</code> method when it commits, resulting in an attempt to execute a transaction during the <code class="methodname">commit</code> or <code class="methodname">abort</code> phase of another action. This might violate the atomicity properties of the action being committed or aborted, so it is strongly discouraged.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019178114032">
+      ⁠</a>11.1.8. Example</h2></div></div></div><div class="para">
+				The code in <a class="xref" href="ch11.html#example-nested-transactions">Example 11.3, “Nested Transaction Example”</a> is based on the <a class="xref" href="ch10.html#example-array-class">Example 10.7, “Saving and Restoring an Object's State”</a> example presented earlier, and implements the <code class="methodname">set</code> and <code class="methodname">get</code> methods. The code is simplified, and ignores error conditions and exceptions.
+			</div><div class="example"><a id="example-nested-transactions">
+      ⁠</a><p class="title"><strong>Example 11.3. Nested Transaction Example</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">boolean</span> set (<span xmlns="" class="perl_DataType">int</span> index, <span xmlns="" class="perl_DataType">int</span> value)
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_DataType">boolean</span> result = <span xmlns="" class="perl_Keyword">false</span>;
+<span xmlns="" class="line">​</span>    AtomicAction A = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">AtomicAction</span>();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    A.<span xmlns="" class="perl_Function">begin</span>();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">// We need to set a WRITE lock as we want to modify the state.</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">if</span> (<span xmlns="" class="perl_Function">setlock</span>(<span xmlns="" class="perl_Keyword">new</span> Lock(LockMode.<span xmlns="" class="perl_Function">WRITE</span>), <span xmlns="" class="perl_Float">0</span>) == LockResult.<span xmlns="" class="perl_Function">GRANTED</span>)
+<span xmlns="" class="line">​</span>	{
+<span xmlns="" class="line">​</span>	    elements[index] = value;
+<span xmlns="" class="line">​</span>	    <span xmlns="" class="perl_Keyword">if</span> ((value &gt; <span xmlns="" class="perl_Float">0</span>) &amp;&amp; (index &gt; highestIndex))
+<span xmlns="" class="line">​</span>		highestIndex = index;
+<span xmlns="" class="line">​</span>	    A.<span xmlns="" class="perl_Function">commit</span>(<span xmlns="" class="perl_Keyword">true</span>);
+<span xmlns="" class="line">​</span>	    result = <span xmlns="" class="perl_Keyword">true</span>;
+<span xmlns="" class="line">​</span>	}
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">else</span>
+<span xmlns="" class="line">​</span>	A.<span xmlns="" class="perl_Function">rollback</span>();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">return</span> result;
+<span xmlns="" class="line">​</span>}
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">int</span> <span xmlns="" class="perl_Function">get</span> (<span xmlns="" class="perl_DataType">int</span> index)  <span xmlns="" class="perl_Comment">// assume -1 means error</span>
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>    AtomicAction A = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">AtomicAction</span>();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    A.<span xmlns="" class="perl_Function">begin</span>();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">// We only need a READ lock as the state is unchanged.</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">if</span> (<span xmlns="" class="perl_Function">setlock</span>(<span xmlns="" class="perl_Keyword">new</span> Lock(LockMode.<span xmlns="" class="perl_Function">READ</span>), <span xmlns="" class="perl_Float">0</span>) == LockResult.<span xmlns="" class="perl_Function">GRANTED</span>)
+<span xmlns="" class="line">​</span>	{
+<span xmlns="" class="line">​</span>	    A.<span xmlns="" class="perl_Function">commit</span>(<span xmlns="" class="perl_Keyword">true</span>);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>	    <span xmlns="" class="perl_Keyword">return</span> elements[index];
+<span xmlns="" class="line">​</span>	}
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">else</span>
+<span xmlns="" class="line">​</span>	A.<span xmlns="" class="perl_Function">rollback</span>();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">return</span> <span xmlns="" class="perl_DecVal">-1</span>;
+<span xmlns="" class="line">​</span>}</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019177412304">
+      ⁠</a>11.1.9. Garbage Collecting Objects</h2></div></div></div><div class="para">
+				Java objects are deleted by the garbage collector when they are no longer needed. Caution must be used when deleting an object that is currently under the control of a transaction. If the object is being manipulated within a transaction, the transaction controls what happens to it. Therefore, regardless of the references to a transactional object maintained by an application, JBoss Transaction Service always retains its own references to make sure that the object is not deleted by the garbage collector until all involved transactions have terminated.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019180961360">
+      ⁠</a>11.1.10. Transaction Timeouts</h2></div></div></div><div class="para">
+				By default, transactions live until the application which created them deletes them, or a failure occurs. However, you can to set a timeout on a per-transaction basis, causing transactions which do not terminate before the timeout expires to be rolled back. The timeout value is expressed in seconds.
+			</div><div class="para">
+				In JBoss Transaction Service, the timeout value is provided as a parameter to the <code class="classname">AtomicAction</code> constructor. If the default value of <code class="literal">AtomicAction.NO_TIMEOUT</code> is provided, the transaction is never automatically timed out. Any other positive value represents the number of seconds to wait for the transaction to terminate. A value of <code class="literal">0</code> is interpreted as a global default timeout, which you can provide using the property <code class="literal">com.arjuna.ats.arjuna.coordinator.defaultTimeout</code>. This property's default value is <code class="literal">60</code>, or one minute.
+			</div><div class="para">
+				When a top-level transaction is created with a non-zero timeout, it will be rolled back if it times out. <code class="classname">JBossTS</code> uses a separate reaper thread to monitor all locally created transactions, forcing them to roll back if their timeouts elapse. To prevent the reaper thread from consuming application time, it only runs periodically. The default checking period is 120000 milliseconds, but you can override it by setting the <span class="property">com.arjuna.ats.arjuna.coordinator.txReaperTimeout</span> property to another value, in microseconds. Alternatively, if the <span class="property">com.arjuna.ats.arjuna.coordinator.txReaperMode</span> property is set to <code class="literal">DYNAMIC</code>, the transaction reaper wakes up whenever a transaction times out. This has the advantage of terminating transactions early, but may continually reschedule the reaper thread.
+			</div><div class="para">
+				If the timeout value is <code class="literal">0</code> for a top-level transaction, or no timeout is specified, JBoss Transaction Service does not impose any timeout on the transaction, and it is allowed to run indefinitely. You can override this default timeout by setting the <span class="property">com.arjuna.ats.arjuna.coordinator.defaultTimeout</span> property.
+			</div></div></div></div></body></html>

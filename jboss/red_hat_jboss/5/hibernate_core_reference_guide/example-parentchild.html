@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 21. Example: Parent/Child</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="example-parentchild">
+      ⁠</a>Chapter 21. Example: Parent/Child</h1></div></div></div><div class="para">
+		One of the first things that new users want to do with Hibernate is to model a parent/child type relationship. There are two different approaches to this. The most convenient approach, especially for new users, is to model both <code class="literal">Parent</code> and <code class="literal">Child</code> as entity classes with a <code class="literal">&lt;one-to-many&gt;</code> association from <code class="literal">Parent</code> to <code class="literal">Child</code>. The alternative approach is to declare the <code class="literal">Child</code> as a <code class="literal">&lt;composite-element&gt;</code>. The default semantics of a one-to-many association in Hibernate are much less close to the usual semantics of a parent/child relationship than those of a composite element mapping. We will explain how to use a <span class="emphasis"><em>bidirectional one-to-many association with cascades</em></span> to model a parent/child relationship efficiently and elegantly.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="example-parentchild-collections">
+      ⁠</a>21.1. A note about collections</h1></div></div></div><div class="para">
+			Hibernate collections are considered to be a logical part of their owning entity and not of the contained entities. Be aware that this is a critical distinction that has the following consequences:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					When you remove/add an object from/to a collection, the version number of the collection owner is incremented.
+				</div></li><li class="listitem"><div class="para">
+					If an object that was removed from a collection is an instance of a value type (e.g. a composite element), that object will cease to be persistent and its state will be completely removed from the database. Likewise, adding a value type instance to the collection will cause its state to be immediately persistent.
+				</div></li><li class="listitem"><div class="para">
+					Conversely, if an entity is removed from a collection (a one-to-many or many-to-many association), it will not be deleted by default. This behavior is completely consistent; a change to the internal state of another entity should not cause the associated entity to vanish. Likewise, adding an entity to a collection does not cause that entity to become persistent, by default.
+				</div></li></ul></div><div class="para">
+			Adding an entity to a collection, by default, merely creates a link between the two entities. Removing the entity will remove the link. This is appropriate for all sorts of cases. However, it is not appropriate in the case of a parent/child relationship. In this case, the life of the child is bound to the life cycle of the parent.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="example-parentchild-bidir">
+      ⁠</a>21.2. Bidirectional one-to-many</h1></div></div></div><div class="para">
+			Suppose we start with a simple <code class="literal">&lt;one-to-many&gt;</code> association from <code class="literal">Parent</code> to <code class="literal">Child</code>.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;set</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"children"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;key</span><span xmlns="" class="perl_Others"> column=</span><span xmlns="" class="perl_String">"parent_id"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;one-to-many</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"Child"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/set&gt;</span></pre><div class="para">
+			If we were to execute the following code:
+		</div><pre class="programlisting">Parent p = .....;
+Child c = new Child();
+p.getChildren().add(c);
+session.save(c);
+session.flush();</pre><div class="para">
+			Hibernate would issue two SQL statements:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					an <code class="literal">INSERT</code> to create the record for <code class="literal">c</code>
+				</div></li><li class="listitem"><div class="para">
+					an <code class="literal">UPDATE</code> to create the link from <code class="literal">p</code> to <code class="literal">c</code>
+				</div></li></ul></div><div class="para">
+			This is not only inefficient, but also violates any <code class="literal">NOT NULL</code> constraint on the <code class="literal">parent_id</code> column. You can fix the nullability constraint violation by specifying <code class="literal">not-null="true"</code> in the collection mapping:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;set</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"children"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;key</span><span xmlns="" class="perl_Others"> column=</span><span xmlns="" class="perl_String">"parent_id"</span><span xmlns="" class="perl_Others"> not-null=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;one-to-many</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"Child"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/set&gt;</span></pre><div class="para">
+			However, this is not the recommended solution.
+		</div><div class="para">
+			The underlying cause of this behavior is that the link (the foreign key <code class="literal">parent_id</code>) from <code class="literal">p</code> to <code class="literal">c</code> is not considered part of the state of the <code class="literal">Child</code> object and is therefore not created in the <code class="literal">INSERT</code>. The solution is to make the link part of the <code class="literal">Child</code> mapping.
+		</div><pre class="programlisting">&lt;many-to-one name="parent" column="parent_id" not-null="true"/&gt;</pre><div class="para">
+			You also need to add the <code class="literal">parent</code> property to the <code class="literal">Child</code> class.
+		</div><div class="para">
+			Now that the <code class="literal">Child</code> entity is managing the state of the link, we tell the collection not to update the link. We use the <code class="literal">inverse</code> attribute to do this:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;set</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"children"</span><span xmlns="" class="perl_Others"> inverse=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;key</span><span xmlns="" class="perl_Others"> column=</span><span xmlns="" class="perl_String">"parent_id"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;one-to-many</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"Child"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/set&gt;</span></pre><div class="para">
+			The following code would be used to add a new <code class="literal">Child</code>:
+		</div><pre class="programlisting">Parent p = (Parent) session.load(Parent.class, pid);
+Child c = new Child();
+c.setParent(p);
+p.getChildren().add(c);
+session.save(c);
+session.flush();</pre><div class="para">
+			Only one SQL <code class="literal">INSERT</code> would now be issued.
+		</div><div class="para">
+			You could also create an <code class="literal">addChild()</code> method of <code class="literal">Parent</code>.
+		</div><pre class="programlisting">public void addChild(Child c) {
+    c.setParent(this);
+    children.add(c);
+}</pre><div class="para">
+			The code to add a <code class="literal">Child</code> looks like this:
+		</div><pre class="programlisting">Parent p = (Parent) session.load(Parent.class, pid);
+Child c = new Child();
+p.addChild(c);
+session.save(c);
+session.flush();</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="example-parentchild-cascades">
+      ⁠</a>21.3. Cascading life cycle</h1></div></div></div><div class="para">
+			You can address the frustrations of the explicit call to <code class="literal">save()</code> by using cascades.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;set</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"children"</span><span xmlns="" class="perl_Others"> inverse=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Others"> cascade=</span><span xmlns="" class="perl_String">"all"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;key</span><span xmlns="" class="perl_Others"> column=</span><span xmlns="" class="perl_String">"parent_id"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;one-to-many</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"Child"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/set&gt;</span></pre><div class="para">
+			This simplifies the code above to:
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>Parent p = (Parent) session.load(Parent.class, pid);
+<span xmlns="" class="line">​</span>Child c = new Child();
+<span xmlns="" class="line">​</span>p.addChild(c);
+<span xmlns="" class="line">​</span>session.flush();</pre><div class="para">
+			Similarly, we do not need to iterate over the children when saving or deleting a <code class="literal">Parent</code>. The following removes <code class="literal">p</code> and all its children from the database.
+		</div><pre class="programlisting">Parent p = (Parent) session.load(Parent.class, pid);
+session.delete(p);
+session.flush();</pre><div class="para">
+			However, the following code:
+		</div><pre class="programlisting">Parent p = (Parent) session.load(Parent.class, pid);
+Child c = (Child) p.getChildren().iterator().next();
+p.getChildren().remove(c);
+c.setParent(null);
+session.flush();</pre><div class="para">
+			will not remove <code class="literal">c</code> from the database. In this case, it will only remove the link to <code class="literal">p</code> and cause a <code class="literal">NOT NULL</code> constraint violation. You need to explicitly <code class="literal">delete()</code> the <code class="literal">Child</code>.
+		</div><pre class="programlisting">Parent p = (Parent) session.load(Parent.class, pid);
+Child c = (Child) p.getChildren().iterator().next();
+p.getChildren().remove(c);
+session.delete(c);
+session.flush();</pre><div class="para">
+			In our case, a <code class="literal">Child</code> cannot exist without its parent. So if we remove a <code class="literal">Child</code> from the collection, we do want it to be deleted. To do this, we must use <code class="literal">cascade="all-delete-orphan"</code>.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;set</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"children"</span><span xmlns="" class="perl_Others"> inverse=</span><span xmlns="" class="perl_String">"true"</span><span xmlns="" class="perl_Others"> cascade=</span><span xmlns="" class="perl_String">"all-delete-orphan"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;key</span><span xmlns="" class="perl_Others"> column=</span><span xmlns="" class="perl_String">"parent_id"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;one-to-many</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"Child"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/set&gt;</span></pre><div class="para">
+			Even though the collection mapping specifies <code class="literal">inverse="true"</code>, cascades are still processed by iterating the collection elements. If you need an object be saved, deleted or updated by cascade, you must add it to the collection. It is not enough to simply call <code class="literal">setParent()</code>.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="example-parentchild-update">
+      ⁠</a>21.4. Cascades and <code class="literal">unsaved-value</code></h1></div></div></div><div class="para">
+			Suppose we loaded up a <code class="literal">Parent</code> in one <code class="literal">Session</code>, made some changes in a UI action and wanted to persist these changes in a new session by calling <code class="literal">update()</code>. The <code class="literal">Parent</code> will contain a collection of children and, since the cascading update is enabled, Hibernate needs to know which children are newly instantiated and which represent existing rows in the database. We will also assume that both <code class="literal">Parent</code> and <code class="literal">Child</code> have generated identifier properties of type <code class="literal">Long</code>. Hibernate will use the identifier and version/timestamp property value to determine which of the children are new. (See <a class="xref" href="objectstate.html#objectstate-saveorupdate">Section 10.7, “Automatic state detection”</a>.) <span class="emphasis"><em>In Hibernate3, it is no longer necessary to specify an <code class="literal">unsaved-value</code> explicitly.</em></span>
+		</div><div class="para">
+			The following code will update <code class="literal">parent</code> and <code class="literal">child</code> and insert <code class="literal">newChild</code>:
+		</div><pre class="programlisting">//parent and child were both loaded in a previous session
+parent.addChild(child);
+Child newChild = new Child();
+parent.addChild(newChild);
+session.update(parent);
+session.flush();</pre><div class="para">
+			This may be suitable for the case of a generated identifier, but what about assigned identifiers and composite identifiers? This is more difficult, since Hibernate cannot use the identifier property to distinguish between a newly instantiated object, with an identifier assigned by the user, and an object loaded in a previous session. In this case, Hibernate will either use the timestamp or version property, or will actually query the second-level cache or, worst case, the database, to see if the row exists.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="example-parentchild-conclusion">
+      ⁠</a>21.5. Conclusion</h1></div></div></div><div class="para">
+			The sections we have just covered can be a bit confusing. However, in practice, it all works out nicely. Most Hibernate applications use the parent/child pattern in many places.
+		</div><div class="para">
+			We mentioned an alternative in the first paragraph. None of the above issues exist in the case of <code class="literal">&lt;composite-element&gt;</code> mappings, which have exactly the semantics of a parent/child relationship. Unfortunately, there are two big limitations with composite element classes: composite elements cannot own collections and they should not be the child of any entity other than the unique parent.
+		</div></div></div></body></html>

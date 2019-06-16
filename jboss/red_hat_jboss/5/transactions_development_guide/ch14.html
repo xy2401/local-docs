@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 14. Constructing an Application Using Transactional Objects for Java</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="idm140019174670544">
+      ⁠</a>Chapter 14. Constructing an Application Using <span class="application"><strong>Transactional Objects for Java</strong></span></h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140019156570032">
+      ⁠</a>14.1. Application Construction</h1></div></div></div><div class="para">
+			Developing a JBoss Transaction Service application involves two distinct phases. First, the class developer writes new classes which need to be persistent, recoverable, or concurrency-controlled. Then, the application developer uses the classes you've created in your application. These developers may be the same person, but the two different roles imply different concerns. The class developer needs to focus on developing appropriate <code class="methodname">save_state</code> and <code class="methodname">restore_state</code> methods, as well as setting appropriate locks in operations and invoking the appropriate JBoss Transaction Service class constructors. The application developer's concern is defining the general structure of the application, particularly with regard to the use of atomic actions, or transactions.
+		</div><div class="para">
+			This chapter outlines a simple application, a simple FIFO Queue class for integer values. The Queue uses a double linked list structure, and is implemented as a single object. The example is used throughout the remainder of this manual, to illustrate the various mechanisms provided by JBoss Transaction Service. Although the example is simplistic, it shows all possible modifications to JBoss Transaction Service without requiring in-depth knowledge of the application code.
+		</div><div class="para">
+			Examples in this chapter assume that the application is not distributed. In a distributed application, context information must be propagated either implicitly or explicitly.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019155071520">
+      ⁠</a>14.1.1. Queue description</h2></div></div></div><div class="para">
+				The queue is a traditional FIFO queue, where elements are added to the front and removed from the back. The operations provided by the queue class allow the values to be placed into the queue (<em class="firstterm">enqueue</em>) and to be removed from it (<em class="firstterm">dequeue</em>), as well as the ability to change or inspect the values of elements in the queue. In this example implementation, an array is used to represent the queue. A limit of <code class="varname">QUEUE_SIZE</code> elements has been imposed for this example.
+			</div><div class="example"><a id="idm140019181447472">
+      ⁠</a><p class="title"><strong>Example 14.1. Java Interface Definition of the Que Class</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> TransactionalQueue <span xmlns="" class="perl_Keyword">extends</span> LockManager
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Function">TransactionalQueue</span> (Uid uid);
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Function">TransactionalQueue</span> ();
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">finalize</span> ();
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">enqueue</span> (<span xmlns="" class="perl_DataType">int</span> v) <span xmlns="" class="perl_Keyword">throws</span> OverFlow, UnderFlow,
+<span xmlns="" class="line">​</span>	  QueueError, Conflict;
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">int</span> <span xmlns="" class="perl_Function">dequeue</span>  () <span xmlns="" class="perl_Keyword">throws</span> OverFlow, UnderFlow,
+<span xmlns="" class="line">​</span>	  QueueError, Conflict;
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">int</span> <span xmlns="" class="perl_Function">queueSize</span> ();
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">int</span> <span xmlns="" class="perl_Function">inspectValue</span> (<span xmlns="" class="perl_DataType">int</span> i) <span xmlns="" class="perl_Keyword">throws</span> OverFlow,
+<span xmlns="" class="line">​</span>	  UnderFlow, QueueError, Conflict;
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">setValue</span> (<span xmlns="" class="perl_DataType">int</span> i, <span xmlns="" class="perl_DataType">int</span> v) <span xmlns="" class="perl_Keyword">throws</span> OverFlow,
+<span xmlns="" class="line">​</span>	  UnderFlow, QueueError, Conflict;
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">save_state</span> (OutputObjectState os, <span xmlns="" class="perl_DataType">int</span> ObjectType);
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">restore_state</span> (InputObjectState os, <span xmlns="" class="perl_DataType">int</span> ObjectType);
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> String type ();
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">static</span> <span xmlns="" class="perl_DataType">final</span> <span xmlns="" class="perl_DataType">int</span> QUEUE_SIZE = <span xmlns="" class="perl_Float">40</span>; <span xmlns="" class="perl_Comment">// maximum size of the queue</span>
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">private</span> <span xmlns="" class="perl_DataType">int</span>[QUEUE_SIZE] elements;
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">private</span> <span xmlns="" class="perl_DataType">int</span> numberOfElements;
+<span xmlns="" class="line">​</span>	  };
+</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019109435488">
+      ⁠</a>14.1.2. Constructors and deconstructors</h2></div></div></div><div class="example"><a id="example-TransactionalQueue">
+      ⁠</a><p class="title"><strong>Example 14.2. Using an Existing Persistent Object</strong></p><div class="example-contents"><div class="para">
+					To use an existing persistent object, you need to use a special constructor that is required to take the Uid of the persistent object.
+				</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Function">TransactionalQueue</span> (Uid u)
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">super</span>(u);
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  numberOfElements = <span xmlns="" class="perl_Float">0</span>;
+<span xmlns="" class="line">​</span>	  }
+</pre></div></div><div class="example"><a id="idm140019151299072">
+      ⁠</a><p class="title"><strong>Example 14.3. Creating a New Persistent Object</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Function">TransactionalQueue</span> ()
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">super</span>(ObjectType.<span xmlns="" class="perl_Function">ANDPERSISTENT</span>);
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  numberOfElements = <span xmlns="" class="perl_Float">0</span>;
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">try</span>
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  AtomicAction A = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">AtomicAction</span>();
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  A.<span xmlns="" class="perl_Function">begin</span>(<span xmlns="" class="perl_Float">0</span>);	<span xmlns="" class="perl_Comment">// Try to start atomic action</span>
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Comment">// Try to set lock</span>
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">if</span> (<span xmlns="" class="perl_Function">setlock</span>(<span xmlns="" class="perl_Keyword">new</span> Lock(LockMode.<span xmlns="" class="perl_Function">WRITE</span>), <span xmlns="" class="perl_Float">0</span>) == LockResult.<span xmlns="" class="perl_Function">GRANTED</span>)
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  A.<span xmlns="" class="perl_Function">commit</span>(<span xmlns="" class="perl_Keyword">true</span>);	<span xmlns="" class="perl_Comment">// Commit</span>
+<span xmlns="" class="line">​</span>	  }
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">else</span> 	<span xmlns="" class="perl_Comment">// Lock refused so abort the atomic action</span>
+<span xmlns="" class="line">​</span>	  A.<span xmlns="" class="perl_Function">rollback</span>();
+<span xmlns="" class="line">​</span>	  }
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">catch</span> (Exception e)
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  System.<span xmlns="" class="perl_Function">err</span>.<span xmlns="" class="perl_Function">println</span>(“Object construction error: “+e);
+<span xmlns="" class="line">​</span>	  System.<span xmlns="" class="perl_Function">exit</span>(<span xmlns="" class="perl_Float">1</span>);
+<span xmlns="" class="line">​</span>	  }
+<span xmlns="" class="line">​</span>	  }
+</pre></div></div><div class="para">
+				To use an atomic action within the constructor for a new object, follow the guidelines outlined earlier, which ensure that the state of the object is written to the object store when the appropriate top-level atomic action commits. To use atomic actions in a constructor, you need to first declare the action and invoke its <code class="methodname">begin</code> method. Then, the operation must set an appropriate lock on the object. Afterward, the main body of the constructor is executed. If successful, the atomic action is committed. Otherwise, it is aborted.
+			</div><div class="para">
+				The destructor of the queue class only needs to call the <code class="methodname">terminate</code> method of the <code class="methodname">LockManager</code> method.
+			</div><div class="example"><a id="idm140019158848800">
+      ⁠</a><p class="title"><strong>Example 14.4. Destructor of the Queue Class</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">finalize</span> ()
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">super</span>.<span xmlns="" class="perl_Function">terminate</span>();
+<span xmlns="" class="line">​</span>	  }
+</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019160651872">
+      ⁠</a>14.1.3. The <code class="methodname">save_state</code>, <code class="methodname">restore_state</code>, and <code class="methodname">type</code> Methods</h2></div></div></div><div class="example"><a id="idm140019160649632">
+      ⁠</a><p class="title"><strong>Example 14.5. The <code class="methodname">save_state</code> Method</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">save_state</span> (OutputObjectState os, <span xmlns="" class="perl_DataType">int</span> ObjectType)
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">if</span> (!<span xmlns="" class="perl_Keyword">super</span>.<span xmlns="" class="perl_Function">save_state</span>(os, ObjectType))
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">return</span> <span xmlns="" class="perl_Keyword">false</span>;
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">try</span>
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  os.<span xmlns="" class="perl_Function">packInt</span>(numberOfElements);
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">if</span> (numberOfElements &gt; <span xmlns="" class="perl_Float">0</span>)
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">for</span> (<span xmlns="" class="perl_DataType">int</span> i = <span xmlns="" class="perl_Float">0</span>; i &lt; numberOfElements; i++)
+<span xmlns="" class="line">​</span>	  os.<span xmlns="" class="perl_Function">packInt</span>(elements[i]);
+<span xmlns="" class="line">​</span>	  }
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">return</span> <span xmlns="" class="perl_Keyword">true</span>;
+<span xmlns="" class="line">​</span>	  }
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">catch</span> (IOException e)
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">return</span> <span xmlns="" class="perl_Keyword">false</span>;
+<span xmlns="" class="line">​</span>	  }
+<span xmlns="" class="line">​</span>	  }
+</pre></div></div><div class="example"><a id="idm140019160646960">
+      ⁠</a><p class="title"><strong>Example 14.6. The <code class="methodname">restore_state</code> Method</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">restore_state</span> (InputObjectState os, <span xmlns="" class="perl_DataType">int</span> ObjectType)
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">if</span> (!<span xmlns="" class="perl_Keyword">super</span>.<span xmlns="" class="perl_Function">restore_state</span>(os, ObjectType))
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">return</span> <span xmlns="" class="perl_Keyword">false</span>;
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">try</span>
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  numberOfElements = os.<span xmlns="" class="perl_Function">unpackInt</span>();
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">if</span> (numberOfElements &gt; <span xmlns="" class="perl_Float">0</span>)
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">for</span> (<span xmlns="" class="perl_DataType">int</span> i = <span xmlns="" class="perl_Float">0</span>; i &lt; numberOfElements; i++)
+<span xmlns="" class="line">​</span>	  elements[i] = os.<span xmlns="" class="perl_Function">unpackInt</span>();
+<span xmlns="" class="line">​</span>	  }
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">return</span> <span xmlns="" class="perl_Keyword">true</span>;
+<span xmlns="" class="line">​</span>	  }
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">catch</span> (IOException e)
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">return</span> <span xmlns="" class="perl_Keyword">false</span>;
+<span xmlns="" class="line">​</span>	  }
+<span xmlns="" class="line">​</span>	  }
+</pre></div></div><div class="example"><a id="idm140019160435232">
+      ⁠</a><p class="title"><strong>Example 14.7. The <code class="methodname">type</code> Method</strong></p><div class="example-contents"><div class="para">
+					Because the Queue class is derived from the <code class="classname">LockManager</code> class, the operation type should return a transactional queue.
+				</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> String type ()
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">return</span> <span xmlns="" class="perl_String">"/StateManager/LockManager/TransactionalQueue"</span>;
+<span xmlns="" class="line">​</span>	  }
+</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019160431904">
+      ⁠</a>14.1.4. enqueue/dequeue operations</h2></div></div></div><div class="para">
+				If the operations of the queue class will be atomic actions, then the <code class="methodname">enqueue</code> operation in <a class="xref" href="ch14.html#example-enqueue">Example 14.8, “The <code class="methodname">enqueue</code> Method”</a> is appropriate as a guideline. The <code class="methodname">dequeue</code> would have a similar structure, but is not included as an example.
+			</div><div class="example"><a id="example-enqueue">
+      ⁠</a><p class="title"><strong>Example 14.8. The <code class="methodname">enqueue</code> Method</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">enqueue</span> (<span xmlns="" class="perl_DataType">int</span> v) <span xmlns="" class="perl_Keyword">throws</span> OverFlow, UnderFlow, QueueError
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  AtomicAction A = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">AtomicAction</span>();
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_DataType">boolean</span> res = <span xmlns="" class="perl_Keyword">false</span>;
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">try</span>
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  A.<span xmlns="" class="perl_Function">begin</span>(<span xmlns="" class="perl_Float">0</span>);
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">if</span> (<span xmlns="" class="perl_Function">setlock</span>(<span xmlns="" class="perl_Keyword">new</span> Lock(LockMode.<span xmlns="" class="perl_Function">WRITE</span>), <span xmlns="" class="perl_Float">0</span>) == LockResult.<span xmlns="" class="perl_Function">GRANTED</span>)
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">if</span> (numberOfElements &lt; QUEUE_SIZE)
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  elements[numberOfElements] = v;
+<span xmlns="" class="line">​</span>	  numberOfElements++;
+<span xmlns="" class="line">​</span>	  res = <span xmlns="" class="perl_Keyword">true</span>;
+<span xmlns="" class="line">​</span>	  }
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">else</span>
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  A.<span xmlns="" class="perl_Function">rollback</span>();
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">throw</span> <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">UnderFlow</span>();
+<span xmlns="" class="line">​</span>	  }
+<span xmlns="" class="line">​</span>	  }
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">if</span> (res)
+<span xmlns="" class="line">​</span>	  A.<span xmlns="" class="perl_Function">commit</span>(<span xmlns="" class="perl_Keyword">true</span>);
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">else</span>
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  A.<span xmlns="" class="perl_Function">rollback</span>();
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">throw</span> <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">Conflict</span>();
+<span xmlns="" class="line">​</span>	  }
+<span xmlns="" class="line">​</span>	  }
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">catch</span> (Exception e1)
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">throw</span> <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">QueueError</span>();
+<span xmlns="" class="line">​</span>	  }
+<span xmlns="" class="line">​</span>	  }
+</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019174306400">
+      ⁠</a>14.1.5. The <code class="methodname">queueSize</code> Method</h2></div></div></div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">int</span> <span xmlns="" class="perl_Function">queueSize</span> () <span xmlns="" class="perl_Keyword">throws</span> QueueError, Conflict
+<span xmlns="" class="line">​</span>	{
+<span xmlns="" class="line">​</span>	AtomicAction A = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">AtomicAction</span>();
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_DataType">int</span> size = <span xmlns="" class="perl_DecVal">-1</span>;
+<span xmlns="" class="line">​</span>	
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">try</span>
+<span xmlns="" class="line">​</span>	{
+<span xmlns="" class="line">​</span>	A.<span xmlns="" class="perl_Function">begin</span>(<span xmlns="" class="perl_Float">0</span>);
+<span xmlns="" class="line">​</span>	
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">if</span> (<span xmlns="" class="perl_Function">setlock</span>(<span xmlns="" class="perl_Keyword">new</span> Lock(LockMode.<span xmlns="" class="perl_Function">READ</span>), <span xmlns="" class="perl_Float">0</span>) == LockResult.<span xmlns="" class="perl_Function">GRANTED</span>)
+<span xmlns="" class="line">​</span>	size = numberOfElements;
+<span xmlns="" class="line">​</span>	
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">if</span> (size != <span xmlns="" class="perl_DecVal">-1</span>)
+<span xmlns="" class="line">​</span>	A.<span xmlns="" class="perl_Function">commit</span>(<span xmlns="" class="perl_Keyword">true</span>);
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">else</span>
+<span xmlns="" class="line">​</span>	{
+<span xmlns="" class="line">​</span>	A.<span xmlns="" class="perl_Function">rollback</span>();
+<span xmlns="" class="line">​</span>	
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">throw</span> <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">Conflict</span>();
+<span xmlns="" class="line">​</span>	}
+<span xmlns="" class="line">​</span>	}
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">catch</span> (Exception e1)
+<span xmlns="" class="line">​</span>	{
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">throw</span> <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">QueueError</span>();
+<span xmlns="" class="line">​</span>	}
+<span xmlns="" class="line">​</span>	
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">return</span> size;
+<span xmlns="" class="line">​</span>	}
+</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019174303728">
+      ⁠</a>14.1.6. The <code class="methodname">inspectValue</code> and <code class="methodname">setValue</code> Methods</h2></div></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+					The implementation of the <code class="methodname">setValue</code> is not shown, but it can be inferred from the <code class="methodname">inspectValue</code> method which is shown.
+				</div></div></div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">int</span> <span xmlns="" class="perl_Function">inspectValue</span> (<span xmlns="" class="perl_DataType">int</span> index) <span xmlns="" class="perl_Keyword">throws</span> UnderFlow,
+<span xmlns="" class="line">​</span>	OverFlow, Conflict, QueueError
+<span xmlns="" class="line">​</span>	{
+<span xmlns="" class="line">​</span>	AtomicAction A = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">AtomicAction</span>();
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_DataType">boolean</span> res = <span xmlns="" class="perl_Keyword">false</span>;
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_DataType">int</span> val = <span xmlns="" class="perl_DecVal">-1</span>;
+<span xmlns="" class="line">​</span>	
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">try</span>
+<span xmlns="" class="line">​</span>	{
+<span xmlns="" class="line">​</span>	A.<span xmlns="" class="perl_Function">begin</span>();
+<span xmlns="" class="line">​</span>	
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">if</span> (<span xmlns="" class="perl_Function">setlock</span>(<span xmlns="" class="perl_Keyword">new</span> Lock(LockMode.<span xmlns="" class="perl_Function">READ</span>), <span xmlns="" class="perl_Float">0</span>) == LockResult.<span xmlns="" class="perl_Function">GRANTED</span>)
+<span xmlns="" class="line">​</span>	{
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">if</span> (index &lt; <span xmlns="" class="perl_Float">0</span>)
+<span xmlns="" class="line">​</span>	{
+<span xmlns="" class="line">​</span>	A.<span xmlns="" class="perl_Function">rollback</span>();
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">throw</span> <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">UnderFlow</span>();
+<span xmlns="" class="line">​</span>	}
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">else</span>
+<span xmlns="" class="line">​</span>	{
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Comment">// array is 0 - numberOfElements -1</span>
+<span xmlns="" class="line">​</span>	
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">if</span> (index &gt; numberOfElements <span xmlns="" class="perl_DecVal">-1</span>)
+<span xmlns="" class="line">​</span>	{
+<span xmlns="" class="line">​</span>	A.<span xmlns="" class="perl_Function">rollback</span>();
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">throw</span> <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">OverFlow</span>();
+<span xmlns="" class="line">​</span>	}
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">else</span>
+<span xmlns="" class="line">​</span>	{
+<span xmlns="" class="line">​</span>	val = elements[index];
+<span xmlns="" class="line">​</span>	res = <span xmlns="" class="perl_Keyword">true</span>;
+<span xmlns="" class="line">​</span>	}
+<span xmlns="" class="line">​</span>	}
+<span xmlns="" class="line">​</span>	}
+<span xmlns="" class="line">​</span>	
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">if</span> (res)
+<span xmlns="" class="line">​</span>	A.<span xmlns="" class="perl_Function">commit</span>(<span xmlns="" class="perl_Keyword">true</span>);
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">else</span>
+<span xmlns="" class="line">​</span>	{
+<span xmlns="" class="line">​</span>	A.<span xmlns="" class="perl_Function">rollback</span>();
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">throw</span> <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">Conflict</span>();
+<span xmlns="" class="line">​</span>	}
+<span xmlns="" class="line">​</span>	}
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">catch</span> (Exception e1)
+<span xmlns="" class="line">​</span>	{
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">throw</span> <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">QueueError</span>();
+<span xmlns="" class="line">​</span>	}
+<span xmlns="" class="line">​</span>	
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">return</span> val;
+<span xmlns="" class="line">​</span>	}
+</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019162507888">
+      ⁠</a>14.1.7. The Client</h2></div></div></div><div class="para">
+				The example code for the client only includes a representative portion, rather than the full code. Before invoking operations on the object, the client needs to bind to it. If the client is run locally, it only needs to create an instance of the object.
+			</div><div class="example"><a id="idm140019162506368">
+      ⁠</a><p class="title"><strong>Example 14.9. Creating an Instance of the <code class="interfacename">TransactionalQueue</code> Object</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">static</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">main</span> (String[] args)
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  TransactionalQueue myQueue = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">TransactionalQueue</span>();
+</pre></div></div><div class="para">
+				Before invoking one of the queue’s operations, the client starts a transaction, using the <code class="methodname">queueSize</code> method.
+			</div><div class="example"><a id="idm140019117364304">
+      ⁠</a><p class="title"><strong>Example 14.10. The <code class="methodname">queueSize</code> Method</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>	  AtomicAction A = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">AtomicAction</span>();
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_DataType">int</span> size = <span xmlns="" class="perl_Float">0</span>;
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">try</span>
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  A.<span xmlns="" class="perl_Function">begin</span>(<span xmlns="" class="perl_Float">0</span>);
+<span xmlns="" class="line">​</span>	  s
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">try</span>
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  size = queue.<span xmlns="" class="perl_Function">queueSize</span>();
+<span xmlns="" class="line">​</span>	  }
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">catch</span> (Exception e)
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  }
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">if</span> (size &gt;= <span xmlns="" class="perl_Float">0</span>)
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  A.<span xmlns="" class="perl_Function">commit</span>(<span xmlns="" class="perl_Keyword">true</span>);
+<span xmlns="" class="line">​</span>	  
+<span xmlns="" class="line">​</span>	  System.<span xmlns="" class="perl_Function">out</span>.<span xmlns="" class="perl_Function">println</span>(“Size of queue: “+size);
+<span xmlns="" class="line">​</span>	  }
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">else</span>
+<span xmlns="" class="line">​</span>	  A.<span xmlns="" class="perl_Function">rollback</span>();
+<span xmlns="" class="line">​</span>	  }
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">catch</span> (Exception e)
+<span xmlns="" class="line">​</span>	  {
+<span xmlns="" class="line">​</span>	  System.<span xmlns="" class="perl_Function">err</span>.<span xmlns="" class="perl_Function">println</span>(“Caught unexpected exception!”);
+<span xmlns="" class="line">​</span>	  }
+</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019117361456">
+      ⁠</a>14.1.8. Notes</h2></div></div></div><div class="para">
+				Because the queue object is persistent, the state of the object will survive any failures of the node on which it is located. The preserved state will be the one produced by the last top-level committed atomic action performed on the object. If the application needs to perform two <code class="methodname">enqueue</code> operations atomically, you can nest the <code class="methodname">enqueue</code> operations inside another enclosing atomic action. In addition, concurrent operations on a persistent object are serialized, preventing inconsistencies in the state of the object. Be aware that since the elements of the queue objects are not individually concurrency controlled, certain combinations of concurrent operation invocations are executed serially, when logically they could be executed concurrently. This happens when modifying the states of two different elements in the queue.
+			</div></div></div></div></body></html>

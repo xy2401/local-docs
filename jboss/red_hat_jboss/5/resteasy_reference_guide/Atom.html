@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 18. RESTEasy Atom Support</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="Atom">
+      ⁠</a>Chapter 18. RESTEasy Atom Support</h1></div></div></div><div class="para">
+		Atom is an XML-based document format that compiles lists of related information, known as <span class="emphasis"><em>feeds</em></span>. Feeds are composed of a number of items, known as <span class="emphasis"><em>entries</em></span>, each of which includes an extensible set of metadata (a title, for example).
+	</div><div class="para">
+		Atom is primarily used to syndicate web content (such as weblogs and news headlines) to websites, and directly to user agents.
+	</div><div class="para">
+		Atom is the RSS feed of the next generation. Although used primarily to syndicate weblogs and news, the format is starting to be used as the envelope for Web services such as distributed notifications and job queues, or simply to send or receive data in bulk to or from a service.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="resteasy_atom">
+      ⁠</a>18.1. RESTEasy Atom API and Provider</h1></div></div></div><div class="para">
+			RESTEasy has defined a simple object model to represent Atom in Java, and uses JAXB to marshal and unmarshal it. The <code class="literal">org.jboss.resteasy.plugins.providers.atom</code> package contains the main classes: <code class="classname">Feed</code>, <code class="classname">Entry</code>, <code class="classname">Content</code>, and <code class="classname">Link</code>. Each class is annotated with JAXB annotations. The distribution also contains the JavaDocs for this project, which are very useful in learning the model. The following code is a simple example of sending an Atom feed with the RESTEasy API:
+		</div><pre class="programlisting">
+import org.jboss.resteasy.plugins.providers.atom.Content;
+import org.jboss.resteasy.plugins.providers.atom.Entry;
+import org.jboss.resteasy.plugins.providers.atom.Feed;
+import org.jboss.resteasy.plugins.providers.atom.Link;
+import org.jboss.resteasy.plugins.providers.atom.Person;
+
+@Path("atom")
+public class MyAtomService
+{
+
+   @GET
+   @Path("feed")
+   @Produces("application/atom+xml")
+   public Feed getFeed() throws URISyntaxException
+   {
+      Feed feed = new Feed();
+      feed.setId(new URI("http://example.com/42"));
+      feed.setTitle("My Feed");
+      feed.setUpdated(new Date());
+      Link link = new Link();
+      link.setHref(new URI("http://localhost"));
+      link.setRel("edit");
+      feed.getLinks().add(link);
+      feed.getAuthors().add(new Person("Bill Burke"));
+      Entry entry = new Entry();
+      entry.setTitle("Hello World");
+      Content content = new Content();
+      content.setType(MediaType.TEXT_HTML_TYPE);
+      content.setText("Nothing much");
+      entry.setContent(content);
+      feed.getEntries().add(entry);
+      return feed;
+   }
+}
+</pre><div class="para">
+			RESTEasy's Atom provider is JAXB-based, so you are not limited to sending Atom objects with XML. You can automatically re-use RESTEasy's other JAXB providers (JSON and FastinfoSet). All you need to do is add <code class="literal">+atom</code> in front of the main subtype (that is, <code class="code">@Produces("application/atom+json")</code> or <code class="code">@Consumes("application/atom+fastinfoset")</code>.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="jaxb_atom">
+      ⁠</a>18.2. Using JAXB with the Atom Provider</h1></div></div></div><div class="para">
+			The <code class="classname">org.jboss.resteasy.plugins.providers.atom.Content</code> class lets you marshal and unmarshal JAXB-annotated objects that form the body of an entry's content. The following code is an example of sending an <code class="literal">Entry</code> with a <code class="literal">Customer</code> object attached as the body of the entry's content.
+		</div><pre class="programlisting">@XmlRootElement(namespace = "http://jboss.org/Customer")
+@XmlAccessorType(XmlAccessType.FIELD)
+public class Customer
+{
+   @XmlElement
+   private String name;
+
+   public Customer()
+   {
+   }
+
+   public Customer(String name)
+   {
+      this.name = name;
+   }
+
+   public String getName()
+   {
+      return name;
+   }
+}
+
+@Path("atom")
+public static class AtomServer
+{
+   @GET
+   @Path("entry")
+   @Produces("application/atom+xml")
+   public Entry getEntry()
+   {
+      Entry entry = new Entry();
+      entry.setTitle("Hello World");
+      Content content = new Content();
+      content.setJAXBObject(new Customer("bill"));
+      entry.setContent(content);
+      return entry;
+   }
+}</pre><div class="para">
+			The <code class="literal">Content.setJAXBObject()</code> method tells the content object that you are returning a Java JAXB object to be marshaled. If you use a base format other than XML (for example, <code class="literal">application/atom+json</code>), the attached JAXB object will be marshaled into that format.
+		</div><div class="para">
+			If your input is an Atom document, you can also extract JAXB objects from <code class="literal">Content</code> by using <code class="code">Content.getJAXBObject(Class class)</code>. The code that follows is an example of extracting a <code class="literal">Customer</code> object from the <code class="literal">Content</code>:
+		</div><pre class="programlisting">@Path("atom")
+public static class AtomServer
+{
+   @PUT
+   @Path("entry")
+   @Produces("application/atom+xml")
+   public void putCustomer(Entry entry)
+   {
+      Content content = entry.getContent();
+      Customer cust = content.getJAXBObject(Customer.class);
+   }
+}</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Abdera">
+      ⁠</a>18.3. Atom support through Apache Abdera</h1></div></div></div><div class="para">
+			RESTEasy supports Apache Abdera, an implementation of the Atom protocol and data format. You can find Abdera at the <a href="http://incubator.apache.org/abdera/">Apache web site</a>.
+		</div><div class="para">
+			Abdera is a fully-fledged Atom server, but RESTEasy only supports integration with JAX-RS for marshaling and unmarshaling the Atom data format to and from the <code class="classname">Feed</code> and <code class="classname">Entry</code> interface types in Abdera.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="Abdera_and_Maven">
+      ⁠</a>18.3.1. Abdera and Maven</h2></div></div></div><div class="para">
+				The Abdera provider is not included with the RESTEasy distribution. To include the Abdera provider in your WAR archive's <code class="filename">pom</code> files, add the following. Remember to change the version in the code to the version of RESTEasy that you are working with.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="warning"><div class="admonition_header"><p><strong>Warning</strong></p></div><div class="admonition"><div class="para">
+					RESTEasy may not pick up the latest version of Abdera.
+				</div></div></div><pre class="programlisting">&lt;repository&gt;
+      &lt;id&gt;jboss&lt;/id&gt;
+      &lt;url&gt;http://repository.jboss.org/maven2&lt;/url&gt;
+   &lt;/repository&gt;
+
+      ...
+   &lt;dependency&gt;
+      &lt;groupId&gt;org.jboss.resteasy&lt;/groupId&gt;
+      &lt;artifactId&gt;abdera-atom-provider&lt;/artifactId&gt;
+      &lt;version&gt;...version...&lt;/version&gt;
+   &lt;/dependency&gt;</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="using_abdera">
+      ⁠</a>18.3.2. Using the Abdera Provider</h2></div></div></div><pre class="programlisting">import org.apache.abdera.Abdera;
+import org.apache.abdera.factory.Factory;
+import org.apache.abdera.model.Entry;
+import org.apache.abdera.model.Feed;
+import org.apache.commons.httpclient.HttpClient;
+import org.apache.commons.httpclient.methods.GetMethod;
+import org.apache.commons.httpclient.methods.PutMethod;
+import org.apache.commons.httpclient.methods.StringRequestEntity;
+import org.jboss.resteasy.plugins.providers.atom.AbderaEntryProvider;
+import org.jboss.resteasy.plugins.providers.atom.AbderaFeedProvider;
+import org.jboss.resteasy.test.BaseResourceTest;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Test;
+
+import javax.ws.rs.Consumes;
+import javax.ws.rs.GET;
+import javax.ws.rs.PUT;
+import javax.ws.rs.Path;
+import javax.ws.rs.Produces;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.UriInfo;
+import javax.xml.bind.JAXBContext;
+import java.io.StringReader;
+import java.io.StringWriter;
+import java.util.Date;
+
+/**
+ * @author &lt;a href="mailto:bill@burkecentral.com"&gt;Bill Burke&lt;/a&gt;
+ * @version $Revision: 1 $
+ */
+public class AbderaTest extends BaseResourceTest
+{
+
+   @Path("atom")
+   public static class MyResource
+   {
+      private static final Abdera abdera = new Abdera();
+
+      @GET
+      @Path("feed")
+      @Produces(MediaType.APPLICATION_ATOM_XML)
+      public Feed getFeed(@Context UriInfo uri) throws Exception
+      {
+         Factory factory = abdera.getFactory();
+         Assert.assertNotNull(factory);
+         Feed feed = abdera.getFactory().newFeed();
+         feed.setId("tag:example.org,2007:/foo");
+         feed.setTitle("Test Feed");
+         feed.setSubtitle("Feed subtitle");
+         feed.setUpdated(new Date());
+         feed.addAuthor("James Snell");
+         feed.addLink("http://example.com");
+
+
+         Entry entry = feed.addEntry();
+         entry.setId("tag:example.org,2007:/foo/entries/1");
+         entry.setTitle("Entry title");
+         entry.setUpdated(new Date());
+         entry.setPublished(new Date());
+         entry.addLink(uri.getRequestUri().toString());
+
+         Customer cust = new Customer("bill");
+
+         JAXBContext ctx = JAXBContext.newInstance(Customer.class);
+         StringWriter writer = new StringWriter();
+         ctx.createmarshaler().marshal(cust, writer);
+         entry.setContent(writer.toString(), "application/xml");
+         return feed;
+
+      }
+
+      @PUT
+      @Path("feed")
+      @Consumes(MediaType.APPLICATION_ATOM_XML)
+      public void putFeed(Feed feed) throws Exception
+      {
+         String content = feed.getEntries().get(0).getContent();
+         JAXBContext ctx = JAXBContext.newInstance(Customer.class);
+         Customer cust = (Customer) ctx.createUnmarshaler().unmarshal(new StringReader(content));
+         Assert.assertEquals("bill", cust.getName());
+
+      }
+
+      @GET
+      @Path("entry")
+      @Produces(MediaType.APPLICATION_ATOM_XML)
+      public Entry getEntry(@Context UriInfo uri) throws Exception
+      {
+         Entry entry = abdera.getFactory().newEntry();
+         entry.setId("tag:example.org,2007:/foo/entries/1");
+         entry.setTitle("Entry title");
+         entry.setUpdated(new Date());
+         entry.setPublished(new Date());
+         entry.addLink(uri.getRequestUri().toString());
+
+         Customer cust = new Customer("bill");
+
+         JAXBContext ctx = JAXBContext.newInstance(Customer.class);
+         StringWriter writer = new StringWriter();
+         ctx.createmarshaler().marshal(cust, writer);
+         entry.setContent(writer.toString(), "application/xml");
+         return entry;
+
+      }
+
+      @PUT
+      @Path("entry")
+      @Consumes(MediaType.APPLICATION_ATOM_XML)
+      public void putFeed(Entry entry) throws Exception
+      {
+         String content = entry.getContent();
+         JAXBContext ctx = JAXBContext.newInstance(Customer.class);
+         Customer cust = (Customer) ctx.createUnmarshaler().unmarshal(new StringReader(content));
+         Assert.assertEquals("bill", cust.getName());
+
+      }
+   }
+
+   @Before
+   public void setUp() throws Exception
+   {
+      dispatcher.getProviderFactory().registerProvider(AbderaFeedProvider.class);
+      dispatcher.getProviderFactory().registerProvider(AbderaEntryProvider.class);
+      dispatcher.getRegistry().addPerRequestResource(MyResource.class);
+   }
+
+   @Test
+   public void testAbderaFeed() throws Exception
+   {
+      HttpClient client = new HttpClient();
+      GetMethod method = new GetMethod("http://localhost:8081/atom/feed");
+      int status = client.executeMethod(method);
+      Assert.assertEquals(200, status);
+      String str = method.getResponseBodyAsString();
+
+      PutMethod put = new PutMethod("http://localhost:8081/atom/feed");
+      put.setRequestEntity(new StringRequestEntity(str, MediaType.APPLICATION_ATOM_XML, null));
+      status = client.executeMethod(put);
+      Assert.assertEquals(200, status);
+
+   }
+
+   @Test
+   public void testAbderaEntry() throws Exception
+   {
+      HttpClient client = new HttpClient();
+      GetMethod method = new GetMethod("http://localhost:8081/atom/entry");
+      int status = client.executeMethod(method);
+      Assert.assertEquals(200, status);
+      String str = method.getResponseBodyAsString();
+
+      PutMethod put = new PutMethod("http://localhost:8081/atom/entry");
+      put.setRequestEntity(new StringRequestEntity(str, MediaType.APPLICATION_ATOM_XML, null));
+      status = client.executeMethod(put);
+      Assert.assertEquals(200, status);
+   }
+}
+</pre></div></div></div></body></html>

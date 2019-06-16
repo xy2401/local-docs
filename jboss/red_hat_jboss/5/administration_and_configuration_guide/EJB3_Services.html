@@ -1,0 +1,487 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 5. Enterprise Applications with EJB3 Services</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="EJB3_Services">
+      ⁠</a>Chapter 5. Enterprise Applications with EJB3 Services</h1></div></div></div><div class="para">
+		<a id="idm139776687183808" class="indexterm"/> <a id="idm139776749217648" class="indexterm"/> EJB3 (Enterprise Java Bean 3.0) provides the core component model for Java EE 5 applications. An EJB3 bean is a managed component that is automatically wired to take advantage of all services the Java EE 5 server container provides, such as transaction, security, persistence, naming, dependency injection, etc. The managed component allows developers to focus on the business logic, and leave the cross-cutting concerns to the container as configurations. As an application developer, you need not create or destroy the components yourself. You only need to ask for an EJB3 bean from the Java EE container by its name, and then you can call its methods with all configured container services applied. You can get access to an EJB3 bean from either inside or outside of the Java EE container.
+	</div><div class="para">
+		JBoss Enterprise Application Platform 5 supports EJB3 out of the box. Note that JBoss Enterprise Application Platform 4.2 is a J2EE server, so it does not support the full EJB3 feature set.
+	</div><div class="para">
+		The details of the EJB3 component programming model is beyond the scope of this guide. Most EJB3 interfaces and annotations are part of the Java EE 5 standard and hence they are the same for all Java EE 5 compliant application servers. Interested readers should refer to the EJB3 specification or numerous EJB3 books to learn more about EJB3 programming.
+	</div><div class="para">
+		In this chapter, we only cover EJB3 configuration issues that are specific to the JBoss Enterprise Application Platform. For instance, we discuss the JNDI naming conventions for EJB3 components inside the JBoss Enterprise Application Platform, the optional configurations for the Hibernate persistence engine for entity beans, as well as custom options in the JBoss EJB3 deployer.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="EJB3_Services-Session_Beans">
+      ⁠</a>5.1. Session Beans</h1></div></div></div><div class="para">
+			Session beans are widely used to provide transactional services for local and remote clients. To write a session bean, you need an interface and an implementation class.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>@Local
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">interface</span> MyBeanInt {
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> String <span xmlns="" class="perl_Function">doSomething</span> (String para1, <span xmlns="" class="perl_DataType">int</span> para2);
+<span xmlns="" class="line">​</span>}
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>@Stateless
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> MyBean <span xmlns="" class="perl_Keyword">implements</span> MyBeanInt {
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> String <span xmlns="" class="perl_Function">doSomething</span> (String para1, <span xmlns="" class="perl_DataType">int</span> para2) {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">... </span>implement the logic ...
+<span xmlns="" class="line">​</span>  } 
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>}    
+<span xmlns="" class="line">​</span>
+</pre><div class="para">
+			When you invoke a session bean method, the method execution is automatically managed by the transaction manager and the security manager in the server. You can specify the transactional or security properties for each method using annotations on the method. A session bean instance can be reused by many clients.
+		</div><div class="para">
+			Depending on whether or not the server maintains the bean's internal state between multiple invocations coming from the same client, the session bean can be stateless or stateful. If the bean has a remote business interface clients outside of the current JVM can call the EJB3 bean. All these are configurable via standard annotations on the beans. Note that the transactional or security properties are only active when the bean is called through a business interface.
+		</div><div class="para">
+			After you define a session bean, how does the client get a reference to it? As we discussed, the client does not create or destroy EJB3 components, it merely asks the server for a reference of an existing instance managed by the server. That is done via JNDI. In JBoss Enterprise Application Platform, the default local JNDI name for a session bean is dependent on the deployment packaging of the bean class.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					If the bean is deployed in a standalone JAR file in the <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/default/deploy</code> directory, the bean is accessible via local JNDI name <code class="literal">MyBean/local</code>, where <code class="literal">MyBean</code> is the implementation class name of the bean as we showed earlier. The "local" JNDI in JBoss Enterprise Application Platform means that the JNDI name is relative to <code class="literal">java:comp/env/</code>.
+				</div></li><li class="listitem"><div class="para">
+					If the JAR file containing the bean is packaged in an EAR file, the local JNDI name for the bean is <code class="literal">myapp/MyBean/local</code>, where <code class="literal">myapp</code> is the root name of the EAR archive file (e.g., <code class="literal">myapp.ear</code>, see later for the EAR packaging of EJB3 beans).
+				</div></li></ul></div><div class="para">
+			Of course, you should change <code class="literal">local</code> to <code class="literal">remote</code> if the bean interface is annotated with <code class="literal">@Remote</code> and the bean is accessed from outside of the server it is deployed on. Below is the code snippet to get a reference of the MyBean bean in a web application (e.g., in a servlet or a JSF backing bean) packaged in <code class="literal">myapp.ear</code>, and then invoke a managed method.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">try</span> {
+<span xmlns="" class="line">​</span>  InitialContext ctx = <span xmlns="" class="perl_Keyword">new</span> InitialContext();
+<span xmlns="" class="line">​</span>  MyBeanInt bean = (MyBeanInt) ctx.<span xmlns="" class="perl_Function">lookup</span>(<span xmlns="" class="perl_String">"myapp/MyBean/local"</span>);
+<span xmlns="" class="line">​</span>} <span xmlns="" class="perl_Keyword">catch</span> (Exception e) {
+<span xmlns="" class="line">​</span>  e.<span xmlns="" class="perl_Function">printStackTrace</span> ();
+<span xmlns="" class="line">​</span>}
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">... </span>...
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>String result = bean.<span xmlns="" class="perl_Function">doSomething</span>(<span xmlns="" class="perl_String">"have fun"</span>, <span xmlns="" class="perl_Float">1</span>);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">... </span>...
+<span xmlns="" class="line">​</span>
+</pre><div class="para">
+			What the client gets from the JNDI is essentially a "stub" or "proxy" of the bean instance. When the client invokes a method, the proxy figures out how to route the request to the server and marshal together the response.
+		</div><div class="para">
+			If you do not like the default JNDI names, you can always specify your own JNDI binding for any bean via the <code class="literal">@LocalBinding</code> annotation on the bean implementation class. The JNDI binding is always "local" under the <code class="literal">java:comp/env/</code> space. For instance, the following bean class definition results in the bean instances available under JNDI name <code class="literal">java:comp/env/MyService/MyOwnName</code>.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>@Stateless
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">LocalBinding</span> (jndiBinding=<span xmlns="" class="perl_String">"MyService/MyOwnName"</span>)
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> MyBean <span xmlns="" class="perl_Keyword">implements</span> MyBeanInt {
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> String <span xmlns="" class="perl_Function">doSomething</span> (String para1, <span xmlns="" class="perl_DataType">int</span> para2) {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">... </span>implement the logic ...
+<span xmlns="" class="line">​</span>  } 
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>}    
+<span xmlns="" class="line">​</span>
+</pre><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Injecting EJB3 Beans into the Web Tier</strong></p></div><div class="admonition"><div class="para">
+				Java EE 5 allows you to inject EJB3 bean instances directly into the web application via annotations without explicit JNDI lookup. This behavior is not yet supported in JBoss Enterprise Application Platform 5.2. However, the JBoss Enterprise Platform provides an integration framework called JBoss Seam. JBoss Seam brings EJB3 / JSF integration to new heights far beyond what Java EE 5 provides. Please see more details in the <em class="citetitle">JBoss Seam Reference Guide</em> bundled with the platform.
+			</div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="EJB3_Services-Entity_Beans">
+      ⁠</a>5.2. Entity Beans (a.k.a. Java Persistence API)</h1></div></div></div><div class="para">
+			EJB3 session beans allow you to implement data accessing business logic in transactional methods. To actually access the database, you will need EJB3 entity beans and the entity manager API. They are collectively called the Java Persistence API (JPA).
+		</div><div class="para">
+			EJB3 Entity Beans are Plain Old Java Objects (POJOs) that map to relational database tables. For instance, the following entity bean class maps to a relational table named customer. The table has three columns: name, age, and signupdate. Each instance of the bean corresponds to a row of data in the table.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>@Entity
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> Customer {
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  String name;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> String <span xmlns="" class="perl_Function">getName</span> () {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">return</span> name;
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">setName</span> (String name) {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">this</span>.<span xmlns="" class="perl_Function">name</span> = name;
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_DataType">int</span> age;
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">int</span> <span xmlns="" class="perl_Function">getAge</span> () {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">return</span> age;
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">setAge</span> (<span xmlns="" class="perl_DataType">int</span> age) {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">this</span>.<span xmlns="" class="perl_Function">age</span> = age;
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  Date signupdate;
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> Date <span xmlns="" class="perl_Function">getSignupdate</span> () {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">return</span> signupdate;
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">setSignupdate</span> (Date signupdate) {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">this</span>.<span xmlns="" class="perl_Function">signupdate</span> = signupdate;
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>}    
+<span xmlns="" class="line">​</span>
+</pre><div class="para">
+			Besides simple data properties, the entity bean can also contain references to other entity beans with relational mapping annotations such as @OneToOne, @OneToMany, @ManyToMany etc. The relationships of those entity objects will be automatically set up in the database as foreign keys. For instance, the following example shows that each record in the Customer table has one corresponding record in the Account table, multiple corresponding records in the Order table, and each record in the Employee table has multiple corresponding records in the Customer table.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>@Entity
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> Customer {
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">... </span>...
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  Account account;
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  @OneToOne
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> Account <span xmlns="" class="perl_Function">getAccount</span> () {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">return</span> account;
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">setAccount</span> (Accout account) {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">this</span>.<span xmlns="" class="perl_Function">account</span> = account;
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  Employee salesRep;
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  @ManyToOne
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> Employee <span xmlns="" class="perl_Function">getSalesRep</span> () {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">return</span> salesRep;
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">setSalesRep</span> (Employee salesRep) {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">this</span>.<span xmlns="" class="perl_Function">salesRep</span> = salesRep;
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  Vector &lt;Order&gt; orders;
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  @OneToMany
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> Vector &lt;Order&gt; <span xmlns="" class="perl_Function">getOrders</span> () {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">return</span> orders;
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">setOrders</span> (Vector &lt;Order&gt; orders) {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">this</span>.<span xmlns="" class="perl_Function">orders</span> = orders;
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>
+</pre><div class="para">
+			Using the EntityManager API, you can create, update, delete, and query entity objects. The EntityManager transparently updates the underlying database tables in the process. You can obtain an EntityManager object in your EJB3 session bean via the @PersistenceContext annotation.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>@PersistenceContext
+<span xmlns="" class="line">​</span>EntityManager em;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>Customer customer = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">Customer</span> ();
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// populate data in customer</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// Save the newly created customer object to DB</span>
+<span xmlns="" class="line">​</span>em.<span xmlns="" class="perl_Function">persist</span> (customer);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// Increase age by 1 and auto save to database</span>
+<span xmlns="" class="line">​</span>customer.<span xmlns="" class="perl_Function">setAge</span> (customer.<span xmlns="" class="perl_Function">getAge</span>() + <span xmlns="" class="perl_Float">1</span>);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// delete the customer and its related objects from the DB</span>
+<span xmlns="" class="line">​</span>em.<span xmlns="" class="perl_Function">remove</span> (customer);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// Get all customer records with age &gt; 30 from the DB</span>
+<span xmlns="" class="line">​</span>List &lt;Customer&gt; customers = em.<span xmlns="" class="perl_Function">query</span> (
+<span xmlns="" class="line">​</span>     <span xmlns="" class="perl_String">"select c from Customer as c where c.age &gt; 30"</span>);
+<span xmlns="" class="line">​</span>
+</pre><div class="para">
+			The detailed use of the EntityManager API is beyond the scope of this book. Interested readers should refer to the JPA documentation or Hibernate EntityManager documentation.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139776756866768">
+      ⁠</a>5.2.1. The persistence.xml file</h2></div></div></div><div class="para">
+				The EntityManager API is great, but how does the server know which database it is supposed to save / update / query the entity objects? How do we configure the underlying object-relational-mapping engine and cache for better performance and trouble shooting? The persistence.xml file gives you complete flexibility to configure the EntityManager.
+			</div><div class="para">
+				The persistence.xml file is a standard configuration file in JPA. It has to be included in the META-INF directory inside the JAR file that contains the entity beans. The persistence.xml file must define a persistence-unit with a unique name in the current scoped classloader. The provider attribute specifies the underlying implementation of the JPA EntityManager. In JBoss Enterprise Application Platform, the default and only supported / recommended JPA provider is Hibernate. The jta-data-source points to the JNDI name of the database this persistence unit maps to. The java:/DefaultDS here points to the HSQL DB embedded in the JBoss Enterprise Application Platform. Please refer to <a class="xref" href="production_DBs.html">Chapter 16, <em>Using Production Databases with JBoss Enterprise Application Platform</em></a> on how to setup alternative databases for JBoss Enterprise Application Platform.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;persistence&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;persistence-unit</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"myapp"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;provider&gt;</span>org.hibernate.ejb.HibernatePersistence<span xmlns="" class="perl_Keyword">&lt;/provider&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;jta-data-source&gt;</span>java:/DefaultDS<span xmlns="" class="perl_Keyword">&lt;/jta-data-source&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;properties&gt;</span>
+<span xmlns="" class="line">​</span>         ... ...
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/properties&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/persistence-unit&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/persistence&gt;</span>          
+<span xmlns="" class="line">​</span>
+</pre><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Inject EntityManager by persistence-unit name</strong></p></div><div class="admonition"><div class="para">
+					Since you might have multiple instances of persistence-unit defined in the same application, you typically need to explicitly tell the @PersistenceContext annotation which unit you want to inject. For instance, @PersistenceContext(name="myapp") injects the EntityManager from the persistence-unit named "myapp".
+				</div><div class="para">
+					However, if you deploy your EAR application in its own scoped classloader and have only one persistence-unit defined in the whole application, you can omit the "name" on @PersistenceContext. See later in this chapter for EAR packaging and deployment.
+				</div></div></div><div class="para">
+				The properties element in the persistence.xml can contain any configuration properties for the underlying persistence provider. Since JBoss Enterprise Application Platform uses Hibernate as the EJB3 persistence provider, you can pass in any Hibernate options here. Please refer to the Hibernate and Hibernate EntityManager documentation for more details. Here we will just give an example to set the SQL dialect of the persistence engine to HSQL, and to create tables from the entity beans when the application starts and drop those tables when the application stops.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;persistence&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;persistence-unit</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"myapp"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;provider&gt;</span>org.hibernate.ejb.HibernatePersistence<span xmlns="" class="perl_Keyword">&lt;/provider&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;jta-data-source&gt;</span>java:/DefaultDS<span xmlns="" class="perl_Keyword">&lt;/jta-data-source&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;properties&gt;</span>
+<span xmlns="" class="line">​</span>         property name="hibernate.dialect" 
+<span xmlns="" class="line">​</span>                  value="org.hibernate.dialect.HSQLDialect"/&gt;
+<span xmlns="" class="line">​</span>         <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernate.hbm2ddl.auto"</span><span xmlns="" class="perl_Others"> value=</span><span xmlns="" class="perl_String">"create-drop"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/properties&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/persistence-unit&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/persistence&gt;</span>          
+<span xmlns="" class="line">​</span>
+</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139776768066992">
+      ⁠</a>5.2.2. Use Alternative Databases</h2></div></div></div><div class="para">
+				To use an alternative database other than the built-in HSQL DB to back your entity beans, you need to first define the data source for the database and register it in the JNDI. This is done via the *-ds.xml files in the deploy directory. Examples of *-ds.xml files for various databases are available in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/docs/examples/jca</code> directory in the server.
+			</div><div class="para">
+				Then, in the persistence.xml, you need to change the jta-data-source attribute to point to the new data source in JNDI (e.g., java:/MysqlDS if you are using the default mysql-ds.xml to setup a MySQL external database).
+			</div><div class="para">
+				In most cases, Hibernate tries to automatically detect the database it connects to and then automatically selects an appropriate SQL dialect for the database. However, we have found that this detection does not always work, especially for less used database servers. We recommend you to set the hibernate.dialect property explicitly in persistence.xml. Here are the Hibernate dialect for database servers officially supported on the JBoss platform.
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						Oracle 9i and 10g: org.hibernate.dialect.Oracle9Dialect
+					</div></li><li class="listitem"><div class="para">
+						Microsoft SQL Server 2005: org.hibernate.dialect.SQLServerDialect
+					</div></li><li class="listitem"><div class="para">
+						PostgresSQL 8.1: org.hibernate.dialect.PostgreSQLDialect
+					</div></li><li class="listitem"><div class="para">
+						MySQL 5.0: org.hibernate.dialect.MySQL5Dialect
+					</div></li><li class="listitem"><div class="para">
+						DB2 8.0: org.hibernate.dialect.DB2Dialect
+					</div></li><li class="listitem"><div class="para">
+						Sybase ASE 12.5: org.hibernate.dialect.SybaseDialect
+					</div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139776728552320">
+      ⁠</a>5.2.3. Default Hibernate Options</h2></div></div></div><div class="para">
+				Hibernate has many configuration properties. JBoss Enterprise Application Platform uses default values for the properties that you do not specify in the <code class="filename">persistence.xml</code> file. The default Hibernate property values are specified in the <code class="systemitem">PersistenceUnitDeployer</code> bean definition in the <code class="filename">JBOSS_HOME/server/PROFILE/deployers/ejb3.deployer/META-INF/jpa-deployers-jboss-beans.xml</code> file. Below is the code of the bean used in JBoss Enterprise Application Platform 5. Notice the options that are commented out. These are the properties available in the <code class="filename">persistence.xml</code> file.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"PersistenceUnitDeployer"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.jpa.deployers.PersistenceUnitDeployer"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"defaultPersistenceProperties"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">&lt;map</span><span xmlns="" class="perl_Others"> keyClass=</span><span xmlns="" class="perl_String">"java.lang.String"</span><span xmlns="" class="perl_Others"> valueClass=</span><span xmlns="" class="perl_String">"java.lang.String"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Keyword">&lt;entry&gt;</span>
+<span xmlns="" class="line">​</span>			<span xmlns="" class="perl_Keyword">&lt;key&gt;</span>hibernate.transaction.manager_lookup_class<span xmlns="" class="perl_Keyword">&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;value&gt;</span>org.hibernate.transaction.JBossTransactionManagerLookup<span xmlns="" class="perl_Keyword">&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Keyword">&lt;/entry&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Comment">&lt;!--entry&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">			&lt;key&gt;hibernate.connection.release_mode&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">			&lt;value&gt;after_statement&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">		 &lt;/entry--&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Comment">&lt;!--entry&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">			&lt;key&gt;hibernate.transaction.flush_before_completion&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">			&lt;value&gt;false&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">		 &lt;/entry--&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Comment">&lt;!--entry&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">			&lt;key&gt;hibernate.transaction.auto_close_session&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">			&lt;value&gt;false&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">		 &lt;/entry--&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Comment">&lt;!--entry&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">			&lt;key&gt;hibernate.query.factory_class&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">			&lt;value&gt;org.hibernate.hql.ast.ASTQueryTranslatorFactory&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">		 &lt;/entry--&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Comment">&lt;!--entry&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">			&lt;key&gt;hibernate.hbm2ddl.auto&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">			&lt;value&gt;create-drop&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">		 &lt;/entry--&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Keyword">&lt;entry&gt;</span>
+<span xmlns="" class="line">​</span>			<span xmlns="" class="perl_Keyword">&lt;key&gt;</span>hibernate.cache.provider_class<span xmlns="" class="perl_Keyword">&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span>			<span xmlns="" class="perl_Keyword">&lt;value&gt;</span>org.hibernate.cache.HashtableCacheProvider<span xmlns="" class="perl_Keyword">&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Keyword">&lt;/entry&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Comment">&lt;!-- Clustered cache with JBoss Cache --&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Comment">&lt;!--entry&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">			&lt;key&gt;hibernate.cache.region.factory_class&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">&lt;value&gt;org.hibernate.cache.jbc2.JndiMultiplexedJBossCacheRegionFactory&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">		 &lt;/entry&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">		 &lt;entry&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">			&lt;key&gt;hibernate.cache.region.jbc2.cachefactory&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">			&lt;value&gt;java:CacheManager&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">		 &lt;/entry&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">		 &lt;entry&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">			&lt;key&gt;hibernate.cache.region.jbc2.cfg.entity&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">			&lt;value&gt;pessimistic-entity&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">		 &lt;/entry&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">		 &lt;entry&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">			&lt;key&gt;hibernate.cache.region.jbc2.cfg.query&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">			&lt;value&gt;local-query&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">		 &lt;/entry--&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Comment">&lt;!--entry&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">			&lt;key&gt;hibernate.dialect&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">			&lt;value&gt;org.hibernate.dialect.HSQLDialect&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">		 &lt;/entry--&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Keyword">&lt;entry&gt;</span>
+<span xmlns="" class="line">​</span>			<span xmlns="" class="perl_Keyword">&lt;key&gt;</span>hibernate.jndi.java.naming.factory.initial<span xmlns="" class="perl_Keyword">&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span>			<span xmlns="" class="perl_Keyword">&lt;value&gt;</span>org.jnp.interfaces.NamingContextFactory<span xmlns="" class="perl_Keyword">&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Keyword">&lt;/entry&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Keyword">&lt;entry&gt;</span>
+<span xmlns="" class="line">​</span>			<span xmlns="" class="perl_Keyword">&lt;key&gt;</span>hibernate.jndi.java.naming.factory.url.pkgs<span xmlns="" class="perl_Keyword">&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span>			<span xmlns="" class="perl_Keyword">&lt;value&gt;</span>org.jboss.naming:org.jnp.interfaces<span xmlns="" class="perl_Keyword">&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Keyword">&lt;/entry&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Keyword">&lt;entry&gt;</span>
+<span xmlns="" class="line">​</span>			<span xmlns="" class="perl_Keyword">&lt;key&gt;</span>hibernate.bytecode.use_reflection_optimizer<span xmlns="" class="perl_Keyword">&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span>			<span xmlns="" class="perl_Keyword">&lt;value&gt;</span>false<span xmlns="" class="perl_Keyword">&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Keyword">&lt;/entry&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Keyword">&lt;entry&gt;</span>
+<span xmlns="" class="line">​</span>			<span xmlns="" class="perl_Keyword">&lt;key&gt;</span>hibernate.bytecode.provider<span xmlns="" class="perl_Keyword">&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span>			<span xmlns="" class="perl_Keyword">&lt;value&gt;</span>javassist<span xmlns="" class="perl_Keyword">&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span>		 <span xmlns="" class="perl_Keyword">&lt;/entry&gt;</span>
+<span xmlns="" class="line">​</span>	  <span xmlns="" class="perl_Keyword">&lt;/map&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>
+</pre></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="EJB3_Services-Message_Driven_Beans">
+      ⁠</a>5.3. Message Driven Beans</h1></div></div></div><div class="para">
+			Message driven beans are specialized EJB3 beans that receive service requests via JMS messages instead of proxy method calls from the "stub". So, a crucial configuration parameter for the message driven bean is to specify which JMS message queue its listens to. When there is an incoming message in the queue, the server invokes the beans's <code class="literal">onMessage()</code> method, and passes in the message itself for processing. The bean class specifies the JMS queue it listens to in the @MessageDriven annotation. The queue is registered under the local JNDI java:comp/env/ name space.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">MessageDriven</span>(activationConfig =
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>  @<span xmlns="" class="perl_Function">ActivationConfigProperty</span>(propertyName=<span xmlns="" class="perl_String">"destinationType"</span>,
+<span xmlns="" class="line">​</span>    propertyValue=<span xmlns="" class="perl_String">"javax.jms.Queue"</span>),
+<span xmlns="" class="line">​</span>  @<span xmlns="" class="perl_Function">ActivationConfigProperty</span>(propertyName=<span xmlns="" class="perl_String">"destination"</span>,
+<span xmlns="" class="line">​</span>    propertyValue=<span xmlns="" class="perl_String">"queue/MyQueue"</span>)
+<span xmlns="" class="line">​</span>})
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> MyJmsBean <span xmlns="" class="perl_Keyword">implements</span> MessageListener {
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">onMessage</span> (Message msg) {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">// ... do something with the msg ...</span>
+<span xmlns="" class="line">​</span>  }
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Comment">// ... ...</span>
+<span xmlns="" class="line">​</span>}
+<span xmlns="" class="line">​</span>
+</pre><div class="para">
+			When a message driven bean is deployed, its incoming message queue is automatically created if it does not exist already. To send a message to the bean, you can use the standard JMS API.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">try</span> {
+<span xmlns="" class="line">​</span>    InitialContext ctx = <span xmlns="" class="perl_Keyword">new</span> InitialContext();
+<span xmlns="" class="line">​</span>    queue = (Queue) ctx.<span xmlns="" class="perl_Function">lookup</span>(<span xmlns="" class="perl_String">"queue/MyQueue"</span>);
+<span xmlns="" class="line">​</span>    QueueConnectionFactory factory =
+<span xmlns="" class="line">​</span>        (QueueConnectionFactory) ctx.<span xmlns="" class="perl_Function">lookup</span>(<span xmlns="" class="perl_String">"ConnectionFactory"</span>);
+<span xmlns="" class="line">​</span>    cnn = factory.<span xmlns="" class="perl_Function">createQueueConnection</span>();
+<span xmlns="" class="line">​</span>    sess = cnn.<span xmlns="" class="perl_Function">createQueueSession</span>(<span xmlns="" class="perl_Keyword">false</span>,
+<span xmlns="" class="line">​</span>            QueueSession.<span xmlns="" class="perl_Function">AUTO_ACKNOWLEDGE</span>);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>} <span xmlns="" class="perl_Keyword">catch</span> (Exception e) {
+<span xmlns="" class="line">​</span>    e.<span xmlns="" class="perl_Function">printStackTrace</span> ();
+<span xmlns="" class="line">​</span>}
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>TextMessage msg = sess.<span xmlns="" class="perl_Function">createTextMessage</span>(...);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>sender = sess.<span xmlns="" class="perl_Function">createSender</span>(queue);
+<span xmlns="" class="line">​</span>sender.<span xmlns="" class="perl_Function">send</span>(msg);
+<span xmlns="" class="line">​</span>
+</pre><div class="para">
+			Please refer to the JMS specification or books to learn how to program in the JMS API.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="EJB3_Services-Package_and_Deploy_EJB3_Services">
+      ⁠</a>5.4. Package and Deploy EJB3 Services</h1></div></div></div><div class="para">
+			EJB3 bean classes are packaged in regular JAR files. The standard configuration files, such as ejb-jar.xml for session beans, and persistence.xml for entity beans, are in the META-INF directory inside the JAR. You can deploy EJB3 beans as standalone services in JBoss Enterprise Application Platform or as part of an enterprise application (i.e., in an EAR archive). In this section, we discuss those two deployment options.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139776685388704">
+      ⁠</a>5.4.1. Deploy the EJB3 JAR</h2></div></div></div><div class="para">
+				When you drop JAR files into the <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/server/<em class="replaceable">&lt;JBOSS_HOME&gt;</em>/deploy/</code> directory, it will be automatically picked up and processed by the server. All the EJB3 beans defined in the JAR file will then be available to other applications deployed inside or outside of the server via JNDI names like <code class="literal">MyBean/local</code>, where <code class="literal">MyBean</code> is the implementation class name for the session bean. The deployment is done via the JBoss EJB3 deployer in <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/server/<em class="replaceable">&lt;PROFILE&gt;</em>/ejb3.deployer/</code>. The <code class="filename">META-INF/persistence.properties</code> file we discussed earlier to configure the default behavior of EJB3 entity manager is located in the EJB3 deployer.
+			</div><div class="para">
+				The EJB3 deployer automatically scans JARs on the classpath to look for EJB3 annotations. When it finds classes with EJB3 annotations, it would deploy them as EJB3 services. However, scanning all JARs on the classpath could be very time-consuming if you have large applications with many JARs deployed. In the <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/server/<em class="replaceable">&lt;JBOSS_HOME&gt;</em>/deployers/ejb3.deployer/META-INF/ejb3-deployers-jboss-beans.xml</code> file, you can tell the EJB3 deployer to ignore JARs you know do not contain EJB3 beans. The non-EJB3 JAR files shipped with the JBoss Enterprise Application Platform are already listed in the j<code class="literal">boss.ejb3:service=JarsIgnoredForScanning</code> MBean service:
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  ... ...
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;mbean</span><span xmlns="" class="perl_Others"> code=</span><span xmlns="" class="perl_String">"org.jboss.ejb3.JarsIgnoredForScanning"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">         name=</span><span xmlns="" class="perl_String">"jboss.ejb3:service=JarsIgnoredForScanning"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"IgnoredJars"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>         snmp-adaptor.jar,
+<span xmlns="" class="line">​</span>         otherimages.jar,
+<span xmlns="" class="line">​</span>         applet.jar,
+<span xmlns="" class="line">​</span>         jcommon.jar,
+<span xmlns="" class="line">​</span>         console-mgr-classes.jar,
+<span xmlns="" class="line">​</span>         jfreechart.jar,
+<span xmlns="" class="line">​</span>         juddi-service.jar,
+<span xmlns="" class="line">​</span>         wsdl4j.jar,
+<span xmlns="" class="line">​</span>         ... ...
+<span xmlns="" class="line">​</span>         servlets-webdav.jar
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/mbean&gt;</span>
+<span xmlns="" class="line">​</span>  ... ...
+<span xmlns="" class="line">​</span>
+</pre><div class="para">
+				You can add any non-EJB3 JARs from your application to this list so that the server do not have to waste time scanning them. This could significantly improve the application start time in some cases.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139776693354960">
+      ⁠</a>5.4.2. Deploy EAR with EJB3 JAR</h2></div></div></div><div class="para">
+				Most Java EE applications are deployed as EAR archives. An EAR archive is a JAR file that typically contains a WAR archive for the web pages, servlets, and other web-related components, one or several EJB3 JARs that provide services (e.g., data access and transaction) to the WAR components, and some other support library JARs required by the application. An EAR file also have deployment descriptors such as <code class="filename">application.xml</code> and <code class="filename">jboss-app.xml</code>. Below is the basic structure of a typical EAR application.
+			</div><pre class="programlisting">myapp.ear
+├── META-INF/
+│   ├── application.xml
+│   └── jboss-app.xml
+├── myapp.war/
+│   ├── web pages and JSP /JSF pages
+│   └── WEB-INF
+│       ├── web.xml
+│       ├── jboss-web.xml
+│       ├── faces-config.xml
+│       ├── ...
+│       ├── lib/
+│       │   └── tag library JARs
+│       └── classes/
+│           └── servlets and other classes used by web pages
+├── myapp.jar/
+│   ├── EJB3 bean classes
+│   └── META-INF/
+│       ├── ejb-jar.xml
+│       └── persistence.xml
+└── lib/
+    └──Library JARs for the EAR
+</pre><div class="para">
+				Notice that in JBoss Enterprise Application Platform, unlike in many other application servers, you do not need to declare EJB references in the web.xml file in order for the components in the WAR file to access EJB3 services. You can obtain the references directly via JNDI as we discussed earlier in the chapter.
+			</div><div class="para">
+				A typical application.xml file is as follows. It declares the WAR and EJB3 JAR archives in the EAR, and defines the web content root for the application. Of course, you can have multiple EJB3 modules in the same EAR application. The application.xml file could also optionally define a shared classpath for JAR files used in this application. The JAR file location defaults to lib in JBoss Enterprise Application Platform -- but it might be different in other application servers.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;application&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;display-name&gt;</span>My Application<span xmlns="" class="perl_Keyword">&lt;/display-name&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;module&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;web&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;web-uri&gt;</span>myapp.war<span xmlns="" class="perl_Keyword">&lt;/web-uri&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;context-root&gt;</span>/myapp<span xmlns="" class="perl_Keyword">&lt;/context-root&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/web&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/module&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;module&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;ejb&gt;</span>myapp.jar<span xmlns="" class="perl_Keyword">&lt;/ejb&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/module&gt;</span>
+<span xmlns="" class="line">​</span>  
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;library-directory&gt;</span>lib<span xmlns="" class="perl_Keyword">&lt;/library-directory&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/application&gt;</span>
+<span xmlns="" class="line">​</span>
+</pre><div class="para">
+				The jboss-app.xml file provides JBoss-specific deployment configuration for the EAR application. For instance, it can specify the deployment order of modules in the EAR, deploy JBoss-specific application modules in the EAR, such as SARs (Service ARchive for MBeans) and HARs (Hibernate ARchive for Hibernate objects), provide security domain and JMX MBeans that can be used with this application, etc. You can learn more about the possible attributes in jboss-app.xml in its DTD: http://www.jboss.org/j2ee/dtd/jboss-app_4_2.dtd.
+			</div><div class="para">
+				A common use case for jboss-app.xml is to configure whether this EAR file should be deployed in its own scoped classloader to avoid naming conflicts with other applications. If your EAR application is deployed in its own scoped classloader and it only has one persistence-unit defined in its EJB3 JARs, you will be able to use @PersistenceContext EntityManager to inject EntityManager to session beans without worrying about passing the persistence unit name to the @PersistenceContext annotation. The following jboss-app.xml specifies a scoped classloader myapp:archive=myapp.ear for the EAR application.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;jboss-app&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;loader-repository&gt;</span>
+<span xmlns="" class="line">​</span>      myapp:archive=myapp.ear
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/loader-repository&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/jboss-app&gt;</span>
+<span xmlns="" class="line">​</span>
+</pre><div class="para">
+				The EAR deployment is configured by the <code class="filename"><em class="replaceable">&lt;JBOSS_HOME&gt;</em>/server/<em class="replaceable">&lt;PROFILE&gt;</em>/deploy/ear-deploy.xml</code> file. This file contains three attributes as follows.
+			</div><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;server&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;mbean</span><span xmlns="" class="perl_Others"> code=</span><span xmlns="" class="perl_String">"org.jboss.deployment.EARDeployer"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">          name=</span><span xmlns="" class="perl_String">"jboss.j2ee:service=EARDeployer"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!-- </span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">          A flag indicating if ear deployments should </span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">           have their own scoped class loader to isolate </span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">           their classes from other deployments.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">      --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"Isolated"</span><span xmlns="" class="perl_Keyword">&gt;</span>false<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>      
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!-- </span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">          A flag indicating if the ear components should </span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">          have in VM call optimization disabled.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">      --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"CallByValue"</span><span xmlns="" class="perl_Keyword">&gt;</span>false<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>      
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Comment">&lt;!-- </span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">          A flag the enables the default behavior of </span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">          the ee5 library-directory. If true, the lib </span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">          contents of an ear are assumed to be the default </span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">          value for library-directory in the absence of </span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">          an explicit library-directory. If false, there </span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">          must be an explicit library-directory.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">      --&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"EnablelibDirectoryByDefault"</span><span xmlns="" class="perl_Keyword">&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;/mbean&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/server&gt;</span>
+<span xmlns="" class="line">​</span>
+</pre><div class="para">
+				If you set the Isolated parameter to true, all EAR deployment will have scoped classloaders by default. There will be no need to define the classloader in jboss-app.xml. The CallByValue attribute specifies whether we should treat all EJB calls as remote calls. Remote calls have a large additional performance penalty compared with local call-by-reference calls, because objects involved in remote calls have to be serialized and de-serialized. For most of our applications, the WAR and EJB3 JARs are deployed on the same server, hence this value should be default to false and the server uses local call-by-reference calls to invoke EJB methods in the same JVM. The EnablelibDirectoryByDefault attribute specifies whether the lib directory in the EAR archive should be the default location for shared library JARs.
+			</div></div></div></div></body></html>

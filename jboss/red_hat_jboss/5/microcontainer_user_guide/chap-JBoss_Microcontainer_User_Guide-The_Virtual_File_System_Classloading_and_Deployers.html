@@ -1,0 +1,489 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 8. The Virtual File System</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="chap-JBoss_Microcontainer_User_Guide-The_Virtual_File_System_Classloading_and_Deployers">
+      ⁠</a>Chapter 8. The Virtual File System</h1></div></div></div><div class="para">
+		Duplication of resource-handling code is a common problem for developers. In most cases, the code deals with determining information about a particular resource, which might be a file, a directory, or, in the case of a JAR, a remote URL. Another duplication problem is code for the processing of nested archives. <a class="xref" href="chap-JBoss_Microcontainer_User_Guide-The_Virtual_File_System_Classloading_and_Deployers.html#example-resource-duplication">Example 8.1, “Resource Duplication Problem”</a> illustrates the problem.
+	</div><div class="example"><a id="example-resource-duplication">
+      ⁠</a><p class="title"><strong>Example 8.1. Resource Duplication Problem</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">static</span> URL[] <span xmlns="" class="perl_Function">search</span>(ClassLoader cl, String prefix, String suffix) <span xmlns="" class="perl_Keyword">throws</span> IOException {
+<span xmlns="" class="line">​</span>    Enumeration[] e = <span xmlns="" class="perl_Keyword">new</span> Enumeration[]{
+<span xmlns="" class="line">​</span>	cl.<span xmlns="" class="perl_Function">getResources</span>(prefix),
+<span xmlns="" class="line">​</span>	cl.<span xmlns="" class="perl_Function">getResources</span>(prefix + <span xmlns="" class="perl_String">"MANIFEST.MF"</span>)
+<span xmlns="" class="line">​</span>    };
+<span xmlns="" class="line">​</span>    Set all = <span xmlns="" class="perl_Keyword">new</span> LinkedHashSet();
+<span xmlns="" class="line">​</span>    URL url;
+<span xmlns="" class="line">​</span>    URLConnection conn;
+<span xmlns="" class="line">​</span>    JarFile jarFile;
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">for</span> (<span xmlns="" class="perl_DataType">int</span> i = <span xmlns="" class="perl_Float">0</span>, s = e.<span xmlns="" class="perl_Function">length</span>; i &lt; s; ++i)
+<span xmlns="" class="line">​</span>	{
+<span xmlns="" class="line">​</span>	    <span xmlns="" class="perl_Keyword">while</span> (e[i].<span xmlns="" class="perl_Function">hasMoreElements</span>())
+<span xmlns="" class="line">​</span>		{
+<span xmlns="" class="line">​</span>		    url = (URL)e[i].<span xmlns="" class="perl_Function">nextElement</span>();
+<span xmlns="" class="line">​</span>		    conn = url.<span xmlns="" class="perl_Function">openConnection</span>();
+<span xmlns="" class="line">​</span>		    conn.<span xmlns="" class="perl_Function">setUseCaches</span>(<span xmlns="" class="perl_Keyword">false</span>);
+<span xmlns="" class="line">​</span>		    conn.<span xmlns="" class="perl_Function">setDefaultUseCaches</span>(<span xmlns="" class="perl_Keyword">false</span>);
+<span xmlns="" class="line">​</span>		    <span xmlns="" class="perl_Keyword">if</span> (conn <span xmlns="" class="perl_Keyword">instanceof</span> JarURLConnection)
+<span xmlns="" class="line">​</span>			{
+<span xmlns="" class="line">​</span>			    jarFile = ((JarURLConnection)conn).<span xmlns="" class="perl_Function">getJarFile</span>();
+<span xmlns="" class="line">​</span>			}
+<span xmlns="" class="line">​</span>		    <span xmlns="" class="perl_Keyword">else</span>
+<span xmlns="" class="line">​</span>			{
+<span xmlns="" class="line">​</span>			    jarFile = <span xmlns="" class="perl_Function">getAlternativeJarFile</span>(url);
+<span xmlns="" class="line">​</span>			}
+<span xmlns="" class="line">​</span>		    <span xmlns="" class="perl_Keyword">if</span> (jarFile != <span xmlns="" class="perl_Keyword">null</span>)
+<span xmlns="" class="line">​</span>			{
+<span xmlns="" class="line">​</span>			    <span xmlns="" class="perl_Function">searchJar</span>(cl, all, jarFile, prefix, suffix);
+<span xmlns="" class="line">​</span>			}
+<span xmlns="" class="line">​</span>		    <span xmlns="" class="perl_Keyword">else</span>
+<span xmlns="" class="line">​</span>			{
+<span xmlns="" class="line">​</span>			    <span xmlns="" class="perl_DataType">boolean</span> searchDone = <span xmlns="" class="perl_Function">searchDir</span>(all, <span xmlns="" class="perl_Keyword">new</span> File(URLDecoder.<span xmlns="" class="perl_Function">decode</span>(url.<span xmlns="" class="perl_Function">getFile</span>(), <span xmlns="" class="perl_String">"UTF-8"</span>)), suffix);
+<span xmlns="" class="line">​</span>			    <span xmlns="" class="perl_Keyword">if</span> (searchDone == <span xmlns="" class="perl_Keyword">false</span>)
+<span xmlns="" class="line">​</span>				{
+<span xmlns="" class="line">​</span>				    <span xmlns="" class="perl_Function">searchFromURL</span>(all, prefix, suffix, url);
+<span xmlns="" class="line">​</span>				}
+<span xmlns="" class="line">​</span>			}
+<span xmlns="" class="line">​</span>		}
+<span xmlns="" class="line">​</span>	}
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">return</span> (URL[])all.<span xmlns="" class="perl_Function">toArray</span>(<span xmlns="" class="perl_Keyword">new</span> URL[all.<span xmlns="" class="perl_Function">size</span>()]);
+<span xmlns="" class="line">​</span>}
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">private</span> <span xmlns="" class="perl_DataType">static</span> <span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">searchDir</span>(Set result, File file, String suffix) <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">if</span> (file.<span xmlns="" class="perl_Function">exists</span>() &amp;&amp; file.<span xmlns="" class="perl_Function">isDirectory</span>())
+<span xmlns="" class="line">​</span>	{
+<span xmlns="" class="line">​</span>	    File[] fc = file.<span xmlns="" class="perl_Function">listFiles</span>();
+<span xmlns="" class="line">​</span>	    String path;
+<span xmlns="" class="line">​</span>	    <span xmlns="" class="perl_Keyword">for</span> (<span xmlns="" class="perl_DataType">int</span> i = <span xmlns="" class="perl_Float">0</span>; i &lt; fc.<span xmlns="" class="perl_Function">length</span>; i++)
+<span xmlns="" class="line">​</span>		{
+<span xmlns="" class="line">​</span>		    path = fc[i].<span xmlns="" class="perl_Function">getAbsolutePath</span>();
+<span xmlns="" class="line">​</span>		    <span xmlns="" class="perl_Keyword">if</span> (fc[i].<span xmlns="" class="perl_Function">isDirectory</span>())
+<span xmlns="" class="line">​</span>			{
+<span xmlns="" class="line">​</span>			    <span xmlns="" class="perl_Function">searchDir</span>(result, fc[i], suffix);
+<span xmlns="" class="line">​</span>			}
+<span xmlns="" class="line">​</span>		    <span xmlns="" class="perl_Keyword">else</span> <span xmlns="" class="perl_Keyword">if</span> (path.<span xmlns="" class="perl_Function">endsWith</span>(suffix))
+<span xmlns="" class="line">​</span>			{
+<span xmlns="" class="line">​</span>			    result.<span xmlns="" class="perl_Function">add</span>(fc[i].<span xmlns="" class="perl_Function">toURL</span>());
+<span xmlns="" class="line">​</span>			}
+<span xmlns="" class="line">​</span>		}
+<span xmlns="" class="line">​</span>	    <span xmlns="" class="perl_Keyword">return</span> <span xmlns="" class="perl_Keyword">true</span>;
+<span xmlns="" class="line">​</span>	}
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">return</span> <span xmlns="" class="perl_Keyword">false</span>;
+<span xmlns="" class="line">​</span>}</pre></div></div><div class="para">
+		There are also many problems with file locking on Windows systems, forcing developers to copy all hot-deployable archives to another location to prevent locking those in deploy folders (which would prevent their deletion and file-system based undeploy). File locking is a major problem whose only solution used to be centralizing all the resource loading code in one place.
+	</div><div class="para">
+		The <em class="firstterm">VFS</em> project was created solve all of these issues. VFS stands for <em class="firstterm">Virtual File System</em>.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-JBoss_Microcontainer_User_Guide-The_Virtual_File_System_Classloading_and_Deployers-VFS_Public_API">
+      ⁠</a>8.1. VFS Public API</h1></div></div></div><div class="para">
+			VFS is used for two main purposes, as shown in <a class="xref" href="chap-JBoss_Microcontainer_User_Guide-The_Virtual_File_System_Classloading_and_Deployers.html#vfs-purposes">Uses for VFS</a>.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><a id="vfs-purposes">
+      ⁠</a><p class="title"><strong>Uses for VFS</strong></p><ul><li class="listitem"><div class="para">
+					simple resource navigation
+				</div></li><li class="listitem"><div class="para">
+					visitor pattern <em class="firstterm">API</em> (Application Programmer Interface)
+				</div></li></ul></div><div class="para">
+			As mentioned, in plain JDK, handling and navigating resources are complex. You must always check the resource type, and these checks can be cumbersome. VFS abstracts resources into a single resource type, <span class="type">VirtualFile</span>.
+		</div><div class="example"><a id="exam-JBoss_Microcontainer_User_Guide-VFS_Public_API-The_VirtualFile_Resource_Type">
+      ⁠</a><p class="title"><strong>Example 8.2. The VirtualFile Resource Type</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> VirtualFile <span xmlns="" class="perl_Keyword">implements</span> Serializable {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Get certificates.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the certificates associated with this virtual file</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>    Certificate[] <span xmlns="" class="perl_Function">getCertificates</span>()
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Get the simple VF name (X.java)</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the simple file name</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalStateException </span><span xmlns="" class="perl_Comment">if the file is closed</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>	String <span xmlns="" class="perl_Function">getName</span>()
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Get the VFS relative path name (org/jboss/X.java)</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the VFS relative path name</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalStateException </span><span xmlns="" class="perl_Comment">if the file is closed</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>	String <span xmlns="" class="perl_Function">getPathName</span>()
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Get the VF URL (file://root/org/jboss/X.java)</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the full URL to the VF in the VFS.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws MalformedURLException </span><span xmlns="" class="perl_Comment">if a url cannot be parsed</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws URISyntaxException </span><span xmlns="" class="perl_Comment">if a uri cannot be parsed</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalStateException </span><span xmlns="" class="perl_Comment">if the file is closed</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>	URL <span xmlns="" class="perl_Function">toURL</span>() <span xmlns="" class="perl_Keyword">throws</span> MalformedURLException, URISyntaxException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Get the VF URI (file://root/org/jboss/X.java)</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the full URI to the VF in the VFS.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws URISyntaxException </span><span xmlns="" class="perl_Comment">if a uri cannot be parsed</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalStateException </span><span xmlns="" class="perl_Comment">if the file is closed</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws MalformedURLException </span><span xmlns="" class="perl_Comment">for a bad url</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   URI <span xmlns="" class="perl_Function">toURI</span>() <span xmlns="" class="perl_Keyword">throws</span> MalformedURLException, URISyntaxException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * When the file was last modified</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the last modified time</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">for any problem accessing the virtual file system</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalStateException </span><span xmlns="" class="perl_Comment">if the file is closed</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   <span xmlns="" class="perl_DataType">long</span> <span xmlns="" class="perl_Function">getLastModified</span>() <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Returns true if the file has been modified since this method was last called</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Last modified time is initialized at handler instantiation.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">true if modifed, false otherwise</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">for any error</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   <span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">hasBeenModified</span>() <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Get the size</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the size</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">for any problem accessing the virtual file system</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalStateException </span><span xmlns="" class="perl_Comment">if the file is closed</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   <span xmlns="" class="perl_DataType">long</span> <span xmlns="" class="perl_Function">getSize</span>() <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Tests whether the underlying implementation file still exists.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">true if the file exists, false otherwise.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">- thrown on failure to detect existence.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   <span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">exists</span>() <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Whether it is a simple leaf of the VFS,</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * i.e. whether it can contain other files</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">true if a simple file.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">for any problem accessing the virtual file system</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalStateException </span><span xmlns="" class="perl_Comment">if the file is closed</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   <span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">isLeaf</span>() <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Is the file archive.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">true if archive, false otherwise</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">for any error</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   <span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">isArchive</span>() <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Whether it is hidden</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">true when hidden</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">for any problem accessing the virtual file system</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalStateException </span><span xmlns="" class="perl_Comment">if the file is closed</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   <span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">isHidden</span>() <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Access the file contents.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">an InputStream for the file contents.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">for any error accessing the file system</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalStateException </span><span xmlns="" class="perl_Comment">if the file is closed</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   InputStream <span xmlns="" class="perl_Function">openStream</span>() <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Do file cleanup.</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * e.g. delete temp files</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">cleanup</span>()
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Close the file resources (stream, etc.)</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">close</span>()
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Delete this virtual file</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">true if file was deleted</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">if an error occurs</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   <span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">delete</span>() <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Delete this virtual file</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@param gracePeriod </span><span xmlns="" class="perl_Comment">max time to wait for any locks (in milliseconds)</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">true if file was deleted</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">if an error occurs</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   <span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">delete</span>(<span xmlns="" class="perl_DataType">int</span> gracePeriod) <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Get the VFS instance for this virtual file</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the VFS</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalStateException </span><span xmlns="" class="perl_Comment">if the file is closed</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   VFS <span xmlns="" class="perl_Function">getVFS</span>()
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Get the parent</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the parent or null if there is no parent</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">for any problem accessing the virtual file system</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalStateException </span><span xmlns="" class="perl_Comment">if the file is closed</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   VirtualFile <span xmlns="" class="perl_Function">getParent</span>() <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Get a child</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@param path </span><span xmlns="" class="perl_Comment">the path</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the child or </span><span xmlns="" class="perl_Keyword">&lt;code&gt;</span><span xmlns="" class="perl_Comment">null</span><span xmlns="" class="perl_Keyword">&lt;/code&gt;</span><span xmlns="" class="perl_Comment"> if not found</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">for any problem accessing the VFS</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalArgumentException </span><span xmlns="" class="perl_Comment">if the path is null</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalStateException </span><span xmlns="" class="perl_Comment">if the file is closed or it is a leaf node</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   VirtualFile <span xmlns="" class="perl_Function">getChild</span>(String path) <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Get the children</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the children</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">for any problem accessing the virtual file system</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalStateException </span><span xmlns="" class="perl_Comment">if the file is closed</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   List&lt;VirtualFile&gt; <span xmlns="" class="perl_Function">getChildren</span>() <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Get the children</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@param filter </span><span xmlns="" class="perl_Comment">to filter the children</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the children</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">for any problem accessing the virtual file system</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalStateException </span><span xmlns="" class="perl_Comment">if the file is closed or it is a leaf node</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   List&lt;VirtualFile&gt; <span xmlns="" class="perl_Function">getChildren</span>(VirtualFileFilter filter) <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Get all the children recursively</span><span xmlns="" class="perl_Keyword">&lt;p&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * This always uses </span><span xmlns="" class="perl_Keyword">{@link VisitorAttributes#RECURSE}</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the children</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">for any problem accessing the virtual file system</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalStateException </span><span xmlns="" class="perl_Comment">if the file is closed</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   List&lt;VirtualFile&gt; <span xmlns="" class="perl_Function">getChildrenRecursively</span>() <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Get all the children recursively</span><span xmlns="" class="perl_Keyword">&lt;p&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * This always uses </span><span xmlns="" class="perl_Keyword">{@link VisitorAttributes#RECURSE}</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@param filter </span><span xmlns="" class="perl_Comment">to filter the children</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the children</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">for any problem accessing the virtual file system</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalStateException </span><span xmlns="" class="perl_Comment">if the file is closed or it is a leaf node</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   List&lt;VirtualFile&gt; <span xmlns="" class="perl_Function">getChildrenRecursively</span>(VirtualFileFilter filter) <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Visit the virtual file system</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@param visitor </span><span xmlns="" class="perl_Comment">the visitor</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">for any problem accessing the virtual file system</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalArgumentException </span><span xmlns="" class="perl_Comment">if the visitor is null</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalStateException </span><span xmlns="" class="perl_Comment">if the file is closed</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>			   <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">visit</span>(VirtualFileVisitor visitor) <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>			   }
+</pre></div></div><div class="para">
+			All of the usual read-only File System operations are available, plus a few options to cleanup or delete the resource. Cleanup or deletion handling is needed when dealing with some internal temporary files, such as files created to handle nested jars.
+		</div><div class="para">
+			To switch from the JDK's <span class="type">File</span> or <span class="type">URL</span> resource handling to new <span class="type">VirtualFile</span> you need a root <span class="type">VirtualFile</span>, which is provided by the <code class="classname">VFS</code> class, with the help of URL or URI parameter.
+		</div><div class="example"><a id="exam-JBoss_Microcontainer_User_Guide-VFS_Public_API-Using_the_VFS_Class">
+      ⁠</a><p class="title"><strong>Example 8.3. Using the <code class="classname">VFS</code> Class</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> VFS {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Get the virtual file system for a root uri</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@param rootURI </span><span xmlns="" class="perl_Comment">the root URI</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the virtual file system</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">if there is a problem accessing the VFS</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalArgumentException </span><span xmlns="" class="perl_Comment">if the rootURL is null</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_DataType">static</span> VFS <span xmlns="" class="perl_Function">getVFS</span>(URI rootURI) <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Create new root</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@param rootURI </span><span xmlns="" class="perl_Comment">the root url</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the virtual file</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">if there is a problem accessing the VFS</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalArgumentException </span><span xmlns="" class="perl_Comment">if the rootURL</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_DataType">static</span> VirtualFile <span xmlns="" class="perl_Function">createNewRoot</span>(URI rootURI) <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Get the root virtual file</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@param rootURI </span><span xmlns="" class="perl_Comment">the root uri</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the virtual file</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">if there is a problem accessing the VFS</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalArgumentException </span><span xmlns="" class="perl_Comment">if the rootURL is null</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_DataType">static</span> VirtualFile <span xmlns="" class="perl_Function">getRoot</span>(URI rootURI) <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Get the virtual file system for a root url</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@param rootURL </span><span xmlns="" class="perl_Comment">the root url</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the virtual file system</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">if there is a problem accessing the VFS</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalArgumentException </span><span xmlns="" class="perl_Comment">if the rootURL is null</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_DataType">static</span> VFS <span xmlns="" class="perl_Function">getVFS</span>(URL rootURL) <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Create new root</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@param rootURL </span><span xmlns="" class="perl_Comment">the root url</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the virtual file</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">if there is a problem accessing the VFS</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalArgumentException </span><span xmlns="" class="perl_Comment">if the rootURL</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_DataType">static</span> VirtualFile <span xmlns="" class="perl_Function">createNewRoot</span>(URL rootURL) <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Get the root virtual file</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@param rootURL </span><span xmlns="" class="perl_Comment">the root url</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the virtual file</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">if there is a problem accessing the VFS</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IllegalArgumentException </span><span xmlns="" class="perl_Comment">if the rootURL</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_DataType">static</span> VirtualFile <span xmlns="" class="perl_Function">getRoot</span>(URL rootURL) <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Get the root file of this VFS</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the root</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@throws IOException </span><span xmlns="" class="perl_Comment">for any problem accessing the VFS</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>    VirtualFile <span xmlns="" class="perl_Function">getRoot</span>() <span xmlns="" class="perl_Keyword">throws</span> IOException
+<span xmlns="" class="line">​</span>}</pre></div></div><div class="para">
+			The three different methods look similar.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					<code class="methodname">getVFS</code>
+				</div></li><li class="listitem"><div class="para">
+					<code class="methodname">createNewRoot</code>
+				</div></li><li class="listitem"><div class="para">
+					<code class="methodname">getRoot</code>
+				</div></li></ul></div><div class="para">
+			<code class="methodname">getVFS</code> returns a VFS instance but does not yet create a VirtualFile instance. This is important because there are methods which help with configuring a VFS instance (see VFS class API javadocs), before instructing it to create a VirtualFile root.
+		</div><div class="para">
+			The other two methods, on the other hand, use default settings for root creation. The difference between <code class="methodname">createNewRoot</code> and <code class="methodname">getRoot</code> is in caching details, which are covered later.
+		</div><div class="example"><a id="exam-JBoss_Microcontainer_User_Guide-VFS_Public_API-Using_getVFS">
+      ⁠</a><p class="title"><strong>Example 8.4. Using <code class="methodname">getVFS</code></strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>URL rootURL = ...; <span xmlns="" class="perl_Comment">// get root url</span>
+<span xmlns="" class="line">​</span>VFS vfs = VFS.<span xmlns="" class="perl_Function">getVFS</span>(rootURL);
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// configure vfs instance</span>
+<span xmlns="" class="line">​</span>VirtualFile root1 = vfs.<span xmlns="" class="perl_Function">getRoot</span>();
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// or you can get root directly</span>
+<span xmlns="" class="line">​</span>VirtualFile root2 = VFS.<span xmlns="" class="perl_Function">crateNewRoot</span>(rootURL);
+<span xmlns="" class="line">​</span>VirtualFile root3 = VFS.<span xmlns="" class="perl_Function">getRoot</span>(rootURL);</pre></div></div><div class="para">
+			Another useful thing about VFS API is its implementation of a proper visitor pattern. It is very simple to recursively gather different resources, a task which is difficult to do with plain JDK resource loading.
+		</div><div class="example"><a id="exam-JBoss_Microcontainer_User_Guide-VFS_Public_API-Recursively_Gathering_Resources">
+      ⁠</a><p class="title"><strong>Example 8.5. Recursively Gathering Resources</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">interface</span> VirtualFileVisitor {
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Get the search attribues for this visitor</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@return </span><span xmlns="" class="perl_Comment">the attributes</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>    VisitorAttributes <span xmlns="" class="perl_Function">getAttributes</span>();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Comment">/**</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * Visit a virtual file</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     *</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     * </span><span xmlns="" class="perl_Keyword">@param virtualFile </span><span xmlns="" class="perl_Comment">the virtual file being visited</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">     */</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">visit</span>(VirtualFile virtualFile);
+<span xmlns="" class="line">​</span>}
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>VirtualFile root = ...; <span xmlns="" class="perl_Comment">// get root</span>
+<span xmlns="" class="line">​</span>VirtualFileVisitor visitor = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">SuffixVisitor</span>(<span xmlns="" class="perl_String">".class"</span>); <span xmlns="" class="perl_Comment">// get all classes</span>
+<span xmlns="" class="line">​</span>root.<span xmlns="" class="perl_Function">visit</span>(visitor);
+</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-JBoss_Microcontainer_User_Guide-The_Virtual_File_System_Classloading_and_Deployers-VFS_Architecture">
+      ⁠</a>8.2. VFS Architecture</h1></div></div></div><div class="para">
+			While the public API is quite intuitive, real implementation details add complexity. Some concepts need to be explained in more detail.
+		</div><div class="para">
+			Each time you create a VFS instance, its matching <code class="classname">VFSContext</code> instance is created. This creation is done via <code class="classname">VFSContextFactory</code>. Different protocols map to different <code class="classname">VFSContextFactory</code> instances. For example, <code class="systemitem">file/vfsfile</code> maps to <code class="classname">FileSystemContextFactory</code>, while <code class="systemitem">zip/vfszip</code> maps to <code class="classname">ZipEntryContextFactory</code>.
+		</div><div class="para">
+			Each time a <code class="classname">VirtualFile</code> instance is created, its matching <span class="type">VirtualFileHandler</span> is created. This <span class="type">VirtualFileHandler</span> instance knows how to handle different resource types properly; the <code class="classname">VirtualFile</code> API only delegates invocations to its <span class="type">VirtualFileHandler</span> reference.
+		</div><div class="para">
+			The <code class="classname">VFSContext</code> instance knows how to create <span class="type">VirtualFileHandler</span> instances accordingly to a resource type. For example, ZipEntryContextFactory creates <code class="classname">ZipEntryContext</code>, which then creates <code class="classname">ZipEntryHandler</code>.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-JBoss_Microcontainer_User_Guide-The_Virtual_File_System_Classloading_and_Deployers-Existing_Implementations">
+      ⁠</a>8.3. Existing Implementations</h1></div></div></div><div class="para">
+			Apart from files, directories (FileHandler) and zip archives (ZipEntryHandler) the Microcontainer also supports other more advanced use cases. The first one is <em class="firstterm">Assembled</em>, which is similar to what Eclipse calls <em class="firstterm">Linked Resources</em>. Its purpose is to take existing resources from different trees, and "mock" them into single resource tree.
+		</div><div class="example"><a id="exam-JBoss_Microcontainer_User_Guide-Existing_Implementations-Implementation_of_Assembled_VirtualFileHandlers">
+      ⁠</a><p class="title"><strong>Example 8.6. Implementation of Assembled VirtualFileHandlers</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>AssembledDirectory sar = AssembledContextFactory.<span xmlns="" class="perl_Function">getInstance</span>().<span xmlns="" class="perl_Function">create</span>(<span xmlns="" class="perl_String">"assembled.sar"</span>);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>URL url = <span xmlns="" class="perl_Function">getResource</span>(<span xmlns="" class="perl_String">"/vfs/test/jar1.jar"</span>);
+<span xmlns="" class="line">​</span>VirtualFile jar1 = VFS.<span xmlns="" class="perl_Function">getRoot</span>(url);
+<span xmlns="" class="line">​</span>sar.<span xmlns="" class="perl_Function">addChild</span>(jar1);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>url = <span xmlns="" class="perl_Function">getResource</span>(<span xmlns="" class="perl_String">"/tmp/app/ext.jar"</span>);
+<span xmlns="" class="line">​</span>VirtualFile ext1 = VFS.<span xmlns="" class="perl_Function">getRoot</span>(url);
+<span xmlns="" class="line">​</span>sar.<span xmlns="" class="perl_Function">addChild</span>(ext);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>AssembledDirectory metainf = sar.<span xmlns="" class="perl_Function">mkdir</span>(<span xmlns="" class="perl_String">"META-INF"</span>);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>url = <span xmlns="" class="perl_Function">getResource</span>(<span xmlns="" class="perl_String">"/config/jboss-service.xml"</span>);
+<span xmlns="" class="line">​</span>VirtualFile serviceVF = VFS.<span xmlns="" class="perl_Function">getRoot</span>(url);
+<span xmlns="" class="line">​</span>metainf.<span xmlns="" class="perl_Function">addChild</span>(serviceVF);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>AssembledDirectory app = sar.<span xmlns="" class="perl_Function">mkdir</span>(<span xmlns="" class="perl_String">"app.jar"</span>);
+<span xmlns="" class="line">​</span>url = <span xmlns="" class="perl_Function">getResource</span>(<span xmlns="" class="perl_String">"/app/someapp/classes"</span>);
+<span xmlns="" class="line">​</span>VirtualFile appVF = VFS.<span xmlns="" class="perl_Function">getRoot</span>(url);
+<span xmlns="" class="line">​</span>app.<span xmlns="" class="perl_Function">addPath</span>(appVF, <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">SuffixFilter</span>(<span xmlns="" class="perl_String">".class"</span>));
+</pre></div></div><div class="para">
+			Another implementation is <em class="firstterm">in-memory</em> files. This implementation arose out of a need to easily handle AOP generated bytes. Instead of using temporary files, you can drop bytes into in-memory VirtualFileHandlers.
+		</div><div class="example"><a id="exam-JBoss_Microcontainer_User_Guide-Existing_Implementations-Implementation_of_In_Memory_VirtualFileHandlers">
+      ⁠</a><p class="title"><strong>Example 8.7. Implementation of In-Memory VirtualFileHandlers</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>URL url = <span xmlns="" class="perl_Keyword">new</span> URL(<span xmlns="" class="perl_String">"vfsmemory://aopdomain/org/acme/test/Test.class"</span>);
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_DataType">byte</span>[] bytes = ...; <span xmlns="" class="perl_Comment">// some AOP generated class bytes</span>
+<span xmlns="" class="line">​</span>MemoryFileFactory.<span xmlns="" class="perl_Function">putFile</span>(url,  bytes);
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>VirtualFile classFile = VFS.<span xmlns="" class="perl_Function">getVirtualFile</span>(<span xmlns="" class="perl_Keyword">new</span> URL(<span xmlns="" class="perl_String">"vfsmemory://aopdomain"</span>), <span xmlns="" class="perl_String">"org/acme/test/Test.class"</span>);
+<span xmlns="" class="line">​</span>InputStream bis = classFile.<span xmlns="" class="perl_Function">openStream</span>(); <span xmlns="" class="perl_Comment">// e.g. load class from input stream</span>
+</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-JBoss_Microcontainer_User_Guide-The_Virtual_File_System_Classloading_and_Deployers-Extension_Hooks">
+      ⁠</a>8.4. Extension Hooks</h1></div></div></div><div class="para">
+			It is easy to extend VFS with a new protocol, similar to what we've done with <code class="systemitem">Assembled</code> and <code class="systemitem">Memory</code>. All you need is a combination of <code class="classname">VFSContexFactory</code>, <code class="classname">VFSContext</code>, <code class="classname">VirtualFileHandler</code>, <code class="classname">FileHandlerPlugin</code>, and <code class="classname">URLStreamHandler</code> implementations. The <code class="classname">VFSContextFactory</code> is trivial, while the others depend on the complexity of your task. You could implement <code class="filename">rar</code>, <code class="filename">tar</code>, <code class="filename">gzip</code>, or even <code class="filename">remote</code> access.
+		</div><div class="para">
+			After implementing a new protocol, register the new VFSContextFactory with VFSContextFactoryLocator.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-JBoss_Microcontainer_User_Guide-The_Virtual_File_System_Classloading_and_Deployers-Features">
+      ⁠</a>8.5. Features</h1></div></div></div><div class="para">
+			One of the first major problems the Microcontainer developers faced was proper usage of nested resources, more specifically nested jar files: For example, normal ear deployments: <code class="filename">gema.ear/ui.war/WEB-INF/lib/struts.jar</code>.
+		</div><div class="para">
+			In order to read contents of <code class="filename">struts.jar</code> we have two options:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					handle resources in memory
+				</div></li><li class="listitem"><div class="para">
+					create top level temporary copies of nested jars, recursively
+				</div></li></ul></div><div class="para">
+			The first option is easier to implement, but it's very memory-consuming, requiring potentially large applications to reside in memory. The other approach leaves behind a large number of temporary files, which should be invisible to the end user and therefore should disappear after undeployment.
+		</div><div class="para">
+			Consider the following scenario: A user accesses a VFS URL instance, which points to some nested resource.
+		</div><div class="para">
+			The way plain VFS would handle this is to re-create the entire path from scratch: it would unpack nested resources over and over again. This leads to a great number of temporary files.
+		</div><div class="para">
+			The Microcontainer avoids this by using <code class="classname">VFSRegistry</code>, <code class="classname">VFSCache</code>, and <code class="classname">TempInfo</code>.
+		</div><div class="para">
+			When you ask for VirtualFile over VFS (<code class="classname">getRoot</code>, not <code class="classname">createNewRoot</code>), VFS asks the <code class="classname">VFSRegistry</code> implementation to provide the file. The existing <code class="classname">DefaultVFSRegistry</code> first checks if a matching root <code class="classname">VFSContext</code> exists for the provided URI. If it does, <code class="classname">DefaultVFSRegistry</code> first tries to navigate to the existing <code class="classname">TempInfo</code> (link to a temporary files), falling back to regular navigation if no such temporary file exists. In this way you completely reuse any temporary files which have already been unpacked, saving time and disk space. If no matching <code class="classname">VFSContext</code> is found in cache, the code will create a new <code class="classname">VFSCache</code> entry and continue with default navigation.
+		</div><div class="para">
+			Determining how the <code class="classname">VFSCache</code> handles cached VFSContext entries depends on the implementation used. <code class="classname">VFSCache</code> is configurable via <code class="classname">VFSCacheFactory</code>. By default, nothing is cached, but there are a few useful existing <code class="classname">VFSCache</code> implementations, using algorithms such as <code class="systemitem">Least Recently Used (LRU)</code> or <code class="systemitem">timed cache</code>.
+		</div></div></div></body></html>

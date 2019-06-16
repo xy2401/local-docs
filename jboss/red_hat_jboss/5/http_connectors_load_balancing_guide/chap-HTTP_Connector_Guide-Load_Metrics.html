@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 11. Load Metrics</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="chap-HTTP_Connector_Guide-Load_Metrics">
+      ⁠</a>Chapter 11. Load Metrics</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139711933467232">
+      ⁠</a>11.1. Server-Side Load Metrics</h1></div></div></div><div class="para">
+			A major feature of mod_cluster is the ability to use server-side load metrics to determine how best to balance requests.
+		</div><div class="para">
+			The <code class="literal">DynamicLoadBalanceFactorProvider</code> bean computes the load balance factor of a node from a defined set of load metrics.
+		</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"DynamicLoadBalanceFactorProvider"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.modcluster.load.impl.DynamicLoadBalanceFactorProvider"</span><span xmlns="" class="perl_Others"> mode=</span><span xmlns="" class="perl_String">"On Demand"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;annotation&gt;</span>@org.jboss.aop.microcontainer.aspects.jmx.JMX(name="jboss.web:service=LoadBalanceFactorProvider",exposedInterface=org.jboss.modcluster.load.impl.DynamicLoadBalanceFactorProviderMBean.class)<span xmlns="" class="perl_Keyword">&lt;/annotation&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;constructor&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;parameter&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;set</span><span xmlns="" class="perl_Others"> elementClass=</span><span xmlns="" class="perl_String">"org.jboss.modcluster.load.metric.LoadMetric"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;inject</span><span xmlns="" class="perl_Others"> bean=</span><span xmlns="" class="perl_String">"BusyConnectorsLoadMetric"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">&lt;inject</span><span xmlns="" class="perl_Others"> bean=</span><span xmlns="" class="perl_String">"HeapMemoryUsageLoadMetric"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>      <span xmlns="" class="perl_Keyword">&lt;/set&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;/parameter&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/constructor&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"history"</span><span xmlns="" class="perl_Keyword">&gt;</span>9<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"decayFactor"</span><span xmlns="" class="perl_Keyword">&gt;</span>2<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span></pre><div class="para">
+			Load metrics can be configured with an associated weight and capacity:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="orderedlist"><ol><li class="listitem"><div class="para">
+					The weight (default is <code class="literal">1</code>) indicates the significance of a metric with respect to the other metrics. For example, a metric of weight <code class="literal">2</code> will have twice the impact on the overall load factor than a metric of weight <code class="literal">1</code>.
+				</div></li><li class="listitem"><div class="para">
+					The capacity of a metric serves <code class="literal">2</code> functions:
+				</div></li></ol></div><div class="para">
+			Each load metric contributes a value to the overall load factor of a node. The load factors from each metric are aggregated according to their weights.
+		</div><div class="para">
+			In general, the load factor contribution of given metric is:
+		</div><pre class="programlisting"><span class="mathphrase">(load ÷ capacity) × weight ÷ total weight</span></pre><div class="para">
+			The DynamicLoadBalanceFactorProvider applies a time decay function to the loads returned by each metric. The aggregate load, with respect to previous load values, can be expressed by the following formula:
+		</div><pre class="programlisting">L = (L0 + L1∕D + L2∕D2 + L3∕D3 + ... + LH∕DH) × (1 + D + D2 + D3 + ... DH)
+</pre><div class="para">
+			... or more concisely as:
+		</div><pre class="programlisting">H         H
+L = ∑ Li/Di *  ∑ Di
+i=0       i=0
+</pre><div class="para">
+			... where <code class="literal">D</code> = <span class="emphasis"><em>decayFactor</em></span> and <code class="literal">H</code> = <span class="emphasis"><em>history</em></span>.
+		</div><div class="para">
+			Setting <code class="literal">history = 0</code> effectively disables the time decay function and only the current load for each metric will be considered in the load balance factor computation.
+		</div><div class="para">
+			The mod_cluster proxy module expects the load factor to be an integer between <code class="literal">0</code> and <code class="literal">100</code>, where <code class="literal">0</code> indicates max load and <code class="literal">100</code> indicates zero load. Therefore, the final load balance factor sent to the proxy is:
+		</div><pre class="programlisting">100 - (L × 100)
+</pre><div class="para">
+			While you are free to write your own load metrics, the following <em class="parameter"><code>LoadMetrics</code></em> are available out of the box:
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139711980689728">
+      ⁠</a>11.2. Web Container metrics</h1></div></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="orderedlist"><ol><li class="listitem"><div class="para">
+					ActiveSessionsLoadMetric
+				</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+							Requires an explicit capacity.
+						</div></li><li class="listitem"><div class="para">
+							Uses SessionLoadMetricSource to query session managers
+						</div></li><li class="listitem"><div class="para">
+							Analogous to method=S in mod_jk
+						</div></li></ul></div><div class="para">
+					For example:
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"ActiveSessionsLoadMetric"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.modcluster.load.metric.impl.ActiveSessionsLoadMetric"</span><span xmlns="" class="perl_Others"> mode=</span><span xmlns="" class="perl_String">"On Demand"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;annotation&gt;</span>@org.jboss.aop.microcontainer.aspects.jmx.JMX(name="jboss.web:service=ActiveSessionsLoadMetric",exposedInterface=org.jboss.modcluster.load.metric.LoadMetricMBean.class)<span xmlns="" class="perl_Keyword">&lt;/annotation&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;constructor&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;parameter&gt;&lt;inject</span><span xmlns="" class="perl_Others"> bean=</span><span xmlns="" class="perl_String">"SessionLoadMetricSource"</span><span xmlns="" class="perl_Keyword">/&gt;&lt;/parameter&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/constructor&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"capacity"</span><span xmlns="" class="perl_Keyword">&gt;</span>1000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"SessionLoadMetricSource"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.modcluster.load.metric.impl.SessionLoadMetricSource"</span><span xmlns="" class="perl_Others"> mode=</span><span xmlns="" class="perl_String">"On Demand"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;constructor&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;parameter</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"javax.management.MBeanServer"</span><span xmlns="" class="perl_Keyword">&gt;&lt;inject</span><span xmlns="" class="perl_Others"> bean=</span><span xmlns="" class="perl_String">"JMXKernel"</span><span xmlns="" class="perl_Others"> property=</span><span xmlns="" class="perl_String">"mbeanServer"</span><span xmlns="" class="perl_Keyword">/&gt;&lt;/parameter&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/constructor&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span></pre></li><li class="listitem"><div class="para">
+					BusyConnectorsLoadMetric
+				</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+							Returns the percentage of connector threads from the thread pool that are busy servicing requests
+						</div></li><li class="listitem"><div class="para">
+							Uses ThreadPoolLoadMetricSource to query connector thread pools
+						</div></li><li class="listitem"><div class="para">
+							Analogous to method=B in mod_jk
+						</div></li></ul></div><div class="para">
+					For example:
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"BusyConnectorsLoadMetric"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.modcluster.load.metric.impl.BusyConnectorsLoadMetric"</span><span xmlns="" class="perl_Others"> mode=</span><span xmlns="" class="perl_String">"On Demand"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;annotation&gt;</span>@org.jboss.aop.microcontainer.aspects.jmx.JMX(name="jboss.web:service=BusyConnectorsLoadMetric",exposedInterface=org.jboss.modcluster.load.metric.LoadMetricMBean.class)<span xmlns="" class="perl_Keyword">&lt;/annotation&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;constructor&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;parameter&gt;&lt;inject</span><span xmlns="" class="perl_Others"> bean=</span><span xmlns="" class="perl_String">"ThreadPoolLoadMetricSource"</span><span xmlns="" class="perl_Keyword">/&gt;&lt;/parameter&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/constructor&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"ThreadPoolLoadMetricSource"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.modcluster.load.metric.impl.ThreadPoolLoadMetricSource"</span><span xmlns="" class="perl_Others"> mode=</span><span xmlns="" class="perl_String">"On Demand"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;constructor&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;parameter</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"javax.management.MBeanServer"</span><span xmlns="" class="perl_Keyword">&gt;&lt;inject</span><span xmlns="" class="perl_Others"> bean=</span><span xmlns="" class="perl_String">"JMXKernel"</span><span xmlns="" class="perl_Others"> property=</span><span xmlns="" class="perl_String">"mbeanServer"</span><span xmlns="" class="perl_Keyword">/&gt;&lt;/parameter&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/constructor&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span></pre></li><li class="listitem"><div class="para">
+					ReceiveTrafficLoadMetric
+				</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+							Returns the incoming request traffic in KB/sec
+						</div></li><li class="listitem"><div class="para">
+							Requires an explicit capacity
+						</div></li><li class="listitem"><div class="para">
+							Uses RequestProcessorLoadMetricSource to query request processors
+						</div></li><li class="listitem"><div class="para">
+							Analogous to method=T in mod_jk
+						</div></li></ul></div><div class="para">
+					For example:
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"ReceiveTrafficLoadMetric"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.modcluster.load.metric.impl.ReceiveTrafficLoadMetric"</span><span xmlns="" class="perl_Others"> mode=</span><span xmlns="" class="perl_String">"On Demand"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;annotation&gt;</span>@org.jboss.aop.microcontainer.aspects.jmx.JMX(name="jboss.web:service=ReceiveTrafficLoadMetric",exposedInterface=org.jboss.modcluster.load.metric.LoadMetricMBean.class)<span xmlns="" class="perl_Keyword">&lt;/annotation&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;constructor&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;parameter</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.modcluster.load.metric.impl.RequestProcessorLoadMetricSource"</span><span xmlns="" class="perl_Keyword">&gt;&lt;inject</span><span xmlns="" class="perl_Others"> bean=</span><span xmlns="" class="perl_String">"RequestProcessorLoadMetricSource"</span><span xmlns="" class="perl_Keyword">/&gt;&lt;/parameter&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/constructor&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"capacity"</span><span xmlns="" class="perl_Keyword">&gt;</span>1024<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"RequestProcessorLoadMetricSource"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.modcluster.load.metric.impl.RequestProcessorLoadMetricSource"</span><span xmlns="" class="perl_Others"> mode=</span><span xmlns="" class="perl_String">"On Demand"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;constructor&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;parameter</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"javax.management.MBeanServer"</span><span xmlns="" class="perl_Keyword">&gt;&lt;inject</span><span xmlns="" class="perl_Others"> bean=</span><span xmlns="" class="perl_String">"JMXKernel"</span><span xmlns="" class="perl_Others"> property=</span><span xmlns="" class="perl_String">"mbeanServer"</span><span xmlns="" class="perl_Keyword">/&gt;&lt;/parameter&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/constructor&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span></pre></li><li class="listitem"><div class="para">
+					SendTrafficLoadMetric
+				</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+							Returns the outgoing request traffic in KB/sec
+						</div></li><li class="listitem"><div class="para">
+							Requires an explicit capacity
+						</div></li><li class="listitem"><div class="para">
+							Uses RequestProcessorLoadMetricSource to query request processors
+						</div></li><li class="listitem"><div class="para">
+							Analogous to method=T in mod_jk
+						</div></li></ul></div><div class="para">
+					For example:
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"SendTrafficLoadMetric"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.modcluster.load.metric.impl.SendTrafficLoadMetric"</span><span xmlns="" class="perl_Others"> mode=</span><span xmlns="" class="perl_String">"On Demand"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;annotation&gt;</span>@org.jboss.aop.microcontainer.aspects.jmx.JMX(name="jboss.web:service=SendTrafficLoadMetric",exposedInterface=org.jboss.modcluster.load.metric.LoadMetricMBean.class)<span xmlns="" class="perl_Keyword">&lt;/annotation&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;constructor&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;parameter</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.modcluster.load.metric.impl.RequestProcessorLoadMetricSource"</span><span xmlns="" class="perl_Keyword">&gt;&lt;inject</span><span xmlns="" class="perl_Others"> bean=</span><span xmlns="" class="perl_String">"RequestProcessorLoadMetricSource"</span><span xmlns="" class="perl_Keyword">/&gt;&lt;/parameter&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/constructor&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"capacity"</span><span xmlns="" class="perl_Keyword">&gt;</span>512<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span></pre></li><li class="listitem"><div class="para">
+					RequestCountLoadMetric
+				</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+							Returns the number of requests/sec
+						</div></li><li class="listitem"><div class="para">
+							Requires an explicit capacity
+						</div></li><li class="listitem"><div class="para">
+							Uses RequestProcessorLoadMetricSource to query request processors
+						</div></li><li class="listitem"><div class="para">
+							Analogous to method=R in mod_jk
+						</div></li></ul></div><div class="para">
+					For example:
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"RequestCountLoadMetric"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.modcluster.load.metric.impl.RequestCountLoadMetric"</span><span xmlns="" class="perl_Others"> mode=</span><span xmlns="" class="perl_String">"On Demand"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;annotation&gt;</span>@org.jboss.aop.microcontainer.aspects.jmx.JMX(name="jboss.web:service=RequestCountLoadMetric",exposedInterface=org.jboss.modcluster.load.metric.LoadMetricMBean.class)<span xmlns="" class="perl_Keyword">&lt;/annotation&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;constructor&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;parameter</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.modcluster.load.metric.impl.RequestProcessorLoadMetricSource"</span><span xmlns="" class="perl_Keyword">&gt;&lt;inject</span><span xmlns="" class="perl_Others"> bean=</span><span xmlns="" class="perl_String">"RequestProcessorLoadMetricSource"</span><span xmlns="" class="perl_Keyword">/&gt;&lt;/parameter&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/constructor&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"capacity"</span><span xmlns="" class="perl_Keyword">&gt;</span>1000<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span></pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139711984991984">
+      ⁠</a>11.3. System/JVM metrics</h1></div></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="orderedlist"><ol><li class="listitem"><div class="para">
+					AverageSystemLoadMetric
+				</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+							Returns CPU load
+						</div></li><li class="listitem"><div class="para">
+							Requires Java 1.6+.
+						</div></li><li class="listitem"><div class="para">
+							Uses OperatingSystemLoadMetricSource to generically read attributes
+						</div></li></ul></div><div class="para">
+					For example:
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"AverageSystemLoadMetric"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.modcluster.load.metric.impl.AverageSystemLoadMetric"</span><span xmlns="" class="perl_Others"> mode=</span><span xmlns="" class="perl_String">"On Demand"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;annotation&gt;</span>@org.jboss.aop.microcontainer.aspects.jmx.JMX(name="jboss.web:service=AverageSystemLoadMetric",exposedInterface=org.jboss.modcluster.load.metric.LoadMetricMBean.class)<span xmlns="" class="perl_Keyword">&lt;/annotation&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;constructor&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;parameter&gt;&lt;inject</span><span xmlns="" class="perl_Others"> bean=</span><span xmlns="" class="perl_String">"OperatingSystemLoadMetricSource"</span><span xmlns="" class="perl_Keyword">/&gt;&lt;/parameter&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/constructor&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"OperatingSystemLoadMetricSource"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.modcluster.load.metric.impl.OperatingSystemLoadMetricSource"</span><span xmlns="" class="perl_Others"> mode=</span><span xmlns="" class="perl_String">"On Demand"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span></pre></li><li class="listitem"><div class="para">
+					SystemMemoryUsageLoadMetric
+				</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+							Returns system memory usage
+						</div></li><li class="listitem"><div class="para">
+							Requires com.sun.management.OperatingSystemMXBean (available in Sun's JDK or OpenJDK)
+						</div></li><li class="listitem"><div class="para">
+							Uses OperatingSystemLoadMetricSource to generically read attributes
+						</div></li></ul></div><div class="para">
+					For example:
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"SystemMemoryUsageLoadMetric"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.modcluster.load.metric.impl.SystemMemoryUsageLoadMetric"</span><span xmlns="" class="perl_Others"> mode=</span><span xmlns="" class="perl_String">"On Demand"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;annotation&gt;</span>@org.jboss.aop.microcontainer.aspects.jmx.JMX(name="jboss.web:service=SystemMemoryUsageLoadMetric",exposedInterface=org.jboss.modcluster.load.metric.LoadMetricMBean.class)<span xmlns="" class="perl_Keyword">&lt;/annotation&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;constructor&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;parameter&gt;&lt;inject</span><span xmlns="" class="perl_Others"> bean=</span><span xmlns="" class="perl_String">"OperatingSystemLoadMetricSource"</span><span xmlns="" class="perl_Keyword">/&gt;&lt;/parameter&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/constructor&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span></pre></li><li class="listitem"><div class="para">
+					HeapMemoryUsageLoadMetric
+				</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+							Returns the heap memory usage as a percentage of max heap size
+						</div></li></ul></div><div class="para">
+					For example:
+				</div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"HeapMemoryUsageLoadMetric"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.modcluster.load.metric.impl.HeapMemoryUsageLoadMetric"</span><span xmlns="" class="perl_Others"> mode=</span><span xmlns="" class="perl_String">"On Demand"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;annotation&gt;</span>@org.jboss.aop.microcontainer.aspects.jmx.JMX(name="jboss.web:service=HeapMemoryUsageLoadMetric",exposedInterface=org.jboss.modcluster.load.metric.LoadMetricMBean.class)<span xmlns="" class="perl_Keyword">&lt;/annotation&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span></pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139711960140048">
+      ⁠</a>11.4. Other metrics</h1></div></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="orderedlist"><ol><li class="listitem"><div class="para">
+					ConnectionPoolUsageLoadMetric
+				</div><div class="itemizedlist"><ul><li class="listitem"><div class="para">
+							Returns the percentage of connections from a connection pool that are in use.
+						</div></li><li class="listitem"><div class="para">
+							Uses ConnectionPoolLoadMetricSource to query JCA connection pools
+						</div></li></ul></div><div class="para">
+					For example:
+				</div></li></ol></div><pre class="programlisting"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"ConnectionPoolUsageMetric"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.modcluster.load.metric.impl.ConnectionPoolUsageLoadMetric"</span><span xmlns="" class="perl_Others"> mode=</span><span xmlns="" class="perl_String">"On Demand"</span><span xmlns="" class="perl_Keyword">&gt;</span> <span xmlns="" class="perl_Keyword">&lt;annotation&gt;</span>@org.jboss.aop.microcontainer.aspects.jmx.JMX(name="jboss.web:service=ConnectionPoolUsageLoadMetric",exposedInterface=org.jboss.modcluster.load.metric.LoadMetricMBean.class)<span xmlns="" class="perl_Keyword">&lt;/annotation&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;constructor&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;parameter&gt;&lt;inject</span><span xmlns="" class="perl_Others"> bean=</span><span xmlns="" class="perl_String">"ConnectionPoolLoadMetricSource"</span><span xmlns="" class="perl_Keyword">/&gt;&lt;/parameter&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/constructor&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"ConnectionPoolLoadMetricSource"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.modcluster.load.metric.impl.ConnectionPoolLoadMetricSource"</span><span xmlns="" class="perl_Others"> mode=</span><span xmlns="" class="perl_String">"On Demand"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;constructor&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;parameter</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"javax.management.MBeanServer"</span><span xmlns="" class="perl_Keyword">&gt;&lt;inject</span><span xmlns="" class="perl_Others"> bean=</span><span xmlns="" class="perl_String">"JMXKernel"</span><span xmlns="" class="perl_Others"> property=</span><span xmlns="" class="perl_String">"mbeanServer"</span><span xmlns="" class="perl_Keyword">/&gt;&lt;/parameter&gt;</span>  <span xmlns="" class="perl_Keyword">&lt;/constructor&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+</pre></div></div></body></html>

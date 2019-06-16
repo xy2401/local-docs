@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 5. Adding Behavior with AOP</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="chap-JBoss_Microcontainer_User_Guide-Adding_Behavior_with_AOP">
+      ⁠</a>Chapter 5. Adding Behavior with AOP</h1></div></div></div><div class="para">
+		Object Oriented Programming (OOP) contains many useful techniques for software development including encapsulation, inheritance, and polymorphism. However, it does not solve the problem of addressing logic that is often repeated in many different classes. Examples of this include logging, security, and transactional logic which is traditionally hard-coded into each class. This type of logic is called a <em class="firstterm">cross-cutting concern</em>.
+	</div><div class="para">
+		<em class="firstterm">Aspect Oriented Programming (AOP)</em> works to allow cross-cutting concerns to be applied to classes after they have been compiled. This keeps the source code free of logic which is not central to the main purpose of the class and streamlines maintenance. The method depends on the AOP implementation. Typically if a class implements an interface, each method call to an instance of the class first passes through a proxy. This proxy implements the same interface, adding the required behavior. Alternatively, if an interface is not used, then the java bytecode of the compiled class is modified: the original methods are renamed and replaced by methods that implement the cross-cutting logic. These new methods then call the original methods after the cross-cutting logic has been executed. Another method to achieve the same result is modifying the bytecode to create a subclass of the original class that overrides its methods. The overridden methods then execute the cross-cutting logic before calling the corresponding methods of the super class.
+	</div><div class="para">
+		<span class="application"><strong>JBoss AOP</strong></span> is a framework for AOP. Using it, you can create cross-cutting concerns using conventional java classes and methods. In AOP terminology each concern is represented by an <em class="firstterm">aspect</em> that you implement using a simple POJO. Behavior is provided by methods within the aspect called <em class="firstterm">advices</em>. These advices follow certain rules for their parameter, and return types and any exceptions that they throw. Within this framework, you can use conventional object-oriented notions such as inheritance, encapsulation, and composition to make your cross-cutting concerns easy to maintain. Aspects are applied to code using an expression language that allows you to specify which constructors, methods and even fields to target. You can quickly change the behavior of multiple classes by editing a configuration file.
+	</div><div class="para">
+		This chapter contains examples which demonstrate how to use JBoss AOP alongside the Microcontainer to create and apply an auditing aspect to the Human Resources Service. The auditing code could be placed within the <code class="classname">HRManager</code> class, but it would clutter the class with code which is not relevant to its central purpose, bloating it and making it harder to maintain. The design of the aspect also provide modularity, making it easy to audit other classes in the future, if the scope of the project changes.
+	</div><div class="para">
+		AOP can also be used to apply additional behavior during the deployment phase. This example will create and bind a proxy to a bean instance into a basic JNDI service, allowing it to be accessed using a JNDI look-up instead of the Microcontainer controller.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-JBoss_Microcontainer_User_Guide-Adding_Behavior_with_AOP-Creating_An_Aspect">
+      ⁠</a>5.1. Creating An Aspect</h1></div></div></div><div class="para">
+			The <code class="filename">examples/User_Guide/gettingStarted/auditAspect</code> directory contains all the files needed to create the aspect.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					<code class="filename">pom.xml</code>
+				</div></li><li class="listitem"><div class="para">
+					<code class="filename">src/main/java/org/jboss/example/aspect/AuditAspect.java</code>
+				</div></li></ul></div><div class="example"><a id="idm139732991917856">
+      ⁠</a><p class="title"><strong>Example 5.1. Example POJO</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> AuditAspect {
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">private</span> String logDir;
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">private</span> BufferedWriter out;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Function">AuditAspect</span>() {
+<span xmlns="" class="line">​</span>        logDir = System.<span xmlns="" class="perl_Function">getProperty</span>(<span xmlns="" class="perl_String">"user.dir"</span>) + <span xmlns="" class="perl_String">"/log"</span>;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>        File directory = <span xmlns="" class="perl_Keyword">new</span> File(logDir);
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">if</span> (!directory.<span xmlns="" class="perl_Function">exists</span>()) {
+<span xmlns="" class="line">​</span>            directory.<span xmlns="" class="perl_Function">mkdir</span>();
+<span xmlns="" class="line">​</span>        }
+<span xmlns="" class="line">​</span>    }
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">public</span> Object <span xmlns="" class="perl_Function">audit</span>(ConstructorInvocation inv) <span xmlns="" class="perl_Keyword">throws</span> Throwable {
+<span xmlns="" class="line">​</span>        SimpleDateFormat formatter = <span xmlns="" class="perl_Keyword">new</span> SimpleDateFormat(<span xmlns="" class="perl_String">"ddMMyyyy-kkmmss"</span>);
+<span xmlns="" class="line">​</span>        Calendar now = Calendar.<span xmlns="" class="perl_Function">getInstance</span>();
+<span xmlns="" class="line">​</span>        String filename = <span xmlns="" class="perl_String">"auditLog-"</span> + formatter<span xmlns="" class="perl_Function">.format(now.getTime())</span>;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>        File auditLog = <span xmlns="" class="perl_Keyword">new</span> File(logDir + <span xmlns="" class="perl_String">"/"</span> + filename);
+<span xmlns="" class="line">​</span>        auditLog.<span xmlns="" class="perl_Function">createNewFile</span>();
+<span xmlns="" class="line">​</span>        out = <span xmlns="" class="perl_Keyword">new</span> BufferedWriter(<span xmlns="" class="perl_Keyword">new</span> FileWriter(auditLog));
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">return</span> inv.<span xmlns="" class="perl_Function">invokeNext</span>();
+<span xmlns="" class="line">​</span>    }
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">public</span> Object <span xmlns="" class="perl_Function">audit</span>(MethodInvocation inv) <span xmlns="" class="perl_Keyword">throws</span> Throwable {
+<span xmlns="" class="line">​</span>        String name = inv.<span xmlns="" class="perl_Function">getMethod</span>().<span xmlns="" class="perl_Function">getName</span>();
+<span xmlns="" class="line">​</span>        Object[] args = inv.<span xmlns="" class="perl_Function">getArguments</span>();
+<span xmlns="" class="line">​</span>        Object retVal = inv.<span xmlns="" class="perl_Function">invokeNext</span>();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>        StringBuffer buffer = <span xmlns="" class="perl_Keyword">new</span> StringBuffer();
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">for</span> (<span xmlns="" class="perl_DataType">int</span> i=<span xmlns="" class="perl_Float">0</span>; i &lt; args.<span xmlns="" class="perl_Function">length</span>; i++) {
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">if</span> (i &gt; <span xmlns="" class="perl_Float">0</span>) {
+<span xmlns="" class="line">​</span>                buffer.<span xmlns="" class="perl_Function">append</span>(<span xmlns="" class="perl_String">", "</span>);
+<span xmlns="" class="line">​</span>            }
+<span xmlns="" class="line">​</span>            buffer.<span xmlns="" class="perl_Function">append</span>(args[i].<span xmlns="" class="perl_Function">toString</span>());
+<span xmlns="" class="line">​</span>        }
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">if</span> (out != <span xmlns="" class="perl_Keyword">null</span>) {
+<span xmlns="" class="line">​</span>            out.<span xmlns="" class="perl_Function">write</span>(<span xmlns="" class="perl_String">"Method: "</span> + name);
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">if</span> (buffer.<span xmlns="" class="perl_Function">length</span>() &gt; <span xmlns="" class="perl_Float">0</span>) {
+<span xmlns="" class="line">​</span>                out.<span xmlns="" class="perl_Function">write</span>(<span xmlns="" class="perl_String">" Args: "</span> + buffer.<span xmlns="" class="perl_Function">toString</span>());
+<span xmlns="" class="line">​</span>            }
+<span xmlns="" class="line">​</span>            <span xmlns="" class="perl_Keyword">if</span> (retVal != <span xmlns="" class="perl_Keyword">null</span>) {
+<span xmlns="" class="line">​</span>		out.<span xmlns="" class="perl_Function">write</span>(<span xmlns="" class="perl_String">" Return: "</span> + retVal.<span xmlns="" class="perl_Function">toString</span>());
+<span xmlns="" class="line">​</span>            }
+<span xmlns="" class="line">​</span>            out.<span xmlns="" class="perl_Function">write</span>(<span xmlns="" class="perl_String">"</span><span xmlns="" class="perl_Char">\n</span><span xmlns="" class="perl_String">"</span>);
+<span xmlns="" class="line">​</span>            out.<span xmlns="" class="perl_Function">flush</span>();
+<span xmlns="" class="line">​</span>        }
+<span xmlns="" class="line">​</span>        <span xmlns="" class="perl_Keyword">return</span> retVal;
+<span xmlns="" class="line">​</span>    }
+<span xmlns="" class="line">​</span>}
+<span xmlns="" class="line">​</span>			
+<span xmlns="" class="line">​</span>			
+<span xmlns="" class="line">​</span>			
+<span xmlns="" class="line">​</span>
+</pre></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><a id="idm139732980635392">
+      ⁠</a><p class="title"><strong>Procedure 5.1. Creating the POJO</strong></p><ol class="1"><li class="step"><div class="para">
+					The constructor checks for the presence of a <code class="filename">log</code> directory in the current working directory, and creates one if not found.
+				</div></li><li class="step"><div class="para">
+					Next, an advice is defined. This advice is called whenever the constructor of the target class is called. This creates a new log file within the <code class="filename">log</code> directory to record method calls made on different instances of the target class in separate files.
+				</div></li><li class="step"><div class="para">
+					Finally, another advice is defined. This advice applies to each method call made on the target class.The method name and arguments are stored, along with the return value. This information is used to construct an audit record and write it to the current log file. Each advice calls <code class="methodname">inv.invokeNext()</code>, which chains the advices together if more than one cross-cutting concern has been applied, or to call the target constructor/method.
+				</div></li></ol></div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+				Each advice is implemented using a method that takes an invocation object as a parameter, throws <span class="returnvalue">Throwable</span> and returns <span class="returnvalue">Object</span>. At design time you do not know which constructors or methods these advices will be applied to, so make the types as generic as possible.
+			</div></div></div><div class="para">
+			To compile the class and create an <code class="filename">auditAspect.jar</code> file that can be used by other examples, type <code class="command">mvn install</code> from the <code class="filename">auditAspect</code> directory.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-JBoss_Microcontainer_User_Guide-Adding_Behavior_with_AOP-Configuring_the_Microcontainer_for_AOP">
+      ⁠</a>5.2. Configuring the Microcontainer for AOP</h1></div></div></div><div class="para">
+			Before applying the audit aspect to the HR Service, a number of JARs must be added to the extension classpath. They are in the <code class="filename">lib</code> sub-directory of the <code class="filename">client-aop</code> distribution located in the <code class="filename">examples/User_Guide/gettingStarted/commandLineClient/target/client-aop.dir</code> directory:
+		</div><div class="example"><a id="example-commandLineClient-target-client-aop.dir">
+      ⁠</a><p class="title"><strong>Example 5.2. Listing of the examples/User_Guide/gettingStarted/commandLineClient/target/client-aop.dir<code class="filename"> Directory</code></strong></p><div class="example-contents"><pre class="screen">
+        |-- client-1.0.0.jar
+        |-- jboss-beans.xml
+        |-- lib
+        |-- auditAspect-1.0.0.jar
+        |-- concurrent-1.3.4.jar
+        |-- humanResourcesService-1.0.0.jar
+        |-- javassist-3.6.0.GA.jar
+        |-- jboss-aop-2.0.0.beta1.jar
+        |-- jboss-aop-mc-int-2.0.0.Beta6.jar
+        |-- jboss-common-core-2.0.4.GA.jar
+        |-- jboss-common-core-2.2.1.GA.jar
+        |-- jboss-common-logging-log4j-2.0.4.GA.jar
+        |-- jboss-common-logging-spi-2.0.4.GA.jar
+        |-- jboss-container-2.0.0.Beta6.jar
+        |-- jboss-dependency-2.0.0.Beta6.jar
+        |-- jboss-kernel-2.0.0.Beta6.jar
+        |-- jbossxb-2.0.0.CR4.jar
+        |-- log4j-1.2.14.jar
+        |-- trove-2.1.1.jar
+        `-- xercesImpl-2.7.1.jar
+        |-- log
+        `-- auditLog-18062010-122537
+        `-- run.sh
+</pre></div></div><div class="para">
+			First, <code class="filename">lib/auditAspect-1.0.0.jar</code> is required to create an instance of the aspect at run-time, in order to execute the logic. Next the jar file for JBoss AOP (jboss-aop.jar), along with its dependencies javassist and trove, adds the AOP functionality. Finally, the jboss-aop-mc-int jar is required because it contains an XML schema definition that allows you to define aspects inside an XML deployment descriptor. It also contains integration code to create dependencies between normal beans and aspect beans within the Microcontainer, allowing you to add behavior during the deployment and undeployment phases.
+		</div><div class="para">
+			Because you are using Maven2 to assemble the client-aop distribution, you should add these JAR files by declaring the appropriate dependencies in your <code class="filename">pom.xml</code> file and creating a valid assembly descriptor. A sample <code class="filename">pom.xml</code> snippet is shown in <a class="xref" href="chap-JBoss_Microcontainer_User_Guide-Adding_Behavior_with_AOP.html#example-aop-pom.xml">Example 5.3, “Example <code class="filename">pom.xml</code> Excerpt for AOP”</a>. To perform your build using Ant, the procedure will be different.
+		</div><div class="example"><a id="example-aop-pom.xml">
+      ⁠</a><p class="title"><strong>Example 5.3. Example <code class="filename">pom.xml</code> Excerpt for AOP</strong></p><div class="example-contents"><pre class="programlisting">&lt;dependency&gt;
+  &lt;groupId&gt;org.jboss.microcontainer.examples&lt;/groupId&gt;
+  &lt;artifactId&gt;jboss-oap&lt;/artifactId&gt;
+  &lt;version&gt;2.0.0&lt;/version&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+  &lt;groupId&gt;org.jboss.microcontainer.examples&lt;/groupId&gt;
+  &lt;artifactId&gt;javassist&lt;/artifactId&gt;
+  &lt;version&gt;3.6.0.GA&lt;/version&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+  &lt;groupId&gt;org.jboss.microcontainer.examples&lt;/groupId&gt;
+  &lt;artifactId&gt;trove&lt;/artifactId&gt;
+  &lt;version&gt;2.1.1&lt;/version&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+  &lt;groupId&gt;org.jboss.microcontainer.examples&lt;/groupId&gt;
+  &lt;artifactId&gt;jboss-aop-mc-int&lt;/artifactId&gt;
+  &lt;version&gt;2.0.0.Beta6&lt;/version&gt;
+&lt;/dependency&gt;</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-JBoss_Microcontainer_User_Guide-Adding_Behavior_with_AOP-Applying_An_Aspect">
+      ⁠</a>5.3. Applying An Aspect</h1></div></div></div><div class="para">
+			Now that you have a valid distribution containing everything you need, you can configure <code class="filename">jboss-beans.xml</code> to apply the audit aspect. It is in <code class="filename">examples/User_Guide/gettingStarted/commandLineClient/target/client-aop.dir</code>.
+		</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;?xml</span> version="1.0" encoding="UTF-8"<span xmlns="" class="perl_Keyword">?&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;deployment</span><span xmlns="" class="perl_Others"> xmlns:xsi=</span><span xmlns="" class="perl_String">"http://www.w3.org/2001/XMLSchema-instance"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">            xsi:schemaLocation=</span><span xmlns="" class="perl_String">"urn:jboss:bean-deployer:2.0 bean-deployer_2_0.xsd"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">            xmlns=</span><span xmlns="" class="perl_String">"urn:jboss:bean-deployer:2.0"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;bean</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"AspectManager"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.aop.AspectManager"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;constructor</span><span xmlns="" class="perl_Others"> factoryClass=</span><span xmlns="" class="perl_String">"org.jboss.aop.AspectManager"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">		 factoryMethod=</span><span xmlns="" class="perl_String">"instance"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/bean&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;aop:aspect</span><span xmlns="" class="perl_Others"> xmlns:aop=</span><span xmlns="" class="perl_String">"urn:jboss:aop-beans:1.0"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">	      name=</span><span xmlns="" class="perl_String">"AuditAspect"</span><span xmlns="" class="perl_Others"> class=</span><span xmlns="" class="perl_String">"org.jboss.example.aspect.AuditAspect"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">	      method=</span><span xmlns="" class="perl_String">"audit"</span><span xmlns="" class="perl_Others"> pointcut=</span><span xmlns="" class="perl_String">"execution(public org.jboss.example.service.HRManager-&gt;new(..)) OR                                        execution(public * org.jboss.example.service.HRManager-&gt;*(..))"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/aop:aspect&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>  ...
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/deployment&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>		
+<span xmlns="" class="line">​</span>		
+<span xmlns="" class="line">​</span>		
+<span xmlns="" class="line">​</span>
+</pre><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><a id="idm139732995264608">
+      ⁠</a><p class="title"><strong>Procedure 5.2. Explanation of the Code to Apply an Aspect</strong></p><ol class="1"><li class="step"><div class="para">
+					Before you can apply your aspect to any classes, you need to create an instance of <code class="classname">org.jboss.aop.AspectManager</code> using a &lt;bean&gt; element. A factory method is used here instead of calling a conventional constructor, since only one instance of the AspectManager in the JVM is necessary at run-time.
+				</div></li><li class="step"><div class="para">
+					Next an instance of our aspect called AuditAspect is created, using the &lt;aop:aspect&gt; element. This looks similar to the &lt;bean&gt; element because it has <span class="property">name</span> and <span class="property">class</span> attributes that are used in the same way. However it also has <span class="property">method</span> and <span class="property">pointcut</span> attributes that you can use to apply or bind an advice within the aspect to constructors and methods within other classes. These attributes bind the audit advice to all public constructors and methods within the <code class="classname">HRManager</code> class. Only the <code class="methodname">audit</code> method needs to be specified, since it has been overloaded within the <code class="classname">AuditAspect</code> class with different parameters. JBoss AOP knows at run-time which to select, depending on whether a constructor or method invocation is being made.
+				</div></li></ol></div><div class="para">
+			This additional configuration is all that is needed to apply the audit aspect at run-time, adding auditing behavior to the <span class="application"><strong>Human Resources</strong></span> service. You can test this by running the client using the <code class="filename">run.sh</code> script. A <code class="filename">log</code> directory is created on start-up alongside the <code class="filename">lib</code> directory when the <code class="classname">AuditAspect</code> bean is created by the Microcontainer. Each deployment of the Human Resources service causes a new log file to appear within the <code class="filename">log</code> directory. The log file contains a record of any calls made from the client to the service. It is named something similar to <code class="filename">auditLog-28112007-163902</code>, and contains output similar to <a class="xref" href="chap-JBoss_Microcontainer_User_Guide-Adding_Behavior_with_AOP.html#example-log-output">Example 5.4, “Example AOP Log Output”</a>.
+		</div><div class="example"><a id="example-log-output">
+      ⁠</a><p class="title"><strong>Example 5.4. Example AOP Log Output</strong></p><div class="example-contents"><pre class="screen">
+        Method: getEmployees Return: []
+        Method: addEmployee Args: (Santa Claus, 1 Reindeer Avenue, Lapland City - 25/12/1860) Return: true
+        Method: getSalary Args: (Santa Claus, null - Birth date unknown) Return: 10000
+        Method: getEmployees Return: [(Santa Claus, 1 Reindeer Avenue, Lapland City - 25/12/1860)]
+        Method: isHiringFreeze Return: false
+        Method: getEmployees Return: [(Santa Claus, 1 Reindeer Avenue, Lapland City - 25/12/1860)]
+        Method: getSalaryStrategy
+</pre></div></div><div class="para">
+			To remove the auditing behavior, comment out the relevant fragments of XML in the deployment descriptor and restart the application.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="warning"><div class="admonition_header"><p><strong>Warning</strong></p></div><div class="admonition"><div class="para">
+				The order of deployment matters. Specifically each aspect must be declared before the beans that it applies to, so that the Microcontainer deploys them in that order. This is because the Microcontainer may need to alter the bytecode of the normal bean class to add the cross-cutting logic, before it creates an instance and stores a reference to it in the controller. If a normal bean instance has already been created, this is not possible.
+			</div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-JBoss_Microcontainer_User_Guide-Adding_Behavior_with_AOP-Life_cycle_callbacks">
+      ⁠</a>5.4. Life cycle callbacks</h1></div></div></div><div class="para">
+			In addition to applying aspects to beans that we instantiate using the Microcontainer we can also add behavior during the deployment and undeployment process. As mentioned in <a class="xref" href="chap-JBoss_Microcontainer_User_Guide-Using_Services.html#sect-JBoss_Microcontainer_User_Guide-Using_Services-Direct_Access">Section 4.3, “Direct Access”</a>, a bean goes through several different states as it is deployed. These include:
+		</div><div class="variablelist"><dl class="variablelist"><dt><span class="term">NOT_INSTALLED</span></dt><dd><div class="para">
+						the deployment descriptor containing the bean has been parsed, along with any annotations on the bean itself.
+					</div></dd><dt><span class="term">DESCRIBED</span></dt><dd><div class="para">
+						any dependencies created by AOP have been added to the bean, and custom annotations have been processed.
+					</div></dd><dt><span class="term">INSTANTIATED</span></dt><dd><div class="para">
+						an instance of the bean has been created.
+					</div></dd><dt><span class="term">CONFIGURED</span></dt><dd><div class="para">
+						properties have been injected into the bean, along with any references to other beans.
+					</div></dd><dt><span class="term">CREATE</span></dt><dd><div class="para">
+						the <code class="methodname">create</code> method, if defined in the bean, has been called.
+					</div></dd><dt><span class="term">START</span></dt><dd><div class="para">
+						the <code class="methodname">start</code> method, if defined in the bean, has been called.
+					</div></dd><dt><span class="term">INSTALLED</span></dt><dd><div class="para">
+						any custom install actions that were defined in the deployment descriptor have been executed and the bean is ready to access.
+					</div></dd></dl></div><div xmlns:d="http://docbook.org/ns/docbook" class="important"><div class="admonition_header"><p><strong>Important</strong></p></div><div class="admonition"><div class="para">
+				The <code class="systemitem">CREATE</code> and <code class="systemitem">START</code> states are included for legacy purposes. This allows services that were implemented as MBeans in previous versions of the Enterprise Platform to function correctly when implemented as beans in the Enterprise Platform 5.1. If you do not define any corresponding create/start methods in your bean, it will pass straight through these states.
+			</div></div></div><div class="para">
+			These states represent the bean's life cycle. You can define a number of callbacks to be applied to any point by using an additional set of &lt;aop&gt; elements:
+		</div><div class="variablelist"><dl class="variablelist"><dt><span class="term"><em class="parameter"><code>&lt;aop:lifecycle-describe&gt;</code></em></span></dt><dd><div class="para">
+						applied when entering/leaving the DESCRIBED state
+					</div></dd><dt><span class="term"><em class="parameter"><code>&lt;aop:lifecycle-instantiate&gt;</code></em></span></dt><dd><div class="para">
+						applied when entering/leaving the INSTANTIATED state
+					</div></dd><dt><span class="term"><em class="parameter"><code>&lt;aop:lifecycle-configure&gt;</code></em></span></dt><dd><div class="para">
+						applied when entering/leaving the CONFIGURED state
+					</div></dd><dt><span class="term"><em class="parameter"><code>&lt;aop:lifecycle-create&gt;</code></em></span></dt><dd><div class="para">
+						applied when entering/leaving the CREATE state
+					</div></dd><dt><span class="term"><em class="parameter"><code>&lt;aop:lifecycle-start&gt;</code></em></span></dt><dd><div class="para">
+						applied when entering/leaving the START state
+					</div></dd><dt><span class="term"><em class="parameter"><code>&lt;aop:lifecycle-install&gt;</code></em></span></dt><dd><div class="para">
+						applied when entering/leaving the INSTALLED state
+					</div></dd></dl></div><div class="para">
+			Like the &lt;bean&gt; and &lt;aop:aspect&gt; elements, the &lt;aop:lifecycle-&gt; elements contain <span class="property">name</span> and <span class="property">class</span> attributes. The Microcontainer uses these attributes to create an instance of the <code class="methodname">callback</code> class, naming it so that it can be used as beans enter or leave the relevant state during deployment and undeployment. You can specify which beans are affected by the callback using the classes attribute, as shown in <a class="xref" href="chap-JBoss_Microcontainer_User_Guide-Adding_Behavior_with_AOP.html#example-using-the-classes-attribute">Example 5.5, “Using the <span class="property">classes</span> Attribute”</a>.
+		</div><div class="example"><a id="example-using-the-classes-attribute">
+      ⁠</a><p class="title"><strong>Example 5.5. Using the <span class="property">classes</span> Attribute</strong></p><div class="example-contents"><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;aop:lifecycle-install</span><span xmlns="" class="perl_Others"> xmlns:aop=</span><span xmlns="" class="perl_String">"urn:jboss:aop-beans:1.0"</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">name=</span><span xmlns="" class="perl_String">"InstallAdvice"</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">class=</span><span xmlns="" class="perl_String">"org.jboss.test.microcontainer.support.LifecycleCallback"</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">classes=</span><span xmlns="" class="perl_String">"@org.jboss.test.microcontainer.support.Install"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/aop:lifecycle-install&gt;</span>
+<span xmlns="" class="line">​</span>			
+<span xmlns="" class="line">​</span>			
+<span xmlns="" class="line">​</span>			
+<span xmlns="" class="line">​</span>
+</pre></div></div><div class="para">
+			This code specifies that additional logic in the <code class="classname">lifecycleCallback</code> class is applied to any bean classes that are annotated with <em class="parameter"><code>@org.jboss.test.microcontainer.support.Install</code></em> before they enter and after they leave the <code class="systemitem">INSTALLED</code> state.
+		</div><div class="para">
+			For the callback class to work, it must contain <code class="methodname">install</code> and <code class="methodname">uninstall</code> methods that take <em class="parameter"><code>ControllerContext</code></em> as a parameter, as shown in <a class="xref" href="chap-JBoss_Microcontainer_User_Guide-Adding_Behavior_with_AOP.html#example-install-and-uninstall-methods">Example 5.6, “Install and Uninstall Methods”</a>.
+		</div><div class="example"><a id="example-install-and-uninstall-methods">
+      ⁠</a><p class="title"><strong>Example 5.6. Install and Uninstall Methods</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">import org.jboss.dependency.spi.ControllerContext;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> LifecycleCallback {
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">install</span>(ControllerContext ctx) {
+<span xmlns="" class="line">​</span>        System.<span xmlns="" class="perl_Function">out</span>.<span xmlns="" class="perl_Function">println</span>(<span xmlns="" class="perl_String">"Bean "</span> + ctx.<span xmlns="" class="perl_Function">getName</span>() + <span xmlns="" class="perl_String">" is being installed"</span>;
+<span xmlns="" class="line">​</span>    }
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">uninstall</span>(ControllerContext ctx) {
+<span xmlns="" class="line">​</span>	    System.<span xmlns="" class="perl_Function">out</span>.<span xmlns="" class="perl_Function">println</span>(<span xmlns="" class="perl_String">"Bean "</span> + ctx.<span xmlns="" class="perl_Function">getName</span>() + <span xmlns="" class="perl_String">" is being uninstalled"</span>;
+<span xmlns="" class="line">​</span>    }
+<span xmlns="" class="line">​</span>}
+<span xmlns="" class="line">​</span>			
+<span xmlns="" class="line">​</span>			
+<span xmlns="" class="line">​</span>			
+<span xmlns="" class="line">​</span>
+</pre></div></div><div class="para">
+			The <code class="methodname">install</code> method is called during the bean's deployment, and the <code class="methodname">uninstall</code> method during its undeployment.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+				Although behavior is being added to the deployment and undeployment process using callbacks, AOP is not actually used here. The <em class="firstterm">pointcut expression</em> functionality of JBoss AOP is used to determine which bean classes the behaviors apply to.
+			</div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="sect-JBoss_Microcontainer_User_Guide-Adding_Behavior_with_AOP-Adding_Service_Look_ups_Through_JNDI">
+      ⁠</a>5.5. Adding Service Look-ups Through JNDI</h1></div></div></div><div class="para">
+			Until now, you have used the Microcontainer to look up references to bean instances which represent services. This is not ideal, because it requires a reference to the Microcontainer kernel before the controller can be accessed. This is shown in <a class="xref" href="chap-JBoss_Microcontainer_User_Guide-Adding_Behavior_with_AOP.html#example-looking-up-references-to-beans">Example 5.7, “Looking Up References To Beans”</a>.
+		</div><div class="example"><a id="example-looking-up-references-to-beans">
+      ⁠</a><p class="title"><strong>Example 5.7. Looking Up References To Beans</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">private</span> HRManager manager;
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">private</span> EmbeddedBootstrap bootstrap;
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">private</span> Kernel kernel;
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">private</span> KernelController controller;
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">private</span> <span xmlns="" class="perl_DataType">final</span> <span xmlns="" class="perl_DataType">static</span> String HRSERVICE = <span xmlns="" class="perl_String">"HRService"</span>;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>...
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Comment">// Start JBoss Microcontainer</span>
+<span xmlns="" class="line">​</span>bootstrap = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">EmbeddedBootstrap</span>();
+<span xmlns="" class="line">​</span>bootstrap.<span xmlns="" class="perl_Function">run</span>();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>kernel = bootstrap.<span xmlns="" class="perl_Function">getKernel</span>();
+<span xmlns="" class="line">​</span>controller = kernel.<span xmlns="" class="perl_Function">getController</span>();
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>...
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span> ControllerContext context = controller.<span xmlns="" class="perl_Function">getInstalledContext</span>(HRSERVICE);
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">if</span> (context != <span xmlns="" class="perl_Keyword">null</span>) { manager = (HRManager) context.<span xmlns="" class="perl_Function">getTarget</span>(); }</pre></div></div><div class="para">
+			Handing out kernel references to every client that looks up a service is a security risk, because it provides wide-spread access to the Microcontainer configuration. For better security, apply the ServiceLocator pattern and use a class to performs look-ups on behalf of the clients. Even better, pass the bean references, along with their names, to the ServiceLocator at deployment time, using a life-cycle callback. In that scenario, the ServiceLocator can look them up without knowing about the Microcontainer at all. Undeployment would subsequently remove the bean references from the ServiceLocator to prevent further look-ups.
+		</div><div class="para">
+			It would not be difficult to write your own ServiceLocator implementation. Integrating an existing one such as JBoss Naming Service (JBoss NS) is even quicker, and has the additional benefit of complying to the Java Naming and Directory Interface (JNDI) specification. JNDI enables clients to access different, possibly multiple, naming services using a common API.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><a id="idm139732932470032">
+      ⁠</a><p class="title"><strong>Procedure 5.3. Writing Your Own ServiceLocator Implementation</strong></p><ol class="1"><li class="step"><div class="para">
+					First, create an instance of JBoss NS using the Microcontainer.
+				</div></li><li class="step"><div class="para">
+					Next, add a life-cycle callback to perform the binding and unbinding of the bean references during deployment and undeployment.
+				</div></li><li class="step"><div class="para">
+					Mark the bean classes you wish to bind references for, using annotations.
+				</div></li><li class="step"><div class="para">
+					Now, you can locate the beans at run-time using the shorthand pointcut expression as shown earlier.
+				</div></li></ol></div></div></div></body></html>

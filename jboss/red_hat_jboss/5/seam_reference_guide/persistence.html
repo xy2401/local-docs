@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 10. Seam and Object/Relational Mapping</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="persistence">
+      ⁠</a>Chapter 10. Seam and Object/Relational Mapping</h1></div></div></div><div class="para">
+		Seam provides extensive support for the two most popular persistence architectures for Java: Hibernate, and the Java Persistence API introduced with Enterprise JavaBeans 3.0 (EJB3). Seam's unique state-management architecture allows the most sophisticated ORM integration of any web application framework.
+	</div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139690466464736">
+      ⁠</a>10.1. Introduction</h1></div></div></div><div class="para">
+			Seam was created because of frustration with the statelessness typical of the previous generation of Java application architectures. Seam's state management architecture was originally designed to solve problems relating to persistence, particularly problems associated with <span class="emphasis"><em>optimistic transaction processing</em></span>. Scalable online applications always use optimistic transactions. An atomic (database/JTA) level transaction should not span a user interaction unless the application is designed to support only a very small number of concurrent clients. But almost all work involves first displaying data to a user, and then updating that data. Hibernate was designed to support a persistence context that spanned an optimistic transaction.
+		</div><div class="para">
+			Unfortunately, the "stateless" architectures that preceded Seam and EJB3 had no construct to represent an optimistic transaction. Instead, these architectures provided persistence contexts scoped to the atomic transaction. This resulted in many problems for users, and causes the number one user complaint: Hibernate's <code class="exceptionname">LazyInitializationException</code>. A construct was required to represent an optimistic transaction in the application tier.
+		</div><div class="para">
+			EJB3 recognizes this problem, and introduces the idea of a stateful component (a stateful session bean) with an <span class="emphasis"><em>extended persistence context</em></span> scoped to the lifetime of the component. This is a partial solution to the problem (and is a useful construct in and of itself), but there are still two issues with this approach:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					The life cycle of the stateful session bean must be managed manually with code in the web tier.
+				</div></li><li class="listitem"><div class="para">
+					Propagation of the persistence context between stateful components in the same optimistic transaction is possible, but very complex.
+				</div></li></ul></div><div class="para">
+			Seam solves the first problem by providing conversations, and scoping stateful session bean components to the conversation. (Most conversations actually represent optimistic transactions in the data layer.) This is sufficient for many simple applications where persistence context propagation is not required, such as the Seam booking example application. For more complex applications, with many loosely-interacting components in each conversation, propagation of the persistence context across components becomes an important issue. Therefore, Seam extends the persistence context management model of EJB3, to provide conversation-scoped extended persistence contexts.
+		</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="persistence.seam-managed-transactions">
+      ⁠</a>10.2. Seam managed transactions</h1></div></div></div><div class="para">
+			EJB session beans feature declarative transaction management. The EJB container can start a transaction transparently when the bean is invoked, and end it when the invocation ends. If we write a session bean method that acts as a JSF action listener, all work associated with that action can be performed as one transaction, and committed or rolled back when the action is completely processed. This is a useful feature, and for some Seam applications, this is all that is required.
+		</div><div class="para">
+			However, there is a problem with this approach: in a request from a single method call to a session bean, a Seam application may not perform all data access.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					when the request requires processing by several loosely-coupled components, with each component being called independently from the web layer. It is common to see multiple calls per request from the web layer to EJB components in Seam.
+				</div></li><li class="listitem"><div class="para">
+					when view rendering requires lazily-fetched associations.
+				</div></li></ul></div><div class="para">
+			The more transactions that exist per request, the more likely we are to encounter atomicity and isolation problems while our application processes many concurrent requests. All write operations should occur in the same transaction.
+		</div><div class="para">
+			To work around this problem, Hibernate users developed the <span class="emphasis"><em>open session in view</em></span> pattern. This is also important because some frameworks (Spring, for example) use transaction-scoped persistence contexts, which caused <code class="exceptionname">LazyInitializationException</code>s when unfetched associations were accessed.
+		</div><div class="para">
+			<span class="emphasis"><em>Open session in view</em></span> is usually implemented as a single transaction that spans the entire request. The most serious problem with this implementation is that we cannot be certain that a transaction is successful until we commit it — but when the transaction commits, the view is fully rendered, and the rendered response may already be synchronized the client, so there is no way to notify the user that their transaction did not succeed.
+		</div><div class="para">
+			Seam solves the problems with transaction isolation and association fetching, while working around the major flaw in <span class="emphasis"><em>open session in view</em></span>, with two changes:
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					Seam uses an extended persistence context that is scoped to the conversation instead of the transaction.
+				</div></li><li class="listitem"><div class="para">
+					Seam uses two transactions per request. The first spans from the beginning of the restore view phase until the end of the invoke application phase; the second spans the length of the render response phase. (In some applications, the first phase will begin later, at the beginning of the apply request values phase.)
+				</div></li></ul></div><div class="para">
+			The next section takes you through the setup of a conversation-scoped persistence context. Before this, we will enable Seam transaction management. You can use conversation-scoped persistence contexts without Seam transaction management, and Seam transaction management is useful even without Seam-managed persistence contexts, but they work most effectively together.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690533414336">
+      ⁠</a>10.2.1. Disabling Seam-managed transactions</h2></div></div></div><div class="para">
+				Seam transaction management is enabled by default for all JSF requests, but can be disabled in <code class="filename">components.xml</code>:
+			</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;core:init</span><span xmlns="" class="perl_Others"> transaction-management-enabled=</span><span xmlns="" class="perl_String">"false"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;transaction:no-transaction</span> <span xmlns="" class="perl_Keyword">/&gt;</span>
+</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690518572336">
+      ⁠</a>10.2.2. Configuring a Seam transaction manager</h2></div></div></div><div class="para">
+				Seam provides a transaction management abstraction for beginning, committing, rolling back, and synchronizing with transactions. By default, Seam uses a JTA transaction component to integrate with container-managed and programmatic EJB transactions. If you work in a Java EE 5 environment, install the EJB synchronization component in <code class="filename">components.xml</code>:
+			</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;transaction:ejb-transaction</span> <span xmlns="" class="perl_Keyword">/&gt;</span>
+</pre><div class="para">
+				However, if you work in a non-EE 5 container, Seam attempts to auto-detect the correct transaction synchronization mechanism. If Seam is unable to detect the correct mechanism, you may need to configure one of the following:
+			</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+						configure JPA RESOURCE_LOCAL managed transactions with the <code class="literal">javax.persistence.EntityTransaction</code> interface. <code class="literal">EntityTransaction</code> starts the transaction at the beginning of the apply request values phase.
+					</div></li><li class="listitem"><div class="para">
+						configure Hibernate managed transactions with the <code class="literal">org.hibernate.Transaction</code> interface. <code class="literal">HibernateTransaction</code> starts the transaction at the beginning of the apply request values phase.
+					</div></li><li class="listitem"><div class="para">
+						configure Spring managed transactions with the <code class="literal">org.springframework.transaction.PlatformTransactionManager</code> interface. The Spring <code class="literal">PlatformTransactionManagement</code> manager may begin the transaction at the beginning of the apply request values phase if the <code class="literal">userConversationContext</code> attribute is set.
+					</div></li><li class="listitem"><div class="para">
+						Explicitly disable Seam managed transactions
+					</div></li></ul></div><div class="para">
+				To configure JPA RESOURCE_LOCAL transaction management, add the following to your <code class="filename">components.xml</code>, where <code class="literal">#{em}</code> is the name of the <code class="literal">persistence:managed-persistence-context</code> component. If your managed persistence context is named <code class="literal">entityManager</code>, you may leave out the <code class="literal">entity-manager</code> attribute. (For further information, see <a class="xref" href="persistence.html#persistence.seam-managed-persistence-contexts">Section 10.3, “Seam-managed persistence contexts”</a>.)
+			</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;transaction:entity-transaction</span><span xmlns="" class="perl_Others"> entity-manager=</span><span xmlns="" class="perl_String">"#{em}"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+</pre><div class="para">
+				To configure Hibernate managed transactions, declare the following in your <code class="filename">components.xml</code>, where <code class="literal">#{hibernateSession}</code> is the name of the project's <code class="literal">persistence:managed-hibernate-session</code> component. If your managed hibernate session is named <code class="literal">session</code>, you can opt to leave out the <code class="literal">session</code> attribute. (For further information, see <a class="xref" href="persistence.html#persistence.seam-managed-persistence-contexts">Section 10.3, “Seam-managed persistence contexts”</a>.)
+			</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;transaction:hibernate-transaction</span><span xmlns="" class="perl_Others"> session=</span><span xmlns="" class="perl_String">"#{hibernateSession}"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+</pre><div class="para">
+				To explicitly disable Seam managed transactions, declare the following in your <code class="filename">components.xml</code>:
+			</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;transaction:no-transaction</span> <span xmlns="" class="perl_Keyword">/&gt;</span>
+</pre><div class="para">
+				For information about configuring Spring-managed transactions see <a class="xref" href="spring.html#spring-transactions">Section 26.5, “Using Spring PlatformTransactionManagement”</a>.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690449179392">
+      ⁠</a>10.2.3. Transaction synchronization</h2></div></div></div><div class="para">
+				Transaction synchronization provides callbacks for transaction-related events such as <code class="literal">beforeCompletion()</code> and <code class="literal">afterCompletion()</code>. By default, Seam uses its own transaction synchronization component, which requires explicit use of the Seam transaction component when committing transactions so that synchronization callbacks are correctly executed. If you work in a Java EE 5 environment, declare <code class="literal">&lt;transaction:ejb-transaction/&gt;</code> in <code class="filename">components.xml</code> to ensure that Seam synchronization callbacks are called correctly if the container commits a transaction outside Seam.
+			</div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="persistence.seam-managed-persistence-contexts">
+      ⁠</a>10.3. Seam-managed persistence contexts</h1></div></div></div><div class="para">
+			If you use Seam outside a Java EE 5 environment, you cannot rely upon the container to manage the persistence context lifestyle. Even within EE 5 environments, propagating the persistence context between loosely-coupled components in a complex application can be difficult and error-prone.
+		</div><div class="para">
+			In this case, you will need to use a <span class="emphasis"><em>managed persistence context</em></span> (for JPA) or a <span class="emphasis"><em>managed session</em></span> (for Hibernate) in your components. A Seam-managed persistence context is just a built-in Seam component that manages an instance of <code class="literal">EntityManager</code> or <code class="literal">Session</code> in the conversation context. You can inject it with <code class="literal">@In</code>.
+		</div><div class="para">
+			Seam-managed persistence contexts are extremely efficient in a clustered environment. Seam can perform optimizations for container-managed persistence contexts that the EJB3 specification does not allow. Seam supports transparent failover of extended persistence contexts, without replicating any persistence context state between nodes. (We hope to add this support to the next revision of the EJB specification.)
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690517593680">
+      ⁠</a>10.3.1. Using a Seam-managed persistence context with JPA</h2></div></div></div><div class="para">
+				Configuring a managed persistence context is easy. In <code class="filename">components.xml</code>, write:
+			</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;persistence:managed-persistence-context</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"bookingDatabase"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">   auto-create=</span><span xmlns="" class="perl_String">"true"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">   persistence-unit-jndi-name=</span><span xmlns="" class="perl_String">"java:/EntityManagerFactories/bookingData"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+</pre><div class="para">
+				This configuration creates a conversation-scoped Seam component named <code class="literal">bookingDatabase</code>, which manages the life cycle of <code class="literal">EntityManager</code> instances for the persistence unit (<code class="literal">EntityManagerFactory</code> instance) with JNDI name <code class="literal">java:/EntityManagerFactories/bookingData</code>.
+			</div><div class="para">
+				You must bind the <code class="literal">EntityManagerFactory</code> into JNDI. In JBoss, you can do this by adding the following property setting to <code class="filename">persistence.xml</code>.
+			</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"jboss.entity.manager.factory.jndi.name"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">          value=</span><span xmlns="" class="perl_String">"java:/EntityManagerFactories/bookingData"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+</pre><div class="para">
+				Now we can inject our <code class="literal">EntityManager</code> with:
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@In EntityManager bookingDatabase;</pre><div class="para">
+				If you use EJB3, and mark your class or method <code class="literal">@TransactionAttribute(REQUIRES_NEW)</code>, then the transaction and persistence context should not propagate to method calls on this object. However, since the Seam-managed persistence context propagates to any component within the conversation, it propagates to methods marked <code class="literal">REQUIRES_NEW</code>. Therefore, if you mark a method <code class="literal">REQUIRES_NEW</code>, you should access the entity manager with <code class="literal">@PersistenceContext</code>.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690532967344">
+      ⁠</a>10.3.2. Using a Seam-managed Hibernate session</h2></div></div></div><div class="para">
+				Seam-managed Hibernate sessions work in a similar fashion. In <code class="filename">components.xml</code>:
+			</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;persistence:hibernate-session-factory</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"hibernateSessionFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;persistence:managed-hibernate-session</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"bookingDatabase"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">             auto-create=</span><span xmlns="" class="perl_String">"true"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">             session-factory-jndi-name=</span><span xmlns="" class="perl_String">"java:/bookingSessionFactory"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+</pre><div class="para">
+				Here, <code class="literal">java:/bookingSessionFactory</code> is the name of the session factory specified in <code class="filename">hibernate.cfg.xml</code>.
+			</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;session-factory</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"java:/bookingSessionFactory"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"transaction.flush_before_completion"</span><span xmlns="" class="perl_Keyword">&gt;</span>true<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"connection.release_mode"</span><span xmlns="" class="perl_Keyword">&gt;</span>after_statement<span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"transaction.manager_lookup_class"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    org.hibernate.transaction.JBossTransactionManagerLookup
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"transaction.factory_class"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    org.hibernate.transaction.JTATransactionFactory
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;property</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"connection.datasource"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>    java:/bookingDatasource
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/property&gt;</span>
+<span xmlns="" class="line">​</span>  ...
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/session-factory&gt;</span>
+</pre><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+					Seam does not synchronize the session with the database, so always enable <code class="literal">hibernate.transaction.flush_before_completion</code> to ensure that the session is automatically synchronized before the JTA transaction commits.
+				</div></div></div><div class="para">
+				We can now inject a managed Hibernate <code class="literal">Session</code> into our JavaBean components with the following code:
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@In Session bookingDatabase;</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm139690453958512">
+      ⁠</a>10.3.3. Seam-managed persistence contexts and atomic conversations</h2></div></div></div><div class="para">
+				Conversation-scoped persistence contexts let you program optimistic transactions spanning multiple server requests, without using <code class="literal">merge()</code>, reloading data at the beginning of each request, or wrestling with exceptions (<code class="exceptionname">LazyInitializationException</code> or <code class="exceptionname">NonUniqueObjectException</code>).
+			</div><div class="para">
+				You can achieve transaction isolation and consistency by using optimistic locking. Both Hibernate and EJB3 make optimistic locking easy with the <code class="literal">@Version</code> annotation.
+			</div><div class="para">
+				By default, the persistence context is synchronized with the database (flushed) at the end of each transaction. Sometimes this is desirable, but often we prefer all changes to be held in memory, and only written to the database when the conversation ends successfully. This allows for truly atomic conversations with EJB3 persistence. However, Hibernate provides this feature as a vendor extension to the <code class="literal">FlushModeType</code>s defined by the specification. We expect other vendors will soon provide a similar extension.
+			</div><div class="para">
+				Seam lets you specify <code class="literal">FlushModeType.MANUAL</code> when beginning a conversation. Currently, this works only when Hibernate is the underlying persistence provider, but we plan to support other equivalent vendor extensions.
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@In EntityManager em; <span xmlns="" class="perl_Comment">//a Seam-managed persistence context</span>
+<span xmlns="" class="line">​</span>@<span xmlns="" class="perl_Function">Begin</span>(flushMode=MANUAL)
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">beginClaimWizard</span>() {
+<span xmlns="" class="line">​</span>  claim = em.<span xmlns="" class="perl_Function">find</span>(Claim.<span xmlns="" class="perl_Function">class</span>, claimId);
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				Now, the <code class="literal">claim</code> object remains managed by the persistence context for the entire conversation. We can make changes to the claim:
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">addPartyToClaim</span>() {
+<span xmlns="" class="line">​</span>  Party party = ....;
+<span xmlns="" class="line">​</span>  claim.<span xmlns="" class="perl_Function">addParty</span>(party);
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				But these changes will not be flushed to the database until we explicitly force synchronization to occur:
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@End <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">commitClaim</span>() { 
+<span xmlns="" class="line">​</span>  em.<span xmlns="" class="perl_Function">flush</span>(); 
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+				You can also set the <code class="literal">flushMode</code> to <code class="literal">MANUAL</code> from pages.xml, for example in a navigation rule:
+			</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;begin-conversation</span><span xmlns="" class="perl_Others"> flush-mode=</span><span xmlns="" class="perl_String">"MANUAL"</span> <span xmlns="" class="perl_Keyword">/&gt;</span>
+</pre><div class="para">
+				You can set any Seam-managed persistence context to use manual flush mode:
+			</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;components</span><span xmlns="" class="perl_Others"> xmlns=</span><span xmlns="" class="perl_String">"http://jboss.com/products/seam/components"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">            xmlns:core=</span><span xmlns="" class="perl_String">"http://jboss.com/products/seam/core"</span><span xmlns="" class="perl_Keyword">&gt;</span> 
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;core:manager</span><span xmlns="" class="perl_Others"> conversation-timeout=</span><span xmlns="" class="perl_String">"120000"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">        default-flush-mode=</span><span xmlns="" class="perl_String">"manual"</span> <span xmlns="" class="perl_Keyword">/&gt;</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/components&gt;</span>
+</pre></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139690464867088">
+      ⁠</a>10.4. Using the JPA "delegate"</h1></div></div></div><div class="para">
+			The <code class="literal">EntityManager</code> interface lets you access a vendor-specific API with the <code class="literal">getDelegate()</code> method. We recommend using Hibernate as your vendor, and <code class="literal">org.hibernate.Session</code> as your delegate interface, but if you require a different JPA provider, see <a class="xref" href="configuration.html#alt-jpa-providers">Section 28.2, “Using Alternate JPA Providers”</a> for further information.
+		</div><div class="para">
+			Regardless of your vendor, there are several approaches to using the delegate in your Seam components. One approach is:
+		</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@In EntityManager entityManager; 
+<span xmlns="" class="line">​</span>@Create <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">init</span>() { 
+<span xmlns="" class="line">​</span>  ((Session)entityManager.<span xmlns="" class="perl_Function">getDelegate</span>() ).<span xmlns="" class="perl_Function">enableFilter</span>(<span xmlns="" class="perl_String">"currentVersions"</span>);
+<span xmlns="" class="line">​</span>}
+</pre><div class="para">
+			If you, like most Java users, would rather avoid using typecasts, you can also access the delegate by adding the following line to <code class="filename">components.xml</code>:
+		</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;factory</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"session"</span><span xmlns="" class="perl_Others"> scope=</span><span xmlns="" class="perl_String">"STATELESS"</span><span xmlns="" class="perl_Others"> auto-create=</span><span xmlns="" class="perl_String">"true"</span> 
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">         value=</span><span xmlns="" class="perl_String">"#{entityManager.delegate}"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+</pre><div class="para">
+			The session can now be injected directly:
+		</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>@In Session session;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>@Create
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">init</span>() {
+<span xmlns="" class="line">​</span>  session.<span xmlns="" class="perl_Function">enableFilter</span>(<span xmlns="" class="perl_String">"currentVersions"</span>);
+<span xmlns="" class="line">​</span>}
+</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139690516674880">
+      ⁠</a>10.5. Using EL in EJB-QL/HQL</h1></div></div></div><div class="para">
+			Seam proxies the <code class="literal">EntityManager</code> or <code class="literal">Session</code> object whenever you use a Seam-managed persistence context or inject a container-managed persistence context with <code class="literal">@PersistenceContext</code>. This lets you safely and efficiently use EL expressions in your query strings. For example, this:
+		</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>User user = em.<span xmlns="" class="perl_Function">createQuery</span>(<span xmlns="" class="perl_String">"from User where username=#{user.username}"</span>)
+<span xmlns="" class="line">​</span>                          .<span xmlns="" class="perl_Function">getSingleResult</span>();
+</pre><div class="para">
+			is equivalent to:
+		</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>User user = em.<span xmlns="" class="perl_Function">createQuery</span>(<span xmlns="" class="perl_String">"from User where username=:username"</span>)
+<span xmlns="" class="line">​</span>                          .<span xmlns="" class="perl_Function">setParameter</span>(<span xmlns="" class="perl_String">"username"</span>, user.<span xmlns="" class="perl_Function">getUsername</span>()) 
+<span xmlns="" class="line">​</span>                          .<span xmlns="" class="perl_Function">getSingleResult</span>();
+</pre><div xmlns:d="http://docbook.org/ns/docbook" class="warning"><div class="admonition_header"><p><strong>Warning</strong></p></div><div class="admonition"><div class="para">
+				Do not use the format below, because it is vulnerable to SQL injection attacks, as well as being inefficient.
+			</div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>User user = em.<span xmlns="" class="perl_Function">createQuery</span>(<span xmlns="" class="perl_String">"from User where username="</span> + user.<span xmlns="" class="perl_Function">getUsername</span>()).<span xmlns="" class="perl_Function">getSingleResult</span>(); <span xmlns="" class="perl_Comment">//BAD!</span>
+</pre></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm139690449490960">
+      ⁠</a>10.6. Using Hibernate filters</h1></div></div></div><div class="para">
+			Hibernate's most unique, useful feature is the <span class="emphasis"><em>filter</em></span>. Filters provide a restricted view of the data in the database. You can find more information in the Hibernate documentation, but this section takes you through one easy, effective method of incorporating filters into Seam.
+		</div><div class="para">
+			Seam-managed persistence contexts can have a list of filters defined, which will be enabled whenever an <code class="literal">EntityManager</code> or Hibernate <code class="literal">Session</code> is first created. (These can only be used when Hibernate is the underlying persistence provider.)
+		</div><pre class="programlisting XML"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;persistence:filter</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"regionFilter"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;persistence:name&gt;</span>region<span xmlns="" class="perl_Keyword">&lt;/persistence:name&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;persistence:parameters&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;key&gt;</span>regionCode<span xmlns="" class="perl_Keyword">&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;value&gt;</span>#{region.code}<span xmlns="" class="perl_Keyword">&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/persistence:parameters&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/persistence:filter&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;persistence:filter</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"currentFilter"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;persistence:name&gt;</span>current<span xmlns="" class="perl_Keyword">&lt;/persistence:name&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;persistence:parameters&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;key&gt;</span>date<span xmlns="" class="perl_Keyword">&lt;/key&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;value&gt;</span>#{currentDate}<span xmlns="" class="perl_Keyword">&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/persistence:parameters&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/persistence:filter&gt;</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;persistence:managed-persistence-context</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"personDatabase"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">  persistence-unit-jndi-name=</span><span xmlns="" class="perl_String">"java:/EntityManagerFactories/personDatabase"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;persistence:filters&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;value&gt;</span>#{regionFilter}<span xmlns="" class="perl_Keyword">&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">&lt;value&gt;</span>#{currentFilter}<span xmlns="" class="perl_Keyword">&lt;/value&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/persistence:filters&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/persistence:managed-persistence-context&gt;</span>
+</pre></div></div></body></html>

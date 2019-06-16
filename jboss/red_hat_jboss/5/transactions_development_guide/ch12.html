@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 12. Hints and tips</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="idm140019147781808">
+      ⁠</a>Chapter 12. Hints and tips</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140019118169056">
+      ⁠</a>12.1. General Tips</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019110924832">
+      ⁠</a>12.1.1. Using Transactions in Constructors</h2></div></div></div><div class="para">
+				Examples throughout this manual use transactions in the implementation of constructors for new persistent objects. This it guarantees correct propagation of the state of the object to the object store. The state of a modified persistent object is only written to the object store when the top-level transaction commits. Thus, if the constructor transaction is top-level and it commits, the newly-created object is written to the store, and becomes available immediately. However, if the constructor transaction commits but is nested because some another transaction, which was started prior to object creation, is running, then the state is only written if all of the parent transactions commit.
+			</div><div class="para">
+				On the other hand, if the constructor does not use transactions, inconsistencies may arise in the system. For example, if no transaction is active when the object is created, its state is not saved to the store until the next time the object is modified under the control of a transaction.
+			</div><div class="example"><a id="idm140019156630656">
+      ⁠</a><p class="title"><strong>Example 12.1. Transactions causing System Inconsistencies</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span>AtomicAction A = <span xmlns="" class="perl_Keyword">new</span> <span xmlns="" class="perl_Function">AtomicAction</span>();
+<span xmlns="" class="line">​</span>Object obj1;
+<span xmlns="" class="line">​</span>Object obj2;
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>obj1 = <span xmlns="" class="perl_Keyword">new</span> Object();			<span xmlns="" class="perl_Comment">// create new object</span>
+<span xmlns="" class="line">​</span>obj2 = <span xmlns="" class="perl_Keyword">new</span> Object(<span xmlns="" class="perl_String">"old"</span>);		<span xmlns="" class="perl_Comment">// existing object</span>
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span>A.<span xmlns="" class="perl_Function">begin</span>(<span xmlns="" class="perl_Float">0</span>);
+<span xmlns="" class="line">​</span>obj2.<span xmlns="" class="perl_Function">remember</span>(obj1.<span xmlns="" class="perl_Function">get_uid</span>());	<span xmlns="" class="perl_Comment">// obj2 now contains reference to obj1</span>
+<span xmlns="" class="line">​</span>A.<span xmlns="" class="perl_Function">commit</span>(<span xmlns="" class="perl_Keyword">true</span>);				<span xmlns="" class="perl_Comment">// obj2 saved but obj1 is not</span></pre><div class="para">
+					Here, the two objects are created outside of the control of the top-level action A. <code class="systemitem">obj1</code> is a new object. <code class="systemitem">obj2</code> is an old existing object. When the <code class="methodname">remember</code> method of <code class="systemitem">obj2</code> is invoked, the object is activated and the Uid of <code class="systemitem">obj1</code> is known. Since this action commits, the persistent state of <code class="systemitem">obj2</code> may now contain the Uid of <code class="systemitem">obj1</code>. However, the state of <code class="systemitem">obj1</code> itself has not been saved, since it has not been manipulated under the control of any action. In fact, unless it is modified under the control of some action later in the application, it will never be saved. However, if the constructor would have used an atomic action, the state of <code class="systemitem">obj1</code> would have automatically been saved at the time it was constructed, preventing this inconsistency.
+				</div></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019182307264">
+      ⁠</a>12.1.2. More on the <code class="methodname">save_state</code> and <code class="methodname">restore_state</code> Methods</h2></div></div></div><div class="para">
+				JBoss Transaction Service may invoke the user-defined <code class="methodname">save_state</code> method of an object at any time during the lifetime of an object, including during the execution of the body of the object’s constructor. This is especially true if it uses atomic actions. All of the variables saved by <code class="methodname">save_state</code> are correctly initialized.
+			</div><div class="para">
+				Use caution when writing the <code class="methodname">save_state</code> and <code class="methodname">restore_state</code> methods, to ensure that no transactions are explicitly or implicitly started. The reason is that JBoss Transaction Service may invoke the <code class="methodname">restore_state</code> method as part of its <code class="methodname">commit</code> processing, causing the execution of an atomic transaction during the <code class="methodname">commit</code> or <code class="methodname">abort</code> phase of another transaction. This may violate the atomicity properties of the transaction being committed or aborted, so it is discouraged.
+			</div><div class="para">
+				To support crash recovery for persistent objects, all <code class="methodname">save_state</code> and <code class="methodname">restore_state</code> methods of user objects need to call the <code class="methodname">super.save_state</code> and <code class="methodname">super.restore_state</code>.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019174036768">
+      ⁠</a>12.1.3. Packing Objects</h2></div></div></div><div class="para">
+				All of the basic types of Java, such as <span class="type">int</span> and <span class="type">long</span>, can be saved and restored from an <code class="classname">InputObjectState</code> or <code class="classname">OutputObjectState</code> instances by using the <code class="methodname">pack</code> and <code class="methodname">unpack</code> methods provided by <code class="classname">InputObjectState</code> and <code class="classname">OutputObjectState</code>. However, you should handle packing and unpacking objects differently, because packing objects brings in the additional problems of aliasing. Alias means that two different object references may actually refer to the same item. See the <a class="xref" href="ch12.html#example-aliasing">Example 12.2, “Aliasing Problem with Packing Objects”</a>.
+			</div><div class="example"><a id="example-aliasing">
+      ⁠</a><p class="title"><strong>Example 12.2. Aliasing Problem with Packing Objects</strong></p><div class="example-contents"><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Keyword">class</span> Test
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Function">Test</span> (String s);
+<span xmlns="" class="line">​</span>    ...
+<span xmlns="" class="line">​</span>	<span xmlns="" class="perl_Keyword">private</span> String s1;
+<span xmlns="" class="line">​</span>    <span xmlns="" class="perl_Keyword">private</span> String s2;
+<span xmlns="" class="line">​</span>};
+<span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">public</span> <span xmlns="" class="perl_Function">Test</span> (String s)
+<span xmlns="" class="line">​</span>{
+<span xmlns="" class="line">​</span>    s1 = s;
+<span xmlns="" class="line">​</span>    s2 = s;
+<span xmlns="" class="line">​</span>}</pre><div class="para">
+					Here, both s1 and s2 point to the same <span class="type">string</span>, and a naive implementation of the <code class="methodname">save_state</code> method has the potential to copy the string twice. From the perspective of the <code class="methodname">save_state</code> method, this is merely inefficient. However, it would cause the <code class="methodname">restore_state</code> method to unpack the two strings into different areas of memory, destroying the original aliasing information. JBoss Transaction Service packs and unpacks separate object references.
+				</div></div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idm140019165557824">
+      ⁠</a>12.2. Direct Use of the <code class="classname">StateManager</code> Class</h1></div></div></div><div class="para">
+			The examples throughout this manual derive user classes from the <code class="classname">LockManager</code> class. There are two reasons for this.
+		</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+					Most importantly, the serializability constraints of atomic actions require it.
+				</div></li><li class="listitem"><div class="para">
+					It reduces the need for programmer intervention.
+				</div></li></ul></div><div class="para">
+			However, if you only require access to the persistence and recovery mechanisms of JBoss Transaction Service, you can directly derive a user class from <code class="classname">StateManager</code>.
+		</div><div class="para">
+			Classes derived directly from <code class="classname">StateManager</code> must make use of its state management mechanisms explicitly, rather than relying on <code class="classname">LockManager</code>. You need to make appropriate use of the <code class="methodname">activate</code>, <code class="methodname">deactivate</code>, and <code class="methodname">modified</code> methods, since the constructors of <code class="classname">StateManager</code> are effectively identical to those of <code class="classname">LockManager</code>.
+		</div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019154871472">
+      ⁠</a>12.2.1. The <code class="methodname">activate</code> Method</h2></div></div></div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">activate</span> ()
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">activate</span> (String storeRoot)
+</pre><div class="para">
+				The <code class="methodname">activate</code> method loads an object from the object store. The object’s UID needs to already be set via the constructor, and the object must exist in the store. If the object is successfully read, the <code class="methodname">restore_state</code> method is called to build the object in memory. The <code class="methodname">activate</code> method operates such that once an object has been activated, further calls are ignored. The parameter represents the root name of the object store to search for the object. If the value is null, the default store is used.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019154866576">
+      ⁠</a>12.2.2. The <code class="methodname">deactivate</code> Method</h2></div></div></div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">deactivate</span> ()
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_DataType">boolean</span> <span xmlns="" class="perl_Function">deactivate</span> (String storeRoot)</pre><div class="para">
+				The <code class="methodname">deactivate</code> is the inverse of activate. It first calls the <code class="methodname">save_state</code> method to build the compacted image of the object, then saves the object in the object store. Objects are only saved if they have been modified since activation. The parameter represents the root name of the object store into which the object should be saved. If the value is null, the default store is used.
+			</div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="idm140019147564624">
+      ⁠</a>12.2.3. The <code class="methodname">modified</code> Method</h2></div></div></div><pre class="programlisting JAVA"><span xmlns="" class="line">​</span><span xmlns="" class="perl_DataType">void</span> <span xmlns="" class="perl_Function">modified</span> ()</pre><div class="para">
+				The <code class="methodname">modified</code> method must be called before modifying the object in memory. Otherwise, the object will not be saved in the object store by the <code class="methodname">deactivate</code> method.
+			</div></div></div></div></body></html>
