@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 20. Mail subsystem</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="chap-Mail_subsystem">
+      ⁠</a>Chapter 20. Mail subsystem</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Use_custom_transports_in_mail_subsystem">
+      ⁠</a>20.1. Use custom transports in mail subsystem</h1></div></div></div><div class="para">
+		When using a standard mail server (POP3, IMAP) the server has a set of attributes that can be defined, some of which are required.
+	</div><div class="para">
+		The most important of these is the <code class="literal">outbound-socket-binding-ref</code> which is a reference to the outbound mail socket binding and is defined with the host address and port number.
+	</div><div class="para">
+		This is not the most effective solution for some users as their host configuration used multiple hosts for load balancing purposes. This configuration, however, is not supported by standard JavaMail requiring some users to implement custom mail transports.
+	</div><div class="para">
+		These custom transports do not require the <code class="literal">outbound-socket-binding-ref</code> and allow custom host property formats.
+	</div><div class="para">
+		A custom transport can be configured through the CLI using the following commands:
+	</div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><a id="idm139978464104624">
+      ⁠</a><p class="title"><strong>Procedure 20.1. </strong></p><ol class="1"><li class="step"><div class="para">
+				Add new mail session. The command below creates new session called mySession and sets JNDI to <code class="literal">java:jboss/mail/MySession</code>:
+			</div><pre class="programlisting">/subsystem=mail/mail-session=mySession:add(jndi-name=java:jboss/mail/MySession)</pre></li><li class="step"><div class="para">
+				Add an outbound socket binding. The command below adds a socket binding named <em class="parameter"><code>my-smtp-binding</code></em> which points to <code class="literal">localhost:25</code>.
+			</div><pre class="programlisting">/socket-binding-group=standard-sockets/remote-destination-outbound-socket-binding=my-smtp-binding:add(host=localhost, port=25)</pre></li><li class="step"><div class="para">
+				Add an SMTP server with <code class="literal">outbind-socket-binding-ref</code>. The command below adds an SMTP called <code class="literal">my-smtp-binding</code> and defines a username, password and TLS configuration.
+			</div><pre class="programlisting">/subsystem=mail/mail-session=mySession/server=smtp:add(outbound-socket-binding-ref= my-smtp-binding, username=user, password=pass, tls=true)
+</pre></li><li class="step"><div class="para">
+				Repeat this process for POP3 and IMAP:
+			</div><pre class="programlisting">/socket-binding-group=standard-sockets/remote-destination-outbound-socket-binding=my-pop3-binding:add(host=localhost, port=110)
+</pre><pre class="programlisting">/subsystem=mail/mail-session=mySession/server=pop3:add(outbound-socket-binding-ref=my-pop3-binding, username=user, password=pass)
+</pre><pre class="programlisting">/socket-binding-group=standard-sockets/remote-destination-outbound-socket-binding=my-imap-binding:add(host=localhost, port=143)
+</pre><pre class="programlisting">/subsystem=mail/mail-session=mySession/server=imap:add(outbound-socket-binding-ref=my-imap-binding, username=user, password=pass)
+</pre></li><li class="step"><div class="para">
+				To use a custom server, create a new custom mail server without an outbound socket binding (as it is optional) and instead provide the host information as part of properties.
+			</div><pre class="programlisting">/subsystem=mail/mail-session=mySession/custom=myCustomServer:add(username=user,password=pass, properties={"host" =&gt; "myhost", "my-property" =&gt;"value"})
+</pre><div class="para">
+				When defining custom protocols, any property name that contains a dot (.) is considered to be a fully-qualified name and passed as it is supplied. Any other format (<em class="replaceable">my-property</em>, for example) will be translated into the following format: <code class="literal">mail.<em class="replaceable">server-name</em>.<em class="replaceable">my-property</em></code>.
+			</div></li></ol></div><div class="para">
+		Below is an example complete configuration XML configuration that highlights a custom format in the custom-server attribute:
+	</div><pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:mail:1.1"&gt;
+    &lt;mail-session jndi-name="java:/Mail" from="user.name@domain.org"&gt;
+        &lt;smtp-server outbound-socket-binding-ref="mail-smtp" tls="true"&gt;
+            &lt;login name="user" password="password"/&gt;
+        &lt;/smtp-server&gt;
+        &lt;pop3-server outbound-socket-binding-ref="mail-pop3"/&gt;
+        &lt;imap-server outbound-socket-binding-ref="mail-imap"&gt;
+            &lt;login name="nobody" password="password"/&gt;
+        &lt;/imap-server&gt;
+    &lt;/mail-session&gt;
+    &lt;mail-session debug="true" jndi-name="java:jboss/mail/Default"&gt;
+        &lt;smtp-server outbound-socket-binding-ref="mail-smtp"/&gt;
+    &lt;/mail-session&gt;
+    &lt;mail-session debug="true" jndi-name="java:jboss/mail/Custom"&gt;
+        &lt;custom-server name="smtp"&gt;
+            &lt;login name="username" password="password"/&gt;
+            &lt;property name="host" value="mail.example.com"/&gt;
+        &lt;/custom-server&gt;
+        &lt;custom-server name="pop3" outbound-socket-binding-ref="mail-pop3"&gt;
+            &lt;property name="custom_prop" value="some-custom-prop-value"/&gt;
+            &lt;property name="some.fully.qualified.property" value="fully-qualified-prop-name"/&gt;
+        &lt;/custom-server&gt;
+    &lt;/mail-session&gt;
+    &lt;mail-session debug="true" jndi-name="java:jboss/mail/Custom2"&gt;
+        &lt;custom-server name="pop3" outbound-socket-binding-ref="mail-pop3"&gt;
+            &lt;property name="custom_prop" value="some-custom-prop-value"/&gt;
+        &lt;/custom-server&gt;
+    &lt;/mail-session&gt;
+&lt;/subsystem&gt;</pre><div class="para RoleCreateBugPara">
+		<a href="https://bugzilla.redhat.com/enter_bug.cgi?cf_environment=Build+Name%3A+23087%2C+Red+Hat+Administration+and+Configuration+Guide-6.4%0ABuild+Date%3A+16-11-2017+09%3A12%3A46%0ATopic+ID%3A+24332-592555+%5BLatest%5D&amp;comment=Title%3A+Use+custom+transports+in+mail+subsystem%0A%0ADescribe+the+issue%3A%0A%0A%0ASuggestions+for+improvement%3A%0A%0A%0AAdditional+information%3A&amp;cf_build_id=24332-592555+23+Feb+2014+16%3A59+en-US+%5BLatest%5D&amp;product=JBoss+Enterprise+Application+Platform+6&amp;component=Documentation&amp;version=6.4.0">Report a bug</a>
+	</div></div></div></body></html>

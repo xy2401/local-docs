@@ -1,0 +1,965 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 2. How To Setup SSO with SAML v2</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="how_to_setup_sso_with_saml_v2"/>Chapter 2. How To Setup SSO with SAML v2</h1></div></div></div><p>
+			This section details the actual steps for setting up SSO via SAML v2 using JBoss EAP 6.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="components"/>Components</h1></div></div></div><p>
+				As covered in the <a class="xref" href="sso_with_samlv2_deeper_dive.html#entities" title="Entities">the section called “Entities”</a> section as well as in the <a class="link" href="/documentation/en/red-hat-jboss-enterprise-application-platform/version-6.4/security-architecture#single_sign_on_sso">Security Architecture</a> for Red Hat JBoss Enterprise Application Platform 6 document, there are three <span class="emphasis"><em>entites</em></span> or parties involved in Browser-Based SSO using SAML v2:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						A principal using a user agent (browser) to request access to a secured resource.
+					</li><li class="listitem">
+						A service provider (SP) housing the secured resource.
+					</li><li class="listitem">
+						An identity provider (IDP) which issues security assertions to principals, allowing them to access secured resources on service providers (SPs).
+					</li></ul></div><p>
+				In addition, the following will be needed to support browser-based SSO via SAML v2:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						Separate web applications serving as SPs and IDPs
+					</li><li class="listitem">
+						JBoss EAP 6 instances to host the SPs and IDPs
+					</li><li class="listitem">
+						Security Domains to support the SPs and IDPs
+					</li></ul></div><p>
+				
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="idp_and_sp_setup_and_configuration"/>IDP and SP Setup and Configuration</h1></div></div></div><p>
+				This section covers setting up an application to be either an SP or IDP as well as setting up an JBoss EAP 6 instance to host those applications.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="setting_up_an_idp"/>Setting up an IDP</h2></div></div></div><p>
+					To set up an application to serve as an IDP, the following steps must be performed:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							<a class="link" href="how_to_setup_sso_with_saml_v2.html#one_create_a_security_domain_for_an_idp" title="1. Create a Security Domain for an IDP">Create a Security Domain for an IDP</a>
+						</li><li class="listitem">
+							<a class="link" href="how_to_setup_sso_with_saml_v2.html#two_configure_the_web_xml_file_for_an_idp" title="2. Configure the web.xml File for an IDP">Configure the web.xml File for an IDP</a>
+						</li><li class="listitem">
+							<a class="link" href="how_to_setup_sso_with_saml_v2.html#three_configure_the_authenticator_for_an_idp" title="3. Configure the Authenticator for an IDP">Configure the Authenticator for an IDP</a>
+						</li><li class="listitem">
+							<a class="link" href="how_to_setup_sso_with_saml_v2.html#four_declare_the_necessary_dependencies_for_an_idp" title="4. Declare the Necessary Dependencies for an IDP">Declare the Necessary Dependencies for an IDP</a>
+						</li><li class="listitem">
+							<a class="link" href="how_to_setup_sso_with_saml_v2.html#five_create_and_configure_a_picketlink_xml_file_for_an_idp" title="5. Create and Configure a picketlink.xml File for an IDP">Create and Configure a picketlink.xml File for an IDP</a>
+						</li></ol></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						The security domain should be created and configured before creating and deploying the application.
+					</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="one_create_a_security_domain_for_an_idp"/>1. Create a Security Domain for an IDP</h3></div></div></div><p>
+						The IDP handles challenging a principal for their credentials, handling the authentication and authorization of that principal, and issuing the proper security (SAML v2) assertions based on the result. This requires that an identity store be configured via a security domain. The only requirement around creating this security domain and identity store is that it has authentication and authorization mechanisms properly defined. Meaning, essentially many differently identity stores (e.g. properties file, database, ldap, etc) and their associated login modules could be used to support an IDP application. For more information on security domains, please see the Security Domains section of the <a class="link" href="/documentation/en/red-hat-jboss-enterprise-application-platform/version-6.4/security-architecture#security_domains">Red Hat JBoss Enterprise Application Platform 6 Security Architecture</a> document.
+					</p><p>
+						In the below example, a simple UsersRoles login module using properties files for an identity store is used.
+					</p><div class="title"><strong>CLI for Creating a Security Domain</strong></div><p>
+							
+</p><pre class="programlisting">/subsystem=security/security-domain=idp:add(cache-type=default)</pre><p>
+
+						</p><pre class="programlisting">/subsystem=security/security-domain=idp/authentication=classic:add</pre><pre class="programlisting">/subsystem=security/security-domain=idp/authentication=classic/login-module=UsersRoles:add( \
+  code=UsersRoles, \
+  flag=required, \
+  module-options=[ \
+    ("usersProperties"=&gt;"idp-users.properties"), \
+    ("rolesProperties"=&gt;"idp-roles.properties") \
+  ])</pre><pre class="programlisting">reload</pre><div class="title"><strong>Resulting XML</strong></div><p>
+							
+</p><pre class="programlisting">&lt;security-domain name="idp" cache-type="default"&gt;
+  &lt;authentication&gt;
+    &lt;login-module code="UsersRoles" flag="required"&gt;
+      &lt;module-option name="usersProperties" value="${jboss.server.config.dir}/idp-users.properties"/&gt;
+      &lt;module-option name="rolesProperties" value="${jboss.server.config.dir}/idp-roles.properties"/&gt;
+    &lt;/login-module&gt;
+  &lt;/authentication&gt;
+&lt;/security-domain&gt;</pre><p>
+
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The above CLI commands were done assuming a standalone instance of JBoss EAP 6. For more details on using the CLI with JBoss EAP 6 domains, please consult <span class="emphasis"><em>The Management CLI</em></span> section of the <a class="link" href="https://access.redhat.com/documentation/en-US/JBoss_Enterprise_Application_Platform/6.4/html-single/Administration_and_Configuration_Guide/index.html#sect-The_Management_CLI">Red Hat JBoss Enterprise Application Platform 6 Administration and Configuration Guide</a>.
+						</p></div><div class="title"><strong>Property Files</strong></div><p>
+							The UsersRoles login module utilizes properties files to store the user/password and user/role information. For more specifics of the UsersRoles module, please consult the <a class="link" href="https://access.redhat.com/documentation/en-US/JBoss_Enterprise_Application_Platform/6.4/html/Security_Guide/appe-Reference.html#topic4732_usersrolesmoduleoptions">Red Hat JBoss Enterprise Application Platform 6 Security Guide</a>. In this example, the properties files contain the following:
+						</p><p>
+						<span class="strong"><strong>idp-users.properties</strong></span>
+					</p><pre class="programlisting">Eric=samplePass
+Alan=samplePass</pre><p>
+						<span class="strong"><strong>idp-roles.properties</strong></span>
+					</p><pre class="programlisting">Eric=All
+Alan=</pre></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="two_configure_the_web_xml_file_for_an_idp"/>2. Configure the web.xml File for an IDP</h3></div></div></div><p>
+						The <code class="literal">web.xml</code> file for an IDP should contain the following:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								A <code class="literal">&lt;security-constraint&gt;</code> with a <code class="literal">&lt;web-resource-collection&gt;</code> containing a <code class="literal">&lt;url-pattern&gt;</code> that maps to the URL pattern of the secured area. Optionally, <code class="literal">&lt;security-constraint&gt;</code> may also contain an <code class="literal">&lt;auth-constraint&gt;</code> stipulating the allowed roles.
+							</li><li class="listitem">
+								A <code class="literal">&lt;login-config&gt;</code> configured for FORM authentication.
+							</li><li class="listitem">
+								If any roles were specified in the <code class="literal">&lt;auth-constraint&gt;</code>, those roles should be defined in a <code class="literal">&lt;security-role&gt;</code>.
+							</li><li class="listitem">
+								Optionally, resources used by the login form (e.g. images, styles, etc) can be specified by an additional security constraint to be unsecured so they may be accessed prior to authentication (i.e. on the login page).
+							</li></ul></div><p>
+						The <code class="literal">&lt;security-constraint&gt;</code> and <code class="literal">&lt;security-role&gt;</code> elements enable administrators to setup restricted or unrestricted areas based on URL patterns and roles. This allows resources to be secured or unsecured.
+					</p><p>
+						The <code class="literal">&lt;login-config&gt;</code> defines the the login and error pages used by the IDP when authenticating users.
+					</p><div class="title"><strong>Example <code class="literal">web.xml</code> file:</strong></div><p>
+							
+</p><pre class="programlisting">&lt;web-app&gt;
+  &lt;display-name&gt;IDP&lt;/display-name&gt;
+  &lt;description&gt;IDP&lt;/description&gt;
+&lt;!-- Define a security constraint that gives unlimited access to images --&gt;
+  &lt;security-constraint&gt;
+    &lt;web-resource-collection&gt;
+      &lt;web-resource-name&gt;Images&lt;/web-resource-name&gt;
+      &lt;url-pattern&gt;/images/*&lt;/url-pattern&gt;
+    &lt;/web-resource-collection&gt;
+  &lt;/security-constraint&gt;
+&lt;!-- Define a security constraint that requires the All role to access resources --&gt;
+  &lt;security-constraint&gt;
+    &lt;web-resource-collection&gt;
+      &lt;web-resource-name&gt;IDP&lt;/web-resource-name&gt;
+      &lt;url-pattern&gt;/*&lt;/url-pattern&gt;
+    &lt;/web-resource-collection&gt;
+    &lt;auth-constraint&gt;
+      &lt;role-name&gt;All&lt;/role-name&gt;
+    &lt;/auth-constraint&gt;
+  &lt;/security-constraint&gt;
+&lt;!-- Define the Login Configuration for this Application --&gt;
+  &lt;login-config&gt;
+    &lt;auth-method&gt;FORM&lt;/auth-method&gt;
+    &lt;realm-name&gt;IDP Application&lt;/realm-name&gt;
+    &lt;form-login-config&gt;
+      &lt;form-login-page&gt;/jsp/login.jsp&lt;/form-login-page&gt;
+      &lt;form-error-page&gt;/jsp/error.jsp&lt;/form-error-page&gt;
+    &lt;/form-login-config&gt;
+  &lt;/login-config&gt;
+&lt;!-- Security roles referenced by this web application --&gt;
+  &lt;security-role&gt;
+    &lt;description&gt;The role that is required to log in to the IDP Application&lt;/description&gt;
+    &lt;role-name&gt;All&lt;/role-name&gt;
+  &lt;/security-role&gt;
+&lt;/web-app&gt;</pre><p>
+
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							It is recommended that a welcome page defined in the application. By default, JBoss EAP 6 will look for a file called <code class="literal">index.jsp</code> but this can configured using the <code class="literal">&lt;welcome-file-list&gt;</code> in the <code class="literal">web.xml</code>.
+						</p></div><div class="title"><strong>Example <code class="literal">login.jsp</code> file:</strong></div><p>
+							
+</p><pre class="programlisting">&lt;html&gt;
+&lt;head&gt;&lt;/head&gt;
+&lt;body&gt;
+  &lt;form id="login_form" name="login_form" method="post"
+  action="j_security_check" enctype="application/x-www-form-urlencoded"&gt;
+    &lt;center&gt;
+      &lt;p&gt;Welcome to the &lt;b&gt;IDP&lt;/b&gt;&lt;/p&gt;
+      &lt;p&gt;Please login to proceed.&lt;/p&gt;
+    &lt;/center&gt;
+    &lt;div style="margin-left: 15px;"&gt;
+      &lt;p&gt;
+        &lt;label for="username"&gt;Username&lt;/label&gt;
+        &lt;br /&gt;
+        &lt;input id="username" type="text" name="j_username"/&gt;
+      &lt;/p&gt;
+      &lt;p&gt;
+        &lt;label for="password"&gt;Password&lt;/label&gt;
+        &lt;br /&gt;
+        &lt;input id="password" type="password" name="j_password" value=""/&gt;
+      &lt;/p&gt;
+      &lt;center&gt;
+        &lt;input id="submit" type="submit" name="submit" value="Login"/&gt;
+      &lt;/center&gt;
+    &lt;/div&gt;
+  &lt;/form&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre><p>
+
+						</p><div class="title"><strong>Example <code class="literal">error.jsp</code> file:</strong></div><p>
+							
+</p><pre class="programlisting">&lt;html&gt;
+&lt;head&gt;&lt;/head&gt;
+&lt;body&gt;
+  &lt;p&gt;Login failed, please go back and try again.&lt;/p&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre><p>
+
+						</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="three_configure_the_authenticator_for_an_idp"/>3. Configure the Authenticator for an IDP</h3></div></div></div><p>
+						The authenticator is responsible for the authentication of users and for issuing and validating security assertions (in case, SAML v2 assertions). The authenticator is configured in the form of a <code class="literal">&lt;valve&gt;</code> that resides in the <code class="literal">jboss-web.xml</code> file along with the security domain to be used in authenticating and authorizing principals (see <a class="link" href="how_to_setup_sso_with_saml_v2.html#one_create_a_security_domain_for_an_idp" title="1. Create a Security Domain for an IDP">Step 1</a>).
+					</p><p>
+						The <code class="literal">jboss-web.xml</code> file should have the following: - A <code class="literal">&lt;security-domain&gt;</code> to specify which security domain to use for authentication and authorization. - A <code class="literal">&lt;valve&gt;</code> configured to use the SSO valve class (e.g. <span class="emphasis"><em>org.picketlink.identity.federation.bindings.tomcat.idp.IDPWebBrowserSSOValve</em></span>)
+					</p><div class="title"><strong>An example <code class="literal">jboss-web.xml</code> file:</strong></div><p>
+							
+</p><pre class="programlisting">&lt;jboss-web&gt;
+    &lt;security-domain&gt;idp&lt;/security-domain&gt;
+    &lt;context-root&gt;identity&lt;/context-root&gt;
+    &lt;valve&gt;
+        &lt;class-name&gt;
+        org.picketlink.identity.federation.bindings.tomcat.idp.IDPWebBrowserSSOValve
+        &lt;/class-name&gt;
+    &lt;/valve&gt;
+&lt;/jboss-web&gt;</pre><p>
+
+						</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="four_declare_the_necessary_dependencies_for_an_idp"/>4. Declare the Necessary Dependencies for an IDP</h3></div></div></div><p>
+						The web application serving as the IDP requires a dependency to be defined in <code class="literal">jboss-deployment-structure.xml</code>, so that the <code class="literal">org.picketlink</code> classes can be located. JBoss EAP 6 provides all necessary <code class="literal">org.picketlink</code> and related classes, the application just needs to declare them as dependencies to use them.
+					</p><div class="title"><strong>Using jboss-deployment-structure.xml to declare dependencies</strong></div><p>
+							
+</p><pre class="programlisting">&lt;jboss-deployment-structure&gt;
+  &lt;deployment&gt;
+    &lt;dependencies&gt;
+      &lt;module name="org.picketlink"/&gt;
+    &lt;/dependencies&gt;
+  &lt;/deployment&gt;
+&lt;/jboss-deployment-structure&gt;</pre><p>
+
+						</p><p>
+						Alternatively, this dependency may be defined in a <code class="literal">META-INF/MANIFEST.MF</code> file instead:
+					</p><div class="title"><strong>Using META-INF/MANIFEST.MF to declare dependencies</strong></div><p>
+							
+</p><pre class="programlisting">Manifest-Version: 1.0
+Build-Jdk: 1.6.0_24
+Dependencies: org.picketlink</pre><p>
+
+						</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="five_create_and_configure_a_picketlink_xml_file_for_an_idp"/>5. Create and Configure a picketlink.xml File for an IDP</h3></div></div></div><p>
+						The <code class="literal">picketlink.xml</code> file is responsible for the behavior of the Authenticator and is loaded at the application’s startup.
+					</p><p>
+						The file should contain at least the following elements:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								<code class="literal">&lt;PicketLinkIDP&gt;</code> defining the url of the IDP (<code class="literal">&lt;IdentityURL&gt;</code>) and any hosts trusted by the identity provider.
+							</li><li class="listitem">
+								<code class="literal">&lt;Handlers&gt;</code> defining the set of handlers needed for processing the SAML requests and responses.
+							</li></ul></div><div class="title"><strong>An Example picketlink.xml file</strong></div><p>
+							
+</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  &lt;PicketLinkIDP xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+    &lt;IdentityURL&gt;${idp.url::http://localhost:8080/identity/}&lt;/IdentityURL&gt;
+    &lt;Trust&gt;
+      &lt;Domains&gt;localhost,example.com&lt;/Domains&gt;
+    &lt;/Trust&gt;
+  &lt;/PicketLinkIDP&gt;
+  &lt;Handlers xmlns="urn:picketlink:identity-federation:handler:config:2.1"&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2IssuerTrustHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2LogOutHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2AuthenticationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.RolesGenerationHandler" /&gt;
+  &lt;/Handlers&gt;
+&lt;/PicketLink&gt;</pre><p>
+
+						</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+							Handlers are implemented using a Chain of Responsibility, with each individual handler performing logic on request and responses in the order defined in <code class="literal">picketlink.xml</code>. It is very important to pay attention to the order in which the handlers are configured.
+						</p></div><p>
+						By default, <code class="literal">picketlink.xml</code> is located in the WEB-INF directory of the IDP web application. However, a custom path to a <code class="literal">picketlink.xml</code> that is external to the application can be configured. This is useful in cases where multiple applications across one or more JBoss EAP 6 instances share the same <code class="literal">picketlink.xml</code> configuration.
+					</p><div class="title"><strong>Setting custom location for picketlink.xml</strong></div><p>
+							Add two paramaters to the valve element in the application’s <code class="literal">jboss-web.xml</code> specifying for the path to <code class="literal">picketlink.xml</code>, and timerInterval which specifies the interval in milliseconds to reload the configuration.
+						</p><div class="title"><strong>Example</strong></div><p>
+							
+</p><pre class="programlisting">&lt;jboss-web&gt;
+...
+&lt;valve&gt;
+  &lt;class-name&gt;...&lt;/class-name&gt;
+    &lt;param&gt;
+      &lt;param-name&gt;timerInterval&lt;/param-name&gt;
+      &lt;param-value&gt;5000&lt;/param-value&gt;
+    &lt;/param&gt;
+    &lt;param&gt;
+      &lt;param-name&gt;configFile&lt;/param-name&gt;
+      &lt;param-value&gt;path-to/picketlink.xml&lt;/param-value&gt;
+    &lt;/param&gt;
+&lt;/valve&gt;
+&lt;/jboss-web&gt;</pre><p>
+
+						</p><p>
+						
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="setting_up_an_sp"/>Setting up an SP</h2></div></div></div><p>
+					To set up an application to serve as an SP, the following steps must be performed:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							<a class="link" href="how_to_setup_sso_with_saml_v2.html#one_create_a_security_domain_for_an_sp" title="1. Create a Security Domain for an SP">Create a Security Domain for an SP</a>
+						</li><li class="listitem">
+							<a class="link" href="how_to_setup_sso_with_saml_v2.html#two_configure_the_web_xml_file_for_an_sp" title="2. Configure the web.xml File for an SP">Configure the web.xml File for an SP</a>
+						</li><li class="listitem">
+							<a class="link" href="how_to_setup_sso_with_saml_v2.html#three_configure_the_authenticator_for_an_sp" title="3. Configure the Authenticator for an SP">Configure the Authenticator for an SP</a>
+						</li><li class="listitem">
+							<a class="link" href="how_to_setup_sso_with_saml_v2.html#four_declare_the_necessary_dependencies_for_an_sp" title="4. Declare the Necessary Dependencies for an SP">Declare the Necessary Dependencies for an SP</a>
+						</li><li class="listitem">
+							<a class="link" href="how_to_setup_sso_with_saml_v2.html#five_create_and_configure_a_picketlink_xml_file_for_an_sp" title="5. Create and Configure a picketlink.xml File for an SP">Create and Configure a picketlink.xml File for an SP</a>
+						</li></ol></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						The security domain should be created and configured before creating and deploying the application.
+					</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="one_create_a_security_domain_for_an_sp"/>1. Create a Security Domain for an SP</h3></div></div></div><p>
+						Since the IDP handles challenging the user for their credentials and issuing security (SAML v2) assertions, the SP is in charge of validating those assertions. A security domain is still needed to perform this validation, but an identity store is not. In this case, the security domain for the SP must use the SAML2LoginModule.
+					</p><div class="title"><strong>CLI for Adding Security Domain</strong></div><p>
+							
+</p><pre class="programlisting">/subsystem=security/security-domain=sp:add(cache-type=default)</pre><p>
+
+						</p><pre class="programlisting">/subsystem=security/security-domain=sp/authentication=classic:add</pre><pre class="programlisting">/subsystem=security/security-domain=sp/authentication=classic/login-module=SAML2LoginModule:add( \
+  code=org.picketlink.identity.federation.bindings.jboss.auth.SAML2LoginModule, \
+  flag=required)</pre><pre class="programlisting">reload</pre><div class="title"><strong>Resulting XML</strong></div><p>
+							
+</p><pre class="programlisting">&lt;security-domain name="sp" cache-type="default"&gt;
+  &lt;authentication&gt;
+    &lt;login-module code="org.picketlink.identity.federation.bindings.jboss.auth.SAML2LoginModule"
+      flag="required"/&gt;
+   &lt;/authentication&gt;
+&lt;/security-domain&gt;</pre><p>
+
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The above CLI commands were done assuming a standalone instance of JBoss EAP 6. For more details on using the CLI with JBoss EAP 6 domains, please consult <span class="emphasis"><em>The Management CLI</em></span> section of the <a class="link" href="https://access.redhat.com/documentation/en-US/JBoss_Enterprise_Application_Platform/6.4/html-single/Administration_and_Configuration_Guide/index.html#sect-The_Management_CLI">Red Hat JBoss Enterprise Application Platform 6 Administration and Guide</a>.
+						</p></div><p>
+						The <span class="emphasis"><em>SAML2LoginModule</em></span> allows for authentication decisions to be deferred to an IDP, which will be configured in the SP’s <code class="literal">picketlink.xml</code>.
+					</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="two_configure_the_web_xml_file_for_an_sp"/>2. Configure the web.xml File for an SP</h3></div></div></div><p>
+						The <code class="literal">web.xml</code> file for an SP should contain the following:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								A <code class="literal">&lt;security-constraint&gt;</code> with a <code class="literal">&lt;web-resource-collection&gt;</code> containing a <code class="literal">&lt;url-pattern&gt;</code> that maps to the URL pattern of the secured area. Optionally, <code class="literal">&lt;security-constraint&gt;</code> may also contain an <code class="literal">&lt;auth-constraint&gt;</code> stipulating the allowed roles.
+							</li><li class="listitem">
+								If any roles were specified in the <code class="literal">&lt;auth-constraint&gt;</code>, those roles should be defined in a <code class="literal">&lt;security-role&gt;</code>.
+							</li></ul></div><div class="title"><strong>An Example web.xml File</strong></div><p>
+							
+</p><pre class="programlisting">&lt;web-app&gt;
+  &lt;display-name&gt;SP&lt;/display-name&gt;
+  &lt;description&gt;SP&lt;/description&gt;
+  &lt;!-- Define a Security Constraint on this Application --&gt;
+  &lt;security-constraint&gt;
+    &lt;web-resource-collection&gt;
+      &lt;web-resource-name&gt;SP&lt;/web-resource-name&gt;
+      &lt;url-pattern&gt;/*&lt;/url-pattern&gt;
+    &lt;/web-resource-collection&gt;
+    &lt;auth-constraint&gt;
+      &lt;role-name&gt;All&lt;/role-name&gt;
+    &lt;/auth-constraint&gt;
+  &lt;/security-constraint&gt;
+  &lt;!-- Security roles referenced by this web application --&gt;
+  &lt;security-role&gt;
+      &lt;description&gt;
+     The role that is required to log in to the SP Application
+    &lt;/description&gt;
+    &lt;role-name&gt;All&lt;/role-name&gt;
+  &lt;/security-role&gt;</pre><p>
+
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							It is recommended that a welcome page defined in the application. By default, JBoss EAP 6 will look for a file called <code class="literal">index.jsp</code> but this can configured using the <code class="literal">&lt;welcome-file-list&gt;</code> in the <code class="literal">web.xml</code>.
+						</p></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The logout process will attempt to redirect principals to <code class="literal">logout.jsp</code> on successful logout. Please ensure this file is defined at the directory root of the application.
+						</p></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="three_configure_the_authenticator_for_an_sp"/>3. Configure the Authenticator for an SP</h3></div></div></div><p>
+						The authenticator is responsible for the authentication of principals based on the security assertions (in this case, SAML v2 assertions) issued by the IDP. They intercept each request made to the application, check if a SAML assertion is present in the request, validate the assertions, execute principal’s SAML specific validations, and create a security context for the principal in the requested application.
+					</p><p>
+						The authenticator is configured in the form of a <code class="literal">&lt;valve&gt;</code> that resides in the <code class="literal">jboss-web.xml</code> file along with the security domain to be used in authenticating and authorizing principals (see <a class="link" href="how_to_setup_sso_with_saml_v2.html#one_create_a_security_domain_for_an_sp" title="1. Create a Security Domain for an SP">Step 1</a>).
+					</p><p>
+						The <code class="literal">jboss-web.xml</code> file for an SP should have the following:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								A <code class="literal">&lt;security-domain&gt;</code> to specify which security domain to use for authentication and authorization.
+							</li><li class="listitem">
+								A <code class="literal">&lt;valve&gt;</code> configured to use the SSO Service Provider valve class (e.g. <span class="emphasis"><em>org.picketlink.identity.federation.bindings.tomcat.sp.ServiceProviderAuthenticator</em></span>)
+							</li></ul></div><div class="title"><strong>An Example <code class="literal">jboss-web.xml</code> File:</strong></div><p>
+							
+</p><pre class="programlisting">&lt;jboss-web&gt;
+  &lt;security-domain&gt;sp&lt;/security-domain&gt;
+  &lt;context-root&gt;sales-post&lt;/context-root&gt;
+  &lt;valve&gt;
+    &lt;class-name&gt;org.picketlink.identity.federation.bindings.tomcat.sp.ServiceProviderAuthenticator&lt;/class-name&gt;
+  &lt;/valve&gt;
+&lt;/jboss-web&gt;</pre><p>
+
+						</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="four_declare_the_necessary_dependencies_for_an_sp"/>4. Declare the Necessary Dependencies for an SP</h3></div></div></div><p>
+						The web application serving as the SP requires a dependency to be defined in <code class="literal">jboss-deployment-structure.xml</code>, so that the <code class="literal">org.picketlink</code> classes can be located. JBoss EAP 6 provides all necessary <code class="literal">org.picketlink</code> and related classes, the application just needs to declare them as dependencies to use them.
+					</p><div class="title"><strong>Using jboss-deployment-structure.xml to declare dependencies</strong></div><p>
+							
+</p><pre class="programlisting">&lt;jboss-deployment-structure&gt;
+  &lt;deployment&gt;
+    &lt;dependencies&gt;
+      &lt;module name="org.picketlink"/&gt;
+    &lt;/dependencies&gt;
+  &lt;/deployment&gt;
+&lt;/jboss-deployment-structure&gt;</pre><p>
+
+						</p><p>
+						Alternatively, this dependency may be defined in a <code class="literal">META-INF/MANIFEST.MF</code> file instead:
+					</p><div class="title"><strong>Using META-INF/MANIFEST.MF to declare dependencies</strong></div><p>
+							
+</p><pre class="programlisting">Manifest-Version: 1.0
+Build-Jdk: 1.6.0_24
+Dependencies: org.picketlink</pre><p>
+
+						</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="five_create_and_configure_a_picketlink_xml_file_for_an_sp"/>5. Create and Configure a picketlink.xml File for an SP</h3></div></div></div><p>
+						The <code class="literal">picketlink.xml</code> file is responsible for the behavior of the Authenticator and is loaded at the application’s startup.
+					</p><p>
+						The file should contain at least the following elements:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								<code class="literal">&lt;PicketLinkSP&gt;</code> defining the url of the IDP (<code class="literal">&lt;IdentityURL&gt;</code>) and the url the SP (<code class="literal">&lt;ServiceURL&gt;</code>).
+							</li><li class="listitem">
+								<code class="literal">&lt;Handlers&gt;</code> defining the set of handlers needed for processing the SAML requests and responses.
+							</li></ul></div><div class="title"><strong>An Example picketlink.xml file</strong></div><p>
+							
+</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  &lt;PicketLinkSP xmlns="urn:picketlink:identity-federation:config:2.1" BindingType="POST"&gt;
+    &lt;IdentityURL&gt;${idp.url::http://localhost:8080/identity/}&lt;/IdentityURL&gt;
+    &lt;ServiceURL&gt;${sales-post.url::http://localhost:8080/sales-post/}&lt;/ServiceURL&gt;
+  &lt;/PicketLinkSP&gt;
+  &lt;Handlers xmlns="urn:picketlink:identity-federation:handler:config:2.1"&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2LogOutHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2AuthenticationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.RolesGenerationHandler" /&gt;
+  &lt;/Handlers&gt;
+&lt;/PicketLink&gt;</pre><p>
+
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							While not recommended, the SP may also be configured to use HTTP/REDIRECT by changing <span class="emphasis"><em>BindingType="POST"</em></span> to <span class="emphasis"><em>BindingType="REDIRECT"</em></span>.
+						</p></div><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+							Handlers are implemented using a Chain of Responsibility, with each individual handler performing logic on request and responses in the order defined in <code class="literal">picketlink.xml</code>. It is very important to pay attention to the order in which the handlers are configured.
+						</p></div><p>
+						By default, <code class="literal">picketlink.xml</code> is located in the WEB-INF directory of the IDP web application. However, a custom path to a <code class="literal">picketlink.xml</code> that is external to the application can be configured. This is useful in cases where multiple applications across one or more JBoss EAP 6 instances share the same <code class="literal">picketlink.xml</code> configuration.
+					</p><div class="title"><strong>Setting custom location for picketlink.xml</strong></div><p>
+							Add two paramaters to the valve element in the application’s <code class="literal">jboss-web.xml</code> specifying for the path to <code class="literal">picketlink.xml</code>, and timerInterval which specifies the interval in milliseconds to reload the configuration.
+						</p><div class="title"><strong>Example</strong></div><p>
+							
+</p><pre class="programlisting">&lt;jboss-web&gt;
+...
+  &lt;valve&gt;
+    &lt;class-name&gt;...&lt;/class-name&gt;
+      &lt;param&gt;
+        &lt;param-name&gt;timerInterval&lt;/param-name&gt;
+        &lt;param-value&gt;5000&lt;/param-value&gt;
+      &lt;/param&gt;
+      &lt;param&gt;
+        &lt;param-name&gt;configFile&lt;/param-name&gt;
+        &lt;param-value&gt;path-to/picketlink.xml&lt;/param-value&gt;
+      &lt;/param&gt;
+  &lt;/valve&gt;
+&lt;/jboss-web&gt;</pre><p>
+
+						</p><p>
+						
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="using_sp_initiated_flow"/>Using SP-initiated Flow</h2></div></div></div><p>
+					The SP-inited Flow is a common use case citied when describing browser-based SSO, and was covered in the <a class="link" href="/documentation/en/red-hat-jboss-enterprise-application-platform/version-6.4/security-architecture#browser_based_sso_using_saml">Browser-Based SSO Using SAML</a> and <a class="link" href="/documentation/en/red-hat-jboss-enterprise-application-platform/version-6.4/security-architecture#multiple_red_hat_jboss_enterprise_application_platform_instances_and_multiple_applications_using_browser_based_sso_with_saml">Multiple Red Hat JBoss Enterprise Application Platform Instances and Multiple Applications Using Browser-Based SSO with SAML</a> sections of the <a class="link" href="/documentation/en/red-hat-jboss-enterprise-application-platform/version-6.4/security-architecture">Red Hat JBoss Enterprise Application Platform 6 Security Architecture document</a>. In summary, a principal attempts to access a secured resource in a SP. The SP starts the flow by checking for a principal’s security assertions and redirecting any unauthenticated principal’s to the IDP. Upon successful authentication with the IDP, the principal is then redirected back to the initial SP with their security assertions for the SP to validate and permit/deny access to the original resource requested.
+				</p><div class="orderedlist"><p class="title"><strong>Walkthrough</strong></p><ol class="orderedlist"><li class="listitem">
+							A principal attempts to access secured resource on a SP.
+						</li><li class="listitem">
+							SP performs a check on the principal. If the principal has not yet authenticated, they need to be redirected to the IDP. If they have already authenticated, then all other steps are skipped and the final step is performed.
+						</li><li class="listitem">
+							The SP locates the IDP and issue an authentication request to the IDP via the principal’s browser.
+						</li><li class="listitem">
+							The IDP attempts to authenticate the principal (e.g. challenging them with a login page) using the configured identity store.
+						</li><li class="listitem">
+							After the principal is identified by the IDP (e.g. successful login), the IDP issues a response (containing SAML v2 assertions with the principal’s security-related information) to the SP via the principal’s browser.
+						</li><li class="listitem">
+							The SP performs a check on the principal’s security assertions, and based the information contained in those assertions, the SP allows (or denies) access to the requested resource.
+						</li></ol></div><p>
+					This flow requires no additional steps or configuration to setup. All redirects are handled by the configured SPs and IDPs and links to both secured and unsecured resources require no additional changes.
+				</p><p>
+					
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="using_idp_initiated_flow"/>Using IDP-Initiated Flow</h2></div></div></div><p>
+					Most examples of browser-based SSO via SAML v2 using a SP-initiated flow as covered in the <a class="link" href="how_to_setup_sso_with_saml_v2.html#using_sp_initiated_flow" title="Using SP-initiated Flow">previous section</a>, but SAML v2 supports an additional flow: the IDP-initiated or Unsolicited Response flow. In this scenario, the SP does not initiate the authentication flow and receive a SAML response from the IDP. Instead, the flow starts on the IDP-side and once authenticated, the principal can choose a specific SP from a list and then get redirected to its URL.
+				</p><div class="orderedlist"><p class="title"><strong>Walkthrough</strong></p><ol class="orderedlist"><li class="listitem">
+							Principal accesses the IDP.
+						</li><li class="listitem">
+							The IDP seeing that there is neither SAML request nor response, assumes an IDP first scenario using SAML.
+						</li><li class="listitem">
+							The IDP challenges the principal to authenticate.
+						</li><li class="listitem">
+							Upon authentication, the IDP shows the hosted section where the principal gets a page that links to all the SP applications.
+						</li><li class="listitem">
+							The principal chooses an SP application.
+						</li><li class="listitem">
+							The IDP redirects the principal to the service provider with a SAML assertion in the query parameter, SAML response. In the cases where the POST binding is used, the IDP sends the SAML assertion to the service provider via an HTTP POST.
+						</li><li class="listitem">
+							The SP checks the SAML assertion and provides access.
+						</li></ol></div><div class="title"><strong>Hosted Section</strong></div><p>
+						The <span class="emphasis"><em>hosted section</em></span> is a location to direct users after a successful authentication in the IDP-initiated flow or if a principal, who has already authenticated, attempts to access the root of the IDP directly. By default, the hosted section is located at <span class="emphasis"><em>/hosted/</em></span> but may be changed in the <span class="emphasis"><em>picketlink.xml</em></span> file by adding the <code class="literal">HostedURI</code> attribute to the <code class="literal">&lt;PicketLinkIDP&gt;</code> element:
+					</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  &lt;PicketLinkIDP xmlns="urn:picketlink:identity-federation:config:2.1" HostedURI="/hosted/"&gt;
+    ...
+  &lt;/PicketLinkIDP&gt;
+&lt;/Picketlink&gt;</pre><div class="title"><strong>Linking to SPs</strong></div><p>
+						Once the user is authenticated, the IDP shows a page with links to all service provider applications. A link will usually look like this:
+					</p><pre class="programlisting">&lt;a href="http://localhost:8080/identity?SAML_VERSION=2.0&amp;TARGET=http://localhost:8080/sales-post/"&gt;Sales&lt;/a&gt;</pre><p>
+					Note that the link above redirects the user to the IDP passing the <span class="emphasis"><em>TARGET</em></span> query parameter, whose value is the URL to the target SP application. Once the user clicks the link above, the IDP extracts the TARGET parameter from the request, builds an SAML v2 response, and redirects the user to the target URL. When the user hits the SP, they are automatically authenticated. The SAML_VERSION query parameter is used to specify the SAML version that must be used by the IDP to create the SAML response.
+				</p><p>
+					
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configuring_the_global_logout_profile"/>Configuring the Global Logout Profile</h2></div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="global_logout_profile_2"/>Global Logout Profile</h3></div></div></div><p>
+						A Global Logout Profile initiated at one service provider logs out the user from the Identity Provider (IDP) and all the service providers.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							For a Global Logout Profile to function appropriately ensure that only up to five SPs are configured per IDP.
+						</p></div><div class="title"><strong>Configure picketlink.xml</strong></div><p>
+							Add the SAML2LogOutHandler in the picketlink.xml.
+						</p><div class="title"><strong>Create a logout.jsp page</strong></div><p>
+							As part of the logout process, the users will be redirected to a logout.jsp page located in the root directory of the Service Provider application. Ensure that this page is created.
+						</p><div class="title"><strong>Example logout.jsp</strong></div><p>
+							
+</p><pre class="programlisting">&lt;html&gt;
+  &lt;head&gt;&lt;/head&gt;
+  &lt;body&gt;
+    &lt;p&gt;You have successfully logged out.&lt;/p&gt;
+  &lt;/body&gt;
+&lt;/html&gt;</pre><p>
+
+						</p><div class="title"><strong>Configure Global Logout Profile Links for the SPs</strong></div><p>
+							Use <code class="literal">GLO=true</code> as a URL parameter in a link to an SP resource to initiate the Global Logout Profile process.
+						</p><div class="title"><strong>Example Logout Link</strong></div><p>
+							
+</p><pre class="programlisting">&lt;a href="?GLO=true"&gt;Click to LogOut&lt;/a&gt;</pre><p>
+
+						</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="local_logout"/>Local Logout</h3></div></div></div><p>
+						In addition to global logout profile, local logout may also be used. Local logout, in contrast to global logout profile, logs a principal out of a single SP while leaving the session at the IDP and other SPs completely intact. Basically, local logout allows principals to be "locally logged out" at a single SP.
+					</p><p>
+						The process for using Local Logout is essentially the same as Global Logout Profile, with the URL parameter in the logout link taking the form of <code class="literal">LLO=true</code>.
+					</p><div class="title"><strong>Example Logout Link</strong></div><p>
+							
+</p><pre class="programlisting">&lt;a href="?LLO=true"&gt;Click to LogOut&lt;/a&gt;</pre><p>
+
+						</p><p>
+						When a principal clicks on the Local Logout link at the SP, the SP will invalidate their session and forward the principal to the configured logout page.
+					</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+							If using Local Logout, please be aware of the security implications that result from it. Meaning, when a principal is only disconnected from one service provider, they still have an active session with the IDP and other SPs that may allow them to still access secured resources. While this behavior may be desired in circumstances, it is strongly recommended to use Global Logout in most scenarios.
+						</p></div><p>
+						
+					</p></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring_idps_and_sps_via_the_management_console"/>Configuring IDPs and SPs via the Management Console</h1></div></div></div><p>
+				In addition to configuring IDPs and SP manually, SSO via SAML v2 may also be configured via a JBoss EAP 6 subsystem. This method of configuration is known as the <span class="emphasis"><em>Domain Model</em></span> and allows all the configuration to reside centrally on the JBoss EAP 6 instance and not with the individual applications. This also enables the SSO configuration to be created and updated using the JBoss EAP management interfaces such as the Management Console and CLI.
+			</p><div class="title"><strong>Federations</strong></div><p>
+					When using the JBoss EAP subsystem to configure and deploy IDPs and SPs, they are grouped together in a <span class="emphasis"><em>Federation</em></span>. A Federation can be understood as a <span class="emphasis"><em>Circle of Trust</em></span>. A Circle of trust contains applications that share common configurations (certificates, SAML-specific configurations, etc) and domains that trust each other to accurately document the processes used to identify a user, the type of authentication system used, and any policies associated with the resulting authentication credentials. Each federation has one IDP and many SPs. The federation also defines trust relationship between SPs and IDPs, removing the need for each SP to individual track and maintain that information.
+				</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configuring_the_subsystem"/>Configuring the Subsystem</h2></div></div></div><p>
+					Before the subsystem can be used to setup federations, it needs to be enabled and configured in JBoss EAP 6. The following steps are needed to enable and configure the subsystem:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							<a class="link" href="how_to_setup_sso_with_saml_v2.html#one_update_the_extensions" title="1. Update the Extensions">Update the Extensions</a>
+						</li><li class="listitem">
+							<a class="link" href="how_to_setup_sso_with_saml_v2.html#two_add_the_subsystems" title="2. Add the Subsystems">Add the Subsystems</a>
+						</li></ol></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						It is recommended that these steps be preformed while the JBoss EAP 6 instance is not running.
+					</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="one_update_the_extensions"/>1. Update the Extensions</h3></div></div></div><p>
+						In the JBoss EAP 6 configuration file (<code class="literal">standalone.xml</code> for standalone instances or <code class="literal">domain.xml</code> for domains), add the <code class="literal">org.wildfly.extension.picketlink</code> extension:
+					</p><pre class="programlisting">&lt;extensions&gt;
+  ...
+  &lt;extension module="org.wildfly.extension.picketlink"/&gt;
+  ...
+&lt;/extensions&gt;</pre></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="two_add_the_subsystems"/>2. Add the Subsystems</h3></div></div></div><p>
+						In the JBoss EAP 6 configuration file (<code class="literal">standalone.xml</code> for standalone instances or <code class="literal">domain.xml</code> for domains), add the <code class="literal">jboss:domain:picketlink-federation:1.1</code> subsystem:
+					</p><pre class="programlisting">&lt;profile&gt;
+  ...
+  &lt;subsystem xmlns="urn:jboss:domain:picketlink-federation:1.1"/&gt;
+  ...
+&lt;/profile&gt;</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							Examples of configuration may also be found in the <code class="literal">docs/examples/configs/standalone-picketlink.xml</code> file under the JBoss EAP 6 install directory.
+						</p></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="setting_up_a_federation"/>Setting up a Federation</h2></div></div></div><p>
+					Once the subsystem has been setup and configured, it may be used (via the management interfaces) to configure federations. Configuring a federations requires the following steps:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							<a class="link" href="how_to_setup_sso_with_saml_v2.html#one_preparing_the_sp_and_idp_applications" title="1. Preparing the SP and IDP Applications">Preparing the SP and IDP Applications</a>
+						</li><li class="listitem">
+							<a class="link" href="how_to_setup_sso_with_saml_v2.html#two_creating_a_federation_via_the_management_interface" title="2. Creating a Federation via the Management Interface">Creating a Federation via the Management Interface</a>
+						</li></ol></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="one_preparing_the_sp_and_idp_applications"/>1. Preparing the SP and IDP Applications</h3></div></div></div><p>
+						As was covered in the <a class="link" href="how_to_setup_sso_with_saml_v2.html#idp_and_sp_setup_and_configuration" title="IDP and SP Setup and Configuration">previous section</a>, when configuring SSO via SAML v2 manually, the following files were required to be created or updated:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								<code class="literal">web.xml</code>
+							</li><li class="listitem">
+								<code class="literal">jboss-web.xml</code>
+							</li><li class="listitem">
+								<code class="literal">picketlink.xml</code>
+							</li><li class="listitem">
+								<code class="literal">jboss-deployment-structure.xml</code>
+							</li></ul></div><p>
+						When using the subsystem to setup federations for SSO via SAML v2, the vast majority of the configuration happens from the management interfaces without having to update any of those files. The only configuration that must be done to the application is to configure the <code class="literal">&lt;security-constraint&gt;</code> and associated <code class="literal">&lt;security-role&gt;</code> in the <code class="literal">web.xml</code> of the <a class="link" href="how_to_setup_sso_with_saml_v2.html#two_configure_the_web_xml_file_for_an_idp" title="2. Configure the web.xml File for an IDP">IDPs</a> and <a class="link" href="how_to_setup_sso_with_saml_v2.html#two_configure_the_web_xml_file_for_an_sp" title="2. Configure the web.xml File for an SP">SPs</a>. In addition, the <code class="literal">&lt;login-config&gt;</code> in the <code class="literal">web.xml</code> as well as the login and error pages will also have to be present in the IDP.
+					</p><div class="title"><strong>Preparing IDPs and SPs Already Configured</strong></div><p>
+							If an IDP or SP has already been configured as outlined in the <a class="link" href="how_to_setup_sso_with_saml_v2.html#idp_and_sp_setup_and_configuration" title="IDP and SP Setup and Configuration">previous section</a>, the following files will need to be removed:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								<code class="literal">jboss-web.xml</code>
+							</li><li class="listitem">
+								<code class="literal">picketlink.xml</code>
+							</li><li class="listitem">
+								<code class="literal">jboss-deployment-structure.xml</code>
+							</li></ul></div><p>
+						Once the applications have been prepared, they may be deployed.
+					</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="two_creating_a_federation_via_the_management_interface"/>2. Creating a Federation via the Management Interface</h3></div></div></div><p>
+						Once the JBoss EAP 6 instance has been configured and the applications have been setup and deployed, a federation may be created from the Management Console.
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+								Navigate to Management Console using a Web Browser for Example: <span class="emphasis"><em><a class="link" href="http://localhost:9990/console">http://localhost:9990/console</a></em></span>
+							</li><li class="listitem">
+								Click on the <span class="emphasis"><em>Configuration</em></span> tab at the top
+							</li><li class="listitem">
+								Click on <span class="emphasis"><em>PicketLink</em></span> → <span class="emphasis"><em>Federation</em></span> in the menu on the left side
+							</li><li class="listitem">
+								Click on the <span class="emphasis"><em>Add</em></span> button to create a new federation 
+								<span class="inlinemediaobject"><img src="images/Federation Subsystem - Empty.png" width="800" alt="Federation Subsystem Empty"/></span>
+
+							</li><li class="listitem">
+								Enter a name for the federation and click <span class="emphasis"><em>Save</em></span>
+							</li><li class="listitem">
+								Click on the <span class="emphasis"><em>View</em></span> for the federation to begin configuring 
+								<span class="inlinemediaobject"><img src="images/Federation Subsystem - View Federation.png" width="800" alt="Federation Subsystem View Federation"/></span>
+
+							</li><li class="listitem">
+								Select <span class="emphasis"><em>Identity Provider</em></span> under the <span class="emphasis"><em>Federation</em></span> tab and click <span class="emphasis"><em>Add</em></span> to configure a new IDP 
+								<span class="inlinemediaobject"><img src="images/Federation Subsystem - IDP - Empty.png" width="800" alt="Federation Subsystem IDP Empty"/></span>
+
+							</li><li class="listitem">
+								Enter in the information of the deployed IDP and click <span class="emphasis"><em>Save</em></span> <span class="inlinemediaobject"><img src="images/Federation Subsystem - IDP - Configured.png" width="800" alt="Federation Subsystem IDP Configured"/></span>
+
+							</li><li class="listitem">
+								Select <span class="emphasis"><em>Service Provider</em></span> under the <span class="emphasis"><em>Federation</em></span> tab and click <span class="emphasis"><em>Add</em></span> to configure a new SP 
+								<span class="inlinemediaobject"><img src="images/Federation Subsystem - SP - Empty.png" width="800" alt="Federation Subsystem SP Empty"/></span>
+
+							</li><li class="listitem">
+								Enter in the information of the deployed SP and click <span class="emphasis"><em>Save</em></span> <span class="inlinemediaobject"><img src="images/Federation Subsystem - SP - Configured.png" width="800" alt="Federation Subsystem SP Configured"/></span>
+
+							</li></ol></div><p>
+						The <span class="emphasis"><em>Details</em></span> section in both the <span class="emphasis"><em>Identity Provider</em></span> and <span class="emphasis"><em>Service Provider</em></span> subtabs may be used to configure additional details or make updates to an existing IDP or SP: 
+						<span class="inlinemediaobject"><img src="images/Federation Subsystem - IDP - Details.png" width="800" alt="Federation Subsystem IDP Details"/></span>
+						 <span class="inlinemediaobject"><img src="images/Federation Subsystem - SP - Details.png" width="800" alt="Federation Subsystem SP Details"/></span>
+
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							When configuration changes are made relating to any IDPs or SPs within a federation (including any security domains used by the IDPs or SPs), it best to restart the affected IDPs and/or SPs. This can be accomplished using the <span class="emphasis"><em>Restart</em></span> option on the <span class="emphasis"><em>Identity Provider</em></span> and <span class="emphasis"><em>Service Provider</em></span> subtab.
+						</p></div><p>
+						
+					</p></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring_identity_stores_for_idps"/>Configuring Identity Stores for IDPs</h1></div></div></div><p>
+				Since IDPs use security domains, the functionality of an IDP is independent from the actual identity store that backs it. As a result, administrators have many options when configuring security domains for IDPs. The specifics around security domains and login modules can be found in the Security Subsystem section of the <a class="link" href="/documentation/en/red-hat-jboss-enterprise-application-platform/version-6.4/security-architecture#security_subsystem">Red Hat JBoss Enterprise Application Platform 6 Security Architecture</a>. Just as with setting up any login module for a security domain, please keep in mind that different identity stores offer different functionality and performance tradeoffs.
+			</p><p>
+				The following steps are needed for setting up a security domain that uses an identity store:
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						<a class="link" href="how_to_setup_sso_with_saml_v2.html#one_setting_up_the_identity_store" title="1. Setting up the Identity Store">Setting up the Identity Store</a>
+					</li><li class="listitem">
+						<a class="link" href="how_to_setup_sso_with_saml_v2.html#two_adding_the_security_domain" title="2. Adding the Security Domain">Adding the Security Domain</a>
+					</li><li class="listitem">
+						<a class="link" href="how_to_setup_sso_with_saml_v2.html#three_adding_the_authentication_section_and_login_module_to_the_security_domain" title="3. Adding the Authentication Section and Login Module to the Security Domain">Adding the Authentication Section and Login Module to the Security Domain</a>
+					</li></ol></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					For the purposes of this document, the Database login module and Ldap login module are shown as examples, but other identity stores and login modules may also be configured for use with IDPs.
+				</p></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					The CLI commands for this section were done assuming a standalone instance of JBoss EAP 6. For more details on using the CLI with JBoss EAP 6 domains, please consult <span class="emphasis"><em>The Management CLI</em></span> section of the <a class="link" href="https://access.redhat.com/documentation/en-US/JBoss_Enterprise_Application_Platform/6.4/html-single/Administration_and_Configuration_Guide/index.html#sect-The_Management_CLI">Red Hat JBoss Enterprise Application Platform 6 Administration and Guide</a>.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="one_setting_up_the_identity_store"/>1. Setting up the Identity Store</h2></div></div></div><p>
+					Before a security domain and login module can be configured to use an identity provider, the identity provider (and sometimes an connection to that identity provider) must be setup.
+				</p><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="configuring_the_identity_store_for_the_database_login_module"/>Configuring the Identity Store for the Database Login Module</h3></div></div></div><p>
+						The following operations are needed for setting up the Identity Store for the Database login module:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								Database Setup
+							</li><li class="listitem">
+								Adding a Datasource
+							</li></ul></div><div class="title"><strong>Database Setup</strong></div><p>
+							The first item needed for a Database-Backed Identity Store is a database for the login module to use.
+						</p><p>
+						The following datapoints are needed:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								Usernames
+							</li><li class="listitem">
+								Passwords
+							</li><li class="listitem">
+								Roles
+							</li><li class="listitem">
+								Role Groups
+							</li></ul></div><p>
+						The Database Login module requires the ability to create a query that maps usernames to passwords and a query that maps usernames to roles and role groups. This information can be stored within the database in variety of ways, but creating a database with tables is not in the scope of this document. For the purposes of this example, it’s assumed the following tables have been created:
+					</p><div class="table"><a id="idm139796350612928"/><p class="title"><strong>Table 2.1. sso-users</strong></p><div class="table-contents"><table summary="sso-users" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">username</th><th style="text-align: left" valign="top">passwd</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										Sarah
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Testing123!
+									</p>
+									 </td></tr></tbody></table></div></div><div class="table"><a id="idm139796408524736"/><p class="title"><strong>Table 2.2. sso-roles</strong></p><div class="table-contents"><table summary="sso-roles" border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">username</th><th style="text-align: left" valign="top">role</th><th style="text-align: left" valign="top">role-group</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+										Sarah
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										Sample
+									</p>
+									 </td><td style="text-align: left" valign="top"> <p>
+										SSO-Users
+									</p>
+									 </td></tr></tbody></table></div></div><div class="title"><strong>Adding a Datasource</strong></div><p>
+							Creating datasources are not in the scope of this document. For specifics on setting up a datasource, please see the Datasource Management section of the <a class="link" href="https://access.redhat.com/documentation/en-US/JBoss_Enterprise_Application_Platform/6.4/html-single/Administration_and_Configuration_Guide/index.html#chap-Datasource_Management">Administration and Configuration Guide</a>.
+						</p><p>
+						For the purposes of this example, it is assumed that a datasource named <span class="emphasis"><em>idpDS</em></span> has been created, properly configured, and deployed to the JBoss EAP 6 instance. This datasource has a connection to the database storing the <span class="emphasis"><em>sso-users</em></span> and <span class="emphasis"><em>sso-roles</em></span> tables.
+					</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="configuring_the_identity_store_for_the_ldap_login_module"/>Configuring the Identity Store for the Ldap Login Module</h3></div></div></div><p>
+						A properly configured LDAP server is required prior to setting up the Ldap login module. Unlike the Database login module, a datasource is not needed for setting up the Ldap login module. The basics of LDAP and how it relates to JBoss EAP 6 security are covered in the <a class="link" href="/documentation/en/red-hat-jboss-enterprise-application-platform/version-6.4/security-architecture#ldap">Red Hat JBoss Enterprise Application Platform 6 Security Architecture</a> document.
+					</p><div class="title"><strong>Setting up an LDAP Server</strong></div><p>
+							Setting up an LDAP server is not in the scope of this document. For more information on setting up an LDAP server, please consult the <a class="link" href="https://access.redhat.com/documentation/en-US/Red_Hat_Enterprise_Linux/7/html-single/System_Administrators_Guide/index.html#ch-Directory_Servers">RHEL System’s Administration Guide</a>. For the purposes of this example, the LDAP server can be reached at <span class="emphasis"><em><a class="link" href="http://ldaphost.example.com:1389/">http://ldaphost.example.com:1389/</a></em></span>.
+						</p><div class="title"><strong>Directory Information</strong></div><p>
+							The directory structure and organization of an LDAP server can vary greatly depending on the use case and organizational needs. For the purposes of this example, the below entries have been created (show in LDIF format):
+						</p><pre class="programlisting">dn: dc=example,dc=com
+objectclass: top
+objectclass: dcObject
+objectclass: organization
+dc: example
+o:  Example
+#=============================
+dn: ou=People,dc=example,dc=com
+objectclass: top
+objectclass: organizationalUnit
+ou: People
+#=============================
+dn: uid=jsmith,ou=People,dc=example,dc=com
+objectclass: top
+objectclass: uidObject
+objectclass: person
+uid: jsmith
+cn: John
+sn: Smith
+userPassword: theduke
+#=============================
+dn: ou=Roles,dc=example,dc=com
+objectclass: top
+objectclass: organizationalUnit
+ou: Roles
+#=============================
+dn: cn=Sample,ou=Roles,dc=example,dc=com
+objectclass: top
+objectclass: groupOfNames
+cn: Sample
+member: uid=jsmith,ou=People,dc=example,dc=com
+description: the Sample group</pre></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="two_adding_the_security_domain"/>2. Adding the Security Domain</h2></div></div></div><p>
+					Once the identity store itself has been setup and any needed connection between the JBoss EAP 6 instance and the identity store has been configured, the security domain may be created and configured. The below command shows how to create an empty security domain, replacing <span class="emphasis"><em>MY-DOMAIN</em></span> with the desired name of the security domain.
+				</p><div class="title"><strong>CLI for Adding a Security Domain</strong></div><p>
+						
+</p><pre class="programlisting">/subsystem=security/security-domain=MY-DOMAIN:add(cache-type=default)</pre><p>
+
+					</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="three_adding_the_authentication_section_and_login_module_to_the_security_domain"/>3. Adding the Authentication Section and Login Module to the Security Domain</h2></div></div></div><p>
+					After the empty security domain has been created, the authentication section must be created with a login module added to it. The below command shows how to add an empty authentication section to an existing security domain, replacing <span class="emphasis"><em>MY-DOMAIN</em></span> with the name of the security domain.
+				</p><div class="title"><strong>CLI for Adding an Authentication Section to a Security Domain</strong></div><p>
+						
+</p><pre class="programlisting">/subsystem=security/security-domain=MY-DOMAIN/authentication=classic:add</pre><p>
+
+					</p><p>
+					Once the empty authentication section has been created, a login module may then be added to it and configured to use the desired identity store. After adding a login module to a security domain, a configuration reload is usually required.
+				</p><p>
+					Below is the general command structure for adding a login module and reloading the configuration, replacing <span class="emphasis"><em>MY-DOMAIN</em></span>, <span class="emphasis"><em>MY-LOGIN-MODULE</em></span>, and <span class="emphasis"><em>MY-CONFIGURATION</em></span> with the appropriate information:
+				</p><pre class="programlisting">/subsystem=security/security-domain=MY-DOMAIN/authentication=classic/login-module=MY-LOGIN-MODULE:add( MY-CONFIGURATION )</pre><pre class="programlisting">reload</pre><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="adding_a_database_login_module"/>Adding a Database Login Module</h3></div></div></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							This example assumes a datasource named <span class="emphasis"><em>idpDS</em></span> has been created from <a class="link" href="how_to_setup_sso_with_saml_v2.html#one_setting_up_the_identity_store" title="1. Setting up the Identity Store">Step 1</a> and a security domain named <span class="emphasis"><em>idp-db-domain</em></span> was created in <a class="link" href="how_to_setup_sso_with_saml_v2.html#two_adding_the_security_domain" title="2. Adding the Security Domain">Step 2</a>.
+						</p></div><div class="title"><strong>CLI for Configuring the Authentication Section to use the Database Login Module</strong></div><p>
+							
+</p><pre class="programlisting">/subsystem=security/security-domain=idp-db-domain/authentication=classic/login-module=Database:add( \
+  code=Database, \
+  flag=required, \
+  module-options=[ \
+    ("dsJndiName"=&gt;"java:/idpDS"), \
+    ("principalsQuery"=&gt;"select passwd from 'sso-users' where username=?"), \
+    ("rolesQuery"=&gt;"select role, role-group from 'sso-roles' where username=?") \
+  ])</pre><p>
+
+						</p><div class="title"><strong>CLI Reloading the configuration</strong></div><p>
+							
+</p><pre class="programlisting">reload</pre><p>
+
+						</p><div class="title"><strong>Resulting XML</strong></div><p>
+							
+</p><pre class="programlisting">&lt;security-domain name="idp-db-domain" cache-type="default"&gt;
+    &lt;authentication&gt;
+        &lt;login-module code="Database" flag="required"&gt;
+            &lt;module-option name="dsJndiName" value="java:/idpDS"/&gt;
+            &lt;module-option name="principalsQuery" value="select passwd from 'sso-users' where username=?"/&gt;
+            &lt;module-option name="rolesQuery" value="select role, role-group from 'sso-roles' where username=?"/&gt;
+        &lt;/login-module&gt;
+    &lt;/authentication&gt;
+&lt;/security-domain&gt;</pre><p>
+
+						</p></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="adding_an_ldap_login_module"/>Adding an LDAP Login Module</h3></div></div></div><p>
+						The steps necessary for configuring both the LdapExtended login module (recommended) as well as the Ldap login module can be found in <a class="link" href="/documentation/en/red-hat-jboss-enterprise-application-platform/version-6.4/how-to-configure-identity-management#configuring_a_security_domain_to_use_ldap">How To Configure Identity Management in Red Hat JBoss Enterprise Application Platform 6</a>.
+					</p><p>
+						
+					</p></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring_ssl_tls_with_sps_and_idps"/>Configuring SSL/TLS with SPs and IDPs</h1></div></div></div><p>
+				The basics of SSL/TLS are covered in the <a class="link" href="/documentation/en/red-hat-jboss-enterprise-application-platform/version-6.4/security-architecture#ssl_tls_and_certificates">Red Hat JBoss Enterprise Application Platform 6 Security Architecture</a>. Adding SSL/TLS support to a browser-based SSO environment is not much different than adding it to non-SSO environment. Both the IDPs and SPs can have an HTTPS connector added to allow for traffic to be secured.
+			</p><div class="title"><strong>Add a new HTTPS connector.</strong></div><p>
+					Create a secure connector, named HTTPS, which uses the https scheme, the https socket binding (which defaults to 8443), and is set to be secure.
+				</p><pre class="programlisting">/subsystem=web/connector=HTTPS/:add(socket-binding=https,scheme=https,protocol=HTTP/1.1,secure=true)</pre><div class="title"><strong>Configure the SSL/TLS encryption certificate and keys.</strong></div><p>
+					Configure your SSL/TLS certificate, substituting your own values for the example ones. This example assumes that the keystore is copied to the server configuration directory, which is EAP_HOME/domain/configuration/ for a managed domain.
+				</p><pre class="programlisting">/subsystem=web/connector=HTTPS/ssl=configuration:add(name=https,certificate-key-file="${jboss.server.config.dir}/keystore.jks",password=SECRET, key-alias=KEY_ALIAS)</pre><div class="title"><strong>Set the protocol to TLSv1.</strong></div><p>
+					
+</p><pre class="programlisting">/subsystem=web/connector=HTTPS/ssl=configuration/:write-attribute(name=protocol,value=TLSv1)</pre><p>
+
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					The above CLI commands were done assuming a standalone instance of JBoss EAP 6. For more details on using the CLI with JBoss EAP 6 domains, please consult <span class="emphasis"><em>The Management CLI</em></span> section of the <a class="link" href="https://access.redhat.com/documentation/en-US/JBoss_Enterprise_Application_Platform/6.4/html-single/Administration_and_Configuration_Guide/index.html#sect-The_Management_CLI">Red Hat JBoss Enterprise Application Platform 6 Administration and Guide</a>.
+				</p></div><div class="title"><strong>Optional - Use an additional CertificateRoles login module on the IDP</strong></div><p>
+					Optionally, an additional login module for verifying the SSL/TLS certification (CertificateRoles) can be added to the security domain. This makes use of password stacking combined with the <span class="emphasis"><em>CertificateRoles</em></span> login module (which extends the <span class="emphasis"><em>Certificate</em></span> login module). For more details on the <span class="emphasis"><em>CertificateRoles</em></span> login module, see the <a class="link" href="https://access.redhat.com/documentation/en-US/JBoss_Enterprise_Application_Platform/6.4/html/Security_Guide/appe-Reference.html#topic4732_certificateroles">Red Hat JBoss Enterprise Application Platform 6 Security Guide</a>.
+				</p><p>
+				The configuration example below validates any provided certificate. If no certificate is provided or if the authentication fails, the procedure falls back to a user/password based authentication.
+			</p><p>
+				For example:
+			</p><pre class="programlisting">&lt;security-domain name="idp" cache-type="default"&gt;
+    &lt;authentication&gt;
+        &lt;login-module code="CertificateRoles" flag="optional"&gt;
+            &lt;module-option name="password-stacking" value="useFirstPass"/&gt;
+            &lt;module-option name="securityDomain" value="idp"/&gt;
+            &lt;module-option name="verifier" value="org.jboss.security.auth.certs.AnyCertVerifier"/&gt;
+        &lt;/login-module&gt;
+        &lt;login-module code="UsersRoles" flag="required"&gt;
+            &lt;module-option name="password-stacking" value="useFirstPass"/&gt;
+            &lt;module-option name="usersProperties" value="users.properties"/&gt;
+            &lt;module-option name="rolesProperties" value="roles.properties"/&gt;
+        &lt;/login-module&gt;
+    &lt;/authentication&gt;
+    &lt;jsse keystore-password="change_it" keystore-url="${jboss.server.config.dir}/server.keystore" truststore-password="change_it"
+        truststore-url="${jboss.server.config.dir}/server.keystore" client-auth="true"/&gt;
+&lt;/security-domain&gt;</pre><p>
+				
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="additional_features"/>Additional Features</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="saml_assertion_encryption"/>SAML Assertion Encryption</h2></div></div></div><p>
+					In addition to offering <a class="link" href="how_to_setup_sso_with_saml_v2.html#configuring_ssl_tls_with_sps_and_idps" title="Configuring SSL/TLS with SPs and IDPs">SSL/TLS encryption between IDPs and SPs</a>, the SAML assertions themselves may also be encrypted. This is useful in securing SAML v2 assertions that are transmitted in an unsecured manner (e.g. not using SSL/TLS).
+				</p><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="enabling_encryption_directly_in_idps_and_sps"/>Enabling Encryption Directly in IDPs and SPs</h3></div></div></div><p>
+						To enable encryption of security assertions directly in IDPs and SPs, the following procedures must be performed to both the IDP and SP <code class="literal">picketlink.xml</code> files:
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+								Enable Encrypt and SupportsSignatures
+							</li><li class="listitem">
+								Add Handlers
+							</li><li class="listitem">
+								Configure the KeyProvider
+							</li></ol></div><div class="title"><strong>1 Enable Encrypt and SupportsSignatures</strong></div><p>
+							To enable encryption, the <code class="literal">&lt;PicketLinkIDP&gt;</code> and <code class="literal">&lt;PicketLinkSP&gt;</code> must be updated.
+						</p><p>
+						For the IDP, add or update the <code class="literal">Encrypt</code> and <code class="literal">SupportsSignatures</code> attributes in <code class="literal">&lt;PicketLinkIDP&gt;</code> to be true:
+					</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;PicketLinkIDP xmlns="urn:picketlink:identity-federation:config:2.1"
+    Encrypt="true" SupportsSignatures="true"&gt;
+    ...
+  &lt;/PicketLinkIDP&gt;
+&lt;/PicketLink&gt;</pre><p>
+						For the SP, add or update the <code class="literal">SupportsSignatures</code> attribute in <code class="literal">&lt;PicketLinkSP&gt;</code> to be true:
+					</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;PicketLinkSP xmlns="urn:picketlink:identity-federation:config:2.1"
+        SupportsSignatures="true"&gt;
+  ...
+  &lt;/PicketLinkSP&gt;
+&lt;/PicketLink&gt;</pre><div class="title"><strong>2 Add Handlers</strong></div><p>
+							In addition, handlers must be added to <code class="literal">&lt;Handlers&gt;</code>.
+						</p><p>
+						For the IDP add <code class="literal">SAML2EncryptionHandler</code> and <code class="literal">SAML2SignatureValidationHandler</code> to the <code class="literal">picketlink.xml</code> file:
+					</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;Handlers xmlns="urn:picketlink:identity-federation:handler:config:2.1"&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2IssuerTrustHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2LogOutHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2AuthenticationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.RolesGenerationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2EncryptionHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2SignatureValidationHandler" /&gt;
+  &lt;/Handlers&gt;
+&lt;/PicketLink&gt;</pre><p>
+						For the SP add <code class="literal">SAML2SignatureGenerationHandler</code> and <code class="literal">SAML2SignatureValidationHandler</code> to the <code class="literal">picketlink.xml</code> file:
+					</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;Handlers xmlns="urn:picketlink:identity-federation:handler:config:2.1"&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2LogOutHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2AuthenticationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.RolesGenerationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2SignatureGenerationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2SignatureValidationHandler" /&gt;
+  &lt;/Handlers&gt;
+&lt;/PicketLink&gt;</pre><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+							Handlers are implemented using a Chain of Responsibility, with each individual handler performing logic on request and responses in the order defined in <code class="literal">picketlink.xml</code>. It is very important to pay attention to the order in which the handlers are configured.
+						</p></div><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+							The <span class="emphasis"><em>SAML2SignatureGenerationHandler</em></span> should not be configured in the same chain as the <span class="emphasis"><em>SAML2EncryptoinHandler</em></span>. This will cause SAML messages will be signed several times.
+						</p></div><div class="title"><strong>3 Configure Key Provider</strong></div><p>
+							Lastly, a <code class="literal">&lt;KeyProvider&gt;</code> element must be added to <span class="strong"><strong>BOTH</strong></span> <code class="literal">picketlink.xml</code> files. This element provides the location and credentials for accessing the java keystore used for encrypting and decrypting security assertions. An example of generating a java keystore can be found <a class="link" href="/documentation/en/red-hat-jboss-enterprise-application-platform/version-6.4/how-to-configure-server-security#one_create_a_keystore_to_secure_the_management_console">here</a>.
+						</p><p>
+						For the IDP the element should be added to <code class="literal">&lt;PicketLinkIDP&gt;</code>:
+					</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;PicketLinkIDP xmlns="urn:picketlink:identity-federation:config:2.1"
+    Encrypt="true" SupportsSignatures="true"&gt;
+    ...
+    &lt;KeyProvider ClassName="org.picketlink.identity.federation.core.impl.KeyStoreKeyManager"&gt;
+      &lt;Auth Key="KeyStoreURL" Value="/my_keystore.jks" /&gt;
+      &lt;Auth Key="KeyStorePass" Value="store123" /&gt;
+      &lt;Auth Key="SigningKeyPass" Value="test123" /&gt;
+      &lt;Auth Key="SigningKeyAlias" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="idp.example.com" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="localhost" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="sp1.example.com" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="sp2.example.com" Value="servercert" /&gt;
+    &lt;/KeyProvider&gt;
+    ...
+  &lt;/PicketLinkIDP&gt;
+  ...
+&lt;PicketLink&gt;</pre><p>
+						For the SP the element should be added to <code class="literal">&lt;PicketLinkSP&gt;</code>:
+					</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;PicketLinkSP xmlns="urn:picketlink:identity-federation:config:2.1"
+        SupportsSignatures="true"&gt;
+    ...
+    &lt;KeyProvider ClassName="org.picketlink.identity.federation.core.impl.KeyStoreKeyManager"&gt;
+      &lt;Auth Key="KeyStoreURL" Value="/my_keystore.jks" /&gt;
+      &lt;Auth Key="KeyStorePass" Value="store123" /&gt;
+      &lt;Auth Key="SigningKeyPass" Value="test123" /&gt;
+      &lt;Auth Key="SigningKeyAlias" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="idp.example.com" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="localhost" Value="servercert" /&gt;
+    &lt;/KeyProvider&gt;
+  ...
+  &lt;/PicketLinkSP&gt;
+&lt;/PicketLink&gt;</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							In order to properly encrypt and decrypt assertions, the IDP needs to generate signatures and the SP needs to verify those signatures as well as identify where they came from. This is accomplished via the <code class="literal">&lt;ValidatingAlias&gt;</code> element. IDPs need to have a <code class="literal">&lt;ValidatingAlias&gt;</code> for each trusted server/domain that is trusted (i.e. every entry in the <code class="literal">&lt;Trust&gt;</code> element). SPs need to have a <code class="literal">&lt;ValidatingAlias&gt;</code> for each server/domain containing an IDP.
+						</p></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="digital_signatures_in_assertions"/>Digital Signatures in Assertions</h2></div></div></div><p>
+					Digital Signatures allow IDPs to sign their security (SAML v2) assertions and have those signature (and assertions) validated by the SPs. This is useful for validating the authenticity of assertions, especially for assertions that are transmitted in an unsecured manner (e.g. not using SSL/TLS).
+				</p><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="enabling_digital_signatures_directly_in_idps_and_sps"/>Enabling Digital Signatures Directly in IDPs and SPs</h3></div></div></div><p>
+						To enable digital signatures in security assertions directly in IDPs and SPs, the following procedures must be performed to both the IDP and SP <code class="literal">picketlink.xml</code> files:
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+								Enable SupportsSignatures
+							</li><li class="listitem">
+								Add Handlers
+							</li><li class="listitem">
+								Configure the KeyProvider
+							</li></ol></div><div class="title"><strong>1 Enable SupportsSignatures</strong></div><p>
+							To enable digital signatures, the <code class="literal">&lt;PicketLinkIDP&gt;</code> and <code class="literal">&lt;PicketLinkSP&gt;</code> must be updated.
+						</p><p>
+						For the IDP and SP, add or update the <code class="literal">SupportsSignatures</code> attribute in <code class="literal">&lt;PicketLinkSP&gt;</code> to be true:
+					</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;PicketLinkIDP xmlns="urn:picketlink:identity-federation:config:2.1"
+    SupportsSignatures="true"&gt;
+    ...
+  &lt;/PicketLinkIDP&gt;
+&lt;/PicketLink&gt;</pre><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;PicketLinkSP xmlns="urn:picketlink:identity-federation:config:2.1"
+        SupportsSignatures="true"&gt;
+  ...
+  &lt;/PicketLinkSP&gt;
+&lt;/PicketLink&gt;</pre><div class="title"><strong>2 Add Handlers</strong></div><p>
+							In addition, handlers must be added to <code class="literal">&lt;Handlers&gt;</code>.
+						</p><p>
+						For the IDP and SP, add <code class="literal">SAML2SignatureGenerationHandler</code> and <code class="literal">SAML2SignatureValidationHandler</code> to the <code class="literal">picketlink.xml</code> file:
+					</p><div class="title"><strong>IDP picketlink.xml</strong></div><p>
+							
+</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;Handlers xmlns="urn:picketlink:identity-federation:handler:config:2.1"&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2IssuerTrustHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2LogOutHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2AuthenticationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.RolesGenerationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2SignatureGenerationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2SignatureValidationHandler" /&gt;
+  &lt;/Handlers&gt;
+&lt;/PicketLink&gt;</pre><p>
+
+						</p><div class="title"><strong>SP picketlink.xml</strong></div><p>
+							
+</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;Handlers xmlns="urn:picketlink:identity-federation:handler:config:2.1"&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2LogOutHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2AuthenticationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.RolesGenerationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2SignatureGenerationHandler" /&gt;
+    &lt;Handler class="org.picketlink.identity.federation.web.handlers.saml2.SAML2SignatureValidationHandler" /&gt;
+  &lt;/Handlers&gt;
+&lt;/PicketLink&gt;</pre><p>
+
+						</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+							Handlers are implemented using a Chain of Responsibility, with each individual handler performing logic on request and responses in the order defined in <code class="literal">picketlink.xml</code>. It is very important to pay attention to the order in which the handlers are configured.
+						</p></div><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+							The <span class="emphasis"><em>SAML2SignatureGenerationHandler</em></span> should not be configured in the same chain as the <span class="emphasis"><em>SAML2EncryptionHandler</em></span>. This will cause SAML messages will be signed several times.
+						</p></div><div class="title"><strong>3 Configure Key Provider</strong></div><p>
+							Lastly, a <code class="literal">&lt;KeyProvider&gt;</code> element must be added to <span class="strong"><strong>BOTH</strong></span> <code class="literal">picketlink.xml</code> files. This element provides the location and credentials for accessing the java keystore used for signing security assertions. An example of generating a java keystore can be found <a class="link" href="/documentation/en/red-hat-jboss-enterprise-application-platform/version-6.4/how-to-configure-server-security#one_create_a_keystore_to_secure_the_management_console">here</a>.
+						</p><p>
+						For the IDP the element should be added to <code class="literal">&lt;PicketLinkIDP&gt;</code>:
+					</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;PicketLinkIDP xmlns="urn:picketlink:identity-federation:config:2.1"
+    SupportsSignatures="true"&gt;
+    ...
+    &lt;KeyProvider ClassName="org.picketlink.identity.federation.core.impl.KeyStoreKeyManager"&gt;
+      &lt;Auth Key="KeyStoreURL" Value="/my_keystore.jks" /&gt;
+      &lt;Auth Key="KeyStorePass" Value="store123" /&gt;
+      &lt;Auth Key="SigningKeyPass" Value="test123" /&gt;
+      &lt;Auth Key="SigningKeyAlias" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="idp.example.com" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="localhost" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="sp1.example.com" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="sp2.example.com" Value="servercert" /&gt;
+    &lt;/KeyProvider&gt;
+    ...
+  &lt;/PicketLinkIDP&gt;
+  ...
+&lt;PicketLink&gt;</pre><p>
+						For the SP the element should be added to <code class="literal">&lt;PicketLinkSP&gt;</code>:
+					</p><pre class="programlisting">&lt;PicketLink xmlns="urn:picketlink:identity-federation:config:2.1"&gt;
+  ...
+  &lt;PicketLinkSP xmlns="urn:picketlink:identity-federation:config:2.1"
+        SupportsSignatures="true"&gt;
+    ...
+    &lt;KeyProvider ClassName="org.picketlink.identity.federation.core.impl.KeyStoreKeyManager"&gt;
+      &lt;Auth Key="KeyStoreURL" Value="/my_keystore.jks" /&gt;
+      &lt;Auth Key="KeyStorePass" Value="store123" /&gt;
+      &lt;Auth Key="SigningKeyPass" Value="test123" /&gt;
+      &lt;Auth Key="SigningKeyAlias" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="idp.example.com" Value="servercert" /&gt;
+      &lt;ValidatingAlias Key="localhost" Value="servercert" /&gt;
+    &lt;/KeyProvider&gt;
+  ...
+  &lt;/PicketLinkSP&gt;
+&lt;/PicketLink&gt;</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							In order to properly sign and check assertions, the IDP needs to generate signatures and the SP needs to verify those signatures as well as identify where they came from. This is accomplished via the <code class="literal">&lt;ValidatingAlias&gt;</code> element. IDPs need to have a <code class="literal">&lt;ValidatingAlias&gt;</code> for each trusted server/domain that is trusted (i.e. every entry in the <code class="literal">&lt;Trust&gt;</code> element). SPs need to have a <code class="literal">&lt;ValidatingAlias&gt;</code> for each server/domain containing an IDP.
+						</p></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="handling_ajax_requests"/>Handling AJAX Requests</h2></div></div></div><p>
+					In certain instances, SPs may need to recieve AJAX requests to secured resources. This is handled automatically without the need of any additional configuration. so authenticated and authorized users are able to make AJAX calls without issue. This is accomplished by checking for the existence of the <span class="emphasis"><em>X-Requested-With</em></span> header in the request. In addition, cases where users are not authenticated, or if the request contains the header <span class="emphasis"><em>XMLHttpRequest</em></span>, the IDP will respond with a 403 (Forbidden) status code instead of the login page.
+				</p></div></div></div></body></html>

@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 9. JBoss MBean Services</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="chap-JBoss_MBean_Services">
+      ⁠</a>Chapter 9. JBoss MBean Services</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Writing_JBoss_MBean_Services">
+      ⁠</a>9.1. Writing JBoss MBean Services</h1></div></div></div><div class="para">
+		Writing a custom MBean service that relies on a JBoss service requires the service interface method pattern. JBoss MBean service interface method pattern consists of a set of life cycle operations which inform an MBean service when it can <code class="literal">create</code>, <code class="literal">start</code>, <code class="literal">stop</code>, and <code class="literal">destroy</code> itself.
+	</div><div class="para">
+		You can manage the dependency state using any of the following approaches:
+	</div><div xmlns:d="http://docbook.org/ns/docbook" class="itemizedlist"><ul><li class="listitem"><div class="para">
+				If you want specific methods to be called on your MBean, declare those methods in your MBean interface. This approach allows your MBean implementation to avoid dependencies on JBoss specific classes
+			</div></li><li class="listitem"><div class="para">
+				If you are not bothered about dependencies on JBoss specific classes then you may have your MBean interface extend the <code class="literal">ServiceMBean</code> interface and <code class="classname">ServiceMBeanSupport</code> class. The <code class="classname">ServiceMBeanSupport</code> class provides implementations of the service lifecycle methods like <code class="methodname">create</code>, <code class="methodname">start</code> and <code class="methodname">stop</code>. To handle a specific event like the <code class="methodname">start()</code>event, you need to override <code class="methodname">startService()</code> method provided by the ServiceMBeanSupport class.
+			</div></li></ul></div><div class="para RoleCreateBugPara">
+		<a href="https://bugzilla.redhat.com/enter_bug.cgi?cf_environment=Build+Name%3A+23088%2C+Red+Hat+Development+Guide-6.4%0ABuild+Date%3A+16-11-2017+09%3A13%3A01%0ATopic+ID%3A+30497-633356+%5BLatest%5D&amp;comment=Title%3A+Writing+JBoss+MBean+Services%0A%0ADescribe+the+issue%3A%0A%0A%0ASuggestions+for+improvement%3A%0A%0A%0AAdditional+information%3A&amp;cf_build_id=30497-633356+23+Apr+2014+20%3A57+en-US+%5BLatest%5D&amp;product=JBoss+Enterprise+Application+Platform+6&amp;component=Documentation&amp;version=6.4.0">Report a bug</a>
+	</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="A_Standard_MBean_Example">
+      ⁠</a>9.2. A Standard MBean Example</h1></div></div></div><div class="para">
+		This section develops two sample MBean services packaged together in a service archive (<code class="literal">.sar</code>).
+	</div><div class="para">
+		<code class="classname">ConfigServiceMBean</code> interface declares specific methods like the <code class="methodname">start</code>, <code class="methodname">getTimeout</code> and <code class="methodname">stop</code> methods to <code class="literal">start</code>, <code class="literal">hold</code> and <code class="literal">stop</code> the MBean correctly without using any JBoss specific classes. <code class="classname">ConfigService </code>class implements <code class="classname">ConfigServiceMBean</code> interface and consequently implements the methods used within that interface.
+	</div><div class="para">
+		<code class="classname">PlainThread</code> class extends <code class="classname">ServiceMBeanSupport</code> class and implements <code class="classname">PlainThreadMBean</code> interface. <code class="classname">PlainThread</code> starts a thread and uses <code class="methodname">ConfigServiceMBean.getTimeout()</code> to determine how long the thread should sleep.
+	</div><div class="example"><a id="idm140550730310336">
+      ⁠</a><p class="title"><strong>Example 9.1. Sample MBean services</strong></p><div class="example-contents"><pre class="programlisting">
+package org.jboss.example.mbean.support;
+
+public interface ConfigServiceMBean {
+
+    int getTimeout();
+
+    void start();
+
+    void stop();
+
+}
+
+package org.jboss.example.mbean.support;
+
+public class ConfigService implements ConfigServiceMBean {
+    int timeout;
+
+
+    @Override
+    public int getTimeout() {
+        return timeout;
+    }
+
+    @Override
+    public void start() {
+        //Create a random number between 3000 and 6000 milliseconds
+        timeout = (int)Math.round(Math.random() * 3000) + 3000;
+        System.out.println("Random timeout set to " + timeout + " seconds");
+    }
+
+    @Override
+    public void stop() {
+        timeout = 0;
+    }
+
+}
+  
+package org.jboss.example.mbean.support;
+
+import org.jboss.system.ServiceMBean;
+
+public interface PlainThreadMBean extends ServiceMBean {
+    void setConfigService(ConfigServiceMBean configServiceMBean);
+}
+
+package org.jboss.example.mbean.support;
+
+import org.jboss.system.ServiceMBeanSupport;
+
+public class PlainThread extends ServiceMBeanSupport implements PlainThreadMBean {
+
+    private ConfigServiceMBean configService;
+    private Thread thread;
+    private volatile boolean done;
+
+    @Override
+    public void setConfigService(ConfigServiceMBean configService) {
+        this.configService = configService;
+    }
+
+    @Override
+    protected void startService() throws Exception {
+        System.out.println("Starting Plain Thread MBean");
+        done = false;
+        thread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    while (!done) {
+                        System.out.println("Sleeping....");
+                        Thread.sleep(configService.getTimeout());
+                        System.out.println("Slept!");
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        });
+        thread.start();
+    }
+
+    @Override
+    protected void stopService() throws Exception {
+        System.out.println("Stopping Plain Thread MBean");
+        done = true;
+    }
+
+
+}
+</pre></div></div><div class="para">
+		The <code class="literal">jboss-service.xml</code> descriptor shows how <code class="classname">ConfigService</code> class is injected into <code class="classname">PlainThread</code> class using <code class="literal">inject</code> tag. The <code class="literal">inject</code> tag establishes a dependency between <code class="classname">PlainThreadMBean</code> and <code class="classname">ConfigServiceMBean</code> and thus allows <code class="classname">PlainThreadMBean</code> use <code class="classname">ConfigServiceMBean</code> easily.
+	</div><div class="example"><a id="idm140550801752400">
+      ⁠</a><p class="title"><strong>Example 9.2. JBoss-service.xml Service Descriptor</strong></p><div class="example-contents"><pre class="programlisting"><span xmlns="" class="line">​</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;server</span><span xmlns="" class="perl_Others"> xmlns:xsi=</span><span xmlns="" class="perl_String">"http://www.w3.org/2001/XMLSchema-instance"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">        xsi:schemaLocation=</span><span xmlns="" class="perl_String">"urn:jboss:service:7.0 jboss-service_7_0.xsd"</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Others">        xmlns=</span><span xmlns="" class="perl_String">"urn:jboss:service:7.0"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span> <span xmlns="" class="perl_Keyword">&lt;mbean</span><span xmlns="" class="perl_Others"> code=</span><span xmlns="" class="perl_String">"org.jboss.example.mbean.support.ConfigService"</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"jboss.support:name=ConfigBean"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span> <span xmlns="" class="perl_Keyword">&lt;mbean</span><span xmlns="" class="perl_Others"> code=</span><span xmlns="" class="perl_String">"org.jboss.example.mbean.support.PlainThread"</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"jboss.support:name=ThreadBean"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;attribute</span><span xmlns="" class="perl_Others"> name=</span><span xmlns="" class="perl_String">"configService"</span><span xmlns="" class="perl_Keyword">&gt;</span>
+<span xmlns="" class="line">​</span>   <span xmlns="" class="perl_Keyword">&lt;inject</span><span xmlns="" class="perl_Others"> bean=</span><span xmlns="" class="perl_String">"jboss.support:name=ConfigBean"</span><span xmlns="" class="perl_Keyword">/&gt;</span>
+<span xmlns="" class="line">​</span>  <span xmlns="" class="perl_Keyword">&lt;/attribute&gt;</span>
+<span xmlns="" class="line">​</span> <span xmlns="" class="perl_Keyword">&lt;/mbean&gt;</span>
+<span xmlns="" class="line">​</span><span xmlns="" class="perl_Keyword">&lt;/server&gt;</span>
+</pre></div></div><div class="para">
+		After writing the sample MBeans you can package the classes and the <code class="literal">jboss-service.xml</code> descriptor in the <code class="literal">META-INF</code> folder of a service archive (<code class="literal">.sar</code>).
+	</div><div class="para RoleCreateBugPara">
+		<a href="https://bugzilla.redhat.com/enter_bug.cgi?cf_environment=Build+Name%3A+23088%2C+Red+Hat+Development+Guide-6.4%0ABuild+Date%3A+16-11-2017+09%3A13%3A01%0ATopic+ID%3A+30498-635265+%5BLatest%5D&amp;comment=Title%3A+A+Standard+MBean+Example%0A%0ADescribe+the+issue%3A%0A%0A%0ASuggestions+for+improvement%3A%0A%0A%0AAdditional+information%3A&amp;cf_build_id=30498-635265+30+Apr+2014+04%3A42+en-US+%5BLatest%5D&amp;product=JBoss+Enterprise+Application+Platform+6&amp;component=Documentation&amp;version=6.4.0">Report a bug</a>
+	</div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Deploying_JBoss_MBean_Services">
+      ⁠</a>9.3. Deploying JBoss MBean Services</h1></div></div></div><div class="para">
+		To build and deploy the sample MBeans (<code class="filename">ServiceMBeanTest.sar</code>) in <code class="literal">Domain</code> mode use the following commands: 
+<pre class="programlisting">[domain@localhost:9999 /] deploy ~/Desktop/<code class="filename">ServiceMBeanTest.sar</code></pre>
+		 
+<pre class="programlisting">[domain@localhost:9999 /] deploy ~/Desktop/<code class="filename">ServiceMBeanTest.sar --all-server-groups</code></pre>
+
+	</div><div class="para">
+		To build and deploy the sample MBeans (<code class="filename">ServiceMBeanTest.sar</code>) in <code class="literal">Standalone</code> mode use the following command:
+	</div><pre class="programlisting">[standalone@localhost:9999 /] deploy ~/Desktop/<code class="filename">ServiceMBeanTest.sar</code></pre><div class="para">
+		To undeploy the sample MBeans use the following command:
+	</div><pre class="programlisting">[standalone@localhost:9999 /] undeploy <code class="filename">ServiceMBeanTest.sar</code></pre><div class="para RoleCreateBugPara">
+		<a href="https://bugzilla.redhat.com/enter_bug.cgi?cf_environment=Build+Name%3A+23088%2C+Red+Hat+Development+Guide-6.4%0ABuild+Date%3A+16-11-2017+09%3A13%3A01%0ATopic+ID%3A+30548-634331+%5BLatest%5D&amp;comment=Title%3A+Deploying+JBoss+MBean+Services%0A%0ADescribe+the+issue%3A%0A%0A%0ASuggestions+for+improvement%3A%0A%0A%0AAdditional+information%3A&amp;cf_build_id=30548-634331+29+Apr+2014+02%3A14+en-US+%5BLatest%5D&amp;product=JBoss+Enterprise+Application+Platform+6&amp;component=Documentation&amp;version=6.4.0">Report a bug</a>
+	</div></div></div></body></html>

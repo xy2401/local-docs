@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title xmlns:d="http://docbook.org/ns/docbook">Chapter 25. Externalize Sessions</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta xmlns:d="http://docbook.org/ns/docbook" name="generator" content="publican v4.3.3"/><meta xmlns:d="http://docbook.org/ns/docbook" name="package" content=""/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="chap-Externalize_Sessions">
+      ⁠</a>Chapter 25. Externalize Sessions</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="Externalize_HTTP_Session_from_JBoss_EAP_to_JBoss_Data_Grid">
+      ⁠</a>25.1. Externalize HTTP Session from JBoss EAP to JBoss Data Grid</h1></div></div></div><div class="para">
+		You can use Red Hat JBoss Data Grid as an external cache container for application specific data, such as HTTP sessions, in Red Hat JBoss Enterprise Application Platform (JBoss EAP) 6.4 and later. This allows scaling of the data layer independent of the application, and enables different EAP clusters, that may reside in various domains, to access data from the same JBoss Data Grid cluster. Additionally, other applications can interface with the caches presented by Red Hat JBoss Data Grid.
+	</div><div class="para">
+		The below procedure applies for both standalone and domain mode of EAP; however, in domain mode each server group requires a unique remote cache configured. While multiple server groups can utilize the same Red Hat JBoss Data Grid cluster the respective remote caches will be unique to the EAP server group.
+	</div><div xmlns:d="http://docbook.org/ns/docbook" class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+			For each distributable application, an entirely new cache must be created. It can be created in an existing cache container, for example, web.
+		</div></div></div><div xmlns:d="http://docbook.org/ns/docbook" class="procedure"><a id="idm139978448855008">
+      ⁠</a><p class="title"><strong>Procedure 25.1. Externalize HTTP Sessions</strong></p><ol class="1"><li class="step"><div class="para">
+				Ensure the remote cache containers are defined in EAP's <code class="literal">infinispan</code> subsystem; in the example below the <em class="parameter"><code>cache</code></em> attribute in the <code class="literal">remote-store</code> element defines the cache name on the remote JBoss Data Grid server: 
+<pre class="programlisting">&lt;subsystem xmlns="urn:jboss:domain:infinispan:4.0"&gt;
+  [...]
+  &lt;cache-container name="web" default-cache="dist" module="org.jboss.as.clustering.web.infinispan" statistics-enabled="true"&gt;
+    &lt;transport lock-timeout="60000"/&gt;
+    &lt;invalidation-cache name="jdg" mode="SYNC"&gt;
+      &lt;locking isolation="REPEATABLE_READ"/&gt;
+      &lt;transaction mode="BATCH"/&gt;
+      &lt;remote-store remote-servers="remote-jdg-server1 remote-jdg-server2" 
+                    cache="default" socket-timeout="60000" 
+                    preload="true" passivation="false" purge="false" shared="true"/&gt;
+    &lt;/replicated-cache&gt;
+  &lt;/cache-container&gt;
+&lt;/subsystem&gt;</pre>
+
+			</div></li><li class="step"><div class="para">
+				Define the location of the remote Red Hat JBoss Data Grid server by adding the networking information to the <code class="literal">socket-binding-group</code>: 
+<pre class="programlisting">&lt;socket-binding-group ...&gt;
+  &lt;outbound-socket-binding name="remote-jdg-server1"&gt;
+    &lt;remote-destination host="JDGHostName1" port="11222"/&gt;
+  &lt;/outbound-socket-binding&gt;
+  &lt;outbound-socket-binding name="remote-jdg-server2"&gt;
+    &lt;remote-destination host="JDGHostName2" port="11222"/&gt;
+  &lt;/outbound-socket-binding&gt;
+&lt;/socket-binding-group&gt;</pre>
+
+			</div></li><li class="step"><div class="para">
+				Repeat the above steps for each cache-container and each Red Hat JBoss Data Grid server. Each server defined must have a separate <code class="literal">&lt;outbound-socket-binding&gt;</code> element defined.
+			</div></li><li class="step"><div class="para">
+				Add passivation and cache information into the application's <code class="literal">jboss-web.xml</code>. In the following example <code class="literal">web</code> is the name of the cache container, and <code class="literal">jdg</code> is the name of the default cache located in this container. An example file is shown below: 
+<pre class="programlisting">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;jboss-web xmlns="http://www.jboss.com/xml/ns/javaee"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:schemaLocation="http://www.jboss.com/xml/ns/javaee http://www.jboss.org/j2ee/schema/jboss-web_10_0.xsd"
+           version="10.0"&gt;
+ 
+    &lt;replication-config&gt;
+        &lt;replication-granularity&gt;SESSION&lt;/replication-granularity&gt;
+        &lt;cache-name&gt;web.jdg&lt;/cache-name&gt;
+    &lt;/replication-config&gt;
+    
+&lt;/jboss-web&gt;</pre>
+				 <div class="note"><div class="admonition_header"><p><strong>Note</strong></p></div><div class="admonition"><div class="para">
+						The passivation timeouts above are provided assuming that a typical session is abandoned within 15 minutes and uses the default HTTP session timeout in JBoss EAP of 30 minutes. These values may need to be adjusted based on each application's workload.
+					</div></div></div>
+
+			</div></li></ol></div><div class="para RoleCreateBugPara">
+		<a href="https://bugzilla.redhat.com/enter_bug.cgi?cf_environment=Build+Name%3A+23087%2C+Red+Hat+Administration+and+Configuration+Guide-6.4%0ABuild+Date%3A+16-11-2017+09%3A12%3A46%0ATopic+ID%3A+44411-781571+%5BLatest%5D&amp;comment=Title%3A+Externalize+HTTP+Session+from+JBoss+EAP+to+JBoss+Data+Grid%0A%0ADescribe+the+issue%3A%0A%0A%0ASuggestions+for+improvement%3A%0A%0A%0AAdditional+information%3A&amp;cf_build_id=44411-781571+14+Nov+2017+09%3A36+en-US+%5BLatest%5D&amp;product=JBoss+Enterprise+Application+Platform+6&amp;component=Documentation&amp;version=6.4.0">Report a bug</a>
+	</div></div></div></body></html>

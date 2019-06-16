@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 3. Additional Features</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="additional_features"/>Chapter 3. Additional Features</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="adding_a_form_login_as_a_fallback"/>Adding a FORM Login as a Fallback</h1></div></div></div><p>
+				JBoss EAP 6 and applications deployed to it can also configure a FORM login authentication mechanism to use as a fallback. This allows applications to present a login page for authentication in cases where a Keberos/SPNEGO tokens are not present. This authentication happens independent of the Kerberos authentication. As a result, depending on how the FORM login fallback is configured, users may require separate credentials to authenticate via this method.
+			</p><p>
+				The following steps are required to configure FORM login as a fallback:
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						<a class="link" href="additional_features.html#one_configure_red_hat_jboss_enterprise_application_platform_6_and_the_web_application_to_use_kerberos_and_spnego" title="1. Configure Red Hat JBoss Enterprise Application Platform 6 and the Web Application to Use Kerberos and SPNEGO">Configure Red Hat JBoss Enterprise Application Platform 6 and the web application to use Kerberos and SPNEGO</a>
+					</li><li class="listitem">
+						<a class="link" href="additional_features.html#two_update_the_security_domain_for_fallback_authentication" title="2. Update the Security Domain for Fallback Authentication">Update the Security Domain for Fallback Authentication</a>
+					</li><li class="listitem">
+						<a class="link" href="additional_features.html#three_add_the_login_and_error_pages" title="3. Add the Login and Error Pages">Add the login and error pages</a>
+					</li><li class="listitem">
+						<a class="link" href="additional_features.html#four_modify_the_web_xml" title="4. Modify the web.xml">Modify the web.xml</a>
+					</li></ol></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					The fallback to FORM logic is available in the case when no SPNEGO (or NTLM) tokens are present or SPNEGO token is present but from another KDC.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="one_configure_red_hat_jboss_enterprise_application_platform_6_and_the_web_application_to_use_kerberos_and_spnego"/>1. Configure Red Hat JBoss Enterprise Application Platform 6 and the Web Application to Use Kerberos and SPNEGO</h2></div></div></div><p>
+					Please refer to the <a class="link" href="how_to_setup_sso_for_red_hat_jboss_enterprise_application_platform_6_with_kerberos.html" title="Chapter 2. How to Setup SSO for Red Hat JBoss Enterprise Application Platform 6 with Kerberos">previous section</a> for the steps required to configure JBoss EAP 6 and web applications to use Kerberos and SPNEGO for authentication and authorization. ⁠
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="two_update_the_security_domain_for_fallback_authentication"/>2. Update the Security Domain for Fallback Authentication</h2></div></div></div><p>
+					The web application security domain must be configured to support a fallback login mechanism. This requires the following steps:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							Add a new security domain to server as a fallback authentication method.
+						</li><li class="listitem">
+							Add a <span class="emphasis"><em>usernamePasswordDomain</em></span> module option to the web application security domain that points to the fallback domain.
+						</li></ul></div><div class="title"><strong>Example Security Domain Configured with a Fallback Security Domain</strong></div><p>
+						
+</p><pre class="programlisting">&lt;security-domain name="app-spnego" cache-type="default"&gt;
+  &lt;authentication&gt;
+    &lt;login-module code="SPNEGO" flag="requisite"&gt;
+      &lt;module-option name="password-stacking" value="useFirstPass"/&gt;
+      &lt;module-option name="serverSecurityDomain" value="host"/&gt;
+      &lt;module-option name="usernamePasswordDomain" value="app-fallback"/&gt;
+    &lt;/login-module&gt;
+    &lt;!--login module for mapping roles --&gt;
+    &lt;login-module code="UsersRoles" flag="required"&gt;
+      &lt;module-option name="password-stacking" value="useFirstPass"/&gt;
+      &lt;module-option name="usersProperties"
+        value="file:${jboss.server.config.dir}/users.properties"/&gt;
+      &lt;module-option name="rolesProperties"
+        value="file:${jboss.server.config.dir}/roles.properties"/&gt;
+    &lt;/login-module&gt;
+  &lt;/authentication&gt;
+&lt;/security-domain&gt;
+&lt;security-domain name="app-fallback" cache-type="default"&gt;
+  &lt;authentication&gt;
+    &lt;login-module code="UsersRoles" flag="required"&gt;
+      &lt;module-option name="usersProperties"
+        value="file:${jboss.server.config.dir}/fallback-users.properties"/&gt;
+      &lt;module-option name="rolesProperties"
+        value="file:${jboss.server.config.dir}/fallback-roles.properties"/&gt;
+    &lt;/login-module&gt;
+  &lt;/authentication&gt;
+&lt;/security-domain&gt;</pre><p>
+
+					</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="three_add_the_login_and_error_pages"/>3. Add the Login and Error Pages</h2></div></div></div><p>
+					To use FORM login, a login and error page are required. These files are added to web application and are used in the authentication process.
+				</p><div class="title"><strong>Example <code class="literal">login.jsp</code> file:</strong></div><p>
+						
+</p><pre class="programlisting">&lt;html&gt;
+&lt;head&gt;&lt;/head&gt;
+&lt;body&gt;
+  &lt;form id="login_form" name="login_form" method="post"
+  action="j_security_check" enctype="application/x-www-form-urlencoded"&gt;
+    &lt;center&gt;
+	  &lt;p&gt;Please login to proceed.&lt;/p&gt;
+	&lt;/center&gt;
+	&lt;div style="margin-left: 15px;"&gt;
+	  &lt;p&gt;
+	    &lt;label for="username"&gt;Username&lt;/label&gt;
+		&lt;br /&gt;
+		&lt;input id="username" type="text" name="j_username"/&gt;
+	  &lt;/p&gt;
+	  &lt;p&gt;
+	    &lt;label for="password"&gt;Password&lt;/label&gt;
+		&lt;br /&gt;
+		&lt;input id="password" type="password" name="j_password" value=""/&gt;
+	  &lt;/p&gt;
+	  &lt;center&gt;
+	    &lt;input id="submit" type="submit" name="submit" value="Login"/&gt;
+	  &lt;/center&gt;
+	&lt;/div&gt;
+  &lt;/form&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre><p>
+
+					</p><div class="title"><strong>Example <code class="literal">error.jsp</code> file:</strong></div><p>
+						
+</p><pre class="programlisting">&lt;html&gt;
+&lt;head&gt;&lt;/head&gt;
+&lt;body&gt;
+  &lt;p&gt;Login failed, please go back and try again.&lt;/p&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre><p>
+
+					</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="four_modify_the_web_xml"/>4. Modify the web.xml</h2></div></div></div><p>
+					After adding the login and error pages to the web application, the <code class="literal">web.xml</code> must be updated to use these files for FORM login. A <code class="literal">&lt;form-login-config&gt;</code> element is added to <code class="literal">&lt;login-config&gt;</code> and the paths to the the login and error pages are specified as <code class="literal">&lt;form-login-page&gt;</code> and <code class="literal">&lt;form-error-page&gt;</code> elements.
+				</p><div class="title"><strong>Example updated <code class="literal">web.xml</code> file:</strong></div><p>
+						
+</p><pre class="programlisting">&lt;web-app&gt;
+  &lt;display-name&gt;App1&lt;/display-name&gt;
+  &lt;description&gt;App1&lt;/description&gt;
+  &lt;!-- Define a security constraint that requires the All role to access resources --&gt;
+  &lt;security-constraint&gt;
+    &lt;display-name&gt;Security Constraint on Conversation&lt;/display-name&gt;
+    &lt;web-resource-collection&gt;
+      &lt;web-resource-name&gt;examplesWebApp&lt;/web-resource-name&gt;
+      &lt;url-pattern&gt;/*&lt;/url-pattern&gt;
+    &lt;/web-resource-collection&gt;
+    &lt;auth-constraint&gt;
+      &lt;role-name&gt;All&lt;/role-name&gt;
+    &lt;/auth-constraint&gt;
+  &lt;/security-constraint&gt;
+&lt;!-- Define the Login Configuration for this Application --&gt;
+  &lt;login-config&gt;
+    &lt;auth-method&gt;SPNEGO&lt;/auth-method&gt;
+    &lt;realm-name&gt;SPNEGO&lt;/realm-name&gt;
+    &lt;form-login-config&gt;
+      &lt;form-login-page&gt;/login.jsp&lt;/form-login-page&gt;
+      &lt;form-error-page&gt;/error.jsp&lt;/form-error-page&gt;
+    &lt;/form-login-config&gt;
+  &lt;/login-config&gt;
+&lt;!-- Security roles referenced by this web application --&gt;
+  &lt;security-role&gt;
+    &lt;description&gt; role required to log in to the Application&lt;/description&gt;
+    &lt;role-name&gt;All&lt;/role-name&gt;
+  &lt;/security-role&gt;
+&lt;/web-app&gt;</pre><p>
+
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="securing_the_management_interfaces_with_kerberos"/>Securing the Management Interfaces with Kerberos</h1></div></div></div><p>
+				In addition to providing Kerberos authentication in security domains, JBoss EAP 6 also provides the ability to secure the management interfaces using Kerberos. To enable Kerberos authentication on the management interfaces, the following steps must be performed:
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						<a class="link" href="additional_features.html#one_enable_relavant_system_properties" title="1. Enable Relavant System Properties">Enable Relavant System Properties</a>
+					</li><li class="listitem">
+						<a class="link" href="additional_features.html#two_adding_the_kerberos_server_identity_to_the_security_realm" title="2. Adding the Kerberos Server Identity to the Security Realm">Add the Kerberos Server Identity to the Security Realm</a>
+					</li><li class="listitem">
+						<a class="link" href="additional_features.html#three_updating_authentication_method_in_the_security_realm" title="3. Updating Authentication Method in the Security Realm">Update Authentication Method in the Security Realm</a>
+					</li></ol></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					The CLI commands shown below were done assuming a standalone instance of JBoss EAP 6. For more details on using the CLI with JBoss EAP 6 domains, please consult <span class="emphasis"><em>The Management CLI</em></span> section of the <a class="link" href="https://access.redhat.com/documentation/en-US/JBoss_Enterprise_Application_Platform/6.4/html-single/Administration_and_Configuration_Guide/index.html#sect-The_Management_CLI">Red Hat JBoss Enterprise Application Platform 6 Administration and Configuration Guide</a>.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="one_enable_relavant_system_properties"/>1. Enable Relavant System Properties</h2></div></div></div><p>
+					As discussed in a <a class="link" href="how_to_setup_sso_for_red_hat_jboss_enterprise_application_platform_6_with_kerberos.html#three_configuring_relevant_system_properties" title="3. Configuring Relevant System Properties">previous section</a>, enable any needed JBoss EAP 6 system properties for connecting to the Kerberos server.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="two_adding_the_kerberos_server_identity_to_the_security_realm"/>2. Adding the Kerberos Server Identity to the Security Realm</h2></div></div></div><p>
+					Before Kerberos authentication can be used in a security realm, a connection to a Kerberos server must be added. The following example shows how to add a Kerberos server identity to the existing Management Realm.
+				</p><div class="title"><strong>Example CLI for Adding a Server Identity to a Security Realm</strong></div><p>
+						
+</p><pre class="programlisting">/core-service=management/security-realm=ManagementRealm/server-identity=kerberos:add</pre><p>
+
+					</p><pre class="programlisting">/core-service=management/security-realm=ManagementRealm/server-identity=kerberos/ \
+keytab=host\/testserver@MY_REALM:add( \
+path=/home\/username\/service.keytab, \
+debug=true)</pre><pre class="programlisting">reload</pre><div class="title"><strong>Resulting XML</strong></div><p>
+						
+</p><pre class="programlisting">&lt;security-realm name="ManagementRealm"&gt;
+    &lt;server-identities&gt;
+        &lt;kerberos&gt;
+            &lt;keytab principal="host/testserver@MY_REALM"
+                    path="/home/username/service.keytab"
+                    debug="true"/&gt;
+        &lt;/kerberos&gt;
+    &lt;/server-identities&gt;
+    ...
+&lt;/security-realm&gt;</pre><p>
+
+					</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="three_updating_authentication_method_in_the_security_realm"/>3. Updating Authentication Method in the Security Realm</h2></div></div></div><p>
+					Once the Kerberos server identity has been properly configured, the authentication method in the security realm needs to be updated to use it.
+				</p><div class="title"><strong>Example CLI for Adding Kerberos Authentication to a Security Realm</strong></div><p>
+						
+</p><pre class="programlisting">/core-service=management/security-realm=ManagementRealm/authentication=kerberos:add</pre><p>
+
+					</p><pre class="programlisting">reload</pre><div class="title"><strong>Resulting XML</strong></div><p>
+						
+</p><pre class="programlisting">&lt;security-realm name="ManagementRealm"&gt;
+    &lt;server-identities&gt;
+        &lt;kerberos&gt;
+            &lt;keytab principal="host/testserver@MY_REALM"
+                    path="/home/username/service.keytab"
+                    debug="true"/&gt;
+        &lt;/kerberos&gt;
+    &lt;/server-identities&gt;
+    &lt;authentication&gt;
+        &lt;local default-user="$local" skip-group-loading="true"/&gt;
+        &lt;kerberos/&gt;
+        &lt;properties path="mgmt-users.properties" relative-to="jboss.server.config.dir"/&gt;
+    &lt;/authentication&gt;
+    ...
+&lt;/security-realm&gt;</pre><p>
+
+					</p></div></div></div></body></html>
