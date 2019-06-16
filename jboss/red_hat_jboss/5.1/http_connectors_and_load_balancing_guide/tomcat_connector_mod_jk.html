@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 2. Apache Tomcat Connector (mod_jk)</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="tomcat_connector_mod_jk"/>Chapter 2. Apache Tomcat Connector (mod_jk)</h1></div></div></div><p>
+			The Apache Tomcat Connector, <span class="strong"><strong>mod_jk</strong></span>, is a plug-in designed to allow request forwarding from Apache HTTP Server to a Servlet container. The module also supports load-balancing HTTP calls to a set of Servlet containers while maintaining sticky sessions.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="downloading_and_installing_mod_jk"/>Downloading and Installing mod_jk</h1></div></div></div><p>
+				The mod_jk module is included in the Apache HTTP Server part of a JBoss Core Services installation.
+			</p><p>
+				Follow the procedures in the JBoss Core Services <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_jboss_core_services/2.4.29/html-single/apache_http_server_installation_guide/"><span class="emphasis"><em>Installation Guide</em></span></a> to download and install Apache HTTP Server for your operating system.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="load_balancing_httpd_mod_jk"/>Configuring Load Balancing using Apache HTTP Server and mod_jk</h1></div></div></div><p>
+				You can use the mod_jk connector to configure Apache HTTP Server load balancing. Follow the tasks in this section to configure load balancing using mod_jk, including configuring worker nodes.
+			</p><p>
+				Sample configuration files are provided for mod_jk, and are located in <code class="literal"><span class="emphasis"><em>JBCS_HOME</em></span>/httpd/conf.d/</code>. The sample configuration files are: <code class="literal">mod_jk.conf.sample</code>, <code class="literal">workers.properties.sample</code>, and <code class="literal">uriworkermap.properties.sample</code>. To use these samples instead of creating your own configuration files, remove the <code class="literal">.sample</code> extension, and modify their content as needed.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Red Hat customers can also use the <a class="link" href="https://access.redhat.com/labs/lbconfig/">Load Balancer Configuration Tool</a> on the Red Hat Customer Portal to quickly generate optimal configuration templates for mod_jk and Tomcat worker nodes.
+				</p><p>
+					When using this tool for JBoss Web Server 5.1, ensure you select <code class="literal">2.4.x</code> as the Apache version, and select <code class="literal">Tomcat</code> as the back-end configuration.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configuring_apache_load_mod_jk"/>Configuring Apache HTTP Server to load mod_jk</h2></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Create a new file <code class="literal"><span class="emphasis"><em>JBCS_HOME</em></span>/httpd/conf.d/mod_jk.conf</code>, and insert the following configuration:
+						</p><pre class="screen"># Load mod_jk module
+# Specify the filename of the mod_jk lib
+LoadModule jk_module modules/mod_jk.so
+
+# Where to find workers.properties
+JkWorkersFile conf.d/workers.properties
+
+# Where to put jk logs
+JkLogFile logs/mod_jk.log
+
+# Set the jk log level [debug/error/info]
+JkLogLevel info
+
+# Select the log format
+JkLogStampFormat  "[%a %b %d %H:%M:%S %Y]"
+
+# JkOptions indicates to send SSL KEY SIZE
+JkOptions +ForwardKeySize +ForwardURICompat -ForwardDirectories
+
+# JkRequestLogFormat
+JkRequestLogFormat "%w %V %T"
+
+# Mount your applications
+JkMount /application/* loadbalancer
+
+# Add shared memory.
+# This directive is present with 1.2.10 and
+# later versions of mod_jk, and is needed for
+# for load balancing to work properly
+JkShmFile logs/jk.shm
+
+# Add jkstatus for managing runtime data
+&lt;Location /jkstatus/&gt;
+    JkMount status
+    Require ip 127.0.0.1
+&lt;/Location&gt;</pre><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+								The <code class="literal">LoadModule</code> directive must reference the mod_jk native binary you installed.
+							</p></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								The <code class="literal">JkMount</code> directive specifies which URLs that Apache HTTP Server will forward to the mod_jk module. Based on the directive’s configuration, mod_jk forwards the received URL to the correct Servlet containers.
+							</p><p>
+								To enable Apache HTTP Server to serve static content (or PHP content) directly and only use the load balancer for Java applications, the suggested configuration above specifies that only requests with the URL <code class="literal">/application/*</code> are sent to the mod_jk load balancer.
+							</p><p>
+								Alternatively, you can forward all URLs to mod_jk by specifying <code class="literal">/*</code> in the <code class="literal">JkMount</code> directive.
+							</p></div></li><li class="listitem"><p class="simpara">
+							<span class="strong"><strong>Optional: <code class="literal">JKMountFile</code> Directive</strong></span>
+						</p><p class="simpara">
+							In addition to the <code class="literal">JkMount</code> directive, you can use the <code class="literal">JkMountFile</code> directive to specify a mount point’s configuration file. The configuration file contains multiple URL mappings for Tomcat forwarding.
+						</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+									Navigate to <code class="literal"><span class="emphasis"><em>JBCS_HOME</em></span>/httpd/conf.d/</code> and create a file named <code class="literal">uriworkermap.properties</code>.
+								</li><li class="listitem"><p class="simpara">
+									Using the following syntax example as a guide, specify the URL to forward and the worker name.
+								</p><p class="simpara">
+									The syntax required takes the form: <code class="literal">/<span class="emphasis"><em>URL</em></span>=<span class="emphasis"><em>WORKER_NAME</em></span></code>
+								</p><p class="simpara">
+									The example below configures mod_jk to forward requests for <code class="literal">/application</code> to the JBoss Web Server Tomcat backend.
+								</p><pre class="screen"># Simple worker configuration file
+
+# Mount the Servlet context to the ajp13 worker
+/application=loadbalancer
+/application/*=loadbalancer</pre></li><li class="listitem"><p class="simpara">
+									In <code class="literal"><span class="emphasis"><em>JBCS_HOME</em></span>/httpd/conf.d/mod_jk.conf</code> , append the following directive:
+								</p><pre class="screen"># Use external file for mount points.
+# It will be checked for updates each 60 seconds.
+# The format of the file is: /url=worker
+# /examples/*=loadbalancer
+JkMountFile conf.d/uriworkermap.properties</pre></li></ol></div></li><li class="listitem"><p class="simpara">
+							<span class="strong"><strong>Optional: Configure Apache HTTP Server Logging</strong></span>
+						</p><p class="simpara">
+							You can configure the Apache HTTP Server that is doing the load balancing to log which worker node handled a request. This may be useful when troubleshooting your load balancer.
+						</p><p class="simpara">
+							To enable this for mod_jk, you can either:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									include <code class="literal">%w</code> in your <code class="literal">JkRequestLogFormat</code> (which is configured by default in the suggestion above) ; or
+								</li><li class="listitem">
+									log the name of the mod_jk worker used by including <code class="literal">%{JK_WORKER_NAME}n</code> in your Apache HTTP Server <code class="literal">LogFormat</code>(s).
+								</li></ul></div><p class="simpara">
+							For more information on <code class="literal">JkRequestLogFormat</code>, see the <a class="link" href="http://tomcat.apache.org/connectors-doc/webserver_howto/apache.html">Apache Tomcat connector documentation</a>. For more information on Apache HTTP Server logging (including log rotation), see the <a class="link" href="http://httpd.apache.org/docs/2.4/logs.html">Apache HTTP Server documentation on log files</a>.
+						</p></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configuring_worker_nodes_in_mod_jk"/>Configuring Worker Nodes in mod_jk</h2></div></div></div><p>
+					This procedure demonstrates two mod_jk worker node definitions in a weighted round robin configuration with sticky sessions active between two servlet containers.
+				</p><div class="itemizedlist"><p class="title"><strong>Prerequisites</strong></p><ul class="itemizedlist"><li class="listitem">
+							Understand the format of <a class="link" href="apache_http_server_reference.html#workers_properties" title="workers.properties">the <code class="literal">workers.properties</code> directives</a>.
+						</li><li class="listitem">
+							<a class="link" href="tomcat_connector_mod_jk.html#configuring_apache_load_mod_jk" title="Configuring Apache HTTP Server to load mod_jk">Configure mod_jk</a>.
+						</li></ul></div><p>
+					To configure mod_jk worker nodes:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							Navigate to <code class="literal"><span class="emphasis"><em>JBCS_HOME</em></span>/httpd/conf.d/</code>, and create a file named <code class="literal">workers.properties</code>.
+						</li><li class="listitem"><p class="simpara">
+							Add the following configuration into <code class="literal">workers.properties</code>, customizing it to your environment:
+						</p><pre class="screen"># Define list of workers that will be used
+# for mapping requests
+worker.list=loadbalancer,status
+
+# Define Node1
+# modify the host as your host IP or DNS name.
+worker.node1.port=8009
+worker.node1.host=node1.mydomain.com
+worker.node1.type=ajp13
+worker.node1.ping_mode=A
+worker.node1.lbfactor=1
+
+# Define Node2
+# modify the host as your host IP or DNS name.
+worker.node2.port=8009
+worker.node2.host=node2.mydomain.com
+worker.node2.type=ajp13
+worker.node2.ping_mode=A
+worker.node2.lbfactor=1
+
+# Load-balancing behavior
+worker.loadbalancer.type=lb
+worker.loadbalancer.balance_workers=node1,node2
+worker.loadbalancer.sticky_session=1
+
+# Status worker for managing load balancer
+worker.status.type=status</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configuring_tomcat_to_work_with_mod_jk"/>Configuring Tomcat to work with mod_jk</h2></div></div></div><p>
+					Tomcat is configured to receive AJP traffic from mod_jk by default; however, there is one additional step required before you can use a worker with mod_jk. The AJP connector is configured by default in the <code class="literal"><span class="emphasis"><em>JBCS_HOME</em></span>/tomcat<span class="emphasis"><em>&lt;VERSION&gt;</em></span>/conf/server.xml</code>:
+				</p><pre class="programlisting">&lt;Connector port="8009" protocol="AJP/1.3" redirectPort="8443" /&gt;</pre><p>
+					In addition to the AJP enabled Connector you also need to configure a unique value for the <code class="literal">jvmRoute</code> attribute in the Engine of each worker node:
+				</p><pre class="programlisting">&lt;Engine name="Catalina" jvmRoute="node1" &gt;</pre><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						The <code class="literal">jvmRoute</code> attribute value must match the worker name set in <code class="literal">workers.properties</code>.
+					</p></div></div></div></div></body></html>
