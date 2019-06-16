@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 5. Complete Working Examples</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="complete_working_examples"/>Chapter 5. Complete Working Examples</h1></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="mod_cluster_example"/>mod_cluster Example</h1></div></div></div><p>
+				This section contains a set of example configurations for a complete working example of how to use mod_cluster on a Red Hat Enterprise Linux system.
+			</p><div class="title"><strong>Load Balancer</strong></div><p>
+					To setup JBoss Core Services as a proxy server listening on localhost, create a configuration file in <code class="literal"><span class="emphasis"><em>JBCS_HOME</em></span>/httpd/conf.d/mod_cluster.conf</code> and add the following:
+				</p><pre class="screen">LoadModule proxy_cluster_module modules/mod_proxy_cluster.so
+LoadModule cluster_slotmem_module modules/mod_cluster_slotmem.so
+LoadModule manager_module modules/mod_manager.so
+LoadModule advertise_module modules/mod_advertise.so
+
+MemManagerFile cache/mod_cluster
+
+&lt;IfModule manager_module&gt;
+  Listen 6666
+  &lt;VirtualHost *:6666&gt;
+    &lt;Directory /&gt;
+      Require ip 127.0.0.1
+    &lt;/Directory&gt;
+    ServerAdvertise on
+    EnableMCPMReceive
+    &lt;Location /mod_cluster_manager&gt;
+      SetHandler mod_cluster-manager
+      Require ip 127.0.0.1
+   &lt;/Location&gt;
+  &lt;/VirtualHost&gt;
+&lt;/IfModule&gt;</pre><div class="title"><strong>Worker Configuration for Tomcat</strong></div><p>
+					Edit <code class="literal"><span class="emphasis"><em>JWS_HOME</em></span>/tomcat/conf/server.xml</code>, and add the following Listener element to configure a Tomcat worker node:
+				</p><pre class="programlisting">&lt;Listener className="org.jboss.modcluster.container.catalina.standalone.ModClusterListener" advertise="true"/&gt;</pre><div class="title"><strong>Example iptables Firewall Rules</strong></div><p>
+					The following are a set of example firewall rules using <code class="literal">iptables</code>, for a cluster node on the <code class="literal">192.168.1.0/24</code> subnet.
+				</p><pre class="screen">/sbin/iptables -I INPUT 5 -p udp -d 224.0.1.0/24 -j ACCEPT -m comment --comment "mod_cluster traffic"
+/sbin/iptables -I INPUT 6 -p udp -d 224.0.0.0/4 -j ACCEPT -m comment --comment "JBoss Cluster traffic"
+/sbin/iptables -I INPUT 9 -p udp -s 192.168.1.0/24 -j ACCEPT -m comment --comment "cluster subnet for inter-node communication"
+/sbin/iptables -I INPUT 10 -p tcp -s 192.168.1.0/24 -j ACCEPT -m comment --comment "cluster subnet for inter-node communication"
+/etc/init.d/iptables save</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="mod_auth_kerb_example"/>mod_auth_kerb Example</h1></div></div></div><p>
+				This section contains instructions for a basic example for configuring Kerberos authentication with JBoss Core Services' Apache HTTP Server and mod_auth_kerb on Red Hat Enterprise Linux.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="mod_auth_kerb_example_prerequisites"/>mod_auth_kerb Example Prerequisites</h2></div></div></div><p>
+					The following is a list of prerequisites for the working example. Ensure that all prerequisites are met before attempting to use the example instructions.
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							Install curl with GSS-negotiated support (for testing the configuration).
+						</li><li class="listitem">
+							Configure and run a Kerberos or LDAP server (for example ApacheDS) on the same host as JBoss Core Services.
+						</li><li class="listitem"><p class="simpara">
+							If using an LDAP server, create the following LDAP users:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+									Create the user <code class="literal">krbtgt</code>:
+								</p><pre class="screen">dn: uid=krbtgt,ou=Users,dc=example,dc=com
+objectClass: top
+objectClass: person
+objectClass: inetOrgPerson
+objectClass: krb5principal
+objectClass: krb5kdcentry
+cn: KDC Service
+sn: Service
+uid: krbtgt
+userPassword: secret
+krb5PrincipalName: krbtgt/EXAMPLE.COM@EXAMPLE.COM
+krb5KeyVersionNumber: 0</pre></li><li class="listitem"><p class="simpara">
+									Create the user <code class="literal">ldap</code>:
+								</p><pre class="screen">dn: uid=ldap,ou=Users,dc=example,dc=com
+objectClass: top
+objectClass: person
+objectClass: inetOrgPerson
+objectClass: krb5principal
+objectClass: krb5kdcentry
+cn: LDAP
+sn: Service
+uid: ldap
+userPassword: randall
+krb5PrincipalName: ldap/localhost@EXAMPLE.COM
+krb5KeyVersionNumber: 0</pre></li><li class="listitem"><p class="simpara">
+									Create the user <code class="literal">HTTP</code>:
+								</p><pre class="screen">dn: uid=HTTP,ou=Users,dc=example,dc=com
+objectClass: top
+objectClass: person
+objectClass: inetOrgPerson
+objectClass: krb5principal
+objectClass: krb5kdcentry
+cn: HTTP
+sn: Service
+uid: HTTP
+userPassword: secretpwd
+krb5PrincipalName: HTTP/localhost@EXAMPLE.COM
+krb5KeyVersionNumber: 0</pre></li><li class="listitem"><p class="simpara">
+									Create user <code class="literal">hnelson</code> (test user):
+								</p><pre class="screen">dn: uid=hnelson,ou=Users,dc=example,dc=com
+objectClass: top
+objectClass: person
+objectClass: inetOrgPerson
+objectClass: krb5principal
+objectClass: krb5kdcentry
+cn: Horatio Nelson
+sn: Nelson
+uid: hnelson
+userPassword: secret
+krb5PrincipalName: hnelson@EXAMPLE.COM
+krb5KeyVersionNumber: 0</pre></li></ul></div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configure_the_kerberos_client"/>Configure the Kerberos Client</h2></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Create the <code class="literal">krb5.conf</code> configuration file in the <code class="literal">/etc</code> directory, and add the following to the file:
+						</p><pre class="screen">[logging]
+  default = FILE:/var/log/krb5libs.log
+  kdc = FILE:/var/log/krb5kdc.log
+  admin_server = FILE:/var/log/kadmind.log
+
+[libdefaults]
+  default_realm = EXAMPLE.COM
+  default_tgs_enctypes = des-cbc-md5,des3-cbc-sha1-kd
+  default_tkt_enctypes = des-cbc-md5,des3-cbc-sha1-kd
+  dns_lookup_realm = false
+  dns_lookup_kdc = false
+  allow_weak_crypto = yes
+  ticket_lifetime = 24h
+  renew_lifetime = 7d
+  forwardable = yes
+
+[realms]
+  EXAMPLE.COM = {
+    kdc = localhost:60088
+    admin_server = localhost:60088
+  }
+
+[domain_realm]
+  .example.com = EXAMPLE.COM
+  example.com = EXAMPLE.COM</pre></li><li class="listitem"><p class="simpara">
+							Create a key tab in the <code class="literal"><span class="emphasis"><em>JBCS_HOME</em></span>/httpd/conf</code> folder with the following contents:
+						</p><pre class="screen"># ktutil
+ktutil: addent -password -p HTTP/localhost@EXAMPLE.COM -k 0 -e des-cbc-md5
+Password for HTTP/localhost@EXAMPLE.COM: <span class="emphasis"><em>secretpwd</em></span>
+ktutil: list
+slot KVNO Principal
+---- ---- ---------------------------------------------------------------------
+   1    0               HTTP/localhost@EXAMPLE.COM
+ktutil: wkt <span class="emphasis"><em>JBCS_HOME</em></span>/httpd/conf/krb5.keytab
+ktutil: quit</pre></li></ol></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						Environment variables are not expanded within the ktutil prompt. Users will need to substitute the full path for the JBCS_HOME variable.
+					</p></div><p>
+					As the root user, run the following commands to apply the correct group and permissions to the key tab:
+				</p><pre class="screen"># chgrp apache JBCS_HOME/httpd/conf/krb5.keytab
+# chmod 640 JBCS_HOME/httpd/conf/krb5.keytab</pre><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Ensure that the following host configuration is included in the <code class="literal">/etc/hosts</code> file:
+						</p><pre class="screen">127.0.0.1 localhost</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="configure_mod_auth_kerb"/>Configure mod_auth_kerb</h2></div></div></div><p>
+					Create the <code class="literal">auth_kerb.conf</code> configuration file in the <code class="literal"><span class="emphasis"><em>JBCS_HOME</em></span>/httpd/conf.d/</code> folder, and add the following configuration to the file:
+				</p><pre class="programlisting">#
+# The mod_auth_kerb module implements Kerberos authentication over HTTP, following the "Negotiate" protocol.
+#
+
+# The LoadModule statement is done in conf.d/10-auth_kerb.conf
+# LoadModule auth_kerb_module modules/mod_auth_kerb.so
+
+&lt;Location /kerberostest&gt;
+  AuthType Kerberos
+  AuthName "Kerberos Login"
+  KrbMethodNegotiate On
+  KrbMethodK5Passwd Off
+  KrbAuthRealms EXAMPLE.COM
+  KrbServiceName HTTP
+  Krb5KeyTab $JBCS_HOME/httpd/krb5.keytab
+  require valid-user
+&lt;/Location&gt;</pre><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						Environment variables are not expanded within the configuration files. Users will need to substitute the full path for the JBCS_HOME variable.
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="test_the_kerberos_authentication"/>Test the Kerberos Authentication</h2></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							Create a test page named <code class="literal">auth_kerb_page.html</code> in <code class="literal"><span class="emphasis"><em>JBCS_HOME</em></span>/httpd/www/html/kerberostest/</code>.
+						</li><li class="listitem"><p class="simpara">
+							Add the following contents to the test page (<code class="literal">auth_kerb_page.html</code>):
+						</p><pre class="programlisting">&lt;html&gt;
+&lt;body&gt;
+    &lt;h1&gt;mod_auth_kerb successfully authenticated!&lt;/h1&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre></li><li class="listitem">
+							<span class="strong"><strong>Optional</strong></span>: Set the log level for debugging in <code class="literal"><span class="emphasis"><em>JBCS_HOME</em></span>/httpd/conf/httpd.conf</code>.
+						</li><li class="listitem">
+							Start Apache HTTP Server. See the <a class="link" href="https://access.redhat.com/documentation/en/red_hat_jboss_core_services_apache_http_server/2.4.29/html-single/apache_http_server_installation_guide/"><span class="emphasis"><em>Installation Guide</em></span></a> for details.
+						</li><li class="listitem"><p class="simpara">
+							Test the authentication as follows:
+						</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									Initiate Kerberos authentication for the test user <code class="literal">hnelson</code>:
+								</p><pre class="screen">$ kinit hnelson</pre></li><li class="listitem"><p class="simpara">
+									View the details for the test user <code class="literal">hnelson</code>:
+								</p><pre class="screen">$ klist</pre><p class="simpara">
+									A result similar to the following appears:
+								</p><pre class="screen">Ticket cache: FILE:/tmp/krb5cc_18602
+Default principal: hnelson@EXAMPLE.COM
+
+Valid starting     Expires            Service principal
+06/03/13 14:21:13  06/04/13 14:21:13  krbtgt/EXAMPLE.COM@EXAMPLE.COM
+renew until 06/10/13 14:21:13</pre></li><li class="listitem"><p class="simpara">
+									Test Apache HTTP Server Kerberos authentication as follows:
+								</p><pre class="screen">$ curl --negotiate -u : http://localhost/kerberostest/auth_kerb_page.html</pre><p class="simpara">
+									If it is working correctly, the following result appears:
+								</p><pre class="programlisting">&lt;html&gt;
+&lt;body&gt;
+    &lt;h1&gt;mod_auth_kerb successfully authenticated!&lt;/h1&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre></li></ol></div></li></ol></div><p>
+					See <a class="link" href="http://modauthkerb.sourceforge.net/">http://modauthkerb.sourceforge.net/</a> for more information about mod_auth_kerb.
+				</p></div></div></div></body></html>
