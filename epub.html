@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>epub read</title>
+
+    <style>
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 20%;
+            height: 98vh;
+            overflow-y: scroll;
+        }
+
+        iframe {
+            width: 79%;
+            float: right;
+            height: 98vh;
+        }
+
+        nav a {
+            display: block;
+            text-decoration: none;
+            color: #000;
+        }
+
+        nav ul {
+            padding-left: 1em;
+        }
+    </style>
+
+    <script>
+
+        let windowsUrl;//当前路径url
+        let baseUrl;//获取当前地址父路径
+
+        //[使用 EPUB 制作数字图书](https://www.ibm.com/developerworks/cn/xml/tutorials/x-epubtut/index.html)
+        let path;//epub文件夹路径 
+        let contentOpf, tocNcx;//  content.opf   toc.ncx 电子书元数据
+
+        const domParser = new DOMParser();//文档解析器
+
+        const load = async () => {
+
+            //读取当前url
+            windowsUrl = new URL(window.location.href);
+            baseUrl = location.pathname.substring(0, location.pathname.lastIndexOf("/"));
+            path = windowsUrl.searchParams.get("path") || "jboss/red_hat_jboss/7.2/getting_started_guide";//默认路径 测试用
+            path += path.endsWith("/") ? "" : "/";//如果没有 斜杠结尾 补全斜杠
+
+            contentOpf = await fetch(path + "content.opf").then(response => response.status == 200 ? response.text() : '');
+            tocNcx = await fetch(path + "toc.ncx").then(response => response.status == 200 ? response.text() : '');
+
+            contentOpf || console.log("content.opf is empty");
+            tocNcx || console.log("toc.ncx is empty");
+
+            if (contentOpf) {
+                contentOpf = domParser.parseFromString(contentOpf, "application/xml");
+                let metadata = contentOpf.querySelector("metadata");
+                //[11. Accessing Page Elements - JavaScript Cookbook [Book]](https://www.oreilly.com/library/view/javascript-cookbook/9781449390211/ch11.html) 
+                //使用 contentOpf.querySelector('[dc\\:title]') 无效
+                //使用 getElementsByTagName 获取元素 
+                document.getElementById("metadataS").innerHTML = metadata.getElementsByTagName('dc:date')[0].textContent + " " + metadata.getElementsByTagName('dc:title')[0].textContent;
+                document.getElementById("metadataP").innerHTML = metadata.getElementsByTagName('dc:description')[0].textContent;
+            }
+
+            //不为空 渲染页面
+            if (tocNcx) { 
+                let tocText = "";
+                // txt文本转换为 dom 结构
+                tocNcx = domParser.parseFromString(tocNcx, "application/xml");  
+                document.getElementById("toc").innerHTML = navPoint2Html(tocNcx.querySelectorAll("navMap>navPoint"));
+            }
+        
+            if(window.location.hash){
+                document.getElementById('contentF').src=window.location.hash.substring(1);
+            }
+        }
+        window.onload = load;//初始化
+
+
+        /***
+        <navPoint id="idm140147838654208" playOrder="1">
+            <navLabel><text>Getting Started Guide</text></navLabel>
+            <content src="index.html"/>
+            <navPoint id="idm140147837239616" playOrder="2">
+            </navPoint>
+        **/
+        //navPoint 节点转换为html
+        function navPoint2Html(navPoints) {
+            let navPointHTML = "";
+            navPoints.forEach((navPoint) => {
+                navPointHTML += "<li>";
+                navPointHTML += `<a  target="contentF"  onclick="window.location.hash = this.getAttribute('href');" 
+                                     href="${path}${navPoint.querySelector(":scope>content").getAttribute("src")}">
+                                  ${navPoint.querySelector(":scope>navLabel>text").textContent}
+                                </a>`;
+                //获取子元素
+                let subnavPoints = navPoint.querySelectorAll(":scope>navPoint");
+                if (subnavPoints.length > 0) {
+                    navPointHTML += `<ul>${navPoint2Html(subnavPoints)}</ul>`;
+                }
+                navPointHTML += "</li>";
+            });
+            return navPointHTML;
+        }
+
+ 
+
+    </script>
+
+</head>
+
+<body>
+
+    <!-- 导航栏 -->
+    <nav id="navigation">
+
+        <h1>metadata</h1>
+
+        <details>
+            <summary id="metadataS"></summary>
+            <p id="metadataP"></p>
+        </details>
+
+        <h1> Table of contents </h1>
+
+        <ul id="toc">
+
+        </ul>
+
+
+
+    </nav>
+    <!--内容页-->
+    <iframe frameborder=0 id="contentF" name="contentF" src=""
+        onload="document.title = this.contentWindow.document.title">
+
+    </iframe>
+
+
+</body>
+
+</html>
