@@ -273,10 +273,10 @@
 - Release Notes
 - [7.2 Update 02](https://access.redhat.com/articles/4159071)
 - [7.2 Update 01](https://access.redhat.com/articles/3970391)
-- [7.2.0 Release Notes](jboss/red_hat_jboss/7.2/release_notes/)
+- [7.2.0 Release Notes](epub.html?path=jboss/red_hat_jboss/7.2/release_notes/)
 - Getting Started
 - [jboss-developer/jboss-eap-quickstarts: The quickstarts demonstrate JBoss EAP, Java EE 7 and a few additional technologies. They provide small, specific, working examples that can be used as a reference for your own project.](https://github.com/jboss-developer/jboss-eap-quickstarts)
-- [Introduction to JBoss EAP](jboss/red_hat_jboss/7.2/introduction_to_jboss_eap/)
+- [Introduction to JBoss EAP](epub.html?path=jboss/red_hat_jboss/7.2/introduction_to_jboss_eap/)
 - [Getting Started Guide](jboss/red_hat_jboss/7.2/getting_started_guide/)
 - [Getting Started with JBoss EAP for OpenShift Online](jboss/red_hat_jboss/7.2/for_openshift_online/)
 - [Getting Started with JBoss EAP for OpenShift Container Platform](jboss/red_hat_jboss/7.2/for_openshift_container_platform/)
