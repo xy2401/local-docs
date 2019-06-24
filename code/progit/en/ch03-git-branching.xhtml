@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Git Branching</title>
+<link rel="stylesheet" type="text/css" href="styles/epub3.css"/>
+<link rel="stylesheet" type="text/css" href="styles/epub3-css3-only.css" media="(min-device-width: 0px)"/>
+<script type="text/javascript">
+document.addEventListener('DOMContentLoaded', function(event, reader) {
+  if (!(reader = navigator.epubReadingSystem)) {
+    if (navigator.userAgent.indexOf(' calibre/') >= 0) reader = { name: 'calibre-desktop' };
+    else if (window.parent == window || !(reader = window.parent.navigator.epubReadingSystem)) return;
+  }
+  document.body.setAttribute('class', reader.name.toLowerCase().replace(/ /g, '-'));
+});
+</script>
+</head>
+<body>
+<section class="chapter" title="Git Branching" epub:type="chapter" id="ch03-git-branching">
+<header>
+<div class="chapter-header">
+<h1 class="chapter-title"><small class="subtitle"><b>Git</b> <b>Branching</b></small></h1>
+</div>
+</header>
+<p>
+Nearly every VCS has some form of branching support.
+Branching means you diverge from the main line of development and continue to do work without messing with that main line.
+In many VCS tools, this is a somewhat expensive process, often requiring you to create a new copy of your source code directory, which can take a long time for large projects.</p>
+<p>Some people refer to Git&#8217;s branching model as its “killer feature,” and it certainly sets Git apart in the VCS community.
+Why is it so special?
+The way Git branches is incredibly lightweight, making branching operations nearly instantaneous, and switching back and forth between branches generally just as fast.
+Unlike many other VCSs, Git encourages workflows that branch and merge often, even multiple times in a day.
+Understanding and mastering this feature gives you a powerful and unique tool and can entirely change the way that you develop.</p>
+<section class="sect1" title="Branches in a Nutshell">
+<h2 id="_git_branches_overview">Branches in a Nutshell</h2>
+<p>To really understand the way Git does branching, we need to take a step back and examine how Git stores its data.</p>
+<p>As you may remember from <a id="xref--ch01-getting-started" href="ch01-getting-started.xhtml" class="xref">Getting Started</a>, Git doesn&#8217;t store data as a series of changesets or differences, but instead as a series of <em>snapshots</em>.</p>
+<p>When you make a commit, Git stores a commit object that contains a pointer to the snapshot of the content you staged.
+This object also contains the author&#8217;s name and email address, the message that you typed, and pointers to the commit or commits that directly came before this commit (its parent or parents): zero parents for the initial commit, one parent for a normal commit, and multiple parents for a commit that results from a merge of two or more branches.</p>
+<p>To visualize this, let&#8217;s assume that you have a directory containing three files, and you stage them all and commit.
+Staging the files computes a checksum for each one (the SHA-1 hash we mentioned in <a href="ch01-getting-started.xhtml" class="xref">Getting Started</a>), stores that version of the file in the Git repository (Git refers to them as <em>blobs</em>), and adds that checksum to the staging area:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git add README test.rb LICENSE
+<span style="font-weight: bold">$</span> git commit -m <span style="font-style: italic">&#39;The initial commit of my project&#39;</span></code></pre>
+</figure>
+<p>When you create the commit by running <code class="literal">git commit</code>, Git checksums each subdirectory (in this case, just the root project directory) and stores them as a tree object in the Git repository.
+Git then creates a commit object that has the metadata and a pointer to the root project tree so it can re-create that snapshot when needed.</p>
+<p>Your Git repository now contains five objects: three <em>blobs</em> (each representing the contents of one of the three files), one <em>tree</em> that lists the contents of the directory and specifies which file names are stored as which blobs, and one <em>commit</em> with the pointer to that root tree and all the commit metadata.</p>
+<figure class="image">
+<div class="content">
+<img src="images/commit-and-tree.png" alt="A commit and its tree."/>
+</div>
+<figcaption>Figure 1. A commit and its tree</figcaption>
+</figure>
+<p>If you make some changes and commit again, the next commit stores a pointer to the commit that came immediately before it.</p>
+<figure class="image">
+<div class="content">
+<img src="images/commits-and-parents.png" alt="Commits and their parents."/>
+</div>
+<figcaption>Figure 2. Commits and their parents</figcaption>
+</figure>
+<p>A branch in Git is simply a lightweight movable pointer to one of these commits.
+The default branch name in Git is <code class="literal">master</code>.
+As you start making commits, you&#8217;re given a <code class="literal">master</code> branch that points to the last commit you made.
+Every time you commit, the <code class="literal">master</code> branch pointer moves forward automatically.</p>
+<aside class="admonition note" title="Note" epub:type="note">
+<div class="content">
+<p>The “master” branch in Git is not a special branch.
+It is exactly like any other branch.
+The only reason nearly every repository has one is that the <code class="literal">git init</code> command creates it by default and most people don&#8217;t bother to change it.</p>
+</div>
+</aside>
+<figure class="image">
+<div class="content">
+<img src="images/branch-and-history.png" alt="A branch and its commit history."/>
+</div>
+<figcaption>Figure 3. A branch and its commit history</figcaption>
+</figure>
+<section class="sect2" title="Creating a New Branch">
+<h3 id="_create_new_branch">Creating a New Branch</h3>
+<p>
+What happens when you create a new branch?
+Well, doing so creates a new pointer for you to move around.
+Let&#8217;s say you want to create a new branch called <code class="literal">testing</code>.
+You do this with the <code class="literal">git branch</code> command:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch testing</code></pre>
+</figure>
+<p>This creates a new pointer to the same commit you&#8217;re currently on.</p>
+<figure class="image">
+<div class="content">
+<img src="images/two-branches.png" alt="Two branches pointing into the same series of commits."/>
+</div>
+<figcaption>Figure 4. Two branches pointing into the same series of commits</figcaption>
+</figure>
+<p>How does Git know what branch you&#8217;re currently on?
+It keeps a special pointer called <code class="literal">HEAD</code>.
+Note that this is a lot different than the concept of <code class="literal">HEAD</code> in other VCSs you may be used to, such as Subversion or CVS.
+In Git, this is a pointer to the local branch you&#8217;re currently on.
+In this case, you&#8217;re still on <code class="literal">master</code>.
+The <code class="literal">git branch</code> command only <em>created</em> a new branch&#8201;&#8212;&#8201;it didn&#8217;t switch to that branch.</p>
+<figure class="image">
+<div class="content">
+<img src="images/head-to-master.png" alt="HEAD pointing to a branch."/>
+</div>
+<figcaption>Figure 5. HEAD pointing to a branch</figcaption>
+</figure>
+<p>You can easily see this by running a simple <code class="literal">git log</code> command that shows you where the branch pointers are pointing.
+This option is called <code class="literal">--decorate</code>.</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git log --oneline --decorate
+f30ab (HEAD -&gt; master, testing) add feature #32 - ability to add new formats to the central interface
+34ac2 Fixed bug #1328 - stack overflow under certain conditions
+98ca9 The initial commit of my project</code></pre>
+</figure>
+<p>You can see the “master” and “testing” branches that are right there next to the <code class="literal">f30ab</code> commit.</p>
+</section>
+<section class="sect2" title="Switching Branches">
+<h3 id="_switching_branches">Switching Branches</h3>
+<p>
+To switch to an existing branch, you run the <code class="literal">git checkout</code> command.
+Let&#8217;s switch to the new <code class="literal">testing</code> branch:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout testing</code></pre>
+</figure>
+<p>This moves <code class="literal">HEAD</code> to point to the <code class="literal">testing</code> branch.</p>
+<figure class="image">
+<div class="content">
+<img src="images/head-to-testing.png" alt="HEAD points to the current branch."/>
+</div>
+<figcaption>Figure 6. HEAD points to the current branch</figcaption>
+</figure>
+<p>What is the significance of that?
+Well, let&#8217;s do another commit:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> vim test.rb
+<span style="font-weight: bold">$</span> git commit -a -m <span style="font-style: italic">&#39;made a change&#39;</span></code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/advance-testing.png" alt="The HEAD branch moves forward when a commit is made."/>
+</div>
+<figcaption>Figure 7. The HEAD branch moves forward when a commit is made</figcaption>
+</figure>
+<p>This is interesting, because now your <code class="literal">testing</code> branch has moved forward, but your <code class="literal">master</code> branch still points to the commit you were on when you ran <code class="literal">git checkout</code> to switch branches.
+Let&#8217;s switch back to the <code class="literal">master</code> branch:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master</code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/checkout-master.png" alt="HEAD moves when you checkout."/>
+</div>
+<figcaption>Figure 8. HEAD moves when you checkout</figcaption>
+</figure>
+<p>That command did two things.
+It moved the HEAD pointer back to point to the <code class="literal">master</code> branch, and it reverted the files in your working directory back to the snapshot that <code class="literal">master</code> points to.
+This also means the changes you make from this point forward will diverge from an older version of the project.
+It essentially rewinds the work you&#8217;ve done in your <code class="literal">testing</code> branch so you can go in a different direction.</p>
+<aside class="admonition note" title="Note: Switching branches changes files in your working directory" epub:type="note">
+<h2>Switching branches changes files in your working directory</h2>
+<div class="content">
+<p>It&#8217;s important to note that when you switch branches in Git, files in your working directory will change.
+If you switch to an older branch, your working directory will be reverted to look like it did the last time you committed on that branch.
+If Git cannot do it cleanly, it will not let you switch at all.</p>
+</div>
+</aside>
+<p>Let&#8217;s make a few changes and commit again:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> vim test.rb
+<span style="font-weight: bold">$</span> git commit -a -m <span style="font-style: italic">&#39;made other changes&#39;</span></code></pre>
+</figure>
+<p>Now your project history has diverged (see <a id="xref-divergent_history" href="#divergent_history" class="xref">Divergent history</a>).
+You created and switched to a branch, did some work on it, and then switched back to your main branch and did other work.
+Both of those changes are isolated in separate branches: you can switch back and forth between the branches and merge them together when you&#8217;re ready.
+And you did all that with simple <code class="literal">branch</code>, <code class="literal">checkout</code>, and <code class="literal">commit</code> commands.</p>
+<figure id="divergent_history" class="image">
+<div class="content">
+<img src="images/advance-master.png" alt="Divergent history."/>
+</div>
+<figcaption>Figure 9. Divergent history</figcaption>
+</figure>
+<p>You can also see this easily with the <code class="literal">git log</code> command.
+If you run <code class="literal">git log --oneline --decorate --graph --all</code> it will print out the history of your commits, showing where your branch pointers are and how your history has diverged.</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git log --oneline --decorate --graph --all
+* c2b9e (HEAD, master) made other changes
+| * 87ab2 (testing) made a change
+|/
+* f30ab add feature #32 - ability to add new formats to the
+* 34ac2 fixed bug #1328 - stack overflow under certain conditions
+* 98ca9 initial commit of my project</code></pre>
+</figure>
+<p>Because a branch in Git is actually a simple file that contains the 40 character SHA-1 checksum of the commit it points to, branches are cheap to create and destroy.
+Creating a new branch is as quick and simple as writing 41 bytes to a file (40 characters and a newline).</p>
+<p>This is in sharp contrast to the way most older VCS tools branch, which involves copying all of the project&#8217;s files into a second directory.
+This can take several seconds or even minutes, depending on the size of the project, whereas in Git the process is always instantaneous.
+Also, because we&#8217;re recording the parents when we commit, finding a proper merge base for merging is automatically done for us and is generally very easy to do.
+These features help encourage developers to create and use branches often.</p>
+<p>Let&#8217;s see why you should do so.</p>
+<aside class="admonition note" title="Note: Creating a new branch and switching to it at the same time" epub:type="note">
+<h2>Creating a new branch and switching to it at the same time</h2>
+<div class="content">
+<p>It&#8217;s typical to create a new branch and want to switch to that new branch at the same time&#8201;&#8212;&#8201;this can be done in one operation with <code class="literal">git checkout -b &lt;newbranchname&gt;</code>.</p>
+</div>
+</aside>
+</section>
+</section>
+<section class="sect1" title="Basic Branching and Merging">
+<h2 id="_basic_branching_and_merging">Basic Branching and Merging</h2>
+<p>Let&#8217;s go through a simple example of branching and merging with a workflow that you might use in the real world.
+You&#8217;ll follow these steps:</p>
+<div class="ordered-list arabic">
+<ol class="arabic">
+<li>
+<span class="principal">Do some work on a website.</span>
+</li>
+<li>
+<span class="principal">Create a branch for a new user story you&#8217;re working on.</span>
+</li>
+<li>
+<span class="principal">Do some work in that branch.</span>
+</li>
+</ol>
+</div>
+<p>At this stage, you&#8217;ll receive a call that another issue is critical and you need a hotfix.
+You&#8217;ll do the following:</p>
+<div class="ordered-list arabic">
+<ol class="arabic">
+<li>
+<span class="principal">Switch to your production branch.</span>
+</li>
+<li>
+<span class="principal">Create a branch to add the hotfix.</span>
+</li>
+<li>
+<span class="principal">After it&#8217;s tested, merge the hotfix branch, and push to production.</span>
+</li>
+<li>
+<span class="principal">Switch back to your original user story and continue working.</span>
+</li>
+</ol>
+</div>
+<section class="sect2" title="Basic Branching">
+<h3 id="_basic_branching">Basic Branching</h3>
+<p>
+First, let&#8217;s say you&#8217;re working on your project and have a couple of commits already on the <code class="literal">master</code> branch.</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-branching-1.png" alt="A simple commit history."/>
+</div>
+<figcaption>Figure 10. A simple commit history</figcaption>
+</figure>
+<p>You&#8217;ve decided that you&#8217;re going to work on issue #53 in whatever issue-tracking system your company uses.
+To create a new branch and switch to it at the same time, you can run the <code class="literal">git checkout</code> command with the <code class="literal">-b</code> switch:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout -b iss53
+Switched to a new branch &quot;iss53&quot;</code></pre>
+</figure>
+<p>This is shorthand for:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch iss53
+<span style="font-weight: bold">$</span> git checkout iss53</code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/basic-branching-2.png" alt="Creating a new branch pointer."/>
+</div>
+<figcaption>Figure 11. Creating a new branch pointer</figcaption>
+</figure>
+<p>You work on your website and do some commits.
+Doing so moves the <code class="literal">iss53</code> branch forward, because you have it checked out (that is, your <code class="literal">HEAD</code> is pointing to it):</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> vim index.html
+<span style="font-weight: bold">$</span> git commit -a -m <span style="font-style: italic">&#39;added a new footer [issue 53]&#39;</span></code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/basic-branching-3.png" alt="The `iss53` branch has moved forward with your work."/>
+</div>
+<figcaption>Figure 12. The <code class="literal">iss53</code> branch has moved forward with your work</figcaption>
+</figure>
+<p>Now you get the call that there is an issue with the website, and you need to fix it immediately.
+With Git, you don&#8217;t have to deploy your fix along with the <code class="literal">iss53</code> changes you&#8217;ve made, and you don&#8217;t have to put a lot of effort into reverting those changes before you can work on applying your fix to what is in production.
+All you have to do is switch back to your <code class="literal">master</code> branch.</p>
+<p>However, before you do that, note that if your working directory or staging area has uncommitted changes that conflict with the branch you&#8217;re checking out, Git won&#8217;t let you switch branches.
+It&#8217;s best to have a clean working state when you switch branches.
+There are ways to get around this (namely, stashing and commit amending) that we&#8217;ll cover later on, in <a id="xref--ch07-git-tools--_git_stashing" href="ch07-git-tools.xhtml#_git_stashing" class="xref">Stashing and Cleaning</a>.
+For now, let&#8217;s assume you&#8217;ve committed all your changes, so you can switch back to your <code class="literal">master</code> branch:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master
+Switched to branch &#39;master&#39;</code></pre>
+</figure>
+<p>At this point, your project working directory is exactly the way it was before you started working on issue #53, and you can concentrate on your hotfix.
+This is an important point to remember: when you switch branches, Git resets your working directory to look like it did the last time you committed on that branch.
+It adds, removes, and modifies files automatically to make sure your working copy is what the branch looked like on your last commit to it.</p>
+<p>Next, you have a hotfix to make.
+Let&#8217;s create a <code class="literal">hotfix</code> branch on which to work until it&#8217;s completed:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout -b hotfix
+Switched to a new branch &#39;hotfix&#39;
+<span style="font-weight: bold">$</span> vim index.html
+<span style="font-weight: bold">$</span> git commit -a -m <span style="font-style: italic">&#39;fixed the broken email address&#39;</span>
+[hotfix 1fb7853] fixed the broken email address
+ 1 file changed, 2 insertions(+)</code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/basic-branching-4.png" alt="Hotfix branch based on `master`."/>
+</div>
+<figcaption>Figure 13. Hotfix branch based on <code class="literal">master</code></figcaption>
+</figure>
+<p>You can run your tests, make sure the hotfix is what you want, and finally merge the <code class="literal">hotfix</code> branch back into your <code class="literal">master</code> branch to deploy to production.
+You do this with the <code class="literal">git merge</code> command:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master
+<span style="font-weight: bold">$</span> git merge hotfix
+Updating f42c576..3a0874c
+Fast-forward
+ index.html | 2 ++
+ 1 file changed, 2 insertions(+)</code></pre>
+</figure>
+<p>You&#8217;ll notice the phrase “fast-forward” in that merge.
+Because the commit <code class="literal">C4</code> pointed to by the branch <code class="literal">hotfix</code> you merged in was directly ahead of the commit <code class="literal">C2</code> you&#8217;re on, Git simply moves the pointer forward.
+To phrase that another way, when you try to merge one commit with a commit that can be reached by following the first commit&#8217;s history, Git simplifies things by moving the pointer forward because there is no divergent work to merge together&#8201;&#8212;&#8201;this is called a “fast-forward.”</p>
+<p>Your change is now in the snapshot of the commit pointed to by the <code class="literal">master</code> branch, and you can deploy the fix.</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-branching-5.png" alt="`master` is fast-forwarded to `hotfix`."/>
+</div>
+<figcaption>Figure 14. <code class="literal">master</code> is fast-forwarded to <code class="literal">hotfix</code></figcaption>
+</figure>
+<p>After your super-important fix is deployed, you&#8217;re ready to switch back to the work you were doing before you were interrupted.
+However, first you&#8217;ll delete the <code class="literal">hotfix</code> branch, because you no longer need it&#8201;&#8212;&#8201;the <code class="literal">master</code> branch points at the same place.
+You can delete it with the <code class="literal">-d</code> option to <code class="literal">git branch</code>:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -d hotfix
+Deleted branch hotfix (3a0874c).</code></pre>
+</figure>
+<p>Now you can switch back to your work-in-progress branch on issue #53 and continue working on it.</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout iss53
+Switched to branch &quot;iss53&quot;
+<span style="font-weight: bold">$</span> vim index.html
+<span style="font-weight: bold">$</span> git commit -a -m <span style="font-style: italic">&#39;finished the new footer [issue 53]&#39;</span>
+[iss53 ad82d7a] finished the new footer [issue 53]
+1 file changed, 1 insertion(+)</code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/basic-branching-6.png" alt="Work continues on `iss53`."/>
+</div>
+<figcaption>Figure 15. Work continues on <code class="literal">iss53</code></figcaption>
+</figure>
+<p>It&#8217;s worth noting here that the work you did in your <code class="literal">hotfix</code> branch is not contained in the files in your <code class="literal">iss53</code> branch.
+If you need to pull it in, you can merge your <code class="literal">master</code> branch into your <code class="literal">iss53</code> branch by running <code class="literal">git merge master</code>, or you can wait to integrate those changes until you decide to pull the <code class="literal">iss53</code> branch back into <code class="literal">master</code> later.</p>
+</section>
+<section class="sect2" title="Basic Merging">
+<h3 id="_basic_merging">Basic Merging</h3>
+<p>
+Suppose you&#8217;ve decided that your issue #53 work is complete and ready to be merged into your <code class="literal">master</code> branch.
+In order to do that, you&#8217;ll merge your <code class="literal">iss53</code> branch into <code class="literal">master</code>, much like you merged your <code class="literal">hotfix</code> branch earlier.
+All you have to do is check out the branch you wish to merge into and then run the <code class="literal">git merge</code> command:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master
+Switched to branch &#39;master&#39;
+<span style="font-weight: bold">$</span> git merge iss53
+Merge made by the &#39;recursive&#39; strategy.
+index.html |    1 +
+1 file changed, 1 insertion(+)</code></pre>
+</figure>
+<p>This looks a bit different than the <code class="literal">hotfix</code> merge you did earlier.
+In this case, your development history has diverged from some older point.
+Because the commit on the branch you&#8217;re on isn&#8217;t a direct ancestor of the branch you&#8217;re merging in, Git has to do some work.
+In this case, Git does a simple three-way merge, using the two snapshots pointed to by the branch tips and the common ancestor of the two.</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-merging-1.png" alt="Three snapshots used in a typical merge."/>
+</div>
+<figcaption>Figure 16. Three snapshots used in a typical merge</figcaption>
+</figure>
+<p>Instead of just moving the branch pointer forward, Git creates a new snapshot that results from this three-way merge and automatically creates a new commit that points to it.
+This is referred to as a merge commit, and is special in that it has more than one parent.</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-merging-2.png" alt="A merge commit."/>
+</div>
+<figcaption>Figure 17. A merge commit</figcaption>
+</figure>
+<p>Now that your work is merged in, you have no further need for the <code class="literal">iss53</code> branch.
+You can close the ticket in your ticket-tracking system, and delete the branch:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -d iss53</code></pre>
+</figure>
+</section>
+<section class="sect2" title="Basic Merge Conflicts">
+<h3 id="_basic_merge_conflicts">Basic Merge Conflicts</h3>
+<p>
+Occasionally, this process doesn&#8217;t go smoothly.
+If you changed the same part of the same file differently in the two branches you&#8217;re merging, Git won&#8217;t be able to merge them cleanly.
+If your fix for issue #53 modified the same part of a file as the <code class="literal">hotfix</code> branch, you&#8217;ll get a merge conflict that looks something like this:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git merge iss53
+Auto-merging index.html
+CONFLICT (content): Merge conflict in index.html
+Automatic merge failed; fix conflicts and then commit the result.</code></pre>
+</figure>
+<p>Git hasn&#8217;t automatically created a new merge commit.
+It has paused the process while you resolve the conflict.
+If you want to see which files are unmerged at any point after a merge conflict, you can run <code class="literal">git status</code>:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git status
+On branch master
+You have unmerged paths.
+  (fix conflicts and run &quot;git commit&quot;)
+
+Unmerged paths:
+  (use &quot;git add &lt;file&gt;...&quot; to mark resolution)
+
+    both modified:      index.html
+
+no changes added to commit (use &quot;git add&quot; and/or &quot;git commit -a&quot;)</code></pre>
+</figure>
+<p>Anything that has merge conflicts and hasn&#8217;t been resolved is listed as unmerged.
+Git adds standard conflict-resolution markers to the files that have conflicts, so you can open them manually and resolve those conflicts.
+Your file contains a section that looks something like this:</p>
+<figure class="listing">
+<pre class="source language-html"><code><span></span><span style="border: 1px solid #FF0000">&lt;&lt;&lt;&lt;&lt;&lt;</span>&lt; <span style="font-weight: bold">HEAD:index.html</span>
+<span style="border: 1px solid #FF0000">&lt;</span>div id=<span style="font-style: italic">&quot;footer&quot;</span>&gt;contact : email.support@github.com&lt;/<span style="font-weight: bold">div</span>&gt;
+=======
+&lt;<span style="font-weight: bold">div</span> id=<span style="font-style: italic">&quot;footer&quot;</span>&gt;
+ please contact us at support@github.com
+&lt;/<span style="font-weight: bold">div</span>&gt;
+&gt;&gt;&gt;&gt;&gt;&gt;&gt; iss53:index.html</code></pre>
+</figure>
+<p>This means the version in <code class="literal">HEAD</code> (your <code class="literal">master</code> branch, because that was what you had checked out when you ran your merge command) is the top part of that block (everything above the <code class="literal">=======</code>), while the version in your <code class="literal">iss53</code> branch looks like everything in the bottom part.
+In order to resolve the conflict, you have to either choose one side or the other or merge the contents yourself.
+For instance, you might resolve this conflict by replacing the entire block with this:</p>
+<figure class="listing">
+<pre class="source language-html"><code><span></span>&lt;<span style="font-weight: bold">div</span> id=<span style="font-style: italic">&quot;footer&quot;</span>&gt;
+please contact us at email.support@github.com
+&lt;/<span style="font-weight: bold">div</span>&gt;</code></pre>
+</figure>
+<p>This resolution has a little of each section, and the <code class="literal">&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code>, <code class="literal">=======</code>, and <code class="literal">&gt;&gt;&gt;&gt;&gt;&gt;&gt;</code> lines have been completely removed.
+After you&#8217;ve resolved each of these sections in each conflicted file, run <code class="literal">git add</code> on each file to mark it as resolved.
+Staging the file marks it as resolved in Git.</p>
+<p>If you want to use a graphical tool to resolve these issues, you can run <code class="literal">git mergetool</code>, which fires up an appropriate visual merge tool and walks you through the conflicts:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git mergetool
+
+This message is displayed because &#39;merge.tool&#39; is not configured.
+See &#39;git mergetool --tool-help&#39; or &#39;git help config&#39; for more details.
+&#39;git mergetool&#39; will now attempt to use one of the following tools:
+opendiff kdiff3 tkdiff xxdiff meld tortoisemerge gvimdiff diffuse diffmerge ecmerge p4merge araxis bc3 codecompare vimdiff emerge
+Merging:
+index.html
+
+Normal merge conflict for &#39;index.html&#39;:
+  {local}: modified file
+  {remote}: modified file
+Hit return to start merge resolution tool (opendiff):</code></pre>
+</figure>
+<p>If you want to use a merge tool other than the default (Git chose <code class="literal">opendiff</code> in this case because the command was run on a Mac), you can see all the supported tools listed at the top after “one of the following tools.”
+Just type the name of the tool you&#8217;d rather use.</p>
+<aside class="admonition note" title="Note" epub:type="note">
+<div class="content">
+<p>If you need more advanced tools for resolving tricky merge conflicts, we cover more on merging in <a id="xref--ch07-git-tools--_advanced_merging" href="ch07-git-tools.xhtml#_advanced_merging" class="xref">Advanced Merging</a>.</p>
+</div>
+</aside>
+<p>After you exit the merge tool, Git asks you if the merge was successful.
+If you tell the script that it was, it stages the file to mark it as resolved for you.
+You can run <code class="literal">git status</code> again to verify that all conflicts have been resolved:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git status
+On branch master
+All conflicts fixed but you are still merging.
+  (use &quot;git commit&quot; to conclude merge)
+
+Changes to be committed:
+
+    modified:   index.html</code></pre>
+</figure>
+<p>If you&#8217;re happy with that, and you verify that everything that had conflicts has been staged, you can type <code class="literal">git commit</code> to finalize the merge commit.
+The commit message by default looks something like this:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span>Merge branch &#39;iss53&#39;
+
+Conflicts:
+    index.html
+<span style="font-weight: bold">#</span>
+<span style="font-weight: bold">#</span> It looks like you may be committing a merge.
+<span style="font-weight: bold">#</span> If this is not correct, please remove the file
+<span style="font-weight: bold">#</span>	.git/MERGE_HEAD
+<span style="font-weight: bold">#</span> and try again.
+
+
+<span style="font-weight: bold">#</span> Please enter the commit message <span style="font-weight: bold">for</span> your changes. Lines starting
+<span style="font-weight: bold">#</span> with <span style="font-style: italic">&#39;#&#39;</span> will be ignored, and an empty message aborts the commit.
+<span style="font-weight: bold">#</span> On branch master
+<span style="font-weight: bold">#</span> All conflicts fixed but you are still merging.
+<span style="font-weight: bold">#</span>
+<span style="font-weight: bold">#</span> Changes to be committed:
+<span style="font-weight: bold">#</span>	modified:   index.html
+<span style="font-weight: bold">#</span></code></pre>
+</figure>
+<p>If you think it would be helpful to others looking at this merge in the future, you can modify this commit message with details about how you resolved the merge and explain why you did the changes you made if these are not obvious.</p>
+</section>
+</section>
+<section class="sect1" title="Branch Management">
+<h2 id="_branch_management">Branch Management</h2>
+<p>
+Now that you&#8217;ve created, merged, and deleted some branches, let&#8217;s look at some branch-management tools that will come in handy when you begin using branches all the time.</p>
+<p>The <code class="literal">git branch</code> command does more than just create and delete branches.
+If you run it with no arguments, you get a simple listing of your current branches:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch
+  iss53
+* master
+  testing</code></pre>
+</figure>
+<p>Notice the <code class="literal">*</code> character that prefixes the <code class="literal">master</code> branch: it indicates the branch that you currently have checked out (i.e., the branch that <code class="literal">HEAD</code> points to).
+This means that if you commit at this point, the <code class="literal">master</code> branch will be moved forward with your new work.
+To see the last commit on each branch, you can run <code class="literal">git branch -v</code>:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -v
+  iss53   93b412c fix javascript issue
+* master  7a98805 Merge branch &#39;iss53&#39;
+  testing 782fd34 add scott to the author list in the readmes</code></pre>
+</figure>
+<p>The useful <code class="literal">--merged</code> and <code class="literal">--no-merged</code> options can filter this list to branches that you have or have not yet merged into the branch you&#8217;re currently on.
+To see which branches are already merged into the branch you&#8217;re on, you can run <code class="literal">git branch --merged</code>:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch --merged
+  iss53
+* master</code></pre>
+</figure>
+<p>Because you already merged in <code class="literal">iss53</code> earlier, you see it in your list.
+Branches on this list without the <code class="literal">*</code> in front of them are generally fine to delete with <code class="literal">git branch -d</code>; you&#8217;ve already incorporated their work into another branch, so you&#8217;re not going to lose anything.</p>
+<p>To see all the branches that contain work you haven&#8217;t yet merged in, you can run <code class="literal">git branch --no-merged</code>:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch --no-merged
+  testing</code></pre>
+</figure>
+<p>This shows your other branch.
+Because it contains work that isn&#8217;t merged in yet, trying to delete it with <code class="literal">git branch -d</code> will fail:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -d testing
+error: The branch &#39;testing&#39; is not fully merged.
+If you are sure you want to delete it, run &#39;git branch -D testing&#39;.</code></pre>
+</figure>
+<p>If you really do want to delete the branch and lose that work, you can force it with <code class="literal">-D</code>, as the helpful message points out.</p>
+<aside class="admonition tip" title="Tip" epub:type="help">
+<div class="content">
+<p>The options described above, <code class="literal">--merged</code> and <code class="literal">--no-merged</code> will, if not given a commit or branch name as an argument, show you what is, respectively, merged or not merged into your <em>current</em> branch.</p>
+<p>You can always provide an additional argument to ask about the merge state with respect to some other branch without checking  that other branch out first, as in, what is not merged into the <code class="literal">master</code> branch?</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout testing
+<span style="font-weight: bold">$</span> git branch --no-merged master
+  topicA
+  featureB</code></pre>
+</figure>
+</div>
+</aside>
+</section>
+<section class="sect1" title="Branching Workflows">
+<h2 id="_branching_workflows">Branching Workflows</h2>
+<p>Now that you have the basics of branching and merging down, what can or should you do with them?
+In this section, we&#8217;ll cover some common workflows that this lightweight branching makes possible, so you can decide if you would like to incorporate them into your own development cycle.</p>
+<section class="sect2" title="Long-Running Branches">
+<h3 id="_long_running_branches">Long-Running Branches</h3>
+<p>
+Because Git uses a simple three-way merge, merging from one branch into another multiple times over a long period is generally easy to do.
+This means you can have several branches that are always open and that you use for different stages of your development cycle; you can merge regularly from some of them into others.</p>
+<p>Many Git developers have a workflow that embraces this approach, such as having only code that is entirely stable in their <code class="literal">master</code> branch&#8201;&#8212;&#8201;possibly only code that has been or will be released.
+They have another parallel branch named <code class="literal">develop</code> or <code class="literal">next</code> that they work from or use to test stability&#8201;&#8212;&#8201;it isn&#8217;t necessarily always stable, but whenever it gets to a stable state, it can be merged into <code class="literal">master</code>.
+It&#8217;s used to pull in topic branches (short-lived branches, like your earlier <code class="literal">iss53</code> branch) when they&#8217;re ready, to make sure they pass all the tests and don&#8217;t introduce bugs.</p>
+<p>In reality, we&#8217;re talking about pointers moving up the line of commits you&#8217;re making.
+The stable branches are farther down the line in your commit history, and the bleeding-edge branches are farther up the history.</p>
+<figure class="image">
+<div class="content">
+<img src="images/lr-branches-1.png" alt="A linear view of progressive-stability branching."/>
+</div>
+<figcaption>Figure 18. A linear view of progressive-stability branching</figcaption>
+</figure>
+<p>It&#8217;s generally easier to think about them as work silos, where sets of commits graduate to a more stable silo when they&#8217;re fully tested.</p>
+<figure id="lrbranch_b" class="image">
+<div class="content">
+<img src="images/lr-branches-2.png" alt="A ``silo'' view of progressive-stability branching."/>
+</div>
+<figcaption>Figure 19. A “silo” view of progressive-stability branching</figcaption>
+</figure>
+<p>You can keep doing this for several levels of stability.
+Some larger projects also have a <code class="literal">proposed</code> or <code class="literal">pu</code> (proposed updates) branch that has integrated branches that may not be ready to go into the <code class="literal">next</code> or <code class="literal">master</code> branch.
+The idea is that your branches are at various levels of stability; when they reach a more stable level, they&#8217;re merged into the branch above them.
+Again, having multiple long-running branches isn&#8217;t necessary, but it&#8217;s often helpful, especially when you&#8217;re dealing with very large or complex projects.</p>
+</section>
+<section class="sect2" title="Topic Branches">
+<h3 id="_topic_branch">Topic Branches</h3>
+<p>
+Topic branches, however, are useful in projects of any size.
+A topic branch is a short-lived branch that you create and use for a single particular feature or related work.
+This is something you&#8217;ve likely never done with a VCS before because it&#8217;s generally too expensive to create and merge branches.
+But in Git it&#8217;s common to create, work on, merge, and delete branches several times a day.</p>
+<p>You saw this in the last section with the <code class="literal">iss53</code> and <code class="literal">hotfix</code> branches you created.
+You did a few commits on them and deleted them directly after merging them into your main branch.
+This technique allows you to context-switch quickly and completely&#8201;&#8212;&#8201;because your work is separated into silos where all the changes in that branch have to do with that topic, it&#8217;s easier to see what has happened during code review and such.
+You can keep the changes there for minutes, days, or months, and merge them in when they&#8217;re ready, regardless of the order in which they were created or worked on.</p>
+<p>Consider an example of doing some work (on <code class="literal">master</code>), branching off for an issue (<code class="literal">iss91</code>), working on it for a bit, branching off the second branch to try another way of handling the same thing (<code class="literal">iss91v2</code>), going back to your <code class="literal">master</code> branch and working there for a while, and then branching off there to do some work that you&#8217;re not sure is a good idea (<code class="literal">dumbidea</code> branch).
+Your commit history will look something like this:</p>
+<figure class="image">
+<div class="content">
+<img src="images/topic-branches-1.png" alt="Multiple topic branches."/>
+</div>
+<figcaption>Figure 20. Multiple topic branches</figcaption>
+</figure>
+<p>Now, let&#8217;s say you decide you like the second solution to your issue best (<code class="literal">iss91v2</code>); and you showed the <code class="literal">dumbidea</code> branch to your coworkers, and it turns out to be genius.
+You can throw away the original <code class="literal">iss91</code> branch (losing commits <code class="literal">C5</code> and <code class="literal">C6</code>) and merge in the other two.
+Your history then looks like this:</p>
+<figure class="image">
+<div class="content">
+<img src="images/topic-branches-2.png" alt="History after merging `dumbidea` and `iss91v2`."/>
+</div>
+<figcaption>Figure 21. History after merging <code class="literal">dumbidea</code> and <code class="literal">iss91v2</code></figcaption>
+</figure>
+<p>We will go into more detail about the various possible workflows for your Git project in <a id="xref--ch05-distributed-git" href="ch05-distributed-git.xhtml" class="xref">Distributed Git</a>, so before you decide which branching scheme your next project will use, be sure to read that chapter.</p>
+<p>It&#8217;s important to remember when you&#8217;re doing all this that these branches are completely local.
+When you&#8217;re branching and merging, everything is being done only in your Git repository&#8201;&#8212;&#8201;there is no communication with the server.</p>
+</section>
+</section>
+<section class="sect1" title="Remote Branches">
+<h2 id="_remote_branches">Remote Branches</h2>
+<p>
+Remote references are references (pointers) in your remote repositories, including branches, tags, and so on.
+You can get a full list of remote references explicitly with <code class="literal">git ls-remote [remote]</code>, or <code class="literal">git remote show [remote]</code> for remote branches as well as more information.
+Nevertheless, a more common way is to take advantage of remote-tracking branches.</p>
+<p>Remote-tracking branches are references to the state of remote branches.
+They&#8217;re local references that you can&#8217;t move; Git moves them for you whenever you do any network communication, to make sure they accurately represent the state of the remote repository.
+Think of them as bookmarks, to remind you where the branches in your remote repositories were the last time you connected to them.</p>
+<p>Remote-tracking branch names take the form <code class="literal">&lt;remote&gt;/&lt;branch&gt;</code>.
+For instance, if you wanted to see what the <code class="literal">master</code> branch on your <code class="literal">origin</code> remote looked like as of the last time you communicated with it, you would check the <code class="literal">origin/master</code> branch.
+If you were working on an issue with a partner and they pushed up an <code class="literal">iss53</code> branch, you might have your own local <code class="literal">iss53</code> branch, but the branch on the server would be represented by the remote-tracking branch <code class="literal">origin/iss53</code>.</p>
+<p>This may be a bit confusing, so let&#8217;s look at an example.
+Let&#8217;s say you have a Git server on your network at <code class="literal">git.ourcompany.com</code>.
+If you clone from this, Git&#8217;s <code class="literal">clone</code> command automatically names it <code class="literal">origin</code> for you, pulls down all its data, creates a pointer to where its <code class="literal">master</code> branch is, and names it <code class="literal">origin/master</code> locally.
+Git also gives you your own local <code class="literal">master</code> branch starting at the same place as origin&#8217;s <code class="literal">master</code> branch, so you have something to work from.</p>
+<aside class="admonition note" title="Note: “origin” is not special" epub:type="note">
+<h2>“origin” is not special</h2>
+<div class="content">
+<p>Just like the branch name “master” does not have any special meaning in Git, neither does “origin”.
+While “master” is the default name for a starting branch when you run <code class="literal">git init</code> which is the only reason it&#8217;s widely used, “origin” is the default name for a remote when you run <code class="literal">git clone</code>.
+If you run <code class="literal">git clone -o booyah</code> instead, then you will have <code class="literal">booyah/master</code> as your default remote branch.</p>
+</div>
+</aside>
+<figure class="image">
+<div class="content">
+<img src="images/remote-branches-1.png" alt="Server and local repositories after cloning."/>
+</div>
+<figcaption>Figure 22. Server and local repositories after cloning</figcaption>
+</figure>
+<p>If you do some work on your local <code class="literal">master</code> branch, and, in the meantime, someone else pushes to <code class="literal">git.ourcompany.com</code> and updates its <code class="literal">master</code> branch, then your histories move forward differently.
+Also, as long as you stay out of contact with your origin server, your <code class="literal">origin/master</code> pointer doesn&#8217;t move.</p>
+<figure class="image">
+<div class="content">
+<img src="images/remote-branches-2.png" alt="Local and remote work can diverge."/>
+</div>
+<figcaption>Figure 23. Local and remote work can diverge</figcaption>
+</figure>
+<p>To synchronize your work with a given remote, you run a <code class="literal">git fetch &lt;remote&gt;</code> command (in our case, <code class="literal">git fetch origin</code>).
+This command looks up which server “origin” is (in this case, it&#8217;s <code class="literal">git.ourcompany.com</code>), fetches any data from it that you don&#8217;t yet have, and updates your local database, moving your <code class="literal">origin/master</code> pointer to its new, more up-to-date position.</p>
+<figure class="image">
+<div class="content">
+<img src="images/remote-branches-3.png" alt="`git fetch` updates your remote references."/>
+</div>
+<figcaption>Figure 24. <code class="literal">git fetch</code> updates your remote-tracking branches</figcaption>
+</figure>
+<p>To demonstrate having multiple remote servers and what remote branches for those remote projects look like, let&#8217;s assume you have another internal Git server that is used only for development by one of your sprint teams.
+This server is at <code class="literal">git.team1.ourcompany.com</code>.
+You can add it as a new remote reference to the project you&#8217;re currently working on by running the <code class="literal">git remote add</code> command as we covered in <a id="xref--ch02-git-basics-chapter" href="ch02-git-basics-chapter.xhtml" class="xref">Git Basics</a>.
+Name this remote <code class="literal">teamone</code>, which will be your shortname for that whole URL.</p>
+<figure class="image">
+<div class="content">
+<img src="images/remote-branches-4.png" alt="Adding another server as a remote."/>
+</div>
+<figcaption>Figure 25. Adding another server as a remote</figcaption>
+</figure>
+<p>Now, you can run <code class="literal">git fetch teamone</code> to fetch everything the remote <code class="literal">teamone</code> server has that you don&#8217;t have yet.
+Because that server has a subset of the data your <code class="literal">origin</code> server has right now, Git fetches no data but sets a remote-tracking branch called <code class="literal">teamone/master</code> to point to the commit that <code class="literal">teamone</code> has as its <code class="literal">master</code> branch.</p>
+<figure class="image">
+<div class="content">
+<img src="images/remote-branches-5.png" alt="Remote tracking branch for `teamone/master`."/>
+</div>
+<figcaption>Figure 26. Remote-tracking branch for <code class="literal">teamone/master</code></figcaption>
+</figure>
+<section class="sect2" title="Pushing">
+<h3 id="_pushing_branches">Pushing</h3>
+<p>
+When you want to share a branch with the world, you need to push it up to a remote to which you have write access.
+Your local branches aren&#8217;t automatically synchronized to the remotes you write to&#8201;&#8212;&#8201;you have to explicitly push the branches you want to share.
+That way, you can use private branches for work you don&#8217;t want to share, and push up only the topic branches you want to collaborate on.</p>
+<p>If you have a branch named <code class="literal">serverfix</code> that you want to work on with others, you can push it up the same way you pushed your first branch.
+Run <code class="literal">git push &lt;remote&gt; &lt;branch&gt;</code>:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git push origin serverfix
+Counting objects: 24, done.
+Delta compression using up to 8 threads.
+Compressing objects: 100% (15/15), done.
+Writing objects: 100% (24/24), 1.91 KiB | 0 bytes/s, done.
+Total 24 (delta 2), reused 0 (delta 0)
+To https://github.com/schacon/simplegit
+ * [new branch]      serverfix -&gt; serverfix</code></pre>
+</figure>
+<p>This is a bit of a shortcut.
+Git automatically expands the <code class="literal">serverfix</code> branchname out to <code class="literal">refs/heads/serverfix:refs/heads/serverfix</code>, which means, “Take my serverfix local branch and push it to update the remote&#8217;s serverfix branch.”
+We&#8217;ll go over the <code class="literal">refs/heads/</code> part in detail in <a id="xref--ch10-git-internals" href="ch10-git-internals.xhtml" class="xref">Git Internals</a>, but you can generally leave it off.
+You can also do <code class="literal">git push origin serverfix:serverfix</code>, which does the same thing&#8201;&#8212;&#8201;it says, “Take my serverfix and make it the remote&#8217;s serverfix.”
+You can use this format to push a local branch into a remote branch that is named differently.
+If you didn&#8217;t want it to be called <code class="literal">serverfix</code> on the remote, you could instead run <code class="literal">git push origin serverfix:awesomebranch</code> to push your local <code class="literal">serverfix</code> branch to the <code class="literal">awesomebranch</code> branch on the remote project.</p>
+<aside class="admonition note" title="Note: Don&#8217;t type your password every time" epub:type="note">
+<h2>Don&#8217;t type your password every time</h2>
+<div class="content">
+<p>If you&#8217;re using an HTTPS URL to push over, the Git server will ask you for your username and password for authentication.
+By default it will prompt you on the terminal for this information so the server can tell if you&#8217;re allowed to push.</p>
+<p>If you don&#8217;t want to type it every single time you push, you can set up a “credential cache”.
+The simplest is just to keep it in memory for a few minutes, which you can easily set up by running <code class="literal">git config --global credential.helper cache</code>.</p>
+<p>For more information on the various credential caching options available, see <a id="xref--ch07-git-tools--_credential_caching" href="ch07-git-tools.xhtml#_credential_caching" class="xref">Credential Storage</a>.</p>
+</div>
+</aside>
+<p>The next time one of your collaborators fetches from the server, they will get a reference to where the server&#8217;s version of <code class="literal">serverfix</code> is under the remote branch <code class="literal">origin/serverfix</code>:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git fetch origin
+remote: Counting objects: 7, done.
+remote: Compressing objects: 100% (2/2), done.
+remote: Total 3 (delta 0), reused 3 (delta 0)
+Unpacking objects: 100% (3/3), done.
+From https://github.com/schacon/simplegit
+ * [new branch]      serverfix    -&gt; origin/serverfix</code></pre>
+</figure>
+<p>It&#8217;s important to note that when you do a fetch that brings down new remote-tracking branches, you don&#8217;t automatically have local, editable copies of them.
+In other words, in this case, you don&#8217;t have a new <code class="literal">serverfix</code> branch&#8201;&#8212;&#8201;you have only an <code class="literal">origin/serverfix</code> pointer that you can&#8217;t modify.</p>
+<p>To merge this work into your current working branch, you can run <code class="literal">git merge origin/serverfix</code>.
+If you want your own <code class="literal">serverfix</code> branch that you can work on, you can base it off your remote-tracking branch:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout -b serverfix origin/serverfix
+Branch serverfix set up to track remote branch serverfix from origin.
+Switched to a new branch &#39;serverfix&#39;</code></pre>
+</figure>
+<p>This gives you a local branch that you can work on that starts where <code class="literal">origin/serverfix</code> is.</p>
+</section>
+<section class="sect2" title="Tracking Branches">
+<h3 id="_tracking_branches">Tracking Branches</h3>
+<p>
+Checking out a local branch from a remote-tracking branch automatically creates what is called a “tracking branch” (and the branch it tracks is called an “upstream branch”).
+Tracking branches are local branches that have a direct relationship to a remote branch.
+If you&#8217;re on a tracking branch and type <code class="literal">git pull</code>, Git automatically knows which server to fetch from and which branch to merge in.</p>
+<p>When you clone a repository, it generally automatically creates a <code class="literal">master</code> branch that tracks <code class="literal">origin/master</code>.
+However, you can set up other tracking branches if you wish&#8201;&#8212;&#8201;ones that track branches on other remotes, or don&#8217;t track the <code class="literal">master</code> branch.
+The simple case is the example you just saw, running <code class="literal">git checkout -b &lt;branch&gt; &lt;remote&gt;/&lt;branch&gt;</code>.
+This is a common enough operation that Git provides the <code class="literal">--track</code> shorthand:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout --track origin/serverfix
+Branch serverfix set up to track remote branch serverfix from origin.
+Switched to a new branch &#39;serverfix&#39;</code></pre>
+</figure>
+<p>In fact, this is so common that there&#8217;s even a shortcut for that shortcut.
+If the branch name you&#8217;re trying to checkout (a) doesn&#8217;t exist and (b) exactly matches a name on only one remote, Git will create a tracking branch for you:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout serverfix
+Branch serverfix set up to track remote branch serverfix from origin.
+Switched to a new branch &#39;serverfix&#39;</code></pre>
+</figure>
+<p>To set up a local branch with a different name than the remote branch, you can easily use the first version with a different local branch name:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout -b sf origin/serverfix
+Branch sf set up to track remote branch serverfix from origin.
+Switched to a new branch &#39;sf&#39;</code></pre>
+</figure>
+<p>Now, your local branch <code class="literal">sf</code> will automatically pull from <code class="literal">origin/serverfix</code>.</p>
+<p>If you already have a local branch and want to set it to a remote branch you just pulled down, or want to change the upstream branch you&#8217;re tracking, you can use the <code class="literal">-u</code> or <code class="literal">--set-upstream-to</code> option to <code class="literal">git branch</code> to explicitly set it at any time.</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -u origin/serverfix
+Branch serverfix set up to track remote branch serverfix from origin.</code></pre>
+</figure>
+<aside class="admonition note" title="Note: Upstream shorthand" epub:type="note">
+<h2>Upstream shorthand</h2>
+<div class="content">
+<p>When you have a tracking branch set up, you can reference its upstream branch with the <code class="literal">@{upstream}</code> or <code class="literal">@{u}</code> shorthand.
+So if you&#8217;re on the <code class="literal">master</code> branch and it&#8217;s tracking <code class="literal">origin/master</code>, you can say something like <code class="literal">git merge @{u}</code> instead of <code class="literal">git merge origin/master</code> if you wish.</p>
+</div>
+</aside>
+<p>If you want to see what tracking branches you have set up, you can use the <code class="literal">-vv</code> option to <code class="literal">git branch</code>.
+This will list out your local branches with more information including what each branch is tracking and if your local branch is ahead, behind or both.</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -vv
+  iss53     7e424c3 [origin/iss53: ahead 2] forgot the brackets
+  master    1ae2a45 [origin/master] deploying index fix
+* serverfix f8674d9 [teamone/server-fix-good: ahead 3, behind 1] this should do it
+  testing   5ea463a trying something new</code></pre>
+</figure>
+<p>So here we can see that our <code class="literal">iss53</code> branch is tracking <code class="literal">origin/iss53</code> and is “ahead” by two, meaning that we have two commits locally that are not pushed to the server.
+We can also see that our <code class="literal">master</code> branch is tracking <code class="literal">origin/master</code> and is up to date.
+Next we can see that our <code class="literal">serverfix</code> branch is tracking the <code class="literal">server-fix-good</code> branch on our <code class="literal">teamone</code> server and is ahead by three and behind by one, meaning that there is one commit on the server we haven&#8217;t merged in yet and three commits locally that we haven&#8217;t pushed.
+Finally we can see that our <code class="literal">testing</code> branch is not tracking any remote branch.</p>
+<p>It&#8217;s important to note that these numbers are only since the last time you fetched from each server.
+This command does not reach out to the servers, it&#8217;s telling you about what it has cached from these servers locally.
+If you want totally up to date ahead and behind numbers, you&#8217;ll need to fetch from all your remotes right before running this.
+You could do that like this:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git fetch --all; git branch -vv</code></pre>
+</figure>
+</section>
+<section class="sect2" title="Pulling">
+<h3 id="_pulling">Pulling</h3>
+<p>
+While the <code class="literal">git fetch</code> command will fetch all the changes on the server that you don&#8217;t have yet, it will not modify your working directory at all.
+It will simply get the data for you and let you merge it yourself.
+However, there is a command called <code class="literal">git pull</code> which is essentially a <code class="literal">git fetch</code> immediately followed by a <code class="literal">git merge</code> in most cases.
+If you have a tracking branch set up as demonstrated in the last section, either by explicitly setting it or by having it created for you by the <code class="literal">clone</code> or <code class="literal">checkout</code> commands, <code class="literal">git pull</code> will look up what server and branch your current branch is tracking, fetch from that server and then try to merge in that remote branch.</p>
+<p>Generally it&#8217;s better to simply use the <code class="literal">fetch</code> and <code class="literal">merge</code> commands explicitly as the magic of <code class="literal">git pull</code> can often be confusing.</p>
+</section>
+<section class="sect2" title="Deleting Remote Branches">
+<h3 id="_delete_branches">Deleting Remote Branches</h3>
+<p>
+Suppose you&#8217;re done with a remote branch&#8201;&#8212;&#8201;say you and your collaborators are finished with a feature and have merged it into your remote&#8217;s <code class="literal">master</code> branch (or whatever branch your stable codeline is in).
+You can delete a remote branch using the <code class="literal">--delete</code> option to <code class="literal">git push</code>.
+If you want to delete your <code class="literal">serverfix</code> branch from the server, you run the following:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git push origin --delete serverfix
+To https://github.com/schacon/simplegit
+ - [deleted]         serverfix</code></pre>
+</figure>
+<p>Basically all this does is remove the pointer from the server.
+The Git server will generally keep the data there for a while until a garbage collection runs, so if it was accidentally deleted, it&#8217;s often easy to recover.</p>
+</section>
+</section>
+<section class="sect1" title="Rebasing">
+<h2 id="_rebasing">Rebasing</h2>
+<p>
+In Git, there are two main ways to integrate changes from one branch into another: the <code class="literal">merge</code> and the <code class="literal">rebase</code>.
+In this section you&#8217;ll learn what rebasing is, how to do it, why it&#8217;s a pretty amazing tool, and in what cases you won&#8217;t want to use it.</p>
+<section class="sect2" title="The Basic Rebase">
+<h3 id="_the_basic_rebase">The Basic Rebase</h3>
+<p>If you go back to an earlier example from <a id="xref-_basic_merging" href="#_basic_merging" class="xref">Basic Merging</a>, you can see that you diverged your work and made commits on two different branches.</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-rebase-1.png" alt="Simple divergent history."/>
+</div>
+<figcaption>Figure 27. Simple divergent history</figcaption>
+</figure>
+<p>The easiest way to integrate the branches, as we&#8217;ve already covered, is the <code class="literal">merge</code> command.
+It performs a three-way merge between the two latest branch snapshots (<code class="literal">C3</code> and <code class="literal">C4</code>) and the most recent common ancestor of the two (<code class="literal">C2</code>), creating a new snapshot (and commit).</p>
+<figure id="rebasing-merging-example" class="image">
+<div class="content">
+<img src="images/basic-rebase-2.png" alt="Merging to integrate diverged work history."/>
+</div>
+<figcaption>Figure 28. Merging to integrate diverged work history</figcaption>
+</figure>
+<p>However, there is another way: you can take the patch of the change that was introduced in <code class="literal">C4</code> and reapply it on top of <code class="literal">C3</code>.
+In Git, this is called <em>rebasing</em>.
+With the <code class="literal">rebase</code> command, you can take all the changes that were committed on one branch and replay them on a different branch.</p>
+<p>For this example, you would check out the <code class="literal">experiment</code> branch, and then rebase it onto the <code class="literal">master</code> branch as follows:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout experiment
+<span style="font-weight: bold">$</span> git rebase master
+First, rewinding head to replay your work on top of it...
+Applying: added staged command</code></pre>
+</figure>
+<p>This operation works by going to the common ancestor of the two branches (the one you&#8217;re on and the one you&#8217;re rebasing onto), getting the diff introduced by each commit of the branch you&#8217;re on, saving those diffs to temporary files, resetting the current branch to the same commit as the branch you are rebasing onto, and finally applying each change in turn.</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-rebase-3.png" alt="Rebasing the change introduced in `C4` onto `C3`."/>
+</div>
+<figcaption>Figure 29. Rebasing the change introduced in <code class="literal">C4</code> onto <code class="literal">C3</code></figcaption>
+</figure>
+<p>At this point, you can go back to the <code class="literal">master</code> branch and do a fast-forward merge.</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master
+<span style="font-weight: bold">$</span> git merge experiment</code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/basic-rebase-4.png" alt="Fast-forwarding the master branch."/>
+</div>
+<figcaption>Figure 30. Fast-forwarding the master branch</figcaption>
+</figure>
+<p>Now, the snapshot pointed to by <code class="literal">C4'</code> is exactly the same as the one that was pointed to by <code class="literal">C5</code> in <a id="xref-rebasing-merging-example" href="#rebasing-merging-example" class="xref">the merge example</a>.
+There is no difference in the end product of the integration, but rebasing makes for a cleaner history.
+If you examine the log of a rebased branch, it looks like a linear history: it appears that all the work happened in series, even when it originally happened in parallel.</p>
+<p>Often, you&#8217;ll do this to make sure your commits apply cleanly on a remote branch&#8201;&#8212;&#8201;perhaps in a project to which you&#8217;re trying to contribute but that you don&#8217;t maintain.
+In this case, you&#8217;d do your work in a branch and then rebase your work onto <code class="literal">origin/master</code> when you were ready to submit your patches to the main project.
+That way, the maintainer doesn&#8217;t have to do any integration work&#8201;&#8212;&#8201;just a fast-forward or a clean apply.</p>
+<p>Note that the snapshot pointed to by the final commit you end up with, whether it&#8217;s the last of the rebased commits for a rebase or the final merge commit after a merge, is the same snapshot&#8201;&#8212;&#8201;it&#8217;s only the history that is different.
+Rebasing replays changes from one line of work onto another in the order they were introduced, whereas merging takes the endpoints and merges them together.</p>
+</section>
+<section class="sect2" title="More Interesting Rebases">
+<h3 id="_more_interesting_rebases">More Interesting Rebases</h3>
+<p>You can also have your rebase replay on something other than the rebase target branch.
+Take a history like <a id="xref-rbdiag_e" href="#rbdiag_e" class="xref">A history with a topic branch off another topic branch</a>, for example.
+You branched a topic branch (<code class="literal">server</code>) to add some server-side functionality to your project, and made a commit.
+Then, you branched off that to make the client-side changes (<code class="literal">client</code>) and committed a few times.
+Finally, you went back to your server branch and did a few more commits.</p>
+<figure id="rbdiag_e" class="image">
+<div class="content">
+<img src="images/interesting-rebase-1.png" alt="A history with a topic branch off another topic branch."/>
+</div>
+<figcaption>Figure 31. A history with a topic branch off another topic branch</figcaption>
+</figure>
+<p>Suppose you decide that you want to merge your client-side changes into your mainline for a release, but you want to hold off on the server-side changes until it&#8217;s tested further.
+You can take the changes on client that aren&#8217;t on server (<code class="literal">C8</code> and <code class="literal">C9</code>) and replay them on your <code class="literal">master</code> branch by using the <code class="literal">--onto</code> option of <code class="literal">git rebase</code>:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git rebase --onto master server client</code></pre>
+</figure>
+<p>This basically says, “Take the <code class="literal">client</code> branch, figure out the patches since it diverged from the <code class="literal">server</code> branch, and replay these patches in the <code class="literal">client</code> branch as if it was based directly off the <code class="literal">master</code> branch instead.”
+It&#8217;s a bit complex, but the result is pretty cool.</p>
+<figure class="image">
+<div class="content">
+<img src="images/interesting-rebase-2.png" alt="Rebasing a topic branch off another topic branch."/>
+</div>
+<figcaption>Figure 32. Rebasing a topic branch off another topic branch</figcaption>
+</figure>
+<p>Now you can fast-forward your <code class="literal">master</code> branch (see <a id="xref-rbdiag_g" href="#rbdiag_g" class="xref">Fast-forwarding your master branch to include the client branch changes</a>):</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master
+<span style="font-weight: bold">$</span> git merge client</code></pre>
+</figure>
+<figure id="rbdiag_g" class="image">
+<div class="content">
+<img src="images/interesting-rebase-3.png" alt="Fast-forwarding your master branch to include the client branch changes."/>
+</div>
+<figcaption>Figure 33. Fast-forwarding your master branch to include the client branch changes</figcaption>
+</figure>
+<p>Let&#8217;s say you decide to pull in your server branch as well.
+You can rebase the server branch onto the <code class="literal">master</code> branch without having to check it out first by running <code class="literal">git rebase &lt;basebranch&gt; &lt;topicbranch&gt;</code>&#8201;&#8212;&#8201;which checks out the topic branch (in this case, <code class="literal">server</code>) for you and replays it onto the base branch (<code class="literal">master</code>):</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git rebase master server</code></pre>
+</figure>
+<p>This replays your <code class="literal">server</code> work on top of your <code class="literal">master</code> work, as shown in <a id="xref-rbdiag_h" href="#rbdiag_h" class="xref">Rebasing your server branch on top of your master branch</a>.</p>
+<figure id="rbdiag_h" class="image">
+<div class="content">
+<img src="images/interesting-rebase-4.png" alt="Rebasing your server branch on top of your master branch."/>
+</div>
+<figcaption>Figure 34. Rebasing your server branch on top of your master branch</figcaption>
+</figure>
+<p>Then, you can fast-forward the base branch (<code class="literal">master</code>):</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master
+<span style="font-weight: bold">$</span> git merge server</code></pre>
+</figure>
+<p>You can remove the <code class="literal">client</code> and <code class="literal">server</code> branches because all the work is integrated and you don&#8217;t need them anymore, leaving your history for this entire process looking like <a id="xref-rbdiag_i" href="#rbdiag_i" class="xref">Final commit history</a>:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -d client
+<span style="font-weight: bold">$</span> git branch -d server</code></pre>
+</figure>
+<figure id="rbdiag_i" class="image">
+<div class="content">
+<img src="images/interesting-rebase-5.png" alt="Final commit history."/>
+</div>
+<figcaption>Figure 35. Final commit history</figcaption>
+</figure>
+</section>
+<section class="sect2" title="The Perils of Rebasing">
+<h3 id="_rebase_peril">The Perils of Rebasing</h3>
+<p>
+Ahh, but the bliss of rebasing isn&#8217;t without its drawbacks, which can be summed up in a single line:</p>
+<p><strong>Do not rebase commits that exist outside your repository and people may have based work on them.</strong></p>
+<p>If you follow that guideline, you&#8217;ll be fine.
+If you don&#8217;t, people will hate you, and you&#8217;ll be scorned by friends and family.</p>
+<p>When you rebase stuff, you&#8217;re abandoning existing commits and creating new ones that are similar but different.
+If you push commits somewhere and others pull them down and base work on them, and then you rewrite those commits with <code class="literal">git rebase</code> and push them up again, your collaborators will have to re-merge their work and things will get messy when you try to pull their work back into yours.</p>
+<p>Let&#8217;s look at an example of how rebasing work that you&#8217;ve made public can cause problems.
+Suppose you clone from a central server and then do some work off that.
+Your commit history looks like this:</p>
+<figure class="image">
+<div class="content">
+<img src="images/perils-of-rebasing-1.png" alt="Clone a repository, and base some work on it."/>
+</div>
+<figcaption>Figure 36. Clone a repository, and base some work on it</figcaption>
+</figure>
+<p>Now, someone else does more work that includes a merge, and pushes that work to the central server.
+You fetch it and merge the new remote branch into your work, making your history look something like this:</p>
+<figure class="image">
+<div class="content">
+<img src="images/perils-of-rebasing-2.png" alt="Fetch more commits, and merge them into your work."/>
+</div>
+<figcaption>Figure 37. Fetch more commits, and merge them into your work</figcaption>
+</figure>
+<p>Next, the person who pushed the merged work decides to go back and rebase their work instead; they do a <code class="literal">git push --force</code> to overwrite the history on the server.
+You then fetch from that server, bringing down the new commits.</p>
+<figure id="_pre_merge_rebase_work" class="image">
+<div class="content">
+<img src="images/perils-of-rebasing-3.png" alt="Someone pushes rebased commits, abandoning commits you've based your work on."/>
+</div>
+<figcaption>Figure 38. Someone pushes rebased commits, abandoning commits you&#8217;ve based your work on</figcaption>
+</figure>
+<p>Now you&#8217;re both in a pickle.
+If you do a <code class="literal">git pull</code>, you&#8217;ll create a merge commit which includes both lines of history, and your repository will look like this:</p>
+<figure id="_merge_rebase_work" class="image">
+<div class="content">
+<img src="images/perils-of-rebasing-4.png" alt="You merge in the same work again into a new merge commit."/>
+</div>
+<figcaption>Figure 39. You merge in the same work again into a new merge commit</figcaption>
+</figure>
+<p>If you run a <code class="literal">git log</code> when your history looks like this, you&#8217;ll see two commits that have the same author, date, and message, which will be confusing.
+Furthermore, if you push this history back up to the server, you&#8217;ll reintroduce all those rebased commits to the central server, which can further confuse people.
+It&#8217;s pretty safe to assume that the other developer doesn&#8217;t want <code class="literal">C4</code> and <code class="literal">C6</code> to be in the history; that&#8217;s why they rebased in the first place.</p>
+</section>
+<section class="sect2" title="Rebase When You Rebase">
+<h3 id="_rebase_rebase">Rebase When You Rebase</h3>
+<p>If you <strong>do</strong> find yourself in a situation like this, Git has some further magic that might help you out.
+If someone on your team force pushes changes that overwrite work that you&#8217;ve based work on, your challenge is to figure out what is yours and what they&#8217;ve rewritten.</p>
+<p>It turns out that in addition to the commit SHA-1 checksum, Git also calculates a checksum that is based just on the patch introduced with the commit.
+This is called a “patch-id”.</p>
+<p>If you pull down work that was rewritten and rebase it on top of the new commits from your partner, Git can often successfully figure out what is uniquely yours and apply them back on top of the new branch.</p>
+<p>For instance, in the previous scenario, if instead of doing a merge when we&#8217;re at <a id="xref-_pre_merge_rebase_work" href="#_pre_merge_rebase_work" class="xref">Someone pushes rebased commits, abandoning commits you&#8217;ve based your work on</a> we run <code class="literal">git rebase teamone/master</code>, Git will:</p>
+<div class="itemized-list">
+<ul>
+<li>
+<span class="principal">Determine what work is unique to our branch (C2, C3, C4, C6, C7)</span>
+</li>
+<li>
+<span class="principal">Determine which are not merge commits (C2, C3, C4)</span>
+</li>
+<li>
+<span class="principal">Determine which have not been rewritten into the target branch (just C2 and C3, since C4 is the same patch as C4')</span>
+</li>
+<li>
+<span class="principal">Apply those commits to the top of <code class="literal">teamone/master</code></span>
+</li>
+</ul>
+</div>
+<p>So instead of the result we see in <a id="xref-_merge_rebase_work" href="#_merge_rebase_work" class="xref">You merge in the same work again into a new merge commit</a>, we would end up with something more like <a id="xref-_rebase_rebase_work" href="#_rebase_rebase_work" class="xref">Rebase on top of force-pushed rebase work.</a>.</p>
+<figure id="_rebase_rebase_work" class="image">
+<div class="content">
+<img src="images/perils-of-rebasing-5.png" alt="Rebase on top of force-pushed rebase work."/>
+</div>
+<figcaption>Figure 40. Rebase on top of force-pushed rebase work.</figcaption>
+</figure>
+<p>This only works if C4 and C4' that your partner made are almost exactly the same patch.
+Otherwise the rebase won&#8217;t be able to tell that it&#8217;s a duplicate and will add another C4-like patch (which will probably fail to apply cleanly, since the changes would already be at least somewhat there).</p>
+<p>You can also simplify this by running a <code class="literal">git pull --rebase</code> instead of a normal <code class="literal">git pull</code>.
+Or you could do it manually with a <code class="literal">git fetch</code> followed by a <code class="literal">git rebase teamone/master</code> in this case.</p>
+<p>If you are using <code class="literal">git pull</code> and want to make <code class="literal">--rebase</code> the default, you can set the <code class="literal">pull.rebase</code> config value with something like <code class="literal">git config --global pull.rebase true</code>.</p>
+<p>If you only ever rebase commits that have never left your own computer, you&#8217;ll be just fine.
+If you rebase commits that have been pushed, but that no one else has based commits from, you&#8217;ll also be fine.
+If you rebase commits that have already been pushed publicly, and people may have based work on those commits, then you may be in for some frustrating trouble, and the scorn of your teammates.</p>
+<p>If you or a partner does find it necessary at some point, make sure everyone knows to run <code class="literal">git pull --rebase</code> to try to make the pain after it happens a little bit simpler.</p>
+</section>
+<section class="sect2" title="Rebase vs. Merge">
+<h3 id="_rebase_vs_merge">Rebase vs. Merge</h3>
+<p>
+Now that you&#8217;ve seen rebasing and merging in action, you may be wondering which one is better.
+Before we can answer this, let&#8217;s step back a bit and talk about what history means.</p>
+<p>One point of view on this is that your repository&#8217;s commit history is a <strong>record of what actually happened.</strong>
+It&#8217;s a historical document, valuable in its own right, and shouldn&#8217;t be tampered with.
+From this angle, changing the commit history is almost blasphemous; you&#8217;re <em>lying</em> about what actually transpired.
+So what if there was a messy series of merge commits?
+That&#8217;s how it happened, and the repository should preserve that for posterity.</p>
+<p>The opposing point of view is that the commit history is the <strong>story of how your project was made.</strong>
+You wouldn&#8217;t publish the first draft of a book, and the manual for how to maintain your software deserves careful editing.
+This is the camp that uses tools like rebase and filter-branch to tell the story in the way that&#8217;s best for future readers.</p>
+<p>Now, to the question of whether merging or rebasing is better: hopefully you&#8217;ll see that it&#8217;s not that simple.
+Git is a powerful tool, and allows you to do many things to and with your history, but every team and every project is different.
+Now that you know how both of these things work, it&#8217;s up to you to decide which one is best for your particular situation.</p>
+<p>In general the way to get the best of both worlds is to rebase local changes you&#8217;ve made but haven&#8217;t shared yet before you push them in order to clean up your story, but never rebase anything you&#8217;ve pushed somewhere.</p>
+</section>
+</section>
+<section class="sect1" title="Summary">
+<h2 id="_summary">Summary</h2>
+<p>We&#8217;ve covered basic branching and merging in Git.
+You should feel comfortable creating and switching to new branches, switching between branches and merging local branches together.
+You should also be able to share your branches by pushing them to a shared server, working with others on shared branches and rebasing your branches before they are shared.
+Next, we&#8217;ll cover what you&#8217;ll need to run your own Git repository-hosting server.</p>
+</section>
+</section>
+</body>
+</html>
