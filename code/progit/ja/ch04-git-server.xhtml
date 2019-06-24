@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Gitサーバー</title>
+<link rel="stylesheet" type="text/css" href="styles/epub3.css"/>
+<link rel="stylesheet" type="text/css" href="styles/epub3-css3-only.css" media="(min-device-width: 0px)"/>
+<script type="text/javascript">
+document.addEventListener('DOMContentLoaded', function(event, reader) {
+  if (!(reader = navigator.epubReadingSystem)) {
+    if (navigator.userAgent.indexOf(' calibre/') >= 0) reader = { name: 'calibre-desktop' };
+    else if (window.parent == window || !(reader = window.parent.navigator.epubReadingSystem)) return;
+  }
+  document.body.setAttribute('class', reader.name.toLowerCase().replace(/ /g, '-'));
+});
+</script>
+</head>
+<body>
+<section class="chapter" title="Gitサーバー" epub:type="chapter" id="ch04-git-server">
+<header>
+<div class="chapter-header">
+<h1 class="chapter-title"><small class="subtitle"><b>Gitサーバー</b></small></h1>
+</div>
+</header>
+<p></p>
+<p>ここまで読んだみなさんは、ふだん Git を使う上で必要になるタスクのほとんどを身につけたことでしょう。
+しかし、Git で何らかの共同作業をしようと思えばリモートの Git リポジトリを持つ必要があります。
+個人リポジトリとの間でのプッシュやプルも技術的には可能ですが、お勧めしません。よっぽど気をつけておかないと、ほかの人がどんな作業をしているのかをすぐに見失ってしまうからです。
+さらに、自分のコンピューターがオフラインのときにもほかの人が自分のリポジトリにアクセスできるようにしたいとなると、共有リポジトリを持つほうがずっと便利です。
+というわけで、他のメンバーとの共同作業をするときには、中間リポジトリをどこかに用意してみんながそこにアクセスできるようにし、プッシュやプルを行うようにすることをお勧めします。</p>
+<p>Git サーバーを立ち上げるのは単純です。
+まず、サーバーとの通信にどのプロトコルを使うのかを選択します。
+この章の最初のセクションで、どんなプロトコルが使えるのかとそれぞれのプロトコルの利点・欠点を説明します。
+その次のセクションでは、それぞれのプロトコルを使用したサーバーの設定方法とその動かし方を説明します。
+最後に、ホスティングサービスについて紹介します。他人のサーバー上にコードを置くのが気にならない、そしてサーバーの設定だの保守だのといった面倒なことはやりたくないという人のためのものです。</p>
+<p>自前でサーバーを立てることには興味がないという人は、この章は最後のセクションまで読み飛ばし、ホスティングサービスに関する情報だけを読めばよいでしょう。そして次の章に進み、分散ソース管理環境での作業について学びます。</p>
+<p>リモートリポジトリは、一般的に <em>ベア（bare）リポジトリ</em> となります。これは、作業ディレクトリをもたない Git リポジトリのことです。
+このリポジトリは共同作業の中継地点としてのみ用いられるので、ディスク上にスナップショットをチェックアウトする必要はありません。単に Git のデータがあればそれでよいのです。
+端的に言うと、ベアリポジトリとはそのプロジェクトの <code class="literal">.git</code> ディレクトリだけで構成されるもののことです。</p>
+<section class="sect1" title="プロトコル">
+<h2 id="_プロトコル">プロトコル</h2>
+<p>Git では、データ転送用のプロトコルとして Local、HTTP、Secure Shell (SSH)、Git の四つを使用できます。
+ここでは、それぞれがどんなものなのかとどんな場面で使うべきか (使うべきでないか) を説明します。</p>
+<section class="sect2" title="Local プロトコル">
+<h3 id="_local_プロトコル">Local プロトコル</h3>
+<p></p>
+<p>一番基本的なプロトコルが <em>Local プロトコル</em> です。これは、リモートリポジトリをディスク上の別のディレクトリに置くものです。
+これがよく使われるのは、たとえばチーム全員がアクセスできる共有ファイルシステム (NFS など) がある場合です。あるいは、あまりないでしょうが全員が同じコンピューターにログインしている場合にも使えます。
+後者のパターンはあまりお勧めできません。すべてのコードリポジトリが同じコンピューター上に存在することになるので、何か事故が起こったときに何もかも失ってしまう可能性があります。</p>
+<p>共有ファイルシステムをマウントしているのなら、それをローカルのファイルベースのリポジトリにクローンしたりお互いの間でプッシュやプルをしたりすることができます。
+この手のリポジトリをクローンしたり既存のプロジェクトのリモートとして追加したりするには、リポジトリへのパスを URL に指定します。
+たとえば、ローカルリポジトリにクローンするにはこのようなコマンドを実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git clone /opt/git/project.git</code></pre>
+</figure>
+<p>あるいは次のようにすることもできます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git clone file:///opt/git/project.git</code></pre>
+</figure>
+<p>URL の先頭に <code class="literal">file://</code> を明示するかどうかで、Git の動きは微妙に異なります。
+<code class="literal">file://</code> を明示せずパスだけを指定した場合、Git は必要なオブジェクトにハードリンクを張るか、そのままコピーしようとします。
+一方 <code class="literal">file://</code> を指定した場合は、Git がプロセスを立ち上げ、そのプロセスが (通常は) ネットワーク越しにデータを転送します。一般的に、直接のコピーに比べてこれは非常に非効率的です。
+<code class="literal">file://</code> プレフィックスをつける最も大きな理由は、関係のない参照やオブジェクト(他のバージョン管理システムからインポートしたときなどにあらわれることが多いです。詳細は <a id="xref--ch10-git-internals" href="ch10-git-internals.xhtml" class="xref">Gitの内側</a> を参照してください) を除いたクリーンなコピーがほしいということです。
+本書では通常のパス表記を使用します。そのほうがたいていの場合に高速となるからです。</p>
+<p>ローカルのリポジトリを既存の Git プロジェクトに追加するには、このようなコマンドを実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git remote add local_proj /opt/git/project.git</code></pre>
+</figure>
+<p>そうすれば、このリモートとの間のプッシュやプルを、まるでネットワーク越しにあるのと同じようにすることができます。</p>
+<section class="sect3" title="利点">
+<h4 id="_利点">利点</h4>
+<p>ファイルベースのリポジトリの利点は、シンプルであることと既存のファイルアクセス権やネットワークアクセスを流用できることです。
+チーム全員がアクセスできる共有ファイルシステムがすでに存在するのなら、リポジトリを用意するのは非常に簡単です。
+ベアリポジトリのコピーをみんながアクセスできるどこかの場所に置き、読み書き可能な権限を与えるという、ごく普通の共有ディレクトリ上での作業です。
+この作業のために必要なベアリポジトリをエクスポートする方法については <a id="xref-r_git_on_the_server" href="#r_git_on_the_server" class="xref">サーバー用の Git の取得</a> で説明します。</p>
+<p>もうひとつ、ほかの誰かの作業ディレクトリの内容をすばやく取り込めるのも便利なところです。
+同僚と作業しているプロジェクトで相手があなたに作業内容を確認してほしい言ってきたときなど、わざわざリモートのサーバーにプッシュしてもらってそれをプルするよりは単に <code class="literal">git pull /home/john/project</code> のようなコマンドを実行するほうがずっと簡単です。</p>
+</section>
+<section class="sect3" title="欠点">
+<h4 id="_欠点">欠点</h4>
+<p>この方式の欠点は、メンバーが別の場所にいるときに共有アクセスを設定するのは一般的に難しいということです。
+自宅にいるときに自分のラップトップからプッシュしようとしたら、リモートディスクをマウントする必要があります。これはネットワーク越しのアクセスに比べて困難で遅くなるでしょう。</p>
+<p>また、何らかの共有マウントを使用している場合は、必ずしもこの方式が最高速となるわけではありません。
+ローカルリポジトリが高速だというのは、単にデータに高速にアクセスできるからというだけの理由です。
+NFS 上に置いたリポジトリは、同じサーバーで稼動しているリポジトリに SSH でアクセスしたときよりも遅くなりがちです。SSH でアクセスしたときは、各システムのローカルディスクにアクセスすることになるからです。</p>
+<p>もう1点、このプロトコルは「不慮の事故」を防ぐようにはできていない点も注意しておきましょう。
+全ユーザーが接続先のディレクトリにシェルで自由にアクセスできるようになるため、Git 内部ファイルの変更・削除を防止することができないからです。仮にそういったことが起こると、リポジトリが破損してしまいます。</p>
+</section>
+</section>
+<section class="sect2" title="HTTPプロトコル">
+<h3 id="_httpプロトコル">HTTPプロトコル</h3>
+<p>HTTP を使って Git でやりとりをする場合、2つのモードが使えます。
+以前のバージョンでは、単純で読み取り専用のモードしかありませんでした。
+しかしバージョン 1.6.6 でより高機能なプロトコルが導入されました。これは、SSH の場合と同じように、HTTP でのデータのやりとりも Git が賢く処理できるようにするためのものでした。
+ここ数年で、新しいほうの HTTP プロトコル はとても多く使われるようになりました。ユーザーからすればこちらのほうがシンプルですし、通信方法としても優れているからです。
+新しいほうは “smart” HTTP プロトコルと呼ばれていて、古いほうは「ダム」（dumb）HTTP プロトコルと呼ばれています。
+まずは “smart” HTTP プロトコルのほうから説明しましょう。</p>
+<section class="sect3" title="Smart HTTP">
+<h4 id="_smart_http">Smart HTTP</h4>
+<p></p>
+<p>“smart” HTTP プロトコルの動きは SSH や Git プロトコルと似ていますが、HTTP/S の標準ポートを使って通信します。また、HTTP 認証の仕組みをいくつも使うことができます。
+よって、ユーザーにとっては SSH などよりも簡単であることが多いです。というのも、ユーザー名とパスワードを使ったベーシック認証を、SSH 鍵認証の代わりに使えるからです。</p>
+<p>いまでは、Git で一番使われているのがこの方法だと思います。
+というのも、 <code class="literal">git://</code> プロトコルが提供する匿名での読み込み機能と、SSH プロトコルが提供する認証・暗号化を経た書き込み機能の両方が、これひとつで実現できるからです。
+これまでこういったことをするにはそれぞれに URL を用意する必要がありました。
+いまでは、ひとつの URL で双方を実現できます。
+プッシュしようとしたリポジトリで認証が必要であれば（通常であればそうすべきです）、サーバーはユーザー名とパスワードを要求することができます。
+また、同じことが、読み込みについても言えます。</p>
+<p>実際のところ、GitHub のようなサービスの場合、ブラウザでリポジトリを見るときに使う URL （ “https://github.com/schacon/simplegit[]” など）と同じものを使って、リポジトリをクローンすることができます。書き込み権限があるなら、プッシュする場合も同じ URL が使えます。</p>
+</section>
+<section class="sect3" title="Dumb HTTP">
+<h4 id="_dumb_http">Dumb HTTP</h4>
+<p></p>
+<p>Git の smart HTTP プロトコルにサーバーが応答しない場合、Git クライアントは簡易な “dumb” HTTP プロトコルへフォールバックします。
+Dumb プロトコルでは、Git のベアリポジトリが通常のファイルと同じように ウェブサーバーから配信されます。
+これのいいところは、セットアップがとても簡単な点です。
+ベースとして必要になるのは、ベアリポジトリを HTTP ドキュメントのルートに配置することと、特定の <code class="literal">post-update</code> フックを設定することだけです（詳しくは <a id="xref--ch08-customizing-git--r_git_hooks" href="ch08-customizing-git.xhtml#r_git_hooks" class="xref">Git フック</a> を参照）。
+それができれば、リポジトリを配置したサーバーにアクセスできる人なら誰でも、そのリポジトリをクローンできます。
+HTTP を使ったリポジトリへのアクセスは、以下のようにすると許可できます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> cd /var/www/htdocs/
+<span style="font-weight: bold">$</span> git clone --bare /path/to/git_project gitproject.git
+<span style="font-weight: bold">$</span> cd gitproject.git
+<span style="font-weight: bold">$</span> mv hooks/post-update.sample hooks/post-update
+<span style="font-weight: bold">$</span> chmod a+x hooks/post-update</code></pre>
+</figure>
+<p>これだけです。
+Git に標準でついてくる <code class="literal">post-update</code> フックは、適切なコマンド (<code class="literal">git update-server-info</code>) を実行して HTTP でのフェッチとクローンをうまく動くようにします。
+このコマンドが実行されるのは、このリポジトリに対して SSH 越しでのプッシュがあったときです。その他の人たちがクローンする際には次のようにします。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git clone https://example.com/gitproject.git</code></pre>
+</figure>
+<p>今回の例ではたまたま <code class="literal">/var/www/htdocs</code> (一般的な Apache の標準設定) を使用しましたが、別にそれに限らず任意のウェブサーバーを使うことができます。
+単にベアリポジトリをそのパスに置けばよいだけです。
+Git のデータは、普通の静的ファイルとして扱われます (実際のところどのようになっているかの詳細は <a href="ch10-git-internals.xhtml" class="xref">Gitの内側</a> を参照ください)。</p>
+<p>なお、構築するサーバーを選択する際は、読み書きが可能な Smart HTTP か、読み込み専用でファイルを配信する Dumb HTTP かのいずれかのサーバーを選ぶことになるでしょう。両方を混ぜあわせたものを構築することはめったにありません。</p>
+</section>
+<section class="sect3" title="利点">
+<h4 id="_利点_2">利点</h4>
+<p>ここでは、Smart HTTP プロトコルに限った範囲で利点について説明します。</p>
+<p>ひとつの URL で全アクセスを処理できること、サーバーが入力を求めてくるのは認証が必要なときだけ、という2点があれば、エンドユーザーは Git をとても簡単に使えるようになります。
+また、ユーザー名とパスワードを使って認証を受けられるのも、SSH と比べた場合大きな利点です。それができれば、SSH 鍵を生成したり公開鍵をサーバーへアップロードしなくても、サーバーとやりとりできるからです。
+中～上級者以外、または SSH があまり使われていないシステムのユーザーにとって、これはユーザビリティの点で大きな利点になります。
+それに、HTTP プロトコルは SSH のようにとても早くて効率もよいです。</p>
+<p>HTTPS で読み込み専用のリポジトリを公開することもできます。
+これで、転送されるコンテンツを暗号化したりクライアント側で特定の署名つき SSL 証明書を使わせたりすることができるようになります。</p>
+<p>もうひとつの利点としてあげられるのは、HTTP が非常に一般的なプロトコルであるということです。たいていの企業のファイアウォールはこのポートを通すように設定されています。</p>
+</section>
+<section class="sect3" title="欠点">
+<h4 id="_欠点_2">欠点</h4>
+<p>HTTP/S で Git を使えるようサーバーを設定するのは、SSH とは違ってやっかいなケースがあります。
+それを除けば、他のプロトコルが “Smart” HTTP プロトコルより Git 用として優れてる点はほとんどありません。</p>
+<p>上述のやっかいなケースとは、HTTP を認証が必要なプッシュに用いるケースです。その場合、認証情報を入力するのは SSH 鍵を用いるより複雑になりがちです。
+とはいえ、認証情報をキャッシュしてくれるツール（OSX の Keychain や Windows の資格情報マネージャーなど）を使えば、それも問題ではなくなります。<a id="xref--ch07-git-tools--r_credential_caching" href="ch07-git-tools.xhtml#r_credential_caching" class="xref">認証情報の保存</a> を読めば、HTTP パスワードキャッシュを各システムで有効にする方法がわかるでしょう。</p>
+</section>
+</section>
+<section class="sect2" title="SSH プロトコル">
+<h3 id="_ssh_プロトコル">SSH プロトコル</h3>
+<p></p>
+<p>Git サーバーを自分でホスティングしているなら、転送プロトコルのうち一般的なのは SSH です。
+SSH によるサーバーへのアクセスは、ほとんどの場面で既に用意されているからです。仮にまだ用意されていなかったとしても、導入するのは容易なことです。
+SSH は認証付きのネットワークプロトコルでもあります。あらゆるところで用いられているので、環境を準備するのも容易です。</p>
+<p>Git リポジトリを SSH 越しにクローンするには、次のように ssh:// URL を指定します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git clone ssh://user@server/project.git</code></pre>
+</figure>
+<p>あるいは、SCPコマンドのような省略形を使うこともできます｡</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git clone user@server:project.git</code></pre>
+</figure>
+<p>ユーザー名も省略することもできます。その場合、Git は現在ログインしているユーザーでの接続を試みます。</p>
+<section class="sect3" title="利点">
+<h4 id="_利点_3">利点</h4>
+<p>SSH を使う利点は多数あります。
+まず、一般的に SSH 環境の準備は容易です。SSH デーモンはごくありふれたツールなので、ネットワーク管理者の多くはその使用経験があります。また、多くの OS に標準で組み込まれており、管理用ツールが付属しているものもあります。
+さらに、SSH 越しのアクセスは安全です。すべての転送データは暗号化され、信頼できるものとなります。最後に、HTTP/S、Git、Local プロトコルと同程度に効率的です。転送するデータを可能な限りコンパクトにすることができます。</p>
+</section>
+<section class="sect3" title="欠点">
+<h4 id="_欠点_3">欠点</h4>
+<p>SSH の欠点は、リポジトリへの匿名アクセスを許可できないということです。
+たとえ読み込み専用であっても、リポジトリにアクセスするには SSH 越しでのマシンへのアクセス権限が必要となります。つまり、オープンソースのプロジェクトにとっては SSH はあまりうれしくありません。
+特定の企業内でのみ使用するのなら、SSH はおそらく唯一の選択肢となるでしょう。
+あなたのプロジェクトに読み込み専用の匿名アクセスを許可しつつ自分は SSH を使いたい場合は、リポジトリへのプッシュ用に SSH を用意するのとは別にプル用の環境として別のプロトコルを提供する必要があります。</p>
+</section>
+</section>
+<section class="sect2" title="Git プロトコル">
+<h3 id="_git_プロトコル">Git プロトコル</h3>
+<p></p>
+<p>次は Git プロトコルです。
+これは Git に標準で付属する特別なデーモンです。専用のポート (9418) をリスンし、SSH プロトコルと同様のサービスを提供しますが、認証は行いません。
+Git プロトコルを提供するリポジトリを準備するには、<code class="literal">git-daemon-export-ok</code> というファイルを作らなければなりません (このファイルがなければデーモンはサービスを提供しません)。ただ、このままでは一切セキュリティはありません。
+Git リポジトリをすべての人に開放し、クローンさせることができます。
+しかし、一般に、このプロトコルでプッシュさせることはありません。
+プッシュアクセスを認めることは可能です。しかし認証がないということは、その URL を知ってさえいればインターネット上の誰もがプロジェクトにプッシュできるということになります。
+これはありえない話だと言っても差し支えないでしょう。</p>
+<section class="sect3" title="利点">
+<h4 id="_利点_4">利点</h4>
+<p>Git プロトコルは、もっとも高速なネットワーク転送プロトコルであることが多いです。
+公開プロジェクトで大量のトラフィックをさばいている場合、あるいは巨大なプロジェクトで読み込みアクセス時のユーザー認証が不要な場合は、Git デーモンを用いてリポジトリを公開するとよいでしょう。
+このプロトコルは SSH プロトコルと同様のデータ転送メカニズムを使いますが、暗号化と認証のオーバーヘッドがないのでより高速です。</p>
+</section>
+<section class="sect3" title="欠点">
+<h4 id="_欠点_4">欠点</h4>
+<p>Git プロトコルの弱点は、認証の仕組みがないことです。
+Git プロトコルだけでしかプロジェクトにアクセスできないという状況は、一般的に望ましくありません。
+SSH や HTTP と組み合わせ、プッシュ (書き込み) 権限を持つ一部の開発者には SSH を使わせてそれ以外の人には <code class="literal">git://</code> での読み込み専用アクセスを用意することになるでしょう。
+また、Git プロトコルは準備するのがもっとも難しいプロトコルでもあります。
+まず、独自のデーモンを起動しなければなりません。そのためには <code class="literal">xinetd</code> やそれに類するものの設定も必要になりますが、これはそんなにお手軽にできるものではありません。
+また、ファイアウォールでポート 9418 のアクセスを許可する必要もあります。これは標準のポートではないので、企業のファイアウォールでは許可されなていないかもしれません。
+大企業のファイアウォールでは、こういったよくわからないポートは普通ブロックされています。</p>
+</section>
+</section>
+</section>
+<section class="sect1" title="サーバー用の Git の取得">
+<h2 id="r_git_on_the_server">サーバー用の Git の取得</h2>
+<p>さて、これまでに説明してきたプロトコルを使って Git サーバーを構築する方法を見ていきましょう。</p>
+<aside class="admonition note" title="Note" epub:type="note">
+<div class="content">
+<p>ここで提示するコマンドや手順は、標準的な構成を Linux サーバーにインストールする場合のものです。また、これらは Mac や Windows のサーバーにも応用できます。
+ただし、サーバーをプロダクション用にセットアップするときには、セキュリティの観点、OS のツール類などで違いが出るのは当然です。とはいえ、この節を読めば必要なものについて概ね把握できるでしょう。</p>
+</div>
+</aside>
+<p>Git サーバーを立ち上げるには、既存のリポジトリをエクスポートして新たなベアリポジトリ (作業ディレクトリを持たないリポジトリ) を作らなければなりません。
+これは簡単にできます。
+リポジトリをクローンして新たにベアリポジトリを作成するには、clone コマンドでオプション <code class="literal">--bare</code> を指定します。
+慣例により、ベアリポジトリのディレクトリ名の最後は <code class="literal">.git</code> とすることになっています。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git clone --bare my_project my_project.git
+Cloning into bare repository &#39;my_project.git&#39;...
+done.</code></pre>
+</figure>
+<p>そうすると、Git ディレクトリのデータを <code class="literal">my_project.git</code> ディレクトリにコピーできます。</p>
+<p>これは、おおざっぱに言うと次の操作と同じようなことです。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> cp -Rf my_project/.git my_project.git</code></pre>
+</figure>
+<p>設定ファイルにはちょっとした違いもありますが、ほぼこんなものです。
+作業ディレクトリなしで Git リポジトリを受け取り、それ単体のディレクトリを作成しました。</p>
+<section class="sect2" title="ベアリポジトリのサーバー上への設置">
+<h3 id="r_bare_repo">ベアリポジトリのサーバー上への設置</h3>
+<p>ベアリポジトリを取得できたので、あとはそれをサーバー上においてプロトコルを準備するだけです。
+ここでは、<code class="literal">git.example.com</code> というサーバーがあってそこに SSH でアクセスできるものと仮定しましょう。Git リポジトリはサーバー上の <code class="literal">/opt/git</code> ディレクトリに置く予定です。
+<code class="literal">/opt/git</code> ディレクトリが作成済みであれば、新しいリポジトリを作成するには、ベアリポジトリを次のようにコピーします。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> scp -r my_project.git user@git.example.com:/opt/git</code></pre>
+</figure>
+<p>この時点で、同じサーバーに SSH でアクセスできてかつ <code class="literal">/opt/git</code> ディレクトリへの読み込みアクセス権限がある人なら、次のようにしてこのリポジトリをクローンできるようになりました。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git clone user@git.example.com:/opt/git/my_project.git</code></pre>
+</figure>
+<p>ユーザーが SSH でアクセスでき、かつ <code class="literal">/opt/git/my_project.git</code> ディレクトリへの書き込みアクセス権限があれば、すでにプッシュもできる状態になっています。</p>
+<p><code class="literal">git init</code> コマンドで <code class="literal">--shared</code> オプションを指定すると、リポジトリに対するグループ書き込みパーミッションを自動的に追加することができます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> ssh user@git.example.com
+<span style="font-weight: bold">$</span> cd /opt/git/my_project.git
+<span style="font-weight: bold">$</span> git init --bare --shared</code></pre>
+</figure>
+<p>既存の Git リポジトリからベアリポジトリを作成し、メンバーが SSH でアクセスできるサーバーにそれを配置するだけ。簡単ですね。
+これで、そのプロジェクトでの共同作業ができるようになりました。</p>
+<p>複数名が使用する Git サーバーをたったこれだけの作業で用意できるというのは特筆すべきことです。
+サーバーにSSHでアクセス可能なアカウントを作成し、ベアリポジトリをサーバーのどこかに置き、そこに読み書き可能なアクセス権を設定する。
+これで準備OK。他には何もいりません。</p>
+<p>次のいくつかのセクションでは、より洗練された環境を作るための方法を説明します。いちいちユーザーごとにアカウントを作らなくて済む方法、一般向けにリポジトリへの読み込みアクセスを開放する方法、ウェブ UI の設定などです。しかし、数名のメンバーで閉じたプロジェクトでの作業なら、SSH サーバーとベアリポジトリ <em>さえ</em> あれば十分なことは覚えておきましょう。</p>
+</section>
+<section class="sect2" title="ちょっとしたセットアップ">
+<h3 id="_ちょっとしたセットアップ">ちょっとしたセットアップ</h3>
+<p>小規模なグループ、あるいは数名の開発者しかいない組織で Git を使うなら、すべてはシンプルに進められます。
+Git サーバーを準備する上でもっとも複雑なことのひとつは、ユーザー管理です。
+同一リポジトリに対して「このユーザーは読み込みのみが可能、あのユーザーは読み書きともに可能」などと設定したければ、アクセス権とパーミッションの設定は、設定しない場合と比べて少しですが難しくなります。</p>
+<section class="sect3" title="SSH アクセス">
+<h4 id="_ssh_アクセス">SSH アクセス</h4>
+<p></p>
+<p>開発者全員が SSH でアクセスできるサーバーがすでにあるのなら、リポジトリを用意するのは簡単です。先ほど説明したように、ほとんど何もする必要はないでしょう。
+より複雑なアクセス制御をリポジトリ上で行いたい場合は、そのサーバーの OS 上でファイルシステムのパーミッションを設定するとよいでしょう。</p>
+<p>リポジトリに対する書き込みアクセスをさせたいメンバーの中にサーバーのアカウントを持っていない人がいる場合は、新たに SSH アカウントを作成しなければなりません。
+あなたがサーバーにアクセスできているということは、すでに SSH サーバーはインストールされているということです。</p>
+<p>その状態で、チームの全員にアクセス権限を与えるにはいくつかの方法があります。
+ひとつは全員分のアカウントを作成すること。直感的ですがすこし面倒です。
+ひとりひとりに対して <code class="literal">adduser</code> を実行して初期パスワードを設定するという作業をしなければなりません。</p>
+<p>もうひとつの方法は、<em>git</em> ユーザーをサーバー上に作成し、書き込みアクセスが必要なユーザーには SSH 公開鍵を用意してもらってそれを <em>git</em> ユーザーの <code class="literal">~/.ssh/authorized_keys</code> に追加します。
+これで、全員が <em>git</em> ユーザーでそのマシンにアクセスできるようになりました。これがコミットデータに影響を及ぼすことはありません。
+SSH で接続したときのユーザーとコミットするときに記録されるユーザーとは別のものだからです。</p>
+<p>あるいは、SSH サーバーの認証を LDAP サーバーやその他の中央管理形式の仕組みなど既に用意されているものにするとこもできます。
+各ユーザーがサーバー上でシェルへのアクセスができさえすれば、どんな仕組みの SSH 認証であっても動作します。</p>
+</section>
+</section>
+</section>
+<section class="sect1" title="SSH 公開鍵の作成">
+<h2 id="r_generate_ssh_key">SSH 公開鍵の作成</h2>
+<p></p>
+<p>多くの Git サーバーでは、SSH の公開鍵認証を使用しています。
+この方式を使用するには、各ユーザーが自分の公開鍵を作成しなければなりません。
+公開鍵のつくりかたは、OS が何であってもほぼ同じです。
+まず、自分がすでに公開鍵を持っていないかどうか確認します。
+デフォルトでは、各ユーザーの SSH 鍵はそのユーザーの <code class="literal">~/.ssh</code> ディレクトリに置かれています。
+自分が鍵を持っているかどうかを確認するには、このディレクトリに行ってその中身を調べます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> cd ~/.ssh
+<span style="font-weight: bold">$</span> ls
+authorized_keys2  id_dsa       known_hosts
+config            id_dsa.pub</code></pre>
+</figure>
+<p>そして、<code class="literal">id_dsa</code> あるいは <code class="literal">id_rsa</code> というファイルと、同名で <code class="literal">.pub</code> という拡張子を持つファイルの組み合わせを探します。もし見つかったら、<code class="literal">.pub</code> がついているほうのファイルがあなたの公開鍵で、もう一方があなたの秘密鍵です。
+そのようなファイルがない (あるいはそもそも <code class="literal">.ssh</code> ディレクトリがない) 場合は、<code class="literal">ssh-keygen</code> というプログラムを実行してそれを作成します。このプログラムは Linux/Mac なら SSH パッケージに含まれており、Windows では Git for Windows に含まれています。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> ssh-keygen
+Generating public/private rsa key pair.
+Enter file in which to save the key (/home/schacon/.ssh/id_rsa):
+Created directory &#39;/home/schacon/.ssh&#39;.
+Enter passphrase (empty for no passphrase):
+Enter same passphrase again:
+Your identification has been saved in /home/schacon/.ssh/id_rsa.
+Your public key has been saved in /home/schacon/.ssh/id_rsa.pub.
+The key fingerprint is:
+d0:82:24:8e:d7:f1:bb:9b:33:53:96:93:49:da:9b:e3 schacon@mylaptop.local</code></pre>
+</figure>
+<p>まず、鍵の保存先 (<code class="literal">.ssh/id_rsa</code>) を指定し、それからパスフレーズを二回入力するよう求められます。鍵を使うときにパスフレーズを入力したくない場合は、パスフレーズを空のままにしておきます。</p>
+<p>さて、次に各ユーザーは自分の公開鍵をあなた (あるいは Git サーバーの管理者である誰か) に送らなければなりません (ここでは、すでに公開鍵認証を使用するように SSH サーバーが設定済みであると仮定します)。
+公開鍵を送るには、<code class="literal">.pub</code> ファイルの中身をコピーしてメールで送ります。
+公開鍵は、このようなファイルになります。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> cat ~/.ssh/id_rsa.pub
+ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAklOUpkDHrfHY17SbrmTIpNLTGK9Tjom/BWDSU
+GPl+nafzlHDTYW7hdI4yZ5ew18JH4JW9jbhUFrviQzM7xlELEVf4h9lFX5QVkbPppSwg0cda3
+Pbv7kOdJ/MTyBlWXFCR+HAo3FXRitBqxiX1nKhXpHAZsMciLq8V6RjsNAQwdsdMFvSlVK/7XA
+t3FaoJoAsncM1Q9x5+3V0Ww68/eIFmb1zuUFljQJKprrX88XypNDvjYNby6vw/Pb0rwert/En
+mZ+AW4OZPnTPI89ZPmVMLuayrD2cE86Z/il8b+gw3r3+1nKatmIkjn2so1d01QraTlMqVSsbx
+NrRFi9wrf+M7Q== schacon@mylaptop.local</code></pre>
+</figure>
+<p>各種 OS 上での SSH 鍵の作り方については、GitHub の <a href="https://help.github.com/articles/generating-ssh-keys" class="link">https://help.github.com/articles/generating-ssh-keys</a> に詳しく説明されています。</p>
+</section>
+<section class="sect1" title="サーバーのセットアップ">
+<h2 id="r_setting_up_server">サーバーのセットアップ</h2>
+<p>それでは、サーバー側での SSH アクセスの設定について順を追って見ていきましょう。
+この例では <code class="literal">authorized_keys</code> 方式でユーザーの認証を行います。
+また、Ubuntu のような標準的な Linux ディストリビューションを動かしているものと仮定します。
+まずは <code class="literal">git</code> ユーザーを作成し、そのユーザーの <code class="literal">.ssh</code> ディレクトリを作りましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> sudo adduser git
+<span style="font-weight: bold">$</span> su git
+<span style="font-weight: bold">$</span> cd
+<span style="font-weight: bold">$</span> mkdir .ssh &amp;&amp; chmod 700 .ssh
+<span style="font-weight: bold">$</span> touch .ssh/authorized_keys &amp;&amp; chmod 600 .ssh/authorized_keys</code></pre>
+</figure>
+<p>次に、開発者たちの SSH 公開鍵を <code class="literal">git</code> ユーザーの <code class="literal">authorized_keys</code> に追加していきましょう。
+信頼できる公開鍵が一時ファイルとしていくつか保存されているものとします。
+先ほどもごらんいただいたとおり、公開鍵の中身はこのような感じになっています。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> cat /tmp/id_rsa.john.pub
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCB007n/ww+ouN4gSLKssMxXnBOvf9LGt4L
+ojG6rs6hPB09j9R/T17/x4lhJA0F3FR1rP6kYBRsWj2aThGw6HXLm9/5zytK6Ztg3RPKK+4k
+Yjh6541NYsnEAZuXz0jTTyAUfrtU3Z5E003C4oxOj6H0rfIF1kKI9MAQLMdpGW1GYEIgS9Ez
+Sdfd8AcCIicTDWbqLAcU4UpkaX8KyGlLwsNuuGztobF8m72ALC/nLF6JLtPofwFBlgc+myiv
+O7TCUSBdLQlgMVOFq1I2uPWQOkOWQAHukEOmfjy2jctxSDBQ220ymjaNsHT4kgtZg2AYYgPq
+dAv8JggJICUvax2T9va5 gsg-keypair</code></pre>
+</figure>
+<p>これを、<code class="literal">git</code> ユーザーの <code class="literal">.ssh</code> ディレクトリにある <code class="literal">authorized_keys</code> に追加していきましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> cat /tmp/id_rsa.john.pub &gt;&gt; ~/.ssh/authorized_keys
+<span style="font-weight: bold">$</span> cat /tmp/id_rsa.josie.pub &gt;&gt; ~/.ssh/authorized_keys
+<span style="font-weight: bold">$</span> cat /tmp/id_rsa.jessica.pub &gt;&gt; ~/.ssh/authorized_keys</code></pre>
+</figure>
+<p>さて、彼らが使うための空のリポジトリを作成しましょう。<code class="literal">git init</code> に <code class="literal">--bare</code> オプションを指定して実行すると、作業ディレクトリのない空のリポジトリを初期化します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> cd /opt/git
+<span style="font-weight: bold">$</span> mkdir project.git
+<span style="font-weight: bold">$</span> cd project.git
+<span style="font-weight: bold">$</span> git init --bare
+Initialized empty Git repository in /opt/git/project.git/</code></pre>
+</figure>
+<p>これで、John と Josie そして Jessica はプロジェクトの最初のバージョンをプッシュできるようになりました。このリポジトリをリモートとして追加し、ブランチをプッシュすればいいのです。
+何か新しいプロジェクトを追加しようと思ったら、そのたびに誰かがサーバーにログインし、ベアリポジトリを作らなければならないことに注意しましょう。
+<code class="literal">git</code> ユーザーとリポジトリを作ったサーバーのホスト名を <code class="literal">gitserver</code> としておきましょう。
+<code class="literal">gitserver</code> がそのサーバーを指すように DNS を設定しておけば、このようなコマンドを使えます（ここでは、<code class="literal">myproject</code> というディレクトリがあってファイルも保存されているものとします）。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">#</span> on John<span style="font-style: italic">&#39;s computer</span>
+<span style="font-weight: bold">$</span><span style="font-style: italic"> cd myproject</span>
+<span style="font-weight: bold">$</span><span style="font-style: italic"> git init</span>
+<span style="font-weight: bold">$</span><span style="font-style: italic"> git add .</span>
+<span style="font-weight: bold">$</span><span style="font-style: italic"> git commit -m &#39;</span>initial commit<span style="border: 1px solid #FF0000">&#39;</span>
+<span style="font-weight: bold">$</span> git remote add origin git@gitserver:/opt/git/project.git
+<span style="font-weight: bold">$</span> git push origin master</code></pre>
+</figure>
+<p>これで、他のメンバーがリポジトリをクローンして変更内容を書き戻せるようになりました。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git clone git@gitserver:/opt/git/project.git
+<span style="font-weight: bold">$</span> cd project
+<span style="font-weight: bold">$</span> vim README
+<span style="font-weight: bold">$</span> git commit -am <span style="font-style: italic">&#39;fix for the README file&#39;</span>
+<span style="font-weight: bold">$</span> git push origin master</code></pre>
+</figure>
+<p>この方法を使えば、小規模なチーム用の読み書き可能な Git サーバーをすばやく立ち上げることができます。</p>
+<p>この時点では、公開鍵を追加してもらったユーザー全員が <code class="literal">git</code> ユーザーとしてサーバーにログインしてシェルが使える状態であることに注意しましょう。そこを制限したいのなら、シェルを変更するために <code class="literal">passwd</code> ファイルを編集する必要があります。</p>
+<p><code class="literal">git</code> ユーザー権限の制限は簡単です。Git に付属している <code class="literal">git-shell</code> というツールを使えば、Git 関連の行動しかとれないようになります。
+そして、これを <code class="literal">git</code> ユーザーのログインシェルにしてしまえば、サーバー上で <code class="literal">git</code> ユーザーは通常の行動がとれなくなります。
+ユーザーのログインシェルを bash や csh から <code class="literal">git-shell</code> に変更すれば、制限がかかります。
+それには、前もって <code class="literal">git-shell</code> を <code class="literal">/etc/shells</code> に追加しておく必要があります。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> cat /etc/shells   <span style="font-style: italic"># see if `git-shell` is already in there.  If not...</span>
+<span style="font-weight: bold">$</span> which git-shell   <span style="font-style: italic"># make sure git-shell is installed on your system.</span>
+<span style="font-weight: bold">$</span> sudo vim /etc/shells  <span style="font-style: italic"># and add the path to git-shell from last command</span></code></pre>
+</figure>
+<p>ユーザーのシェルを変更するには <code class="literal">chsh &lt;username&gt;</code> を実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> sudo chsh git  <span style="font-style: italic"># and enter the path to git-shell, usually: /usr/bin/git-shell</span></code></pre>
+</figure>
+<p>これで、<code class="literal">git</code> ユーザーは Git リポジトリへのプッシュやプル以外のシェル操作ができなくなりました。それ以外の操作をしようとすると、このように拒否されます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> ssh git@gitserver
+fatal: Interactive git shell is not enabled.
+hint: ~/git-shell-commands should exist and have read and execute access.
+Connection to gitserver closed.</code></pre>
+</figure>
+<p>この状態でも Git のネットワーク関連のコマンドは機能しますが、通常のシェルアクセスはできなくなっています。
+また、コマンド出力にもあるように、<code class="literal">git</code> ユーザーのホームディレクトリ配下にディレクトリを作って、<code class="literal">git-shell`をカスタマイズすることもできます。
+具体的には、サーバー上で実行可能な Git コマンドの制限や、ユーザーが SSH でどこかに接続しようとしたときに表示するメッセージを変更できます。
+`git help shell</code> を実行すると、シェルのカスタマイズについての詳細が確認できます。</p>
+</section>
+<section class="sect1" title="Git デーモン">
+<h2 id="_git_デーモン">Git デーモン</h2>
+<p></p>
+<p>続いて、“Git” プロトコルを使ってリポジトリを配信するデーモンをセットアップしてみましょう。
+Git リポジトリへの認証なしの高速アクセスが必要な場合、一般的な選択肢になります。
+ただし、これは認証なしのサービスで、配信されるデータは原則として公開されてしまうので注意してください。</p>
+<p>ファイアウォールの外にサーバーがあるのなら、一般に公開しているプロジェクトにのみ使うようにしましょう。ファイアウォール内で使うのなら、たとえば大量のメンバーやコンピューター (継続的インテグレーションのビルドサーバーなど) に対して SSH の鍵なしで読み取り専用アクセスを許可するという使い方もあるでしょう。</p>
+<p>いずれにせよ、Git プロトコルは比較的容易にセットアップすることができます。
+デーモン化するためには、このようなコマンドを実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git daemon --reuseaddr --base-path=/opt/git/ /opt/git/</code></pre>
+</figure>
+<p><code class="literal">--reuseaddr</code> は、前の接続がタイムアウトするのを待たずにサーバーを再起動させるオプションです。<code class="literal">--base-path</code> オプションを指定すると、フルパスを指定しなくてもプロジェクトをクローンできるようになります。そして最後に指定したパスは、Git デーモンに公開させるリポジトリの場所です。
+ファイアウォールを使っているのなら、ポート 9418 に穴を開けなければなりません。</p>
+<p>プロセスをデーモンにする方法は、OS によってさまざまです。
+Ubuntu の場合は Upstart スクリプトを使います。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span>/etc/init/local-git-daemon.conf</code></pre>
+</figure>
+<p>のようなファイルを用意して、このようなスクリプトを書きます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span>start on startup
+stop on shutdown
+exec /usr/bin/git daemon \
+    --user=git --group=git \
+    --reuseaddr \
+    --detach \
+    --base-path=/opt/git/ \
+    /opt/git/
+respawn</code></pre>
+</figure>
+<p>セキュリティを考慮して、リポジトリに対する読み込み権限しかないユーザーでこのデーモンを実行させるようにしましょう。新しいユーザー <em>git-ro</em> を作り、このユーザーでデーモンを実行させるとよいでしょう。
+ここでは、説明を簡単にするために <code class="literal">git-shell</code> と同じユーザー <em>git</em> で実行させることにします。</p>
+<p>マシンを再起動すれば Git デーモンが自動的に立ち上がり、終了させても再び起動するようになります。
+再起動せずに実行させるには、次のコマンドを実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> initctl start local-git-daemon</code></pre>
+</figure>
+<p>その他のシステムでは、<code class="literal">xinetd</code> や <code class="literal">sysvinit</code> システムのスクリプトなど、コマンドをデーモン化して監視できる仕組みを使います。</p>
+<p>次に、どのプロジェクトに対して Git プロトコルでの認証なしアクセスを許可するのかを Git に設定します。許可したいリポジトリに <code class="literal">git-daemon-export-ok</code> ファイルを作成すれば設定できます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> cd /path/to/project.git
+<span style="font-weight: bold">$</span> touch git-daemon-export-ok</code></pre>
+</figure>
+<p>このファイルが存在するプロジェクトについては、Git は認証なしで公開してもよいものとみなします。</p>
+</section>
+<section class="sect1" title="Smart HTTP">
+<h2 id="_smart_http_2">Smart HTTP</h2>
+<p></p>
+<p>これまでの説明で、SSH を使った認証ありのプロトコルと <code class="literal">git://</code> を使った認証なしのプロトコルについてわかったと思います。続いて、それら両方を実現してしまうプロトコルについて説明しましょう。
+Smart HTTP のセットアップは、単に CGI スクリプトをひとつ、Git サーバー上で有効にすればおしまいです。Git に同梱されている <code class="literal">git-http-backend</code> というスクリプトを使います。
+この CGI は、パスやヘッダー情報（<code class="literal">git fetch</code> や <code class="literal">git push</code> で特定の HTTP URL 宛に送られてきたデータ）を読み込み、クライアントが HTTP を使ってやりとりできるかどうか判断します（バージョン 1.6.6 以降の Git クライアントであれば対応しています）。
+そして、CGI の判断が「このクライアントは Smart HTTP に対応している」だった場合は Smart HTTP が使われ、そうでなかった場合はリードオンリー（“dumb”）にフォールバックします（後方互換という意味では、読み込みについては古いクライアントにも対応しています）。</p>
+<p>では、標準的なセットアップ方法について説明しましょう。ここでは、Apache を CGI サーバーとして使います。Apache がインストールされていない場合は、Linux サーバー上で以下のようなコマンドを実行してください。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> sudo apt-get install apache2 apache2-utils
+<span style="font-weight: bold">$</span> a2enmod cgi alias env rewrite</code></pre>
+</figure>
+<p>そうすれば、 <code class="literal">mod_cgi</code>、 <code class="literal">mod_alias</code>、 <code class="literal">mod_env</code>、 <code class="literal">mod_rewrite</code> も有効になります。いずれも、Smart HTTP の動作に必要なものです。</p>
+<p>また、<code class="literal">/opt/git</code> ディレクトリのグループを <code class="literal">www-data</code> に変更しなければなりません。CGIスクリプトを実行するApacheのインスタンスはデフォルトではそのグループの1ユーザーとして実行されるからです。設定を変更しておけば、ウェブサーバーは自由にリポジトリを読み書きできるようになります。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> chgrp -R www-data /opt/git</code></pre>
+</figure>
+<p>次に、Apache の設定をします。<code class="literal">git-http-backend</code> をハンドラにして、ウェブサーバーの <code class="literal">/git</code> パスにアクセスがあった場合にそれに処理させるための設定です。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span>SetEnv GIT_PROJECT_ROOT /opt/git
+SetEnv GIT_HTTP_EXPORT_ALL
+ScriptAlias /git/ /usr/lib/git-core/git-http-backend/</code></pre>
+</figure>
+<p>環境変数 <code class="literal">GIT_HTTP_EXPORT_ALL</code> を設定しない場合、クライアントからのアクセスは読み込み専用になり、読み込めるのは <code class="literal">git-daemon-export-ok</code> ファイルが保存されたリポジトリだけになります。Git デーモンと同様の挙動です。</p>
+<p>最後に、Apacheの設定を2つ変更します。 <code class="literal">git-http-backend</code> へのアクセスを許可する設定と、書き込みを認証するための設定です。Auth ブロックを使う場合、以下のようにして設定できます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span>RewriteEngine On
+RewriteCond %{QUERY_STRING} service=git-receive-pack [OR]
+RewriteCond %{REQUEST_URI} /git-receive-pack$
+RewriteRule ^/git/ - [E=AUTHREQUIRED]
+
+&lt;Files &quot;git-http-backend&quot;&gt;
+    AuthType Basic
+    AuthName &quot;Git Access&quot;
+    AuthUserFile /opt/git/.htpasswd
+    Require valid-user
+    Order deny,allow
+    Deny from env=AUTHREQUIRED
+    Satisfy any
+&lt;/Files&gt;</code></pre>
+</figure>
+<p>さらに、対象ユーザー全員のパスワードが記述された <code class="literal">.htaccess</code> ファイルが必要です。ユーザー “schacon” を追加したい場合は、このようなコマンドを実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> htpasswd -c /opt/git/.htpasswd schacon</code></pre>
+</figure>
+<p>ユーザー認証を Apache で実施する方法はたくさんあります。
+ひとつ選んで設定してください。
+ここでは、思いつく限り一番シンプルな方法を説明しました。
+また、HTTP 通信が SSL 経由で行われるように設定しましょう。
+そうすれば、データはすべて暗号化されます。</p>
+<p>ここでは、Apache 設定の詳細についてはあえて立ち入らないようにしました。
+Apache 以外の ウェブサーバーを使う場合もあるでしょうし、認証の要求も多様だからです。
+覚えておいてほしいのは、Git には <code class="literal">git-http-backend</code> という CGI スクリプトが付属していることです。
+それが実行されると、HTTP 経由でデータを送受信する際のネゴシエーションを処理してくれます。
+このスクリプト自体は認証の仕組みを備えてはいませんが、ウェブサーバーの機能で認証は簡単に管理できます。
+CGI に対応している ウェブサーバーであればどれも使っても構いません。一番使い慣れたものを使うのがよいでしょう。</p>
+<aside class="admonition note" title="Note" epub:type="note">
+<div class="content">
+<p>Apacheを使った認証設定の詳細については、Apache の公式ドキュメント <a href="http://httpd.apache.org/docs/current/howto/auth.html" class="link">http://httpd.apache.org/docs/current/howto/auth.html</a> を参照してください。</p>
+</div>
+</aside>
+</section>
+<section class="sect1" title="GitWeb">
+<h2 id="_gitweb">GitWeb</h2>
+<p></p>
+<p>これで、読み書き可能なアクセス方法と読み込み専用のアクセス方法を用意できるようになりました。次にほしくなるのは、ウェブベースでの閲覧方法でしょうか。
+Git には標準で GitWeb という CGI スクリプトが付属しており、これを使うことができます。</p>
+<p>自分のプロジェクトでためしに GitWeb を使ってみようという人のために、一時的なインスタンスを立ち上げるためのコマンドが Git に付属しています。これを実行するには <code class="literal">lighttpd</code> や <code class="literal">webrick</code> といった軽量なサーバーが必要です。
+Linux マシンなら、たいてい <code class="literal">lighttpd</code> がインストールされています。これを実行するには、プロジェクトのディレクトリで <code class="literal">git instaweb</code> と打ち込みます。
+Mac の場合なら、Leopard には Ruby がプレインストールされています。したがって <code class="literal">webrick</code> が一番よい選択肢でしょう。<code class="literal">instaweb</code> を lighttpd 以外で実行するには、<code class="literal">--httpd</code> オプションを指定します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git instaweb --httpd=webrick
+[2009-02-21 10:02:21] INFO  WEBrick 1.3.1
+[2009-02-21 10:02:21] INFO  ruby 1.8.6 (2008-03-03) [universal-darwin9.0]</code></pre>
+</figure>
+<p>これは、HTTPD サーバーをポート 1234 で起動させ、自動的にウェブブラウザーを立ち上げてそのページを表示させます。
+非常にお手軽です。
+ひととおり見終えてサーバーを終了させたくなったら、同じコマンドに <code class="literal">--stop</code> オプションをつけて実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git instaweb --httpd=webrick --stop</code></pre>
+</figure>
+<p>ウェブインターフェイスをチーム内で常時立ち上げたりオープンソースプロジェクト用に公開したりする場合は、CGI スクリプトを設定して通常のウェブサーバーに配置しなければなりません。
+Linux のディストリビューションの中には、<code class="literal">apt</code> や <code class="literal">yum</code> などで <code class="literal">gitweb</code> パッケージが用意されているものもあります。まずはそれを探してみるとよいでしょう。
+手動での GitWeb のインストールについて、さっと流れを説明します。
+まずは Git のソースコードを取得しましょう。その中に GitWeb が含まれており、CGI スクリプトを作ることができます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git clone git://git.kernel.org/pub/scm/git/git.git
+<span style="font-weight: bold">$</span> cd git/
+<span style="font-weight: bold">$</span> make GITWEB_PROJECTROOT=<span style="font-style: italic">&quot;/opt/git&quot;</span> prefix=/usr gitweb
+    SUBDIR gitweb
+    SUBDIR ../
+make[2]: `GIT-VERSION-FILE&#39; is up to date.
+    GEN gitweb.cgi
+    GEN static/gitweb.js
+<span style="font-weight: bold">$</span> sudo cp -Rf gitweb /var/www/</code></pre>
+</figure>
+<p>コマンドを実行する際に、Git リポジトリの場所を <code class="literal">GITWEB_PROJECTROOT</code> 変数で指定しなければならないことに注意しましょう。
+さて、次は Apache にこのスクリプトを処理させるようにしなければなりません。VirtualHost に次のように追加しましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span>&lt;VirtualHost *:80&gt;
+    ServerName gitserver
+    DocumentRoot /var/www/gitweb
+    &lt;Directory /var/www/gitweb&gt;
+        Options ExecCGI +FollowSymLinks +SymLinksIfOwnerMatch
+        AllowOverride All
+        order allow,deny
+        Allow from all
+        AddHandler cgi-script cgi
+        DirectoryIndex gitweb.cgi
+    &lt;/Directory&gt;
+&lt;/VirtualHost&gt;</code></pre>
+</figure>
+<p>GitWeb は、CGI か Perl に対応したウェブサーバーならどんなものを使っても動かすことができます。何か別のサーバーのほうがよいというのなら、そのサーバーで動かすのもたやすいことでしょう。これで、<code class="literal">http://gitserver/</code> にアクセスすればリポジトリをオンラインで見られるようになりました。</p>
+</section>
+<section class="sect1" title="GitLab">
+<h2 id="_gitlab">GitLab</h2>
+<p></p>
+<p>前節で紹介した GitWeb はとてもシンプルでした。
+もし、もっとモダンで高機能な Git サーバーが必要な場合には、他のオープンソース・ソフトウェアが選択肢になるでしょう。
+それらのなかでも GitLab はよく使われていますので、一例として紹介します。
+GitWeb よりも複雑でメンテナンスも必要ではありますが、GitLab はより高機能な選択肢です。</p>
+<section class="sect2" title="インストール">
+<h3 id="_インストール">インストール</h3>
+<p>GitLab はデータベースを使用する Web アプリケーションです。そのため、インストール方法は他の Git サーバーより複雑になってしまいます。
+とはいえ、幸いなことにドキュメントは充実していて、かつ手順は簡素化されています。</p>
+<p>GitLab は数種類の方法でインストールできます。
+とりあえず動かしてみるには、仮想マシンのイメージ、もしくはワンクリックインストーラーを使います。 <a href="https://bitnami.com/stack/gitlab" class="link">https://bitnami.com/stack/gitlab</a> からそれらのファイルをダウンロード・インストールし、使用する環境に応じて設定を変更しましょう。 
+この方法では、Bitnami が気を利かせてログイン画面を使えるようにしてくれています（alt-→  と入力すると表示されます）。インストールした GitLab 用の IP アドレス・ユーザー名・パスワードを表示してくれる便利な画面です。</p>
+<figure id="rbitnami" class="image">
+<div class="content">
+<img src="images/bitnami.png" alt="Bitnami GitLab 仮想マシンのログイン画面"/>
+</div>
+<figcaption>Figure 1. Bitnami GitLab 仮想マシンのログイン画面</figcaption>
+</figure>
+<p>その他の方法については、GitLab Community Edition の README を参照してください。 <a href="https://gitlab.com/gitlab-org/gitlab-ce/tree/master" class="link">https://gitlab.com/gitlab-org/gitlab-ce/tree/master</a> で確認できます。
+そこで紹介されている GitLab のインストール方法には、Chef のレシピを使う方法、Digital Ocean で仮想マシンを用いる方法、RPM や DEB のパッケージを用いる方法（執筆段階ではベータ）などがあります。
+その他にも “非公式” のガイドとして、サポート外の OS やデータベースで GitLab を動かす方法、手動でインストールを行うためのスクリプトなど、多くのトピックが紹介されています。</p>
+</section>
+<section class="sect2" title="GitLab の管理">
+<h3 id="_gitlab_の管理">GitLab の管理</h3>
+<p>GitLab の管理画面はブラウザでアクセスします。
+ブラウザを使って GitLab をインストールしたサーバーのホスト名か IP アドレスにアクセスし、管理者としてログインしましょう。
+デフォルトのユーザー名は <code class="literal">admin@local.host</code> で、デフォルトのパスワードは <code class="literal">5iveL!fe</code>  です（この組み合わせでログインすると、パスワードを変更することを最初に促されます）。
+ログインしたら、 画面右上のメニューにある “Admin area” のアイコンをクリックしましょう。</p>
+<figure id="rgitlab_menu" class="image">
+<div class="content">
+<img src="images/gitlab-menu.png" alt="GitLab メニューにある ``Admin area'' の項目"/>
+</div>
+<figcaption>Figure 2. GitLab メニューにある “Admin area” の項目</figcaption>
+</figure>
+<section class="sect3" title="ユーザー">
+<h4 id="_ユーザー">ユーザー</h4>
+<p>GitLab におけるユーザーは、使用者に紐付けられたアカウントのことを指します。
+それは複雑なものではありません。メインはログイン情報ごとに登録された個人情報です。
+また、ユーザーアカウントには <strong>名前空間</strong> が設定されていて、ユーザーが保持するプロジェクトの識別子として用いられます。
+たとえば、ユーザー <code class="literal">jane</code> が <code class="literal">project</code> という名前のプロジェクトを保持していた場合は、そのプロジェクトの URL は <a href="http://server/jane/project" class="link">http://server/jane/project</a> になります。</p>
+<figure id="rgitlab_users" class="image">
+<div class="content">
+<img src="images/gitlab-users.png" alt="GitLab ユーザー管理画面"/>
+</div>
+<figcaption>Figure 3. GitLab ユーザー管理画面</figcaption>
+</figure>
+<p>ユーザーを削除する場合、やり方は2つです。
+まずはユーザーを「ブロック」する方法です。この場合、ブロックされたユーザーは GitLab にはログインできなくなります。一方、ユーザーの名前空間配下のデータは削除されず、ユーザーのメールアドレスで署名されたコミットとユーザープロファイルとの関連付けも有効なままになります。</p>
+<p>もうひとつのやり方はユーザーを「破壊」する方法です。ユーザーを破壊すると、GitLab のデータベース、ファイルシステムから削除されます。
+ユーザーの名前空間配下のデータ・プロジェクトも削除されますし、そのユーザーが作成したグループも同じように削除されます。
+この方法は「ブロック」と比べはるかに恒久的でやり直しがきかないものです。よって、使われることはめったにありません。</p>
+</section>
+<section class="sect3" title="グループ">
+<h4 id="r_gitlab_groups_section">グループ</h4>
+<p>GitLab では、複数のプロジェクトをグループとしてまとめられます。そして、グループにはプロジェクトごとのユーザーのアクセス権情報も含まれています。
+また、ユーザーの場合と同じように、それぞれのグループには名前空間があります。たとえば、 <code class="literal">training</code> グループに <code class="literal">materials</code> というプロジェクトがあった場合、URL は <a href="http://server/training/materials" class="link">http://server/training/materials</a> になります。</p>
+<figure id="rgitlab_groups" class="image">
+<div class="content">
+<img src="images/gitlab-groups.png" alt="GitLab グループ管理画面"/>
+</div>
+<figcaption>Figure 4. GitLab グループ管理画面</figcaption>
+</figure>
+<p>グループにはメンバーを追加できます。さらに、メンバーそれぞれにプロジェクトごとの権限と、グループそのものに対する権限が設定できます。
+権限は “Guest” （issues とチャットのみ）から “Owner” （グループと配下のメンバー・プロジェクトの管理権限）までが用意されています。
+各権限の詳細は膨大なため省略しますが、管理画面にあるリンクを辿ると確認できるようになっています。</p>
+</section>
+<section class="sect3" title="プロジェクト">
+<h4 id="_プロジェクト">プロジェクト</h4>
+<p>GitLab のプロジェクトとは、大体の場合ひとつの Git のリポジトリを指します。
+なんらかの名前空間（ユーザーかグループ）に、プロジェクトはすべて属しています。
+プロジェクトがユーザーの名前空間に属していれば、そのオーナーはアクセス権をすべて管理できます。プロジェクトがグループに属していれば、グループ自体のアクセス権設定がプロジェクトにも引き継がれます。</p>
+<p>また、プロジェクトには公開レベル設定があり、どのユーザーにプロジェクトのページとリポジトリの読み込み権限を与えるかを設定できます。
+プロジェクトが <em>Private</em> の場合、アクセス権をユーザーごとに明示的に設定する必要があります。
+プロジェクトが <em>Internal</em> の場合はログイン済みのユーザーであれば閲覧でき、<em>Public</em> なプロジェクトであれば誰でも閲覧できます。
+なお、この設定で、Git の “fetch” コマンドと ウェブ画面の両方のアクセス権が設定されることに注意しましょう。</p>
+</section>
+<section class="sect3" title="フック">
+<h4 id="_フック">フック</h4>
+<p>GitLab はフック（プロジェクト・システムの両方）に対応しています。
+どちらのフックであれ、該当のイベントが発生した都度、GitLab のサーバーは JSON データを使って HTTP POST リクエストを発行します。
+これは、Git リポジトリや GitLab を開発自動化の仕組みと連携させるときにとても便利です。特に CI サーバー・チャットサービス・デプロイ用のツールなどとの連携に役立つでしょう。</p>
+</section>
+</section>
+<section class="sect2" title="基本的な使い方">
+<h3 id="_基本的な使い方">基本的な使い方</h3>
+<p>GitLab で最初にやるべきことは、新規プロジェクトの作成です。
+ツールバーの “+” アイコンをクリックすると作成が始まります。
+まず、プロジェクト名称・所属すべき名前空間・公開レベル設定を作成時に入力します。
+それらの大半は設定画面からあとから変更可能です。
+次に “Create Project” をクリックすれば、プロジェクトが作成されます。</p>
+<p>プロジェクトが作成されたら、まずは手元の Git リポジトリとそのプロジェクトを関連付けるとよいでしょう。
+プロジェクトにアクセスするには HTTPS か SSH を使います。いずれも、Git のリモートとして設定可能なプロトコルです。
+設定用の URL は、プロジェクトのページの最上部に表示されています。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git remote add gitlab https://server/namespace/project.git</code></pre>
+</figure>
+<p>手元に Git リポジトリがない場合は、以下のようにしてリモートからクローンしましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git clone https://server/namespace/project.git</code></pre>
+</figure>
+<p>GitLab の ウェブ画面には、リポジトリの情報を確認する便利な画面がいくつもあります。
+プロジェクトのトップページでは最近の行動履歴が確認できますし、画面上部にあるリンクをたどるとファイル一覧やコミットログを確認できます。</p>
+</section>
+<section class="sect2" title="共同作業">
+<h3 id="_共同作業">共同作業</h3>
+<p>GitLab でホストしているプロジェクトで共同作業を行うもっともシンプルな方法は、Git リポジトリへのプッシュアクセス権を相手に与えてしまうことです。
+ユーザーをプロジェクトに追加するには、プロジェクトの設定画面にある “Members” のセクションを使います。新規ユーザーにアクセス権を設定するのにも同じセクションを使います（アクセス権の詳細については、 <a id="xref-r_gitlab_groups_section" href="#r_gitlab_groups_section" class="xref">グループ</a> でも少し触れました）。
+ユーザーに付与された権限が “Developer” かそれ以上であれば、リポジトリへコミットやブランチを問題なく直接プッシュできます。</p>
+<p>もうひとつ、より疎結合な共同作業の方法があります。マージリクエストです。
+この機能を使えば、任意のユーザー（プロジェクトを閲覧可能なユーザーに限られます）に所定の方法で共同作業に参加してもらえます。
+まず、リポジトリに直接プッシュする権限のあるユーザーの場合は、ブランチを作ってコミットをプッシュしたうえで、そのブランチから <code class="literal">master</code> など希望するブランチに向けてマージリクエストを作成します。
+一方、プッシュ権限のないユーザーの場合、まずはリポジトリを「フォーク」（自分専用のコピーを作成）します。続いて <em>その</em> コピーにコミットをプッシュしたら、コピーから本家に向けてマージリクエストを作成しましょう。
+この方法を使えば、どんな変更がいつリポジトリに追加されるかを管理者が管理しつつ、任意のユーザーに共同作業に参加してもらえます。</p>
+<p>GitLab においては、マージリクエストや issue を使って議論を深めていきます。
+マージリクエストは、変更内容について行ごとに議論すること（簡易的なコードレビュー機能としても使えます）にも使えますし、マージリクエスト全体についての議論のスレッドとしても使えます。
+また、マージリクエストや issue には担当者を設定できますし、マイルストーンの一部にもなります。</p>
+<p>この節では主に GitLab の Git 関連部分を見てきました。ただ、GitLab はとても完成度の高いシステムで、共同作業に役立つ機能は他にもたくさんあります。たとえば、プロジェクト用の wiki やシステム管理ツールなどです。
+最後に GitLab の利点としてもう一点挙げておきましょう。GitLab は、一度セットアップが終わってサーバーが動き出せば、設定ファイルをいじったりサーバーに SSH でログインしたりする必要はほとんどありません。管理作業、そして通常利用の大半は、ブラウザ画面から操作できます。</p>
+</section>
+</section>
+<section class="sect1" title="サードパーティによる Git ホスティング">
+<h2 id="_サードパーティによる_git_ホスティング">サードパーティによる Git ホスティング</h2>
+<p>色々と苦労してまで自分用 Git サーバーを立てようとは思わない、という場合は、Git 専用のホスティングサービスに Git のリポジトリを預けられます。
+そうすれば、初期セットアップはすぐ終わり、簡単にプロジェクトに着手できます。また、サーバー保守や監視の必要もありません。
+仮に内部用に自分用のサーバーを運用していたとしても、オープンソースのコードをホストするにはホスティングサービスの公開リポジトリを使うといいでしょう。そうすれば、リポジトリは見つかりやすく、オープンソースコミュニティの助けも得やすくなります。</p>
+<p>最近では、数多くのホスティングサービスが存在していて、それぞれに長所・短所があります。
+ホスティングサービス一覧の最新版は、Git wiki の GitHosting のページ <a href="https://git.wiki.kernel.org/index.php/GitHosting" class="link">https://git.wiki.kernel.org/index.php/GitHosting</a> を確認してください。</p>
+<p>なお、GitHub の使い方を <a id="xref--ch06-github" href="ch06-github.xhtml" class="xref">GitHub</a> で詳しく説明します。なぜなら、GitHub は最大のGit ホスティングサービスで、関わりあいを持とうとしたプロジェクトが GitHub にホストされていることも十分あり得るからです。とはいえ、Git サーバーを自らセットアップしたくないなら、選択肢はたくさんあります。</p>
+</section>
+<section class="sect1" title="まとめ">
+<h2 id="_まとめ">まとめ</h2>
+<p>リモート Git リポジトリを用意するためのいくつかの方法を紹介し、他のメンバーとの共同作業ができるようになりました。</p>
+<p>自前でサーバーを構築すれば、多くのことを制御できるようになり、ファイアウォールの内側でもサーバーを実行することができます。
+しかし、サーバーを構築して運用するにはそれなりの手間がかかります。ホスティングサービスを使えば、サーバーの準備や保守は簡単になります。
+しかし、他人のサーバー上に自分のコードを置き続けなければなりません。組織によってはそんなことを許可していないかもしれません。</p>
+<p>どの方法 (あるいは複数の方法の組み合わせ) を使えばいいのか、自分や所属先の事情に合わせて考えましょう。</p>
+</section>
+</section>
+</body>
+</html>

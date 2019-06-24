@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Gitをあなたのアプリケーションに組み込む</title>
+<link rel="stylesheet" type="text/css" href="styles/epub3.css"/>
+<link rel="stylesheet" type="text/css" href="styles/epub3-css3-only.css" media="(min-device-width: 0px)"/>
+<script type="text/javascript">
+document.addEventListener('DOMContentLoaded', function(event, reader) {
+  if (!(reader = navigator.epubReadingSystem)) {
+    if (navigator.userAgent.indexOf(' calibre/') >= 0) reader = { name: 'calibre-desktop' };
+    else if (window.parent == window || !(reader = window.parent.navigator.epubReadingSystem)) return;
+  }
+  document.body.setAttribute('class', reader.name.toLowerCase().replace(/ /g, '-'));
+});
+</script>
+</head>
+<body>
+<section class="chapter" title="Gitをあなたのアプリケーションに組み込む" epub:type="chapter" id="_gitをあなたのアプリケーションに組み込む">
+<header>
+<div class="chapter-header">
+<h1 class="chapter-title"><small class="subtitle"><b>Gitをあなたのアプリケーションに組み込む</b></small></h1>
+</div>
+</header>
+<p>開発者向けのアプリケーションを開発しているなら、ソース管理機能を統合することで利益が得られる可能性は高いでしょう。
+また、非開発者向けのアプリケーション（例えばドキュメントエディタなど）であっても、バージョン管理機能から利益を享受できる可能性があります。Gitのモデルは、様々なシナリオに上手く適合します。</p>
+<p>Gitをアプリケーションに統合する場合、やり方は大きく分けて3種類あります。1つ目はシェルのプロセスを生成してGitのコマンドラインツールを使う方法、2つ目はLibgit2を使う方法、3つ目はJGitを使う方法です。</p>
+<section class="sect1" title="Gitのコマンドラインツールを使う方法">
+<h2 id="_gitのコマンドラインツールを使う方法">Gitのコマンドラインツールを使う方法</h2>
+<p>1つ目の方法は、シェルのプロセスを生成して、Gitのコマンドラインツールを使って処理を行うやり方です。
+この方法には、標準的な方法であるという利点がありますし、Gitのすべての機能がサポートされています。
+また、ほとんどの実行環境には、比較的簡単にコマンドライン引数つきでプロセスを呼び出す機能が備わっているため、非常に簡単でもあります。
+ただし、この方法にはいくつか欠点があります。</p>
+<p>一つ目は、出力が全てプレインテキストであるという点です。
+これはつまり、処理の進捗や結果を取得したければ、Gitの出力フォーマット（ちょくちょく変わる）を自前でパースする必要があるということです。これは非効率的ですし、エラーも発生しやすくなります。</p>
+<p>2つ目は、エラーから回復する方法がないという点です。
+リポジトリが何らかの形で壊れていたり、ユーザが設定に不正な値を指定していた場合でも、Gitは単に多くの操作を受け付けなくなるだけです。</p>
+<p>3つ目は、プロセス管理です。
+シェル環境を別プロセスとして管理する必要があるため、処理が不必要に複雑になります。
+複数のGitのプロセスを協調動作させるのは（特に、複数のプロセスが同じリポジトリへアクセスする可能性がある場合は）、時に相当な困難を伴います。</p>
+</section>
+<section class="sect1" title="Libgit2を使う方法">
+<h2 id="_libgit2を使う方法">Libgit2を使う方法</h2>
+<p></p>
+<p>あなたが取れる2つ目のオプションは、Libgit2を使用することです。
+Libgit2は、他のプログラムへの依存性のないGitの実装であり、プログラムから使いやすいAPIを提供することにフォーカスしています。
+Libgit2は <a href="http://libgit2.github.com" class="link">http://libgit2.github.com</a> から取得できます。</p>
+<p>まずは、C言語用のAPIがどのようなものか見てみましょう。
+ここは駆け足で行きます。</p>
+<figure class="listing">
+<pre class="source language-c"><code><span></span><span style="font-style: italic">// リポジトリを開く</span>
+git_repository *repo;
+<span style="font-weight: bold">int</span> error = git_repository_open(&amp;repo, <span style="font-style: italic">&quot;/path/to/repository&quot;</span>);
+
+<span style="font-style: italic">// HEADへの参照を解決してコミットを取得</span>
+git_object *head_commit;
+error = git_revparse_single(&amp;head_commit, repo, <span style="font-style: italic">&quot;HEAD^{commit}&quot;</span>);
+git_commit *commit = (git_commit*)head_commit;
+
+<span style="font-style: italic">// コミットのプロパティのうちいくつかを出力</span>
+printf(<span style="font-style: italic">&quot;%s&quot;</span>, git_commit_message(commit));
+<span style="font-weight: bold">const</span> git_signature *author = git_commit_author(commit);
+printf(<span style="font-style: italic">&quot;%s &lt;%s&gt;</span><span style="font-weight: bold; font-style: italic">\n</span><span style="font-style: italic">&quot;</span>, author-&gt;name, author-&gt;email);
+<span style="font-weight: bold">const</span> git_oid *tree_id = git_commit_tree_id(commit);
+
+<span style="font-style: italic">// クリーンアップ</span>
+git_commit_free(commit);
+git_repository_free(repo);</code></pre>
+</figure>
+<p>最初の2行で、Gitのリポジトリを開いています。
+<code class="literal">git_repository</code> 型は、メモリにキャッシュされているリポジトリへのハンドルを表しています。
+リポジトリの作業ディレクトリか、または <code class="literal">.git</code> フォルダの正確なパスが分かっている場合、これがリポジトリを開く最もシンプルな方法です。
+他の方法としては、 <code class="literal">git_repository_open_ext</code> を使って検索オプション付きで開く方法、 <code class="literal">git_clone</code> とその仲間を使ってリモートリポジトリのローカルなクローンを作る方法、 <code class="literal">git_repository_init</code> を使って全く新規にリポジトリを作る方法があります。</p>
+<p>2番目のコードのかたまりは、 rev-parse 文法（詳細は <a id="xref--ch07-git-tools--r_branch_references" href="ch07-git-tools.xhtml#r_branch_references" class="xref">ブランチの参照</a> を参照）を使って、HEADが最終的に指しているコミットを取得しています。
+戻り値は <code class="literal">git_object</code> 型のポインタで、これはリポジトリのGitオブジェクトデータベースに存在する何かを表しています。
+<code class="literal">git_object</code> 型は、実際には数種類のオブジェクトの “親” にあたります。 “子” にあたる型のメモリレイアウトは <code class="literal">git_object</code> 型と同じになっているので、正しい型へのキャストは安全に行えます。
+上記の場合では、 <code class="literal">git_object_type(commit)</code> が <code class="literal">GIT_OBJ_COMMIT</code> を返すので、 <code class="literal">git_commit</code> 型のポインタへ安全にキャストできます。</p>
+<p>次のかたまりは、コミットのプロパティにアクセスする方法を示しています。
+ここの最後の行では <code class="literal">git_oid</code> 型を使用しています。これは、 Libgit2 において SHA-1 ハッシュを表現する型です。</p>
+<p>このサンプルからは、いくつかのパターンが見て取れます。</p>
+<div class="itemized-list">
+<ul>
+<li>
+<span class="principal">ポインタを宣言して、 Libgit2 の呼び出しにそのポインタへの参照を渡すと、その呼び出しは多くの場合 int 型のエラーコードを返す。
+値 <code class="literal">0</code> は成功を表す。それより小さい値はエラーを表す。</span>
+</li>
+<li>
+<span class="principal">Libgit2 がポインタへ値を入れて返したら、解放は自前で行わなければならない。</span>
+</li>
+<li>
+<span class="principal">Libgit2 の呼び出しが <code class="literal">const</code> ポインタを返した場合、開放する必要はない。ただし、それがそれが属するオブジェクトが解放されたら、ポインタは無効になる。</span>
+</li>
+<li>
+<span class="principal">Cでコードを書くのはちょっとキツい。</span>
+</li>
+</ul>
+</div>
+<p></p>
+<p>最後の1つは、 Libgit2 を使用するときに、C言語でコードを書こうということはまずないだろう、というくらいの意味です。
+幸いなことに、様々な言語用のバインディングが利用可能です。これを使えば、あなたの使っている特定の言語や環境から、Gitリポジトリに対する作業を非常に簡単に行えます。
+Libgit2 の Ruby 向けバインディングを使って上記の例を書いたものを見てみましょう。Libgit2 の Ruby 向けバインディングは Rugged という名前で、 <a href="https://github.com/libgit2/rugged" class="link">https://github.com/libgit2/rugged</a> から取得できます。</p>
+<figure class="listing">
+<pre class="source language-ruby"><code><span></span>repo = Rugged::Repository.new(<span style="font-style: italic">&#39;path/to/repository&#39;</span>)
+commit = repo.head.target
+puts commit.message
+puts <span style="font-style: italic">&quot;</span><span style="font-weight: bold; font-style: italic">#{</span>commit.author[<span style="font-style: italic">:name</span>]<span style="font-weight: bold; font-style: italic">}</span><span style="font-style: italic"> &lt;</span><span style="font-weight: bold; font-style: italic">#{</span>commit.author[<span style="font-style: italic">:email</span>]<span style="font-weight: bold; font-style: italic">}</span><span style="font-style: italic">&gt;&quot;</span>
+tree = commit.tree</code></pre>
+</figure>
+<p>ご覧のように、コードがだいぶすっきりしました。
+第一に、 Rugged は例外を使用します。エラーの状態を知らせるのに、 <code class="literal">ConfigError</code> や <code class="literal">ObjectError</code> のような例外を raise できます。
+第二に、リソースの明示的な解放処理がありません。これは、 Ruby がガベージコレクションをしてくれるためです。
+それではもう少し複雑な例を見てみましょう。次の例では、コミットをゼロから作成しています。</p>
+<figure class="listing">
+<pre class="source language-ruby"><code><span></span>blob_id = repo.write(<span style="font-style: italic">&quot;Blob contents&quot;</span>, <span style="font-style: italic">:blob</span>) <i class="conum" data-value="1">①</i>
+
+index = repo.index
+index.read_tree(repo.head.target.tree)
+index.add(<span style="font-style: italic">:path</span> =&gt; <span style="font-style: italic">&#39;newfile.txt&#39;</span>, <span style="font-style: italic">:oid</span> =&gt; blob_id) <i class="conum" data-value="2">②</i>
+
+sig = {
+    <span style="font-style: italic">:email</span> =&gt; <span style="font-style: italic">&quot;bob@example.com&quot;</span>,
+    <span style="font-style: italic">:name</span> =&gt; <span style="font-style: italic">&quot;Bob User&quot;</span>,
+    <span style="font-style: italic">:time</span> =&gt; Time.now,
+}
+
+commit_id = Rugged::Commit.create(repo,
+    <span style="font-style: italic">:tree</span> =&gt; index.write_tree(repo), <i class="conum" data-value="3">③</i>
+    <span style="font-style: italic">:author</span> =&gt; sig,
+    <span style="font-style: italic">:committer</span> =&gt; sig, <i class="conum" data-value="4">④</i>
+    <span style="font-style: italic">:message</span> =&gt; <span style="font-style: italic">&quot;Add newfile.txt&quot;</span>, <i class="conum" data-value="5">⑤</i>
+    <span style="font-style: italic">:parents</span> =&gt; repo.empty? ? [] : [ repo.head.target ].compact, <i class="conum" data-value="6">⑥</i>
+    <span style="font-style: italic">:update_ref</span> =&gt; <span style="font-style: italic">&#39;HEAD&#39;</span>, <i class="conum" data-value="7">⑦</i>
+)
+commit = repo.lookup(commit_id) <i class="conum" data-value="8">⑧</i></code></pre>
+</figure>
+<div class="callout-list">
+<ol>
+<li><i class="conum" data-value="1">①</i> 新しいファイルの内容を含む新しい blob を作成します。</li>
+<li><i class="conum" data-value="2">②</i> インデックスとHEADのコミットのツリーを取得し、パス <code class="literal">newfile.txt</code> にある新しいファイルを追加します。</li>
+<li><i class="conum" data-value="3">③</i> ODBに新しいツリーを作成し、それを新しいコミット用に使用しています。</li>
+<li><i class="conum" data-value="4">④</i> author フィールドと committer フィールドに同じ署名を使います。</li>
+<li><i class="conum" data-value="5">⑤</i> コミットメッセージです。</li>
+<li><i class="conum" data-value="6">⑥</i> コミットを作成するときには、新しいコミットの親を指定する必要があります。
+ここではHEADの先端を単一の親として指定しています。</li>
+<li><i class="conum" data-value="7">⑦</i> Rugged （およびLibgit2）では、コミットを作成する際に、必要に応じて参照を更新することもできます。</li>
+<li><i class="conum" data-value="8">⑧</i> 戻り値は新しいコミットオブジェクトの SHA-1 ハッシュです。これは後で <code class="literal">Commit</code> オブジェクトを取得するために使用できます。</li>
+</ol>
+</div>
+<p>このRubyのコードは単純明快です。また、重い処理はLibgit2が行っているので、非常に高速に実行できます。
+Rubyist でない方のために、 <a id="xref-r_libgit2_bindings" href="#r_libgit2_bindings" class="xref">その他のバインディング</a> では他のバインディングにも触れています。</p>
+<section class="sect2" title="高度な機能">
+<h3 id="_高度な機能">高度な機能</h3>
+<p>Libgit2 には、Git のコアがスコープ外としている機能がいくつか備わっています。
+一つの例がプラグイン機能です。 Libgit2 では、一部の機能に対し、カスタム “バックエンド” を指定できます。これにより、Git が行うのとは別の方法でデータを保存することができます。
+Libgit2 では設定、refストレージ、オブジェクトデータベースなどに対してカスタムバックエンドを指定できます。</p>
+<p>バックエンドがどのように機能するか見てみましょう。
+次のコードは、Libgit2チームが提供しているサンプル（ <a href="https://github.com/libgit2/libgit2-backends" class="link">https://github.com/libgit2/libgit2-backends</a> から取得できます）から拝借しています。
+オブジェクトデータベース用のカスタムバックエンドを設定する方法を示しています。</p>
+<figure class="listing">
+<pre class="source language-c"><code><span></span>git_odb *odb;
+<span style="font-weight: bold">int</span> error = git_odb_new(&amp;odb); <i class="conum" data-value="1">①</i>
+
+git_odb_backend *my_backend;
+error = git_odb_backend_mine(&amp;my_backend, <span style="font-style: italic">/*…*/</span>); <i class="conum" data-value="2">②</i>
+
+error = git_odb_add_backend(odb, my_backend, 1); <i class="conum" data-value="3">③</i>
+
+git_repository *repo;
+error = git_repository_open(&amp;repo, <span style="font-style: italic">&quot;some-path&quot;</span>);
+error = git_repository_set_odb(odb); <i class="conum" data-value="4">④</i></code></pre>
+</figure>
+<p><em>(ここで、エラーの捕捉はしていますが、エラー処理は行っていないことに注意してください。あなたのコードが私たちのものより優れていることを願っています。）</em></p>
+<div class="callout-list">
+<ol>
+<li><i class="conum" data-value="1">①</i> 空のオブジェクトデータベース(ODB) “フロントエンド” を初期化します。これは、実際の処理を行う “バックエンド” のコンテナとして機能します。</li>
+<li><i class="conum" data-value="2">②</i> カスタムODBバックエンドを初期化します。</li>
+<li><i class="conum" data-value="3">③</i> フロントエンドにバックエンドを追加します。</li>
+<li><i class="conum" data-value="4">④</i> リポジトリを開きます。作成したODBを、オブジェクトの検索に使うように設定します。</li>
+</ol>
+</div>
+<p>さて、この <code class="literal">git_odb_backend_mine</code> というのは何でしょうか？
+そう、これは自作のODB実装のコンストラクタです。この中では、 <code class="literal">git_odb_backend</code> 構造体へ適切に値を設定しさえしていれば、どんな処理でも行えます。
+処理は <em>例えば</em> 以下のようになります。</p>
+<figure class="listing">
+<pre class="source language-c"><code><span></span><span style="font-weight: bold">typedef</span> <span style="font-weight: bold">struct</span> {
+    git_odb_backend parent;
+
+    <span style="font-style: italic">// Some other stuff</span>
+    <span style="font-weight: bold">void</span> *custom_context;
+} my_backend_struct;
+
+<span style="font-weight: bold">int</span> git_odb_backend_mine(git_odb_backend **backend_out, <span style="font-style: italic">/*…*/</span>)
+{
+    my_backend_struct *backend;
+
+    backend = calloc(1, <span style="font-weight: bold">sizeof</span> (my_backend_struct));
+
+    backend-&gt;custom_context = <span style="border: 1px solid #FF0000">…</span>;
+
+    backend-&gt;parent.read = &amp;my_backend__read;
+    backend-&gt;parent.read_prefix = &amp;my_backend__read_prefix;
+    backend-&gt;parent.read_header = &amp;my_backend__read_header;
+    <span style="font-style: italic">// …</span>
+
+    *backend_out = (git_odb_backend *) backend;
+
+    <span style="font-weight: bold">return</span> GIT_SUCCESS;
+}</code></pre>
+</figure>
+<p>ここで、非常に分かりにくい制約として、 <code class="literal">my_backend_struct</code> の最初のメンバ変数は <code class="literal">git_odb_backend</code> 構造体である必要があります。これによって、Libgit2 のコードが期待している通りのメモリレイアウトになることが保証されます。
+構造体の残りの部分は任意です。この構造体は必要に合わせて大きくしたり小さくしたりして構いません。</p>
+<p>この初期化関数では、構造体にメモリを割り当て、カスタムコンテキストを設定し、それがサポートしている <code class="literal">parent</code> 構造体のメンバーへデータを設定しています。
+その他の呼び出しのシグネチャについては、Libgit2のソースの <code class="literal">include/git2/sys/odb_backend.h</code> ファイルを見てみてください。ユースケースがはっきりしていれば、シグネチャのうちどれをサポートすればよいかを判断するのに役立つでしょう。</p>
+</section>
+<section class="sect2" title="その他のバインディング">
+<h3 id="r_libgit2_bindings">その他のバインディング</h3>
+<p>Libgit2 には各種の言語向けのバインディングがあります。
+ここでは、これを書いている時点で利用できるバインディングの中から、その一部を使用して、小さなサンプルプログラムを示していきます。他にも、C++、Go、Node.js、Erlang、JVMなど多くの言語向けのライブラリがあり、成熟度合いも様々です。
+バインディングの公式なコレクションは、 <a href="https://github.com/libgit2" class="link">https://github.com/libgit2</a> にあるリポジトリを探せば見つかります。
+以降で示すコードはいずれも、最終的にHEADが指しているコミットのコミットメッセージを返します(<code class="literal">git log -1</code> のようなものです)。</p>
+<section class="sect3" title="LibGit2Sharp">
+<h4 id="_libgit2sharp">LibGit2Sharp</h4>
+<p></p>
+<p><strong class="head">NET や Mono でアプリケーションを書いているなら、 LibGit2Sharp (<a href="https://github.com/libgit2/libgit2sharp" class="link">https://github.com/libgit2/libgit2sharp</a>) をお探しでしょう。</strong> バインディングは C# で書かれていて、生の Libgit2 の呼び出しを、ネイティブ感のある CLR API でラップすることに細心の注意が払われています。
+サンプルプログラムは次のようになります。</p>
+<figure class="listing">
+<pre class="source language-csharp"><code><span></span><span style="font-weight: bold">new</span> Repository(<span style="font-style: italic">@&quot;C:\path\to\repo&quot;</span>).Head.Tip.Message;</code></pre>
+</figure>
+<p>Windows向けのデスクトップアプリケーション向けにはNuGetパッケージもあります。これは、すぐに作業を始めようという時に役立ちます。</p>
+</section>
+<section class="sect3" title="objective-git">
+<h4 id="_objective_git">objective-git</h4>
+<p></p>
+<p>Apple のプラットフォーム向けのアプリケーションを書いているなら、おそらく実装には Objective-C を使用しているものと思います。
+Objective-Git (<a href="https://github.com/libgit2/objective-git" class="link">https://github.com/libgit2/objective-git</a>) は、そういった環境向けの Libgit2 のバインディングです。
+サンプルプログラムは次のようになります。</p>
+<figure class="listing">
+<pre class="source language-objc"><code><span></span>GTRepository *repo =
+    [[GTRepository alloc] initWithURL:[NSURL fileURLWithPath: <span style="font-style: italic">@&quot;/path/to/repo&quot;</span>] error:NULL];
+NSString *msg = [[[repo headReferenceWithError:NULL] resolvedTarget] message];</code></pre>
+</figure>
+<p>Objective-git は Swift に対しても完全な相互運用性があるので、 Objective-C を捨てたとしても怖くありません。</p>
+</section>
+<section class="sect3" title="pygit2">
+<h4 id="_pygit2">pygit2</h4>
+<p></p>
+<p>Libgit2 の Python 向けバインディングは Pygit2 という名前で、 <a href="http://www.pygit2.org/" class="link">http://www.pygit2.org/</a> から取得できます。
+サンプルプログラムは次のようになります。</p>
+<figure class="listing">
+<pre class="source language-python"><code><span></span>pygit2.Repository(<span style="font-style: italic">&quot;/path/to/repo&quot;</span>) <span style="font-style: italic"># リポジトリを開く</span>
+    .head                          <span style="font-style: italic"># 現在のブランチを取得</span>
+    .peel(pygit2.Commit)           <span style="font-style: italic"># HEADが指すコミットまで移動</span>
+    .message                       <span style="font-style: italic"># メッセージを読む</span></code></pre>
+</figure>
+</section>
+</section>
+<section class="sect2" title="参考文献">
+<h3 id="_参考文献">参考文献</h3>
+<p>もちろん、 Libgit2 の機能の扱い方すべてを取り上げるのは、本書の範囲外です。
+Libgit2 自体についてより多くの情報が必要な場合は、 API ドキュメントが <a href="https://libgit2.github.com/libgit2" class="link">https://libgit2.github.com/libgit2</a> にあります。また、ガイドが <a href="https://libgit2.github.com/docs" class="link">https://libgit2.github.com/docs</a> にあります。
+他のバインディングについては、同梱されている README やテストを見てみてください。ちょっとしたチュートリアルや、参考文献へのポインタが書かれていることがあります。</p>
+</section>
+</section>
+<section class="sect1" title="JGit">
+<h2 id="_jgit">JGit</h2>
+<p></p>
+<p>JavaのプログラムからGitを使いたい場合、十分な機能を備えたGitのライブラリであるJGitが利用できます。
+JGitは、ネイティブJavaによるGitの実装です。Gitのほぼ全機能を備えており、Javaコミュニティで広く使われています。
+JGitはEclipse傘下のプロジェクトで、ホームページは <a href="http://www.eclipse.org/jgit" class="link">http://www.eclipse.org/jgit</a> です。</p>
+<section class="sect2" title="セットアップする">
+<h3 id="_セットアップする">セットアップする</h3>
+<p>JGitをあなたのプロジェクトへ追加して、コードを書き始めるには、いくつかの方法があります。
+おそらく最も簡単なのはMavenを使う方法です。次のスニペットを pom.xml の <code class="literal">&lt;dependencies&gt;</code> タグに追加すれば、統合が行えます。</p>
+<figure class="listing">
+<pre class="source language-xml"><code><span></span><span style="font-weight: bold">&lt;dependency&gt;</span>
+    <span style="font-weight: bold">&lt;groupId&gt;</span>org.eclipse.jgit<span style="font-weight: bold">&lt;/groupId&gt;</span>
+    <span style="font-weight: bold">&lt;artifactId&gt;</span>org.eclipse.jgit<span style="font-weight: bold">&lt;/artifactId&gt;</span>
+    <span style="font-weight: bold">&lt;version&gt;</span>3.5.0.201409260305-r<span style="font-weight: bold">&lt;/version&gt;</span>
+<span style="font-weight: bold">&lt;/dependency&gt;</span></code></pre>
+</figure>
+<p>皆さんがこれを読んでいる時には、おそらく <code class="literal">version</code> の番号はもっと進んでいるでしょうから、 <a href="http://mvnrepository.com/artifact/org.eclipse.jgit/org.eclipse.jgit" class="link">http://mvnrepository.com/artifact/org.eclipse.jgit/org.eclipse.jgit</a> で最新のリポジトリの情報を確認してください。
+このステップが完了したら、以降は必要なJGitライブラリの取得と使用をMavenが自動的に行ってくれます。</p>
+<p>バイナリの依存関係を自前で管理したい場合は、ビルド済みのJGitのバイナリが <a href="http://www.eclipse.org/jgit/download" class="link">http://www.eclipse.org/jgit/download</a> から取得できます。
+JGitをプロジェクトへ組み込むには、次のようなコマンドを実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span>javac -cp .:org.eclipse.jgit-3.5.0.201409260305-r.jar App.java
+java -cp .:org.eclipse.jgit-3.5.0.201409260305-r.jar App</code></pre>
+</figure>
+</section>
+<section class="sect2" title="Plumbing">
+<h3 id="_plumbing">Plumbing</h3>
+<p>JGitのAPIには大きく2 つのレベルがあり、それぞれ配管（Plumbing）および磁器（Porcelain）と呼ばれています。
+これらはGit由来の用語で、JGitでもだいたいGitと同じように区分けされています。Porcelain APIは、使いやすいフロントエンドで、一般的なユーザレベルの処理（普通のユーザがGitのコマンドラインツールを使って行うような処理）を行います。一方、Plumbing APIでは、低レベルなリポジトリオブジェクトを直接操作します。</p>
+<p>JGitセッションでは多くの場合、<code class="literal">Repository</code> クラスを開始点とします。この場合、まず最初に行いたい処理は <code class="literal">Repository</code> クラスのインスタンスの作成です。
+ファイルシステムベースのリポジトリなら（そう、JGitでは他のストレージモデルも扱えます）、これは <code class="literal">FileRepositoryBuilder</code> を使って行います。</p>
+<figure class="listing">
+<pre class="source language-java"><code><span></span><span style="font-style: italic">// 新しくリポジトリを作成する。存在するパスを指定すること</span>
+Repository newlyCreatedRepo = FileRepositoryBuilder.create(
+    <span style="font-weight: bold">new</span> File(<span style="font-style: italic">&quot;/tmp/new_repo/.git&quot;</span>));
+
+<span style="font-style: italic">// 既存のリポジトリを開く</span>
+Repository existingRepo = <span style="font-weight: bold">new</span> FileRepositoryBuilder()
+    .setGitDir(<span style="font-weight: bold">new</span> File(<span style="font-style: italic">&quot;my_repo/.git&quot;</span>))
+    .build();</code></pre>
+</figure>
+<p><code class="literal">FileRepositoryBuilder</code> は洗練されたAPIが備わっており、リポジトリの場所が分かっているにしろいないにしろ、Gitのリポジトリを見つけるのに必要な処理はすべて提供されています。
+ここでは、環境変数を使う (<code class="literal">.readEnvironment()</code>)、作業ディレクトリ中のどこかを起点として検索をする(<code class="literal">.setWorkTree(…).findGitDir()</code>)、上の例のように単に既知の <code class="literal">.git</code> ディレクトリを開く、といった方法が使用できます。</p>
+<p><code class="literal">Repository</code> インスタンスを取得したら、そこを起点にあらゆる種類の処理が行えます。
+簡単なサンプルプログラムを次に示します。</p>
+<figure class="listing">
+<pre class="source language-java"><code><span></span><span style="font-style: italic">// 参照を取得する</span>
+Ref master = repo.getRef(<span style="font-style: italic">&quot;master&quot;</span>);
+
+<span style="font-style: italic">// 参照の指すオブジェクトを取得する</span>
+ObjectId masterTip = master.getObjectId();
+
+<span style="font-style: italic">// Rev-parse文法を使う</span>
+ObjectId obj = repo.resolve(<span style="font-style: italic">&quot;HEAD^{tree}&quot;</span>);
+
+<span style="font-style: italic">// オブジェクトの生の内容をロードする</span>
+ObjectLoader loader = repo.open(masterTip);
+loader.copyTo(System.out);
+
+<span style="font-style: italic">// ブランチを作成する</span>
+RefUpdate createBranch1 = repo.updateRef(<span style="font-style: italic">&quot;refs/heads/branch1&quot;</span>);
+createBranch1.setNewObjectId(masterTip);
+createBranch1.update();
+
+<span style="font-style: italic">// ブランチを削除する</span>
+RefUpdate deleteBranch1 = repo.updateRef(<span style="font-style: italic">&quot;refs/heads/branch1&quot;</span>);
+deleteBranch1.setForceUpdate(<span style="font-weight: bold">true</span>);
+deleteBranch1.delete();
+
+<span style="font-style: italic">// 設定値</span>
+Config cfg = repo.getConfig();
+String name = cfg.getString(<span style="font-style: italic">&quot;user&quot;</span>, <span style="font-weight: bold">null</span>, <span style="font-style: italic">&quot;name&quot;</span>);</code></pre>
+</figure>
+<p>ここでは数多くの処理が行われています。1セクションずつ順に見て行きましょう。</p>
+<p>最初の行では <code class="literal">master</code> 参照へのポインタを取得しています。
+JGitは <code class="literal">refs/heads/master</code> にある <em>実際の</em> master参照を自動的に取得してオブジェクトを返します。このオブジェクトを使えば、参照についての情報を取得できます。
+ここでは、名前 (<code class="literal">.getName()</code>) と、直接参照のターゲットオブジェクト (<code class="literal">.getObjectId()</code>) またはシンボリック参照の指す参照 (<code class="literal">.getTarget()</code>) のいずれかを取得できます。
+参照オブジェクトは、タグ参照やオブジェクトを表すのにも使われるので、タグが “peeled” か問い合わせられるようになっています。つまり、参照がタグオブジェクトの（ひょっとすると長い）列の最後のターゲットを指しているか問い合わせることができます。</p>
+<p>2行目では、 <code class="literal">master</code> 参照の指す先を取得して、ObjectIdインスタンスの形で返します。
+ObjectIdはGitのオブジェクトデータベース中にある（または、データベース中にない）オブジェクトのSHA-1ハッシュを表しています。
+3行目は似たような処理ですが、ここではJGitがrev-parse文法（詳細は <a href="ch07-git-tools.xhtml#r_branch_references" class="xref">ブランチの参照</a> を参照）を処理する方法を示しています。Gitが解釈できる任意のオブジェクト指定子を渡すことができ、JGitはそのオブジェクトのvalidなObjectIdか <code class="literal">null</code> のどちらかを返します。</p>
+<p>次の2行はオブジェクトの生の内容をロードする方法を示しています。
+このサンプルでは <code class="literal">ObjectLoader.copyTo()</code> を使ってオブジェクトの内容を標準出力へ直接流し込んでいますが、ObjectLoaderにはオブジェクトの型やサイズを返すメソッド、オブジェクトの内容をbyte型配列として返すメソッドもあります。
+大きいオブジェクト（<code class="literal">.isLarge()</code> が <code class="literal">true</code> を返すようなオブジェクト）に対しては、 <code class="literal">.openStream()</code> を使えば、InputStream のようなオブジェクトを取得でき、データ全体をメモリ上に置くことなく、生のデータを読み込めます。</p>
+<p>次の数行は、新しいブランチを作成するために必要な処理を示しています。
+ここではRefUpdateのインスタンスを作成し、パラメータを設定した上で、<code class="literal">.update()</code> を呼んで変更を適用しています。
+続く数行は同じブランチを削除するコードです。
+なお、この処理では <code class="literal">.setForceUpdate(true)</code> が必須です。さもなくば、 <code class="literal">.delete()</code> を呼んでも <code class="literal">REJECTED</code> が返り、何も変更されません。</p>
+<p>最後の例は、Gitの設定ファイルから <code class="literal">user.name</code> の値を取得する方法を示しています。
+このConfigインスタンスは、ローカル設定のために前に開いたリポジトリを使用しますが、グローバル設定ファイルやシステム設定ファイルからも自動的に値を読み込みます。</p>
+<p>ここで示したサンプルは、Plumbing APIのごく一部であり、利用可能なメソッドやクラスは他にもたくさんあります。
+ここで取り上げなかった内容としては、他にJGitのエラー処理があります。エラー処理は例外を通じて行われます。
+JGitのAPIからthrowされる例外には、Java標準の例外（<code class="literal">IOException</code> など）の他にも、JGit固有の各種例外（<code class="literal">NoRemoteRepositoryException</code>, <code class="literal">CorruptObjectException</code>, <code class="literal">NoMergeBaseException</code> など）があります。</p>
+</section>
+<section class="sect2" title="Porcelain">
+<h3 id="_porcelain">Porcelain</h3>
+<p>Plumbing APIは網羅的ではありますが、その機能を繋ぎ合わせて一般的な作業（インデックスにファイルを追加したり、新しくコミットを作成したり）を遂行するのは、場合によっては面倒です。
+JGitは、この点を手助けする高いレベルのAPIを提供しています。これらのAPIへのエントリポイントは、 <code class="literal">Git</code> クラスです。</p>
+<figure class="listing">
+<pre class="source language-java"><code><span></span>Repository repo;
+<span style="font-style: italic">// repoオブジェクトの作成……</span>
+Git git = <span style="font-weight: bold">new</span> Git(repo);</code></pre>
+</figure>
+<p>Gitクラスは、洗練された高レベルの <em>builder</em> スタイルのメソッドを備えています。これは、非常に複雑な処理を組み立てる際に利用できます。
+それでは例を見てみましょう。ここでは <code class="literal">git ls-remote</code> のような処理を行っています。</p>
+<figure class="listing">
+<pre class="source language-java"><code><span></span>CredentialsProvider cp = <span style="font-weight: bold">new</span> UsernamePasswordCredentialsProvider(<span style="font-style: italic">&quot;username&quot;</span>, <span style="font-style: italic">&quot;p4ssw0rd&quot;</span>);
+Collection&lt;Ref&gt; remoteRefs = git.lsRemote()
+    .setCredentialsProvider(cp)
+    .setRemote(<span style="font-style: italic">&quot;origin&quot;</span>)
+    .setTags(<span style="font-weight: bold">true</span>)
+    .setHeads(<span style="font-weight: bold">false</span>)
+    .call();
+<span style="font-weight: bold">for</span> (Ref ref : remoteRefs) {
+    System.out.println(ref.getName() + <span style="font-style: italic">&quot; -&gt; &quot;</span> + ref.getObjectId().name());
+}</code></pre>
+</figure>
+<p>これはGitクラスを使うときによくあるパターンです。メソッドがコマンドオブジェクトを返すので、パラメータを設定するメソッドチェーンを繋げていき、最後に <code class="literal">.call()</code> メソッドを呼び出すとそれらがまとめて実行されます。
+このケースでは、タグを取得する際に、HEADではなく`origin`リモートを要求しています。
+また、<code class="literal">CredentialsProvider</code> オブジェクトを使って認証を行っていることにも注意してください。</p>
+<p>Gitクラスからは <code class="literal">add</code>、<code class="literal">blame</code>、<code class="literal">commit</code>、<code class="literal">clean</code>、<code class="literal">push</code>、<code class="literal">rebase</code>、<code class="literal">revert</code>、<code class="literal">reset</code> を含め、他にも多くのコマンドが使用できます。</p>
+</section>
+<section class="sect2" title="参考文献">
+<h3 id="_参考文献_2">参考文献</h3>
+<p>この節で示したのは、JGitの機能のごく一部です。
+興味が湧いた、もっと知りたいということなら、情報は次の場所から探せます。</p>
+<div class="itemized-list">
+<ul>
+<li>
+<span class="principal">オフィシャルなJGit APIドキュメントは <a href="http://download.eclipse.org/jgit/docs/latest/apidocs" class="link">http://download.eclipse.org/jgit/docs/latest/apidocs</a> で参照できます。
+標準的なJavadocなので、ローカルにインストールして、好きなJVM IDEから参照することもできます。</span>
+</li>
+<li>
+<span class="principal">JGit Cookbook (<a href="https://github.com/centic9/jgit-cookbook" class="link">https://github.com/centic9/jgit-cookbook</a>) には、特定の作業をJGitでどうやるかのサンプルプログラムが数多くあります。</span>
+</li>
+<li>
+<span class="principal"><a href="http://stackoverflow.com/questions/6861881" class="link">http://stackoverflow.com/questions/6861881</a> で、優れたリソースへのポインタがいくつか示されています。</span>
+</li>
+</ul>
+</div>
+</section>
+</section>
+</section>
+</body>
+</html>

@@ -1,0 +1,1478 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Gitの内側</title>
+<link rel="stylesheet" type="text/css" href="styles/epub3.css"/>
+<link rel="stylesheet" type="text/css" href="styles/epub3-css3-only.css" media="(min-device-width: 0px)"/>
+<script type="text/javascript">
+document.addEventListener('DOMContentLoaded', function(event, reader) {
+  if (!(reader = navigator.epubReadingSystem)) {
+    if (navigator.userAgent.indexOf(' calibre/') >= 0) reader = { name: 'calibre-desktop' };
+    else if (window.parent == window || !(reader = window.parent.navigator.epubReadingSystem)) return;
+  }
+  document.body.setAttribute('class', reader.name.toLowerCase().replace(/ /g, '-'));
+});
+</script>
+</head>
+<body>
+<section class="chapter" title="Gitの内側" epub:type="chapter" id="ch10-git-internals">
+<header>
+<div class="chapter-header">
+<h1 class="chapter-title"><small class="subtitle"><b>Gitの内側</b></small></h1>
+</div>
+</header>
+<p>どこかの章からここに飛んできたのか、本書の他の部分を読み終えてからここにたどり着いたのか – いずれにせよ、この章ではGitの内部動作と実装を詳細に見ていきます。
+我々は、Gitがいかに便利で強力かを理解するには、その内部動作と実装を学ぶことが根本的に重要であると考えました。一方で、そういった内容は、初心者にとっては不必要に複雑で、かえって混乱を招くおそれがあると主張する人もいました。
+そこで我々は、この話題を本書の最後の章にして、読者の学習プロセスの最初の方で読んでも最後の方で読んでもいいようにしました。
+いつ読むかって？　それは読者の判断にお任せします。</p>
+<p>もう既にあなたはこの章を読んでいますので、早速、開始しましょう。
+まず最初に明確にしておきたいのですが、Gitの実態は内容アドレスファイルシステム（content-addressable filesystem）であり、その上にVCSのユーザーインターフェイスが実装されています。
+これが何を意味するかについては、すぐ後で学びます。</p>
+<p>初期（主に1.5より古いバージョン）のGitのユーザーインターフェイスは、今よりずっと複雑でした。これは、当時のGitが、洗練されたVCSであることよりも、このファイルシステムの方を重要視していたためです。
+ここ数年で、Gitのユーザーインターフェイスは改良されて、世の中にある他のシステムと同じくらいシンプルで扱いやすいものになりました。しかし、複雑で学習するのが難しいという、初期のGitのUIに対するステレオタイプはいまだに残っています。</p>
+<p>内容アドレスファイルシステムの層は驚くほど素晴らしいので、この章の最初で取り上げます。その次に転送メカニズムと、今後あなたが行う必要があるかもしれないリポジトリの保守作業について学習することにします。</p>
+<section class="sect1" title="配管（Plumbing）と磁器（Porcelain）">
+<h2 id="r_plumbing_porcelain">配管（Plumbing）と磁器（Porcelain）</h2>
+<p>本書では、<code class="literal">checkout</code> や <code class="literal">branch</code>、<code class="literal">remote</code> などの約30のコマンドを用いて、Gitの使い方を説明しています。
+一方、Gitには低レベルの処理を行うためのコマンドも沢山あります。これは、Gitが元々は、完全にユーザフレンドリーなVCSというよりも、VCSのためのツールキットだったことが理由です。これらのコマンドは、UNIX流につなぎ合わせたり、スクリプトから呼んだりすることを主眼において設計されています。
+これらのコマンドは、通常 “配管（plumbing）” コマンドと呼ばれています。対して、よりユーザフレンドリーなコマンドは “磁器（porcelain）” コマンドと呼ばれています。</p>
+<p>本書のはじめの9つの章では、ほぼ磁器コマンドだけを取り扱ってきました。
+一方、本章ではそのほとんどで低レベルの配管コマンドを使用します。これは、Gitの内部動作にアクセスして、Gitが、ある処理を、なぜ、どうやって行うのか確かめるためです。
+これら配管コマンドの多くは、コマンドラインから直接実行されるのではなく、新しくツールやカスタムスクリプトを作る際に構成要素となることを意図して作られています。</p>
+<p>新規の、または既存のディレクトリで <code class="literal">git init</code> を実行すると、Git は <code class="literal">.git</code> というディレクトリを作ります。Git が保管したり操作したりする対象の、ほとんどすべてがここに格納されます。
+リポジトリのバックアップやクローンをしたい場合、このディレクトリをどこかへコピーするだけで、ほぼ事足ります。
+基本的にこの章では、全体を通して、 <code class="literal">.git</code> ディレクトリの内容を取り扱います。
+<code class="literal">.git</code> ディレクトリの中は以下のようになっています。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> ls -F1
+HEAD
+config*
+description
+hooks/
+info/
+objects/
+refs/</code></pre>
+</figure>
+<p>これが <code class="literal">git init</code> を実行した直後のデフォルトのリポジトリであり、デフォルトで表示される内容です。なお、環境によってはここにないファイルが表示されることもあります。
+<code class="literal">description</code> ファイルは、GitWebプログラムでのみ使用するものなので、特に気にしなくて大丈夫です。
+<code class="literal">config</code> ファイルには、プロジェクト固有の設定が書かれています。また、<code class="literal">info</code> ディレクトリにはグローバルレベルの除外設定ファイル  が格納されます。これは、.gitignoreファイルに記録したくない除外パターンを書く際に使用します。
+<code class="literal">hooks</code> ディレクトリには、クライアントサイド、または、サーバーサイドのフックスクリプトが格納されます。フックスクリプトについては <a id="xref--ch08-customizing-git--r_git_hooks" href="ch08-customizing-git.xhtml#r_git_hooks" class="xref">Git フック</a> で詳しく説明します。</p>
+<p>そして、重要なのは残りの4項目です。具体的には、 <code class="literal">HEAD</code> ファイル、 <code class="literal">index</code> ファイル（まだ作成されていない）、 <code class="literal">objects</code> ディレクトリ、 <code class="literal">refs</code> ディレクトリです。
+これらがGitの中核部分になります。
+<code class="literal">objects</code> ディレクトリにはデータベースのすべてのコンテンツが保管されます。<code class="literal">refs</code> ディレクトリには、それらコンテンツ内のコミットオブジェクトを指すポインタ（ブランチ）が保管されます。<code class="literal">HEAD</code> ファイルは、現在チェックアウトしているブランチを指します。<code class="literal">index</code> ファイルには、Git がステージングエリアの情報を保管します。
+以降の各セクションでは、Git がどのような仕組みで動くのかを詳細に見ていきます。</p>
+</section>
+<section class="sect1" title="Gitオブジェクト">
+<h2 id="r_objects">Gitオブジェクト</h2>
+<p>Git は内容アドレスファイルシステムです。
+素晴らしい。
+…で、それはどういう意味なのでしょう?
+それは、Gitのコアの部分はシンプルなキー・バリュー型データストアである、という意味です。
+ここにはどんな種類のコンテンツでも格納でき、それに対応するキーが返されます。キーを使えば格納したコンテンツをいつでも取り出せます。
+これは <code class="literal">hash-object</code> という配管コマンドを使えば実際に確認できます。このコマンドはデータを受け取り、それを <code class="literal">.git</code> ディレクトリに格納し、そのデータを格納しているキーを返します。
+まずは、新しいGitリポジトリを初期化し、 <code class="literal">objects</code> ディレクトリ配下に何もないことを確認してみましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git init test
+Initialized empty Git repository in /tmp/test/.git/
+<span style="font-weight: bold">$</span> cd test
+<span style="font-weight: bold">$</span> find .git/objects
+.git/objects
+.git/objects/info
+.git/objects/pack
+<span style="font-weight: bold">$</span> find .git/objects -type f</code></pre>
+</figure>
+<p>Gitは <code class="literal">objects</code> ディレクトリを初期化して、その中に <code class="literal">pack</code> と <code class="literal">info</code> というサブディレクトリを作ります。しかし、ファイルはひとつも作られません。
+今からGitデータベースにテキストを幾つか格納してみます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> echo <span style="font-style: italic">&#39;test content&#39;</span> | git hash-object -w --stdin
+d670460b4b4aece5915caf5c68d12f560a9fe3e4</code></pre>
+</figure>
+<p><code class="literal">-w</code> オプションは、 <code class="literal">hash-object</code> にオブジェクトを格納するよう指示しています。<code class="literal">-w</code> オプションを付けない場合、コマンドはただオブジェクトのキーとなる文字列を返します。
+<code class="literal">--stdin</code> オプションは、標準入力からコンテンツを読み込むよう指示しています。これを指定しない場合、<code class="literal">hash-object</code> はコマンドラインオプションの最後にファイルパスが指定されることを期待して動作します。
+コマンドを実行すると、40文字から成るチェックサムのハッシュ値が出力されます。
+これは、SHA-1ハッシュです。すぐ後で説明しますが、これは格納するコンテンツにヘッダーを加えたデータに対するチェックサムです。
+これで、Gitがデータをどのようにして格納するか見ることができるようになりました。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> find .git/objects -type f
+.git/objects/d6/70460b4b4aece5915caf5c68d12f560a9fe3e4</code></pre>
+</figure>
+<p><code class="literal">objects</code> ディレクトリの中にファイルがひとつあります。
+Gitはまずこのようにしてコンテンツを格納します。コンテンツ1つごとに1ファイルで、ファイル名はコンテンツとそのヘッダーに対するSHA-1チェックサムで決まります。
+SHA-1ハッシュのはじめの2文字がサブディレクトリの名前になり、残りの38文字がファイル名になります。</p>
+<p><code class="literal">cat-file</code> コマンドを使うと、コンテンツをGitから取り出すことができます。
+このコマンドは、Gitオブジェクトを調べるための万能ナイフのようなものです。
+<code class="literal">-p</code> オプションを付けると、<code class="literal">cat-file</code> コマンドはコンテンツのタイプを判別し、わかりやすく表示してくれます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git cat-file -p d670460b4b4aece5915caf5c68d12f560a9fe3e4
+test content</code></pre>
+</figure>
+<p>これで、Gitにコンテンツを追加したり、取り出したりできるようになりました。
+ファイルの内容に対しても、これと同様のことを行えます。
+例えば、あるファイルに対して簡単なバージョン管理を行うことができます。
+まず、新規にファイルを作成し、データベースにその内容を保存します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> echo <span style="font-style: italic">&#39;version 1&#39;</span> &gt; test.txt
+<span style="font-weight: bold">$</span> git hash-object -w test.txt
+83baae61804e65cc73a7201a7252750c76066a30</code></pre>
+</figure>
+<p>それから、新しい内容をそのファイルに書き込んで、再び保存します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> echo <span style="font-style: italic">&#39;version 2&#39;</span> &gt; test.txt
+<span style="font-weight: bold">$</span> git hash-object -w test.txt
+1f7a7a472abf3dd9643fd615f6da379c4acb3e3a</code></pre>
+</figure>
+<p>データベースには、最初に格納したコンテンツに加えて、上記のファイルのバージョン2つが新規に追加されています。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> find .git/objects -type f
+.git/objects/1f/7a7a472abf3dd9643fd615f6da379c4acb3e3a
+.git/objects/83/baae61804e65cc73a7201a7252750c76066a30
+.git/objects/d6/70460b4b4aece5915caf5c68d12f560a9fe3e4</code></pre>
+</figure>
+<p>これで、上記のファイルの変更を取り消して最初のバージョンに戻せるようになりました。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git cat-file -p 83baae61804e65cc73a7201a7252750c76066a30 &gt; test.txt
+<span style="font-weight: bold">$</span> cat test.txt
+version 1</code></pre>
+</figure>
+<p>また、2つ目のバージョンにもできます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git cat-file -p 1f7a7a472abf3dd9643fd615f6da379c4acb3e3a &gt; test.txt
+<span style="font-weight: bold">$</span> cat test.txt
+version 2</code></pre>
+</figure>
+<p>しかし、それぞれのファイルのバージョンのSHA-1キーを覚えておくのは実用的ではありません。加えて、システムにはファイル名は格納されておらず、ファイルの内容のみが格納されています。
+このオブジェクトタイプはブロブ（blob）と呼ばれます。
+<code class="literal">cat-file -t</code> コマンドに SHA-1キーを渡すことで、あなたは Git 内にあるあらゆるオブジェクトのタイプを問い合わせることができます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git cat-file -t 1f7a7a472abf3dd9643fd615f6da379c4acb3e3a
+blob</code></pre>
+</figure>
+<section class="sect2" title="ツリーオブジェクト">
+<h3 id="r_tree_objects">ツリーオブジェクト</h3>
+<p>次のタイプはツリーです。これにより、ファイル名の格納の問題を解決して、さらに、複数のファイルをまとめて格納できるようになります。
+Git がコンテンツを格納する方法は、UNIXのファイルシステムに似ていますが少し簡略化されています。
+すべてのコンテンツはツリーオブジェクトまたはブロブオブジェクトとして格納されます。ツリーは UNIXのディレクトリエントリーと対応しており、ブロブはiノードやファイルコンテンツとほぼ対応しています。
+1つのツリーオブジェクトには1つ以上のツリーエントリーが含まれています。このツリーエントリーには、ブロブか、サブツリーとそれに関連するモード、タイプ、ファイル名へのSHA-1ポインターが含まれています。
+例えば、あるプロジェクトの最新のツリーはこのように見えるかもしれません。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git cat-file -p master^{tree}
+100644 blob a906cb2a4a904a152e80877d4088654daad0c859      README
+100644 blob 8f94139338f9404f26296befa88755fc2598c289      Rakefile
+040000 tree 99f1a6d12cb4b6f19c8655fca46c3ecf317074e0      lib</code></pre>
+</figure>
+<p><code class="literal">master^{tree}</code> のシンタックスは、<code class="literal">master</code> ブランチ上での最後のコミットが指しているツリーオブジェクトを示します。
+<code class="literal">lib</code> サブディレクトリはブロブではなく、別のツリーへのポインタであることに注意してください。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git cat-file -p 99f1a6d12cb4b6f19c8655fca46c3ecf317074e0
+100644 blob 47c6340d6459e05787f644c2447d2595f5d3a54b      simplegit.rb</code></pre>
+</figure>
+<p>概念的には、Gitが格納するデータは次のようなものです。</p>
+<figure class="image">
+<div class="content">
+<img src="images/data-model-1.png" alt="Gitデータモデルの簡略版"/>
+</div>
+<figcaption>Figure 1. Gitデータモデルの簡略版</figcaption>
+</figure>
+<p>自前でツリーを作るのも非常に簡単です。
+Gitは通常、ステージングエリアやインデックスの状態を取得してツリーを作成し、そのツリーをもとに一連のツリーオブジェクトを書き込みます。
+そのため、ツリーオブジェクトを作るには、まずファイルをステージングしてインデックスを作成しなければなりません。
+単一のエントリー – ここでは`test.txt`ファイルの最初のバージョン – からインデックスを作るには、<code class="literal">update-index</code> という配管コマンドを使います。
+このコマンドは、前のバージョンの`test.txt`ファイルをあえて新しいステージングエリアに追加する際に使用します。
+ファイルはまだステージングエリアには存在しない（まだステージングエリアをセットアップさえしていない）ので、<code class="literal">--add</code> オプションを付けなければなりません。
+また、追加しようとしているファイルはディレクトリには無くデータベースにあるので、`--cacheinfo`オプションを付ける必要があります。
+その次に、モード、SHA-1、ファイル名を指定します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git update-index --add --cacheinfo 100644 <span style="font-weight: bold; font-style: italic">\</span>
+  83baae61804e65cc73a7201a7252750c76066a30 test.txt</code></pre>
+</figure>
+<p>この例では、<code class="literal">100644</code> のモードを指定しています。これは、それが通常のファイルであることを意味します。
+他に指定できるモードとしては、実行可能ファイルであることを意味する <code class="literal">100755</code> や、シンボリックリンクであることを示す <code class="literal">120000</code> があります。
+このモードは通常の UNIX モードから取り入れた概念ですが、それほどの柔軟性はありません。Git中のファイル（ブロブ）に対しては、上記3つのモードのみが有効です（ディレクトリとサブモジュールに対しては他のモードも使用できます）。</p>
+<p>これで、 <code class="literal">write-tree</code> コマンドを使って、ステージングエリアをツリーオブジェクトに書き出せるようになりました。
+<code class="literal">-w</code> オプションは不要です。<code class="literal">write-tree</code> コマンドを呼ぶと、ツリーがまだ存在しない場合には、インデックスの状態をもとに自動的にツリーオブジェクトが作られます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git write-tree
+d8329fc1cc938780ffdd9f94e0d364e0ea74f579
+<span style="font-weight: bold">$</span> git cat-file -p d8329fc1cc938780ffdd9f94e0d364e0ea74f579
+100644 blob 83baae61804e65cc73a7201a7252750c76066a30      test.txt</code></pre>
+</figure>
+<p>また、これがツリーオブジェクトであることを検証できるようになりました。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git cat-file -t d8329fc1cc938780ffdd9f94e0d364e0ea74f579
+tree</code></pre>
+</figure>
+<p>今度は、2つめのバージョンの`test.txt`と、新規作成したファイルから、新しくツリーを作ります。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> echo <span style="font-style: italic">&#39;new file&#39;</span> &gt; new.txt
+<span style="font-weight: bold">$</span> git update-index test.txt
+<span style="font-weight: bold">$</span> git update-index --add new.txt</code></pre>
+</figure>
+<p>これでステージングエリアには、`new.txt`という新しいファイルに加えて、新しいバージョンの`test.txt`も登録されました。
+このツリーを書き出して（ステージングエリアまたはインデックスの状態をツリーオブジェクトとして記録して）、どのようになったか見てみましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git write-tree
+0155eb4229851634a0f03eb265b69f5a2d56f341
+<span style="font-weight: bold">$</span> git cat-file -p 0155eb4229851634a0f03eb265b69f5a2d56f341
+100644 blob fa49b077972391ad58037050f2a75f74e3671e92      new.txt
+100644 blob 1f7a7a472abf3dd9643fd615f6da379c4acb3e3a      test.txt</code></pre>
+</figure>
+<p>このツリーに両方のファイルエントリがあること、また、<code class="literal">test.txt`のSHA-1が先ほどの ``version 2'' のSHA-1（`1f7a7a</code>）であることに注意してください。
+ちょっと試しに、最初のツリーをサブディレクトリとしてこの中に追加してみましょう。
+<code class="literal">read-tree</code> を呼ぶことで、ステージングエリアの中にツリーを読み込むことができます。
+このケースでは、<code class="literal">--prefix</code> オプションを付けて <code class="literal">read-tree</code> コマンドを使用することで、ステージングエリアの中に、既存のツリーをサブツリーとして読み込むことができます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git read-tree --prefix=bak d8329fc1cc938780ffdd9f94e0d364e0ea74f579
+<span style="font-weight: bold">$</span> git write-tree
+3c4e9cd789d88d8d89c1073707c3585e41b0e614
+<span style="font-weight: bold">$</span> git cat-file -p 3c4e9cd789d88d8d89c1073707c3585e41b0e614
+040000 tree d8329fc1cc938780ffdd9f94e0d364e0ea74f579      bak
+100644 blob fa49b077972391ad58037050f2a75f74e3671e92      new.txt
+100644 blob 1f7a7a472abf3dd9643fd615f6da379c4acb3e3a      test.txt</code></pre>
+</figure>
+<p>先ほど書き込んだ新しいツリーから作業ディレクトリを作っていれば、作業ディレクトリの直下にファイルが2つと、最初のバージョンの`test.txt`ファイルが含まれている <code class="literal">bak</code> という名前のサブディレクトリが入ります。
+このような構成に対し、Gitが格納するデータのイメージは次のようになります。</p>
+<figure class="image">
+<div class="content">
+<img src="images/data-model-2.png" alt="現在のGitデータの内容の構成"/>
+</div>
+<figcaption>Figure 2. 現在のGitデータの内容の構成</figcaption>
+</figure>
+</section>
+<section class="sect2" title="コミットオブジェクト">
+<h3 id="r_git_commit_objects">コミットオブジェクト</h3>
+<p>追跡したいプロジェクトに対し、それぞれ異なる内容のスナップショットを示すツリー3つができました。ですが、各スナップショットを呼び戻すには3つのSHA-1の値すべてを覚えておかなければならない、という以前からの問題は残ったままです。
+さらに、そのスナップショットを誰が、いつ、どのような理由で保存したのかについての情報が一切ありません。
+これはコミットオブジェクトに保存される基本的な情報です。</p>
+<p>コミットオブジェクトを作成するには、ツリーのSHA-1を1つと、もしそれの直前に来るコミットオブジェクトがあれば、それらを指定して <code class="literal">commit-tree</code> を呼びます。
+最初に書き込んだツリーから始めましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> echo <span style="font-style: italic">&#39;first commit&#39;</span> | git commit-tree d8329f
+fdf4fc3344e67ab068f836878b6c4951e3b15f3d</code></pre>
+</figure>
+<p>これで、<code class="literal">cat-file</code> コマンドを使って、新しいコミットオブジェクトを見られるようになりました。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git cat-file -p fdf4fc3
+tree d8329fc1cc938780ffdd9f94e0d364e0ea74f579
+author Scott Chacon &lt;schacon@gmail.com&gt; 1243040974 -0700
+committer Scott Chacon &lt;schacon@gmail.com&gt; 1243040974 -0700
+
+first commit</code></pre>
+</figure>
+<p>コミットオブジェクトの形式はシンプルです。その内容は、コミットが作成された時点のスナップショットのトップレベルのツリー、作者とコミッターの情報（<code class="literal">user.name</code> および <code class="literal">user.email</code> の設定と現在のタイムスタンプを使用します）、空行、そしてコミットメッセージとなっています。</p>
+<p>次に、コミットオブジェクトを新たに2つ書き込みます。各コミットオブジェクトはその直前のコミットを参照しています。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> echo <span style="font-style: italic">&#39;second commit&#39;</span> | git commit-tree 0155eb -p fdf4fc3
+cac0cab538b970a37ea1e769cbbde608743bc96d
+<span style="font-weight: bold">$</span> echo <span style="font-style: italic">&#39;third commit&#39;</span>  | git commit-tree 3c4e9c -p cac0cab
+1a410efbd13591db07496601ebc7a059dd55cfe9</code></pre>
+</figure>
+<p>3つのコミットオブジェクトは、それぞれ、これまでに作成した3つのスナップショットのツリーのひとつを指しています。
+奇妙なことに、これで本物のGitヒストリーができており、<code class="literal">git log</code> コマンドによってログを表示できます。最後のコミットのSHA-1ハッシュを指定して実行すると……</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git log --stat 1a410e
+commit 1a410efbd13591db07496601ebc7a059dd55cfe9
+Author: Scott Chacon &lt;schacon@gmail.com&gt;
+Date:   Fri May 22 18:15:24 2009 -0700
+
+	third commit
+
+ bak/test.txt | 1 +
+ 1 file changed, 1 insertion(+)
+
+commit cac0cab538b970a37ea1e769cbbde608743bc96d
+Author: Scott Chacon &lt;schacon@gmail.com&gt;
+Date:   Fri May 22 18:14:29 2009 -0700
+
+	second commit
+
+ new.txt  | 1 +
+ test.txt | 2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+commit fdf4fc3344e67ab068f836878b6c4951e3b15f3d
+Author: Scott Chacon &lt;schacon@gmail.com&gt;
+Date:   Fri May 22 18:09:34 2009 -0700
+
+    first commit
+
+ test.txt | 1 +
+ 1 file changed, 1 insertion(+)</code></pre>
+</figure>
+<p>素晴らしい。
+フロントエンドのコマンドを利用せずに、低レベルのオペレーションだけでGitの歴史を作り上げたのです。
+これは、本質的に <code class="literal">git add</code> コマンドと <code class="literal">git commit</code> コマンドを実行するときにGitが行っていることと同じです。変更されたファイルに対応するブロブを格納し、インデックスを更新し、ツリーを書き出し、トップレベルのツリーと、その直前のコミットを参照するコミットオブジェクトとを書き出しています。
+これらの3つの主要な Git オブジェクト – ブロブとツリーとコミット – は、まずは個別のファイルとして <code class="literal">.git/object</code> ディレクトリに格納されます。
+現在、サンプルのディレクトリにあるすべてのオブジェクトを以下に示します。コメントは、それぞれ何を格納しているのかを示します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> find .git/objects -type f
+.git/objects/01/55eb4229851634a0f03eb265b69f5a2d56f341 # tree 2
+.git/objects/1a/410efbd13591db07496601ebc7a059dd55cfe9 # commit 3
+.git/objects/1f/7a7a472abf3dd9643fd615f6da379c4acb3e3a # test.txt v2
+.git/objects/3c/4e9cd789d88d8d89c1073707c3585e41b0e614 # tree 3
+.git/objects/83/baae61804e65cc73a7201a7252750c76066a30 # test.txt v1
+.git/objects/ca/c0cab538b970a37ea1e769cbbde608743bc96d # commit 2
+.git/objects/d6/70460b4b4aece5915caf5c68d12f560a9fe3e4 # &#39;test content&#39;
+.git/objects/d8/329fc1cc938780ffdd9f94e0d364e0ea74f579 # tree 1
+.git/objects/fa/49b077972391ad58037050f2a75f74e3671e92 # new.txt
+.git/objects/fd/f4fc3344e67ab068f836878b6c4951e3b15f3d # commit 1</code></pre>
+</figure>
+<p>すべての内部のポインタを辿ってゆけば、次のようなオブジェクトグラフが得られます。</p>
+<figure class="image">
+<div class="content">
+<img src="images/data-model-3.png" alt="Gitリポジトリ内のすべてのオブジェクト"/>
+</div>
+<figcaption>Figure 3. Gitリポジトリ内のすべてのオブジェクト</figcaption>
+</figure>
+</section>
+<section class="sect2" title="オブジェクトストレージ">
+<h3 id="_オブジェクトストレージ">オブジェクトストレージ</h3>
+<p>ヘッダはコンテンツと一緒に格納されることを、以前に述べました。
+ここでは少し時間を割いて、Gitがどのようにオブジェクトを格納するのかを見ていきましょう。
+以降では、ブロブオブジェクト – ここでは “what is up, doc?” という文字列 – をRuby言語を使って対話的に格納する方法を説明します。</p>
+<p><code class="literal">irb</code> コマンドで、対話モードでRubyを起動します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> irb
+<span style="font-weight: bold">&gt;</span>&gt; content = <span style="font-style: italic">&quot;what is up, doc?&quot;</span>
+=&gt; &quot;what is up, doc?&quot;</code></pre>
+</figure>
+<p>Gitがヘッダを構築する際には、まず初めにオブジェクトのタイプを表す文字列が来ます。この場合はblobです。
+次に、スペースに続いてコンテンツのサイズ、最後にヌルバイトが追加されます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">&gt;</span>&gt; header = <span style="font-style: italic">&quot;blob #{content.length}\0&quot;</span>
+=&gt; &quot;blob 16\u0000&quot;</code></pre>
+</figure>
+<p>Gitはこのヘッダと元々のコンテンツとを結合して、その新しいコンテンツのSHA-1チェックサムを計算します。
+Rubyでは、文字列のSHA-1のハッシュ値は、<code class="literal">require</code> を使用してSHA1ダイジェストライブラリをインクルードし、文字列を引数にして <code class="literal">Digest::SHA1.hexdigest()</code> 関数を呼ぶことで求められます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">&gt;</span>&gt; store = header + content
+=&gt; &quot;blob 16\u0000what is up, doc?&quot;
+<span style="font-weight: bold">&gt;</span>&gt; require <span style="font-style: italic">&#39;digest/sha1&#39;</span>
+=&gt; true
+<span style="font-weight: bold">&gt;</span>&gt; sha1 = Digest::SHA1.hexdigest(store)
+=&gt; &quot;bd9dbf5aae1a3862dd1526723246b20206e5fc37&quot;</code></pre>
+</figure>
+<p>Gitはzlibを用いてこの新しいコンテンツを圧縮します。Rubyではzlibライブラリをインクルードすれば同じことが行えます。
+まず、requireを使用してzlibライブラリをインクルードし、コンテンツに対して <code class="literal">Zlib::Deflate.deflate()</code> を実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">&gt;</span>&gt; require <span style="font-style: italic">&#39;zlib&#39;</span>
+=&gt; true
+<span style="font-weight: bold">&gt;</span>&gt; zlib_content = Zlib::Deflate.deflate(store)
+=&gt; &quot;x\x9CK\xCA\xC9OR04c(\xCFH,Q\xC8,V(-\xD0QH\xC9O\xB6\a\x00_\x1C\a\x9D&quot;</code></pre>
+</figure>
+<p>最後に、zlibでdeflate圧縮されたコンテンツをディスク上のオブジェクトに書き込みます。
+まず、オブジェクトを書き出す先のパスを決定します（SHA-1ハッシュ値の最初の2文字はサブディレクトリの名前で、残りの38文字はそのディレクトリ内のファイル名になります）。
+Rubyでは、サブディレクトリが存在しない場合、 <code class="literal">FileUtils.mkdir_p()</code> 関数で作成できます。
+そして、<code class="literal">File.open()</code> によってファイルを開いて、前にzlibで圧縮したコンテンツをファイルに書き出します。ファイルへの書き出しは、開いたファイルのハンドルに対して <code class="literal">write()</code> を呼ぶことで行います。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">&gt;</span>&gt; path = <span style="font-style: italic">&#39;.git/objects/&#39;</span> + sha1[0,2] + <span style="font-style: italic">&#39;/&#39;</span> + sha1[2,38]
+=&gt; &quot;.git/objects/bd/9dbf5aae1a3862dd1526723246b20206e5fc37&quot;
+<span style="font-weight: bold">&gt;</span>&gt; require <span style="font-style: italic">&#39;fileutils&#39;</span>
+=&gt; true
+<span style="font-weight: bold">&gt;</span>&gt; FileUtils.mkdir_p(File.dirname(path))
+=&gt; &quot;.git/objects/bd&quot;
+<span style="font-weight: bold">&gt;</span>&gt; File.open(path, <span style="font-style: italic">&#39;w&#39;</span>) { |f| f.write zlib_content }
+=&gt; 32</code></pre>
+</figure>
+<p>これだけです。これで、正当なGitブロブオブジェクトが出来上がりました。
+Gitオブジェクトはすべて同じ方法で格納されますが、オブジェクトのタイプだけは様々で、ヘッダーが blobという文字列ではなく、commitやtreeという文字列で始まることもあります。
+また、オブジェクトタイプがブロブの場合、コンテンツはほぼ何でもよいですが、コミットとツリーの場合、コンテンツは非常に厳密に形式が定められています。</p>
+</section>
+</section>
+<section class="sect1" title="Gitの参照">
+<h2 id="r_git_refs">Gitの参照</h2>
+<p><code class="literal">git log 1a410e</code> のように実行すれば、すべての歴史に目を通すことができます。しかし、歴史を辿ってすべてのオブジェクトを探しだすには、 <code class="literal">1a410e</code> が最後のコミットであることを覚えていなければならないのは変わりません。
+SHA-1ハッシュ値をシンプルな名前で保存できれば、生のSHA-1ハッシュ値ではなく、その名前をポインタとして使用できます。</p>
+<p>Gitでは、これは “参照” ないしは “refs” と呼ばれます。 <code class="literal">.git/refs</code> ディレクトリを見ると、SHA-1ハッシュ値を含むファイルがあることが分かります。
+現在のプロジェクトでは、このディレクトリにファイルはありませんが、シンプルな構成のディレクトリがあります。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> find .git/refs
+.git/refs
+.git/refs/heads
+.git/refs/tags
+<span style="font-weight: bold">$</span> find .git/refs -type f</code></pre>
+</figure>
+<p>参照を新しく作成して、最後のコミットがどこかを覚えやすくします。技術的には、以下のように簡単に行えます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> echo <span style="font-style: italic">&quot;1a410efbd13591db07496601ebc7a059dd55cfe9&quot;</span> &gt; .git/refs/heads/master</code></pre>
+</figure>
+<p>これで、Gitコマンドで、SHA-1ハッシュ値の代わりに、たった今作成したhead参照（ブランチ）を使えるようになりました。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git log --pretty=oneline master
+1a410efbd13591db07496601ebc7a059dd55cfe9 third commit
+cac0cab538b970a37ea1e769cbbde608743bc96d second commit
+fdf4fc3344e67ab068f836878b6c4951e3b15f3d first commit</code></pre>
+</figure>
+<p>参照ファイルを直接変更するのは推奨されません。
+その代わり、参照をより安全に更新するためのコマンド <code class="literal">update-ref</code> が、Gitには用意されています。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git update-ref refs/heads/master 1a410efbd13591db07496601ebc7a059dd55cfe9</code></pre>
+</figure>
+<p>これは、Gitにおいて、基本的にブランチとは一連の作業の先頭を指す単純なポインタや参照であるということを表しています。
+2つ目のコミットが先頭になるブランチを作るには、次のようにします。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git update-ref refs/heads/test cac0ca</code></pre>
+</figure>
+<p>作成されたブランチは、さきほど指定したコミット以前の作業のみを含むことになります。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git log --pretty=oneline test
+cac0cab538b970a37ea1e769cbbde608743bc96d second commit
+fdf4fc3344e67ab068f836878b6c4951e3b15f3d first commit</code></pre>
+</figure>
+<p>この時点で、Gitのデータベースは概念的には以下の図のように見えます。</p>
+<figure class="image">
+<div class="content">
+<img src="images/data-model-4.png" alt="ブランチのヘッドへの参照を含むGitディレクトリオブジェクト"/>
+</div>
+<figcaption>Figure 4. ブランチの先頭への参照を含むGitディレクトリオブジェクト</figcaption>
+</figure>
+<p><code class="literal">git branch (ブランチ名)</code> のようなコマンドを実行すると、あなたが作りたいと思っている新しい参照が何であれ、基本的にGitは <code class="literal">update-ref</code> コマンドを実行して、いま自分がいるブランチ上の最後のコミットのSHA-1ハッシュをその参照に追加します。</p>
+<section class="sect2" title="HEAD">
+<h3 id="r_the_head">HEAD</h3>
+<p>では、<code class="literal">git branch (ブランチ名)</code> を実行したときに、Gitはどうやって最後のコミットのSHA-1ハッシュを知るのでしょうか？
+答えは、HEADファイルです。</p>
+<p>HEADファイルは、現在作業中のブランチに対するシンボリック参照です。
+通常の参照と区別する意図でシンボリック参照と呼びますが、これには、一般的にSHA-1ハッシュ値ではなく他の参照へのポインタが格納されています。
+ファイルの中身を見ると、通常は以下のようになっています。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> cat .git/HEAD
+ref: refs/heads/master</code></pre>
+</figure>
+<p><code class="literal">git checkout test</code> を実行すると、Git はこのようにファイルを更新します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> cat .git/HEAD
+ref: refs/heads/test</code></pre>
+</figure>
+<p><code class="literal">git commit</code> を実行するとコミットオブジェクトが作られますが、そのときコミットオブジェクトの親として、HEADが指し示す参照先のSHA-1ハッシュ値が指定されます。</p>
+<p>このファイルを直に編集することもできますが、<code class="literal">symbolic-ref</code> と呼ばれる、編集を安全に行うためのコマンドが存在します。
+このコマンドを使ってHEADの値を読み取ることができます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git symbolic-ref HEAD
+refs/heads/master</code></pre>
+</figure>
+<p>HEADの値を設定することもできます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git symbolic-ref HEAD refs/heads/test
+<span style="font-weight: bold">$</span> cat .git/HEAD
+ref: refs/heads/test</code></pre>
+</figure>
+<p><code class="literal">refs</code> の形式以外では、シンボリック参照を設定することはできません。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git symbolic-ref HEAD test
+fatal: Refusing to point HEAD outside of refs/</code></pre>
+</figure>
+</section>
+<section class="sect2" title="タグ">
+<h3 id="_タグ">タグ</h3>
+<p>これで Git の主要な三つのオブジェクトを見終わったわけですが、タグという4つ目のオブジェクトがあります。
+タグオブジェクトは、コミットオブジェクトに非常によく似ており、タガー、日付、メッセージ、ポインタを格納しています。
+主な違いは、タグオブジェクトは通常、ツリーではなくコミットを指しているということです。
+タグオブジェクトはブランチに対する参照に似ていますが、決して変動しません – 常に同じコミットを指しており、より分かりやすい名前が与えられます。</p>
+<p><a id="xref--ch02-git-basics" href="ch02-git-basics.xhtml" class="xref">Git の基本</a> で述べましたが、タグには2つのタイプがあります。軽量 (lightweight) 版と注釈付き (annotated) 版です。
+次のように実行すると、軽量版のタグを作成できます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git update-ref refs/tags/v1.0 cac0cab538b970a37ea1e769cbbde608743bc96d</code></pre>
+</figure>
+<p>これが軽量版のタグのすべてです。つまり決して変動しない参照なのです。
+一方、注釈付き版のタグはもっと複雑です。
+注釈付き版のタグを作ろうとすると、Gitはタグオブジェクトを作った上で、コミットを直接指す参照ではなく、そのタグを指す参照を書き込みます。
+注釈付き版のタグを作ると、これが分かります（ <code class="literal">-a</code> オプションで、注釈付き版のタグを作るよう指定しています）。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git tag -a v1.1 1a410efbd13591db07496601ebc7a059dd55cfe9 -m <span style="font-style: italic">&#39;test tag&#39;</span></code></pre>
+</figure>
+<p>作られたオブジェクトのSHA-1ハッシュ値はこうなります。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> cat .git/refs/tags/v1.1
+9585191f37f7b0fb9444f35a9bf50de191beadc2</code></pre>
+</figure>
+<p>ここで、そのSHA-1ハッシュ値に対して <code class="literal">cat-file</code> コマンドを実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git cat-file -p 9585191f37f7b0fb9444f35a9bf50de191beadc2
+object 1a410efbd13591db07496601ebc7a059dd55cfe9
+type commit
+tag v1.1
+tagger Scott Chacon &lt;schacon@gmail.com&gt; Sat May 23 16:48:58 2009 -0700
+
+test tag</code></pre>
+</figure>
+<p><code class="literal">object</code> の項目が、上でタグ付けしたコミットのSHA-1ハッシュ値を指していることに注意してください。
+また、この項目が必ずしもコミットだけをポイントするものではないことも覚えておいてください。あらゆるGitオブジェクトに対してタグを付けることができます。
+例えば Git のソースコードリポジトリでは、メンテナが自分のGPG公開鍵をブロブオブジェクトとして追加し、そのオブジェクトにタグを付けています。
+Gitリポジトリのクローン上で、以下のコマンドを実行すると公開鍵を閲覧できます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git cat-file blob junio-gpg-pub</code></pre>
+</figure>
+<p>Linux カーネルのリポジトリもまた、<code class="literal">object</code> 項目でコミット以外を指しているタグオブジェクトを持っています。
+これは最初のタグオブジェクトであり、最初にソースコードをインポートしたときの初期ツリーオブジェクトを指しています。</p>
+</section>
+<section class="sect2" title="リモート">
+<h3 id="_リモート">リモート</h3>
+<p>これから見ていく3つ目の参照のタイプはリモート参照です。
+リモートを追加してそこにプッシュすると、Gitはそのリモートへ最後にプッシュした値を、ブランチ毎に <code class="literal">refs/remotes</code> へ格納します。
+例えば、 <code class="literal">origin</code> というリモートを追加して、そこに <code class="literal">master</code> ブランチをプッシュしたとします。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git remote add origin git@github.com:schacon/simplegit-progit.git
+<span style="font-weight: bold">$</span> git push origin master
+Counting objects: 11, done.
+Compressing objects: 100% (5/5), done.
+Writing objects: 100% (7/7), 716 bytes, done.
+Total 7 (delta 2), reused 4 (delta 1)
+To git@github.com:schacon/simplegit-progit.git
+  a11bef0..ca82a6d  master -&gt; master</code></pre>
+</figure>
+<p>ここで <code class="literal">refs/remotes/origin/master</code> ファイルの中身を確認してみてください。最後にサーバーと通信したときに <code class="literal">origin</code> リモートの <code class="literal">master</code> ブランチが何であったかがわかるはずです。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> cat .git/refs/remotes/origin/master
+ca82a6dff817ec66f44342007202690a93763949</code></pre>
+</figure>
+<p>リモート参照は、特に読み取り専用とみなされる点において、ブランチ（<code class="literal">refs/heads</code> にある参照）とは異なります。
+リモート参照に対して <code class="literal">git checkout</code> を行うことはできますが、GitはHEADの参照先をそのリモートにすることはなく、したがって <code class="literal">commit</code> コマンドでリモートを更新することもできません。
+Gitはリモート参照を一種のブックマークとして管理します。つまり、最後に通信したとき、向こうのサーバー上でリモートブランチが置かれていた状態を指し示すブックマークということです。</p>
+</section>
+</section>
+<section class="sect1" title="Packfile">
+<h2 id="_packfile">Packfile</h2>
+<p>Gitリポジトリtestのオブジェクトデータベースに戻りましょう。
+この時点で、オブジェクトは11個あります。内訳はブロブが4つ、ツリーが3つ、コミットが3つ、そしてタグが1つです。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> find .git/objects -type f
+.git/objects/01/55eb4229851634a0f03eb265b69f5a2d56f341 # tree 2
+.git/objects/1a/410efbd13591db07496601ebc7a059dd55cfe9 # commit 3
+.git/objects/1f/7a7a472abf3dd9643fd615f6da379c4acb3e3a # test.txt v2
+.git/objects/3c/4e9cd789d88d8d89c1073707c3585e41b0e614 # tree 3
+.git/objects/83/baae61804e65cc73a7201a7252750c76066a30 # test.txt v1
+.git/objects/95/85191f37f7b0fb9444f35a9bf50de191beadc2 # tag
+.git/objects/ca/c0cab538b970a37ea1e769cbbde608743bc96d # commit 2
+.git/objects/d6/70460b4b4aece5915caf5c68d12f560a9fe3e4 # &#39;test content&#39;
+.git/objects/d8/329fc1cc938780ffdd9f94e0d364e0ea74f579 # tree 1
+.git/objects/fa/49b077972391ad58037050f2a75f74e3671e92 # new.txt
+.git/objects/fd/f4fc3344e67ab068f836878b6c4951e3b15f3d # commit 1</code></pre>
+</figure>
+<p>Gitはzlibを使用してこれらのファイルの内容を圧縮します。また、格納しているものもそれほど多くないため、これらすべてのファイルを集めても925バイトにしかなりません。
+Gitの興味深い機能を実際に見てみるために、幾つか大きなコンテンツをリポジトリに追加してみましょう。
+実例を示すために、Gritライブラリから <code class="literal">repo.rb</code> ファイルを追加します。これは約22Kバイトのソースコードファイルです。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> curl https://raw.githubusercontent.com/mojombo/grit/master/lib/grit/repo.rb &gt; repo.rb
+<span style="font-weight: bold">$</span> git add repo.rb
+<span style="font-weight: bold">$</span> git commit -m <span style="font-style: italic">&#39;added repo.rb&#39;</span>
+[master 484a592] added repo.rb
+ 3 files changed, 709 insertions(+), 2 deletions(-)
+ delete mode 100644 bak/test.txt
+ create mode 100644 repo.rb
+ rewrite test.txt (100%)</code></pre>
+</figure>
+<p>結果のツリーを見ると、<code class="literal">repo.rb</code> ファイルに対応するブロブオブジェクトのSHA-1ハッシュ値が分かります。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git cat-file -p master^{tree}
+100644 blob fa49b077972391ad58037050f2a75f74e3671e92      new.txt
+100644 blob 033b4468fa6b2a9547a70d88d1bbe8bf3f9ed0d5      repo.rb
+100644 blob e3f094f522629ae358806b17daf78246c27c007b      test.txt</code></pre>
+</figure>
+<p>それから､ <code class="literal">git cat-file</code> を使用すれば、そのオブジェクトの大きさも分かります。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git cat-file -s 033b4468fa6b2a9547a70d88d1bbe8bf3f9ed0d5
+22044</code></pre>
+</figure>
+<p>ここで、このファイルに少し変更を加えて、何が起こるか見てみましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> echo <span style="font-style: italic">&#39;# testing&#39;</span> &gt;&gt; repo.rb
+<span style="font-weight: bold">$</span> git commit -am <span style="font-style: italic">&#39;modified repo a bit&#39;</span>
+[master 2431da6] modified repo.rb a bit
+ 1 file changed, 1 insertion(+)</code></pre>
+</figure>
+<p>このコミットによって作られたツリーを見てみると、興味深いことがわかります。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git cat-file -p master^{tree}
+100644 blob fa49b077972391ad58037050f2a75f74e3671e92      new.txt
+100644 blob b042a60ef7dff760008df33cee372b945b6e884e      repo.rb
+100644 blob e3f094f522629ae358806b17daf78246c27c007b      test.txt</code></pre>
+</figure>
+<p><code class="literal">repo.rb</code> に対応するブロブが、別のブロブになっています。つまり、400行あるファイルの最後に1行だけ追加しただけなのに、Git はその新しいコンテンツを完全に新しいオブジェクトとして格納するのです。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git cat-file -s b042a60ef7dff760008df33cee372b945b6e884e
+22054</code></pre>
+</figure>
+<p>これだと、ディスク上にほとんど同じ内容の22Kバイトのオブジェクトが2つあることになります。
+もし、Gitが2つのうち1つは完全に格納し、2つめのオブジェクトは1つめとの差分のみを格納できたら、素晴らしいと思いませんか？</p>
+<p>実は、それができるのです。
+Gitが最初にディスク上にオブジェクトを格納する際のフォーマットは、 “緩い” （“loose”）オブジェクトフォーマットと呼ばれます。
+一方、容量の節約と効率化のため、Gitはときどき、緩いフォーマットのオブジェクトの中の幾つかを1つのバイナリファイルにパックします。このバイナリファイルを “packfile” と呼びます。
+あまりにたくさんの緩いオブジェクトがそこら中にあるときや、<code class="literal">git gc</code> コマンドを手動で実行したとき、または、リモートサーバーにプッシュしたときに、Gitはパック処理を行います。
+何が起こるのかを知りたいなら、 <code class="literal">git gc</code> コマンドを呼べば、オブジェクトをパックするよう手動でGitに指示できます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git gc
+Counting objects: 18, done.
+Delta compression using up to 8 threads.
+Compressing objects: 100% (14/14), done.
+Writing objects: 100% (18/18), done.
+Total 18 (delta 3), reused 0 (delta 0)</code></pre>
+</figure>
+<p>オブジェクトディレクトリの中を見ると、大半のオブジェクトは削除され、新しいファイルが2つ作られたことがわかります。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> find .git/objects -type f
+.git/objects/bd/9dbf5aae1a3862dd1526723246b20206e5fc37
+.git/objects/d6/70460b4b4aece5915caf5c68d12f560a9fe3e4
+.git/objects/info/packs
+.git/objects/pack/pack-978e03944f5c581011e6998cd0e9e30000905586.idx
+.git/objects/pack/pack-978e03944f5c581011e6998cd0e9e30000905586.pack</code></pre>
+</figure>
+<p>削除されずに残ったオブジェクトは、どのコミットからも指されていないブロブです。このケースでは、以前に作成した “what is up, doc?” の例のブロブと “test content” の例のブロブが該当します。
+これらのブロブはどのコミットにも加えられなかったため、宙ぶらりんになっていると見なされ、新しいpackfileにはパックされません。</p>
+<p>残りの2つのファイルが、新しく作られたpackfileとインデックスです。
+packfileには、ファイルシステムから削除されたすべてのオブジェクトの内容が1つのファイルに含まれています。
+インデックスには、特定のオブジェクトを速くシークできるように、packfile中でのオフセットが記録されています。
+素晴らしいことに、<code class="literal">gc</code> を実行する前のディスク上のオブジェクトは合計で約22Kバイトあったのに対して、新しいパックファイルはたった7Kバイトになっています。
+オブジェクトをパックすることで、ディスク使用量の⅔を削減できたのです。</p>
+<p>Gitはどうやってこれを行うのでしょうか？
+Git はオブジェクトをパックするとき、似たような名前とサイズのファイルを探し出し、ファイルのあるバージョンから次のバージョンまでの差分のみを格納します。
+packfileの中を見ることで、容量を節約するためにGitが何を行ったのかを知ることができます。
+<code class="literal">git verify-pack</code> という配管コマンドを使用して、何がパックされているのか見ることができます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git verify-pack -v .git/objects/pack/pack-978e03944f5c581011e6998cd0e9e30000905586.idx
+2431da676938450a4d72e260db3bf7b0f587bbc1 commit 223 155 12
+69bcdaff5328278ab1c0812ce0e07fa7d26a96d7 commit 214 152 167
+80d02664cb23ed55b226516648c7ad5d0a3deb90 commit 214 145 319
+43168a18b7613d1281e5560855a83eb8fde3d687 commit 213 146 464
+092917823486a802e94d727c820a9024e14a1fc2 commit 214 146 610
+702470739ce72005e2edff522fde85d52a65df9b commit 165 118 756
+d368d0ac0678cbe6cce505be58126d3526706e54 tag    130 122 874
+fe879577cb8cffcdf25441725141e310dd7d239b tree   136 136 996
+d8329fc1cc938780ffdd9f94e0d364e0ea74f579 tree   36 46 1132
+deef2e1b793907545e50a2ea2ddb5ba6c58c4506 tree   136 136 1178
+d982c7cb2c2a972ee391a85da481fc1f9127a01d tree   6 17 1314 1 \
+  deef2e1b793907545e50a2ea2ddb5ba6c58c4506
+3c4e9cd789d88d8d89c1073707c3585e41b0e614 tree   8 19 1331 1 \
+  deef2e1b793907545e50a2ea2ddb5ba6c58c4506
+0155eb4229851634a0f03eb265b69f5a2d56f341 tree   71 76 1350
+83baae61804e65cc73a7201a7252750c76066a30 blob   10 19 1426
+fa49b077972391ad58037050f2a75f74e3671e92 blob   9 18 1445
+b042a60ef7dff760008df33cee372b945b6e884e blob   22054 5799 1463
+033b4468fa6b2a9547a70d88d1bbe8bf3f9ed0d5 blob   9 20 7262 1 \
+  b042a60ef7dff760008df33cee372b945b6e884e
+1f7a7a472abf3dd9643fd615f6da379c4acb3e3a blob   10 19 7282
+non delta: 15 objects
+chain length = 1: 3 objects
+.git/objects/pack/pack-978e03944f5c581011e6998cd0e9e30000905586.pack: ok</code></pre>
+</figure>
+<p>ここで <code class="literal">033b4</code> というブロブを覚えているでしょうか。これは <code class="literal">repo.rb</code> ファイルの最初のバージョンですが、このブロブは2つ目のバージョンである <code class="literal">b042a</code> というブロブを参照しています。
+出力の3つ目のカラムはpackfile中のオブジェクトのサイズを示しています。ここで、<code class="literal">b042a</code> はファイルのうち22Kバイトを占めていますが、<code class="literal">033b4</code> はたったの9バイトしか占めていないことがわかります。
+さらに興味深いのは、2つめのバージョンのファイルは元のままの状態で格納されているのに対して、最初のバージョンは増分として格納されていることです。これは、直近のバージョンのファイルほど、高速にアクセスしたいだろうというのが理由です。</p>
+<p>この機能の本当に素晴らしいのは、いつでも再パックが可能なことです。
+Git は時折データベースを自動的に再パックして、常に容量をより多く節約しようと努めますが、自分で <code class="literal">git gc</code> を実行すれば、いつでも手動で再パックを行えます。</p>
+</section>
+<section class="sect1" title="Refspec">
+<h2 id="r_refspec">Refspec</h2>
+<p>本書の全体に渡って、リモートブランチからローカルの参照へのシンプルなマッピングを使用してきましたが、もっと複雑な場合もあります。以下のようにリモートを追加したとしましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git remote add origin https://github.com/schacon/simplegit-progit</code></pre>
+</figure>
+<p><code class="literal">.git/config</code> ファイルにセクションを追加して、リモートの名前（<code class="literal">origin</code>）、リモートリポジトリのURL、そしてフェッチする対象のrefspecを指定します。</p>
+<figure class="listing">
+<pre class="source language-ini"><code><span></span><span style="font-weight: bold">[remote &quot;origin&quot;]</span>
+	url = <span style="font-style: italic">https://github.com/schacon/simplegit-progit</span>
+<span style="font-style: italic">	fetch = +refs/heads/*:refs/remotes/origin/*</span></code></pre>
+</figure>
+<p>refspecの書式は <code class="literal">&lt;src&gt;:&lt;dst&gt;</code> で、その前にオプションとして <code class="literal">+</code> を指定できます。ここで <code class="literal">&lt;src&gt;</code> はリモート側の参照に対するパターンで、 <code class="literal">&lt;dst&gt;</code> はそれらの参照がローカルで書きこまれる場所を示します。
+<code class="literal">+</code> は、fast-forwardでない場合でも参照を更新するようGitに指示しています。</p>
+<p>デフォルトでは、 <code class="literal">git remote add</code> コマンドを実行すると、自動的にこの設定が書き込まれ、Gitはサーバー上の <code class="literal">refs/heads/</code> 以下にあるすべての参照をフェッチして、ローカルの <code class="literal">refs/remotes/origin/</code> に書き込みます。
+そのため、サーバー上に <code class="literal">master</code> ブランチがあるとすると、ローカルでは、そのブランチのログには以下のコマンドでアクセスできます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git log origin/master
+<span style="font-weight: bold">$</span> git log remotes/origin/master
+<span style="font-weight: bold">$</span> git log refs/remotes/origin/master</code></pre>
+</figure>
+<p>これらはすべて同じ意味を持ちます。なぜなら、どれもGitにより <code class="literal">refs/remotes/origin/master</code> に展開されるからです。</p>
+<p>逆に、常にリモートサーバー上の <code class="literal">master</code> ブランチのみをプルして、それ以外のブランチはどれもプルしたくない場合は、fetchの行を以下のように変更します。</p>
+<figure class="listing">
+<pre class="source language-"><code>fetch = +refs/heads/master:refs/remotes/origin/master</code></pre>
+</figure>
+<p>これは、このリモートに対する <code class="literal">git fetch</code> のデフォルトのrefspecそのものです。
+もし、設定内容とは違う内容を一度だけプルしたければ、コマンドライン上でもrefspecを指定できます。
+リモートの <code class="literal">master</code> ブランチを、ローカルの <code class="literal">origin/mymaster</code> にプルするには、以下のように実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git fetch origin master:refs/remotes/origin/mymaster</code></pre>
+</figure>
+<p>複数のrefspecを指定することも可能です。
+コマンドライン上で、以下のように複数のブランチをプルできます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git fetch origin master:refs/remotes/origin/mymaster <span style="font-weight: bold; font-style: italic">\</span>
+	 topic:refs/remotes/origin/topic
+From git@github.com:schacon/simplegit
+ ! [rejected]        master     -&gt; origin/mymaster  (non fast forward)
+ * [new branch]      topic      -&gt; origin/topic</code></pre>
+</figure>
+<p>このケースでは、 <code class="literal">master</code> ブランチのプルはfast-forwardの参照ではなかったため拒否されました。
+refspecの先頭に <code class="literal">+</code> を指定すると、この動作を上書きできます。</p>
+<p>さらに、設定ファイルに、フェッチ用のrefspecを複数指定することもできます。
+もし、常に <code class="literal">master</code> ブランチと <code class="literal">experiment</code> ブランチをフェッチしたいならば、以下のように2行追加します。</p>
+<figure class="listing">
+<pre class="source language-ini"><code><span></span><span style="font-weight: bold">[remote &quot;origin&quot;]</span>
+	url = <span style="font-style: italic">https://github.com/schacon/simplegit-progit</span>
+<span style="font-style: italic">	fetch = +refs/heads/master:refs/remotes/origin/master</span>
+<span style="font-style: italic">	fetch = +refs/heads/experiment:refs/remotes/origin/experiment</span></code></pre>
+</figure>
+<p>パターン中で、ファイル名の一部だけをワイルドカード指定したグロブを使うことはできません。以下の指定は無効となります。</p>
+<figure class="listing">
+<pre class="source language-ini"><code><span></span>fetch = <span style="font-style: italic">+refs/heads/qa*:refs/remotes/origin/qa*</span></code></pre>
+</figure>
+<p>しかし、名前空間（やディレクトリ）を使って、似たようなことは行えます。
+一連のブランチをプッシュしてくれるQAチームがいたとして、masterブランチとQAチームのブランチのみを取得したいならば、該当セクションを以下のように使用すればよいでしょう。</p>
+<figure class="listing">
+<pre class="source language-ini"><code><span></span><span style="font-weight: bold">[remote &quot;origin&quot;]</span>
+	url = <span style="font-style: italic">https://github.com/schacon/simplegit-progit</span>
+<span style="font-style: italic">	fetch = +refs/heads/master:refs/remotes/origin/master</span>
+<span style="font-style: italic">	fetch = +refs/heads/qa/*:refs/remotes/origin/qa/*</span></code></pre>
+</figure>
+<p>仮に、QAチームがブランチをプッシュし、開発者チームもブランチをプッシュし、さらに統合チームもブランチをプッシュしたりリモートブランチを使って共同で作業をしたりするような複雑なワークフローに従っているとしましょう。そういった場合でも、上述のように設定しておけば簡単に名前空間を分けることができます。</p>
+<section class="sect2" title="refspecへのプッシュ">
+<h3 id="r_pushing_refspecs">refspecへのプッシュ</h3>
+<p>このように、名前空間を分けた参照をフェッチできるのは素晴らしいことです。しかし、そもそもQAチームは、どうすれば自分たちのブランチを <code class="literal">qa/</code> という名前空間に格納できるのでしょうか?
+プッシュの際にrefspecを使えばそれが可能です。</p>
+<p>QAチームが自分たちの <code class="literal">master</code> ブランチをリモートサーバー上の <code class="literal">qa/master</code> にプッシュしたい場合、以下のように実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git push origin master:refs/heads/qa/master</code></pre>
+</figure>
+<p>QAチームが <code class="literal">git push origin</code> を実行する度に、Gitに自動的にこの処理を行ってほしいなら、設定ファイルに <code class="literal">push</code> の値を追加することもできます。</p>
+<figure class="listing">
+<pre class="source language-ini"><code><span></span><span style="font-weight: bold">[remote &quot;origin&quot;]</span>
+	url = <span style="font-style: italic">https://github.com/schacon/simplegit-progit</span>
+<span style="font-style: italic">	fetch = +refs/heads/*:refs/remotes/origin/*</span>
+<span style="font-style: italic">	push = refs/heads/master:refs/heads/qa/master</span></code></pre>
+</figure>
+<p>このように設定しておくと、 <code class="literal">git push origin</code> を実行したときに、デフォルトでローカルの <code class="literal">master</code> ブランチをリモートの <code class="literal">qa/master</code> ブランチにプッシュするようになります。</p>
+</section>
+<section class="sect2" title="参照の削除">
+<h3 id="_参照の削除">参照の削除</h3>
+<p>また、refspecを使ってリモートサーバーから参照を削除することもできます。削除するには以下のコマンドを実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git push origin :topic</code></pre>
+</figure>
+<p>refspecは <code class="literal">&lt;src&gt;:&lt;dst&gt;</code> という書式なので、 <code class="literal">&lt;src&gt;</code> の部分を取り除くと、要するにリモート上の <code class="literal">topic</code> ブランチを空にせよという指示になり、リモート上の参照が削除されます。</p>
+</section>
+</section>
+<section class="sect1" title="転送プロトコル">
+<h2 id="_転送プロトコル">転送プロトコル</h2>
+<p>Gitが2つのリポジトリ間でデータを転送する方法には、主に “dumb” プロトコルと “smart” プロトコルの2つがあります。
+このセクションでは、これらのプロトコルがどのように機能するのかを駆け足で見ていきます。</p>
+<section class="sect2" title="dumbプロトコル">
+<h3 id="_dumbプロトコル">dumbプロトコル</h3>
+<p>HTTP経由でのリポジトリへのアクセスを読み取り専用にする場合、dumbプロトコルを使うことになると思います。
+このプロトコルを “dumb” （馬鹿）と呼ぶのは、転送プロセスにおいて、サーバー側にGit専用のコードが不要だからです。フェッチのプロセスは一連のHTTP <code class="literal">GET</code> リクエストです。ここで、クライアントは、サーバー上のGitリポジトリのレイアウトを仮定してよいことになっています。</p>
+<aside class="admonition note" title="Note" epub:type="note">
+<div class="content">
+<p>dumbプロトコルは昨今ではほとんど使用されていません。
+安全性や秘匿性を保つのが難しいため、多くのGitのホスト（クラウドベースでも、オンプレミスでも）では使用が禁止されています。
+一般的には、もう少し後で述べるsmartプロトコルを使用することをおすすめします。</p>
+</div>
+</aside>
+<p>simplegitライブラリにおける <code class="literal">http-fetch</code> のプロセスを追ってみましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git clone http://server/simplegit-progit.git</code></pre>
+</figure>
+<p>このコマンドは最初に <code class="literal">info/refs</code> ファイルをサーバから取得します。
+このファイルは <code class="literal">update-server-info</code> コマンドによって出力されます。そのため、HTTPによる転送を適切に動作させるためには、このコマンドを <code class="literal">post-receive</code> フック中で呼び出す必要があります。</p>
+<figure class="listing">
+<pre class="source language-"><code>=&gt; GET info/refs
+ca82a6dff817ec66f44342007202690a93763949     refs/heads/master</code></pre>
+</figure>
+<p>いま、手元にはリモート参照とSHA-1のハッシュのリストがあります。
+次に、HEADが指しているものを見て、終了時に何をチェックアウトするのかを調べます。</p>
+<figure class="listing">
+<pre class="source language-"><code>=&gt; GET HEAD
+ref: refs/heads/master</code></pre>
+</figure>
+<p>プロセスの完了時には、<code class="literal">master</code> ブランチをチェックアウトする必要があると分かりました。
+これで、参照を辿るプロセスを開始する準備ができました。
+開始地点は <code class="literal">info/refs</code> ファイルの中にあった <code class="literal">ca82a6</code> のコミットオブジェクトなので、まずそれを取得します。</p>
+<figure class="listing">
+<pre class="source language-"><code>=&gt; GET objects/ca/82a6dff817ec66f44342007202690a93763949
+(179 bytes of binary data)</code></pre>
+</figure>
+<p>すると、オブジェクトが返ってきます。これは、サーバー上にある緩いフォーマットのオブジェクトで、それを静的なHTTP GETリクエストで取得したわけです。
+このオブジェクトのzlib圧縮を解除し、ヘッダを取り除けば、コミットの内容が見られます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git cat-file -p ca82a6dff817ec66f44342007202690a93763949
+tree cfda3bf379e4f8dba8717dee55aab78aef7f4daf
+parent 085bb3bcb608e1e8451d4b2432f8ecbe6306e7e7
+author Scott Chacon &lt;schacon@gmail.com&gt; 1205815931 -0700
+committer Scott Chacon &lt;schacon@gmail.com&gt; 1240030591 -0700
+
+changed the version number</code></pre>
+</figure>
+<p>もう2つ、オブジェクトを取得する必要があることが分かりました。
+たった今取得したコミットが指しているコンテンツのツリーである <code class="literal">cfda3b</code> と、親にあたるコミットである <code class="literal">085bb3</code> です。</p>
+<figure class="listing">
+<pre class="source language-"><code>=&gt; GET objects/08/5bb3bcb608e1e8451d4b2432f8ecbe6306e7e7
+(179 bytes of data)</code></pre>
+</figure>
+<p>まずは親にあたるオブジェクトを取得しました。
+続いてツリーオブジェクトを取得してみましょう。</p>
+<figure class="listing">
+<pre class="source language-"><code>=&gt; GET objects/cf/da3bf379e4f8dba8717dee55aab78aef7f4daf
+(404 - Not Found)</code></pre>
+</figure>
+<p>おっと、そのツリーオブジェクトは緩いフォーマットではサーバー上に存在しないようです。そのため404のレスポンスを受け取っています。
+考えられる理由は2つあります。オブジェクトが代替のリポジトリにあるためか、またはこのリポジトリ内のpackfileに含まれているためです。
+Gitはまず、代替のリポジトリの一覧を調べます。</p>
+<figure class="listing">
+<pre class="source language-"><code>=&gt; GET objects/info/http-alternates
+(empty file)</code></pre>
+</figure>
+<p>このGETリクエストに対して代替のURLのリストが返ってきた場合、Gitはその場所から緩いフォーマットのファイルとpackfileを探します。これは、プロジェクトがディスク上のオブジェクトを共有するために互いにフォークし合っている場合に適したメカニズムです。
+ですが、このケースでは代替URLのリストは空だったので、オブジェクトはpackfileの中にあるに違いありません。
+サーバー上のアクセス可能なpackfileの一覧は、 <code class="literal">objects/info/packs</code> ファイルに格納されているので、これを取得する必要があります（このファイルも <code class="literal">update-server-info</code> で生成されます）。</p>
+<figure class="listing">
+<pre class="source language-"><code>=&gt; GET objects/info/packs
+P pack-816a9b2334da9953e530f27bcac22082a9f5b835.pack</code></pre>
+</figure>
+<p>サーバー上にはpackfileが1つしかないので、探しているオブジェクトは明らかにこの中にあります。しかし念の為にインデックスファイルをチェックしてみましょう。
+これにより、サーバー上にpackfileが複数ある場合でも、必要なオブジェクトがどのpackfileに含まれているか調べられます。</p>
+<figure class="listing">
+<pre class="source language-"><code>=&gt; GET objects/pack/pack-816a9b2334da9953e530f27bcac22082a9f5b835.idx
+(4k of binary data)</code></pre>
+</figure>
+<p>packfileのインデックスが取得できたので、これで探しているオブジェクトがpackfileの中にあるか調べられます – なぜなら、インデックスにはpackfileの中にあるオブジェクトのSHA-1ハッシュと、それらのオブジェクトに対するオフセットの一覧が格納されているからです。
+探しているオブジェクトは、どうやらそこにあるようです。さあ、そのpackfileをまるごと取得してみましょう。</p>
+<figure class="listing">
+<pre class="source language-"><code>=&gt; GET objects/pack/pack-816a9b2334da9953e530f27bcac22082a9f5b835.pack
+(13k of binary data)</code></pre>
+</figure>
+<p>探していたツリーオブジェクトが見つかりました。さらにコミットを辿ってみましょう。
+コミットはいずれも、先ほどダウンロードしたpackfileの中にあります。そのため、もうサーバーに対するリクエストは不要です。
+Gitは、最初にダウンロードしたHEADが指している <code class="literal">master</code> ブランチの作業用コピーをチェックアウトします。</p>
+</section>
+<section class="sect2" title="smartプロトコル">
+<h3 id="_smartプロトコル">smartプロトコル</h3>
+<p>dumbプロトコルはシンプルですが、少し非効率ですし、クライアントからサーバーへのデータの書き込みも行えません。
+データ移行においては、smartプロトコルの方がより一般的な手段です。ただし、リモート側にGitと対話できるプロセス – ローカルのデータを読んだり、クライアントが何を持っていて何が必要としているかを判別したり、それに応じたpackfileを生成したりできるプロセス – が必要です。
+データの転送には、プロセスを2セット使用します。データをアップロードするペアと、ダウンロードするペアです。</p>
+<section class="sect3" title="データのアップロード">
+<h4 id="_データのアップロード">データのアップロード</h4>
+<p></p>
+<p>リモートプロセスにデータをアップロードする際、Gitは <code class="literal">send-pack</code> プロセスと <code class="literal">receive-pack</code> プロセスを使用します。<code class="literal">send-pack</code> プロセスはクライアント上で実行されリモート側の <code class="literal">receive-pack</code> プロセスに接続します。</p>
+<section class="sect4" title="SSH">
+<h5 id="_ssh">SSH</h5>
+<p>例えば、あなたのプロジェクトで <code class="literal">git push origin master</code> を実行するとします。そして <code class="literal">origin</code> はSSHプロトコルを使用するURLとして定義されているとします。
+この際、Gitは <code class="literal">send-pack</code> プロセスを起動して、あなたのサーバーへのSSH接続を開始します。
+このプロセスは、以下のようなSSHの呼び出しを介して、リモートサーバー上でコマンドを実行しようとします。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> ssh -x git@server <span style="font-style: italic">&quot;git-receive-pack &#39;simplegit-progit.git&#39;&quot;</span>
+00a5ca82a6dff817ec66f4437202690a93763949 refs/heads/master□report-status \
+	delete-refs side-band-64k quiet ofs-delta \
+	agent=git/2:2.1.1+github-607-gfba4028 delete-refs
+0000</code></pre>
+</figure>
+<p><code class="literal">git-receive-pack</code> コマンドは、今ある参照1つにつき1行の応答を、その都度返します。このケースでは、<code class="literal">master</code> ブランチとそのSHA-1ハッシュのみを返しています。
+最初の行には、サーバーの持っている機能（ここでは、<code class="literal">report-status</code> や `delete-refs`など。クライアント識別子も含む）のリストも含まれています。</p>
+<p>各行は4文字の16進数で始まっており、その行の残りがどれくらいの長さなのかを示しています。
+最初の行は00a5で始まっていますが、これは16進数で165を示し、その行はあと165バイトあることを意味します。
+次の行は0000であり、サーバーが参照のリストの表示を終えたことを意味します。</p>
+<p>サーバーの状態がわかったので、これで  <code class="literal">send-pack</code> プロセスは、自分の側にあってサーバー側にないコミットを判別できます。
+これからこのプッシュで更新される各参照について、<code class="literal">send-pack</code> プロセスは <code class="literal">receive-pack</code> プロセスにその情報を伝えます。
+例えば、 <code class="literal">master</code> ブランチの更新と <code class="literal">experiment</code> ブランチの追加をしようとしている場合、 <code class="literal">send-pack</code> のレスポンスは次のようになるでしょう。</p>
+<figure class="listing">
+<pre class="source language-"><code>0076ca82a6dff817ec66f44342007202690a93763949 15027957951b64cf874c3557a0f3547bd83b3ff6 \
+	refs/heads/master report-status
+006c0000000000000000000000000000000000000000 cdfdb42577e2506715f8cfeacdbabc092bf63e8d \
+	refs/heads/experiment
+0000</code></pre>
+</figure>
+<p>Gitは更新しようとしている参照のそれぞれに対して、行の長さ、古いSHA-1、新しいSHA-1、更新される参照を含む行を送信します。
+最初の行にはクライアントの持っている機能も含まれています。
+すべてが <em>0</em> のSHA-1ハッシュ値は、以前そこには何もなかったことを意味します。それはあなたが experiment の参照を追加しているためです。
+もしもあなたが参照を削除していたとすると、逆にすべてが <em>0</em> のSHA-1ハッシュ値が右側に表示されるはずです。</p>
+<p>次に、クライアントは、まだサーバー側にないオブジェクトすべてを含むpackfileを送信します。
+最後に、サーバーは成功（あるいは失敗）を示す内容を返します。</p>
+<figure class="listing">
+<pre class="source language-"><code>000eunpack ok</code></pre>
+</figure>
+</section>
+<section class="sect4" title="HTTP(S)">
+<h5 id="_http_s">HTTP(S)</h5>
+<p>このプロセスは、ハンドシェイクが少し違うだけで、HTTP経由の場合とほとんど同じです。
+接続は以下のリクエストで初期化されます。</p>
+<figure class="listing">
+<pre class="source language-"><code>=&gt; GET http://server/simplegit-progit.git/info/refs?service=git-receive-pack
+001f# service=git-receive-pack
+00ab6c5f0e45abd7832bf23074a333f739977c9e8188 refs/heads/master□report-status \
+	delete-refs side-band-64k quiet ofs-delta \
+	agent=git/2:2.1.1~vmg-bitmaps-bugaloo-608-g116744e
+0000</code></pre>
+</figure>
+<p>これで初回のクライアント・サーバー間の交信は終了です。
+クライアントは次に別のリクエストを作成します。この場合は <code class="literal">send-pack</code> が提供するデータをもとに <code class="literal">POST</code> リクエストを作成します。</p>
+<figure class="listing">
+<pre class="source language-"><code>=&gt; POST http://server/simplegit-progit.git/git-receive-pack</code></pre>
+</figure>
+<p>この <code class="literal">POST</code> リクエストには <code class="literal">send-pack</code> の出力とpackfileがペイロードとして含まれています。
+サーバーはこれに対して成功か失敗かをHTTPレスポンスで示します。</p>
+</section>
+</section>
+<section class="sect3" title="データのダウンロード">
+<h4 id="_データのダウンロード">データのダウンロード</h4>
+<p></p>
+<p>データをダウンロードするときには、 <code class="literal">fetch-pack</code> と <code class="literal">upload-pack</code> の2つのプロセスが使用されます。
+クライアントが <code class="literal">fetch-pack</code> プロセスを起動すると、リモート側の <code class="literal">upload-pack</code> プロセスに接続してネゴシエーションを行い、何のデータをダウンロードするか決定します。</p>
+<section class="sect4" title="SSH">
+<h5 id="_ssh_2">SSH</h5>
+<p>SSHを介してフェッチを行っているなら、<code class="literal">fetch-pack</code> は以下のようなコマンドを実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> ssh -x git@server <span style="font-style: italic">&quot;git-upload-pack &#39;simplegit-progit.git&#39;&quot;</span></code></pre>
+</figure>
+<p><code class="literal">fetch-pack</code> の接続のあと、<code class="literal">upload-pack</code> は以下のような内容を返信します。</p>
+<figure class="listing">
+<pre class="source language-"><code>00dfca82a6dff817ec66f44342007202690a93763949 HEAD□multi_ack thin-pack \
+	side-band side-band-64k ofs-delta shallow no-progress include-tag \
+	multi_ack_detailed symref=HEAD:refs/heads/master \
+	agent=git/2:2.1.1+github-607-gfba4028
+003fe2409a098dc3e53539a9028a94b6224db9d6a6b6 refs/heads/master
+0000</code></pre>
+</figure>
+<p>これは <code class="literal">receive-pack</code> が返す内容にとても似ていますが、持っている機能は異なります。
+加えて、HEADがどこを指しているか (<code class="literal">symref=HEAD:refs/heads/master</code>) を返すので、クローン処理の場合、クライアントが何をチェックアウトするのかを知ることができます。</p>
+<p>この時点で、 <code class="literal">fetch-pack</code> プロセスは手元にあるオブジェクトを確認します。そして、必要なオブジェクトを返答するため、 “want” という文字列に続けて必要なオブジェクトのSHA-1ハッシュを送ります。
+また、既に持っているオブジェクトについては、 “have” という文字列に続けてオブジェクトのSHA-1ハッシュを送ります。
+さらに、このリストの最後には “done” を書き込んで、必要なデータのpackfileを送信する <code class="literal">upload-pack</code> プロセスを開始します。</p>
+<figure class="listing">
+<pre class="source language-"><code>003cwant ca82a6dff817ec66f44342007202690a93763949 ofs-delta
+0032have 085bb3bcb608e1e8451d4b2432f8ecbe6306e7e7
+0009done
+0000</code></pre>
+</figure>
+</section>
+<section class="sect4" title="HTTP(S)">
+<h5 id="_http_s_2">HTTP(S)</h5>
+<p>フェッチ操作のためのハンドシェイクは2つのHTTPリクエストからなります。
+1つめはdumbプロトコルで使用するのと同じエンドポイントへの <code class="literal">GET</code> です。</p>
+<figure class="listing">
+<pre class="source language-"><code>=&gt; GET $GIT_URL/info/refs?service=git-upload-pack
+001e# service=git-upload-pack
+00e7ca82a6dff817ec66f44342007202690a93763949 HEAD□multi_ack thin-pack \
+	side-band side-band-64k ofs-delta shallow no-progress include-tag \
+	multi_ack_detailed no-done symref=HEAD:refs/heads/master \
+	agent=git/2:2.1.1+github-607-gfba4028
+003fca82a6dff817ec66f44342007202690a93763949 refs/heads/master
+0000</code></pre>
+</figure>
+<p>これはSSH接続経由で <code class="literal">git-upload-pack</code> を呼び出す場合と非常によく似ていますが、2つ目の交信が個別のリクエストとして実行される点が異なります。</p>
+<figure class="listing">
+<pre class="source language-"><code>=&gt; POST $GIT_URL/git-upload-pack HTTP/1.0
+0032want 0a53e9ddeaddad63ad106860237bbf53411d11a7
+0032have 441b40d833fdfa93eb2908e52742248faf0ee993
+0000</code></pre>
+</figure>
+<p>これもまた、上と同じフォーマットです。
+このリクエストに対するレスポンスは、成功したか失敗したかを示しています。また、packfileも含まれています。</p>
+</section>
+</section>
+</section>
+<section class="sect2" title="プロトコルのまとめ">
+<h3 id="_プロトコルのまとめ">プロトコルのまとめ</h3>
+<p>このセクションでは転送プロトコルの最も基本的な概要を取り上げました。
+プロトコルには他にも <code class="literal">multi_ack</code> や <code class="literal">side-band</code> など数多くの機能がありますが、それらは本書の範囲外です。
+ここでは、一般的なクライアントとサーバーの間の行き来に関する感覚を捉えてもらえるよう努めました。これ以上の知識が必要な場合は、おそらくGitのソースコードを見てみる必要があるでしょう。</p>
+</section>
+</section>
+<section class="sect1" title="メンテナンスとデータリカバリ">
+<h2 id="_メンテナンスとデータリカバリ">メンテナンスとデータリカバリ</h2>
+<p>たまには、ちょっとしたお掃除 – リポジトリを圧縮したり、インポートしたリポジトリをクリーンアップしたり、失われた成果物をもとに戻したり – が必要になるかもしれません。
+このセクションではこれらのシナリオのいくつかについて取り上げます。</p>
+<section class="sect2" title="メンテナンス">
+<h3 id="r_git_gc">メンテナンス</h3>
+<p>Gitは時々 “auto gc” と呼ばれるコマンドを自動的に実行します。
+大抵の場合、このコマンドは何もしません。
+ですが、緩いオブジェクト（packfileの中に入っていないオブジェクト）やpackfileがあまりに多い場合は、Gitは完全な（full-fledged）<code class="literal">git gc</code> コマンドを起動します。
+“gc” はガベージコレクト（garbage collect）を意味します。このコマンドは幾つものことを行います。すべての緩いオブジェクトを集めてpackfileに入れ、複数のpackfileをひとつの大きなpackfileに統合し、さらにどのコミットからも到達が不可能かつ数ヶ月間更新がないオブジェクトを削除します。</p>
+<p>次のように手動でauto gcを実行することもできます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git gc --auto</code></pre>
+</figure>
+<p>繰り返しますが、これは通常は何も行いません。
+約7,000個もの緩いオブジェクトがあるか、または50以上のpackfileがある場合でないと、Gitは実際にgcコマンドを開始しません。
+これらのリミットはそれぞれ設定ファイルの <code class="literal">gc.auto</code> と <code class="literal">gc.autopacklimit</code> で変更できます。</p>
+<p>その他に <code class="literal">gc</code> が行うこととしては、複数の参照を1つのファイルにパックすることが挙げられます。
+リポジトリに、次のようなブランチとタグが含まれているとしましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> find .git/refs -type f
+.git/refs/heads/experiment
+.git/refs/heads/master
+.git/refs/tags/v1.0
+.git/refs/tags/v1.1</code></pre>
+</figure>
+<p><code class="literal">git gc</code> を実行すると、これらのファイルは <code class="literal">refs</code> ディレクトリからなくなります。
+効率化のため、Gitはそれらのファイルの内容を、以下のような <code class="literal">.git/packed-refs</code> という名前のファイルに移します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> cat .git/packed-refs
+<span style="font-weight: bold">#</span> pack-refs with: peeled fully-peeled
+cac0cab538b970a37ea1e769cbbde608743bc96d refs/heads/experiment
+ab1afef80fac8e34258ff41fc1b867c702daa24b refs/heads/master
+cac0cab538b970a37ea1e769cbbde608743bc96d refs/tags/v1.0
+9585191f37f7b0fb9444f35a9bf50de191beadc2 refs/tags/v1.1
+^1a410efbd13591db07496601ebc7a059dd55cfe9</code></pre>
+</figure>
+<p>ただ、ここで参照を更新しても、Gitはこのファイルを編集せず、その代わりに <code class="literal">refs/heads</code> に新しいファイルを書き込みます。
+とある参照に対する適切なSHA-1ハッシュを得るために、Gitは <code class="literal">refs</code> ディレクトリ内でその参照をチェックした上で、見つからなかった場合の代替として <code class="literal">packed-refs</code> ファイルをチェックします。
+一方、 <code class="literal">refs</code> ディレクトリ内で参照が見つけられない場合は、それはおそらく <code class="literal">packed-refs</code> ファイル内にあります。</p>
+<p>ファイルの最後の行に注意してください。 <code class="literal">^</code> という文字で始まっています。
+これは、この行のすぐ上にあるタグは注釈付き版のタグであり、この行はそのタグが指しているコミットであるということを意味しています。</p>
+</section>
+<section class="sect2" title="データリカバリ">
+<h3 id="r_data_recovery">データリカバリ</h3>
+<p>Gitを使っていく過程のある時点で、誤ってコミットを失ってしまうことがあるかもしれません。
+このようなことが起こりがちなのは、成果物が入っていたブランチをforce-deleteしたけれど、その後結局そのブランチが必要になったときか、あるいはブランチをhard-resetしたために、何か必要なものが入っているコミットがそのブランチから切り離されてしまったときです。
+このようなことが起きたとして、どうやったらコミットを取り戻せるでしょうか？</p>
+<p>以下に示す例では、testリポジトリ内のmasterブランチを古いコミットにhard-resetして、それから失ったコミットを復元します。
+まず、今の時点でリポジトリがどのような状況にあるのか調べてみましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git log --pretty=oneline
+ab1afef80fac8e34258ff41fc1b867c702daa24b modified repo a bit
+484a59275031909e19aadb7c92262719cfcdf19a added repo.rb
+1a410efbd13591db07496601ebc7a059dd55cfe9 third commit
+cac0cab538b970a37ea1e769cbbde608743bc96d second commit
+fdf4fc3344e67ab068f836878b6c4951e3b15f3d first commit</code></pre>
+</figure>
+<p>ここで、<code class="literal">master</code> ブランチを真ん中のコミットの時点まで戻します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git reset --hard 1a410efbd13591db07496601ebc7a059dd55cfe9
+HEAD is now at 1a410ef third commit
+<span style="font-weight: bold">$</span> git log --pretty=oneline
+1a410efbd13591db07496601ebc7a059dd55cfe9 third commit
+cac0cab538b970a37ea1e769cbbde608743bc96d second commit
+fdf4fc3344e67ab068f836878b6c4951e3b15f3d first commit</code></pre>
+</figure>
+<p>これで、一番上にあった2つのコミットは、事実上失われたことになります。これらのコミットに辿り着けるブランチがないためです。
+そのため、最後のコミットのSHA-1ハッシュを調べた上で、そこを指すブランチを追加する必要があります。
+ここでポイントとなるのは、最後のコミットのSHA-1ハッシュを見つける方法です。ハッシュ値を記憶してます、なんてことはないですよね？</p>
+<p>大抵の場合、最も手っ取り早いのは、<code class="literal">git reflog</code> というツールを使う方法です。
+あなたが作業をしている間、HEADを変更する度に、HEADがどこを指しているかをGitは裏で記録しています。
+コミットをしたり、ブランチを変更したりする度に、reflogは更新されます。
+また、reflogは <code class="literal">git update-ref</code> コマンドによっても更新されます。refファイルに書かれたSHA-1ハッシュ値を直に編集せずに、このコマンドを使って編集すべき理由の1つがこれです（詳しくは <a id="xref-r_git_refs" href="#r_git_refs" class="xref">Gitの参照</a> で取り上げました）。
+<code class="literal">git reflog</code> を実行することで、ある時点で自分がどこにいたのかを知ることができます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git reflog
+1a410ef HEAD@{0}: reset: moving to 1a410ef
+ab1afef HEAD@{1}: commit: modified repo.rb a bit
+484a592 HEAD@{2}: commit: added repo.rb</code></pre>
+</figure>
+<p>このとおり、チェックアウトした2つのコミットが見つかりました。ですが、それ以上の情報は表示されていません。
+同じ情報をもっと有用な形式で表示するには <code class="literal">git log -g</code> を実行します。これはreflogを通常のログ出力と同じ形式で出力してくれます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git log -g
+commit 1a410efbd13591db07496601ebc7a059dd55cfe9
+Reflog: HEAD@{0} (Scott Chacon &lt;schacon@gmail.com&gt;)
+Reflog message: updating HEAD
+Author: Scott Chacon &lt;schacon@gmail.com&gt;
+Date:   Fri May 22 18:22:37 2009 -0700
+
+		third commit
+
+commit ab1afef80fac8e34258ff41fc1b867c702daa24b
+Reflog: HEAD@{1} (Scott Chacon &lt;schacon@gmail.com&gt;)
+Reflog message: updating HEAD
+Author: Scott Chacon &lt;schacon@gmail.com&gt;
+Date:   Fri May 22 18:15:24 2009 -0700
+
+       modified repo.rb a bit</code></pre>
+</figure>
+<p>一番下にあるコミットが、失われたコミットのようです。そこから新しいブランチを作成すれば、失ったコミットを取り戻せます。
+例えば、そのコミット（ab1afef）を起点に <code class="literal">recover-branch</code> という名前のブランチを作成できます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch recover-branch ab1afef
+<span style="font-weight: bold">$</span> git log --pretty=oneline recover-branch
+ab1afef80fac8e34258ff41fc1b867c702daa24b modified repo a bit
+484a59275031909e19aadb7c92262719cfcdf19a added repo.rb
+1a410efbd13591db07496601ebc7a059dd55cfe9 third commit
+cac0cab538b970a37ea1e769cbbde608743bc96d second commit
+fdf4fc3344e67ab068f836878b6c4951e3b15f3d first commit</code></pre>
+</figure>
+<p>やった！ – <code class="literal">master</code> ブランチがかつて存在した場所に、 <code class="literal">recover-branch</code> という名前のブランチが作られて、最初の2つのコミットは再び到達可能になりました。
+さて次は、失われたコミットが何らかの理由でreflogの中にもなかった場合を考えましょう – <code class="literal">recover-branch</code> を取り除き、reflogを削除することによって、擬似的にその状況を作り出すことができます。
+これで、最初の2つのコミットは、今どこからも到達不能になりました。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -D recover-branch
+<span style="font-weight: bold">$</span> rm -Rf .git/logs/</code></pre>
+</figure>
+<p>reflogのデータは <code class="literal">.git/logs/</code> ディレクトリに保存されるため、これでreflogは事実上なくなりました。
+この時点で、どうしたら失われたコミットを復元できるでしょうか?
+ひとつの方法として、 <code class="literal">git fsck</code> ユーティリティーを使用してデータベースの完全性をチェックする方法があります。
+<code class="literal">--full</code> オプションを付けて実行すると、他のどのオブジェクトからも指されていないオブジェクトをすべて表示します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git fsck --full
+Checking object directories: 100% (256/256), done.
+Checking objects: 100% (18/18), done.
+dangling blob d670460b4b4aece5915caf5c68d12f560a9fe3e4
+dangling commit ab1afef80fac8e34258ff41fc1b867c702daa24b
+dangling tree aea790b9a58f6cf6f2804eeac9f0abbe9631e4c9
+dangling blob 7108f7ecb345ee9d0084193f147cdad4d2998293</code></pre>
+</figure>
+<p>このケースでは、 “dangling commit” という文字列の後に失われたコミットが表示されています。
+前と同様にこのSHA-1ハッシュを指すブランチを作成すれば、失われたコミットを取り戻せます。</p>
+</section>
+<section class="sect2" title="オブジェクトの削除">
+<h3 id="r_removing_objects">オブジェクトの削除</h3>
+<p>Gitには素晴らしい点がたくさんありますが、問題となり得る特徴がひとつあります。それは、 <code class="literal">git clone</code> がすべてのファイルのすべてのバージョンを含んだプロジェクトの歴史全体をダウンロードしてしまうということです。
+保存されているのがソースコードだけなら、特に問題はありません。なぜなら、Gitはそのようなデータを効率良く圧縮することに高度に最適化されているからです。
+しかし、もし誰かがある時点でプロジェクトの歴史に非常に大きなファイルを1つ加えると、以降のクローンではすべて、その大きなファイルのダウンロードを強いられることになります。これは、直後のコミットでそのファイルをプロジェクトから削除したとしても変わりません。
+なぜなら、そのファイルは履歴から到達可能であり、常にそこに存在し続けるためです。</p>
+<p>SubversionやPerforceのリポジトリをGitに変換するときに、これは大きな問題になり得ます。
+なぜなら、それらのシステムではすべての履歴をダウンロードする必要がないため、非常に大きなファイルを追加してもほとんど悪影響がないからです。
+別のシステムからリポジトリをインポートした場合や、リポジトリがあるべき状態よりもずっと大きくなっている場合に、大きなオブジェクトを見つけて取り除く方法を以下に示します。</p>
+<p><strong>注意: この操作はコミット履歴を破壊的に変更します。</strong>
+この操作では、大きなファイルへの参照を取り除くため、修正が必要な一番古いツリーから、以降すべてのコミットオブジェクトを再書き込みします。
+インポートの直後、そのコミットをベースとして誰かが作業を始める前にこの操作を行った場合は問題ありません。そうでない場合は、作業中の内容を新しいコミットにリベースしなければならないことを、すべての関係者に知らせる必要があります。</p>
+<p>実演のため、testリポジトリに大きなファイルを追加して、次のコミットでそれを取り除いた上で、リポジトリからそのファイルを探し出し、そしてリポジトリからそれを完全に削除します。
+まず、あなたの歴史に大きなオブジェクトを追加します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> curl https://www.kernel.org/pub/software/scm/git/git-2.1.0.tar.gz &gt; git.tgz
+<span style="font-weight: bold">$</span> git add git.tgz
+<span style="font-weight: bold">$</span> git commit -m <span style="font-style: italic">&#39;add git tarball&#39;</span>
+[master 7b30847] add git tarball
+ 1 file changed, 0 insertions(+), 0 deletions(-)
+ create mode 100644 git.tgz</code></pre>
+</figure>
+<p>おっと、誤ってプロジェクトに非常に大きなtarボールを追加してしまいました。取り除いたほうがいいでしょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git rm git.tgz
+rm &#39;git.tgz&#39;
+<span style="font-weight: bold">$</span> git commit -m <span style="font-style: italic">&#39;oops - removed large tarball&#39;</span>
+[master dadf725] oops - removed large tarball
+ 1 file changed, 0 insertions(+), 0 deletions(-)
+ delete mode 100644 git.tgz</code></pre>
+</figure>
+<p>次に、データベースに対して <code class="literal">gc</code> を実行します。その後、どれくらいのスペースを使用しているのかを見てみましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git gc
+Counting objects: 17, done.
+Delta compression using up to 8 threads.
+Compressing objects: 100% (13/13), done.
+Writing objects: 100% (17/17), done.
+Total 17 (delta 1), reused 10 (delta 0)</code></pre>
+</figure>
+<p><code class="literal">count-objects</code> コマンドを実行すると、どれくらいのスペースを使用しているのかをすぐに見ることができます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git count-objects -v
+count: 7
+size: 32
+in-pack: 17
+packs: 1
+size-pack: 4868
+prune-packable: 0
+garbage: 0
+size-garbage: 0</code></pre>
+</figure>
+<p><code class="literal">size-pack</code> エントリにはpackfileのサイズがキロバイト単位で表示されていて、約5MB使用していることがわかります。
+大きなファイルを追加するコミットの前に使用していたのは、2KB程度でした – 明らかに、直近のコミットで行ったファイルの削除では、歴史からファイルが削除されていません。
+誤って大きなファイルを追加してしまったがために、誰かがこのリポジトリをクローンするたび、この小さなプロジェクトを取得するだけのために5MBすべてをクローンしなければならなくなってしまいました。
+この大きなファイルを削除しましょう。</p>
+<p>最初に、その大きなファイルを見つけなければなりません。
+この例では、どのファイルがそれかは既に分かっています。
+しかし、それが分からない場合、どうやって多くのスペースを占めているファイルを特定するのでしょうか？
+<code class="literal">git gc</code> を実行すると、すべてのオブジェクトがpackfileに格納されます。
+そのため、別の配管コマンド <code class="literal">git verify-pack</code> を実行し、その出力を3つ目のフィールド（ファイルサイズ）でソートすれば、大きなオブジェクトを特定できます。
+関心の対象になるのは最も大きなファイル数個だけなので、その出力をパイプで <code class="literal">tail</code> コマンドに通してもよいでしょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git verify-pack -v .git/objects/pack/pack-29…69.idx <span style="font-weight: bold; font-style: italic">\</span>
+  | sort -k 3 -n <span style="font-weight: bold; font-style: italic">\</span>
+  | tail -3
+dadf7258d699da2c8d89b09ef6670edb7d5f91b4 commit 229 159 12
+033b4468fa6b2a9547a70d88d1bbe8bf3f9ed0d5 blob   22044 5792 4977696
+82c99a3e86bb1267b236a4b6eff7868d97489af1 blob   4975916 4976258 1438</code></pre>
+</figure>
+<p>探していた大きなオブジェクトは、一番下の5MBのものです。
+そのオブジェクトが何のファイルなのかを知るには <a id="xref--ch08-customizing-git--r_enforcing_commit_message_format" href="ch08-customizing-git.xhtml#r_enforcing_commit_message_format" class="xref">特定のコミットメッセージ書式の強制</a> で少し使用した <code class="literal">rev-list</code> コマンドを使用します。
+<code class="literal">--objects</code> を <code class="literal">rev-list</code> に渡すと、すべてのコミットのSHA-1ハッシュに加えて、すべてのブロブのSHA-1ハッシュと、そのブロブに関連付けられたファイルのパスを一覧表示します。
+これは、ブロブの名前を特定するのに使えます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git rev-list --objects --all | grep 82c99a3
+82c99a3e86bb1267b236a4b6eff7868d97489af1 git.tgz</code></pre>
+</figure>
+<p>次に、過去のすべてのツリーからこのファイルを削除する必要があります。
+このファイルを変更したのがどのコミットかは簡単に分かります。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git log --oneline --branches -- git.tgz
+dadf725 oops - removed large tarball
+7b30847 add git tarball</code></pre>
+</figure>
+<p>Gitリポジトリからこのファイルを完全に削除するには、 <code class="literal">7b30847</code> の下流にあるすべてのコミットを修正しなければなりません。
+そのためには、 <a id="xref--ch07-git-tools--r_rewriting_history" href="ch07-git-tools.xhtml#r_rewriting_history" class="xref">歴史の書き換え</a> で使用した <code class="literal">filter-branch</code> を使用します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git filter-branch --index-filter <span style="font-weight: bold; font-style: italic">\</span>
+  <span style="font-style: italic">&#39;git rm --ignore-unmatch --cached git.tgz&#39;</span> -- 7b30847^..
+Rewrite 7b30847d080183a1ab7d18fb202473b3096e9f34 (1/2)rm &#39;git.tgz&#39;
+Rewrite dadf7258d699da2c8d89b09ef6670edb7d5f91b4 (2/2)
+Ref &#39;refs/heads/master&#39; was rewritten</code></pre>
+</figure>
+<p><code class="literal">--index-filter</code> オプションは <a href="ch07-git-tools.xhtml#r_rewriting_history" class="xref">歴史の書き換え</a> で使用した <code class="literal">--tree-filter</code> オプションに似ていますが、ディスク上のチェックアウトされたファイルを変更するコマンドを渡すのではなく、コミット毎にステージングエリアまたはインデックスを変更する点が異なります。</p>
+<p>ここでは、あるファイルを <code class="literal">rm file</code> で削除するのではなく、 <code class="literal">git rm --cached</code> で削除する必要があります。つまり、ディスクではなくインデックスからファイルを削除しなければなりません。
+このようにする理由はスピードです。この場合、Gitがフィルタを実行する前に各リビジョンをディスク上へチェックアウトする必要がないので、プロセスをもっともっと速くすることができます。
+お望みなら、同様のタスクは <code class="literal">--tree-filter</code> でも行えます。
+<code class="literal">git rm</code> に渡している <code class="literal">--ignore-unmatch</code> オプションは、削除しようとするパターンに合うファイルがない場合に、エラーを出力しないようにします。
+最後に、<code class="literal">filter-branch</code> に、コミット <code class="literal">7b30847</code> 以降の履歴のみを修正するように伝えています。なぜなら、問題が発生した場所がここだと分かっているからです。
+そうでない場合は、歴史の先頭から処理を開始することになり、不必要に長い時間がかかるでしょう。</p>
+<p>これで、歴史から大きなファイルへの参照がなくなりました。
+しかし、 <code class="literal">.git/refs/original</code> の下で <code class="literal">filter-branch</code> を行ったときにGitが新しく追加したrefsには、まだ参照が含まれています。reflogについても同様です。それらを削除した上で、データベースを再パックしなければなりません。
+再パックの前に、それら古いコミットへのポインタを持つものをすべて削除する必要があります。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> rm -Rf .git/refs/original
+<span style="font-weight: bold">$</span> rm -Rf .git/logs/
+<span style="font-weight: bold">$</span> git gc
+Counting objects: 15, done.
+Delta compression using up to 8 threads.
+Compressing objects: 100% (11/11), done.
+Writing objects: 100% (15/15), done.
+Total 15 (delta 1), reused 12 (delta 0)</code></pre>
+</figure>
+<p>どれくらいのスペースが節約されたかを見てみましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git count-objects -v
+count: 11
+size: 4904
+in-pack: 15
+packs: 1
+size-pack: 8
+prune-packable: 0
+garbage: 0
+size-garbage: 0</code></pre>
+</figure>
+<p>パックされたリポジトリのサイズは8KBに下がり、当初の5MBよりもずっとよくなりました。
+サイズの値を見ると、緩いオブジェクトの中には大きなオブジェクトが残っており、無くなったわけではないことが分かります。ですが、プッシュや以降のクローンで転送されることはもうありません。ここが重要な点です。
+お望みなら、 <code class="literal">git prune</code> に <code class="literal">--expire</code> オプションを指定すれば、オブジェクトを完全に削除することもできます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git prune --expire now
+<span style="font-weight: bold">$</span> git count-objects -v
+count: 0
+size: 0
+in-pack: 15
+packs: 1
+size-pack: 8
+prune-packable: 0
+garbage: 0
+size-garbage: 0</code></pre>
+</figure>
+</section>
+</section>
+<section class="sect1" title="環境変数">
+<h2 id="_環境変数">環境変数</h2>
+<p>Gitは常に <code class="literal">bash</code> シェル内で実行されます。また、それがどのように動作するかを決定するために、多くのシェル環境変数を使用しています。
+場合によっては、これらの環境変数が何であるか、Gitを望み通りに動かすためにどんなふうに使用できるかを知っていた方が便利です。
+このリストは、Gitが参照する環境変数すべてを網羅してはいませんが、もっとも有用なものを取り上げています。</p>
+<section class="sect2" title="グローバルな振る舞い">
+<h3 id="_グローバルな振る舞い">グローバルな振る舞い</h3>
+<p>Gitのコンピュータプログラムとしての一般的な動作の中には、環境変数に依存しているものがいくつかあります。</p>
+<p><strong><code class="literal">GIT_EXEC_PATH</code></strong> は、Gitがサブプログラム（<code class="literal">git-commit</code> や <code class="literal">git-diff</code> など）を探すディレクトリを決定します。
+<code class="literal">git --exec-path</code> で現在の設定を確認できます。</p>
+<p><strong><code class="literal">HOME</code></strong> は通常カスタマイズされることを考慮されてはいません（他にこの変数に依存しているものがありすぎる）が、Gitはこのディレクトリからグローバル設定ファイルを探します。
+Gitを完全にポータブルな状態でインストールしたいなら、グローバル設定をすべて埋めた上で、ポータブルなGitのシェルプロファイルで <code class="literal">HOME</code> を上書きできます。</p>
+<p><strong><code class="literal">PREFIX</code></strong> もそれと似ていますが、こちらはシステム全体の設定です。
+Gitはこのファイルを <code class="literal">$PREFIX/etc/gitconfig</code> から探します。</p>
+<p><strong><code class="literal">GIT_CONFIG_NOSYSTEM</code></strong> を設定すると、システム全体の設定ファイルを無効にします。
+これは、コマンドの実行にあたってシステム全体の設定が邪魔になるが、それを変更したり削除したりするアクセス権がない場合に便利です。</p>
+<p><strong><code class="literal">GIT_PAGER</code></strong> はコマンドラインで複数ページにわたる出力を表示する際に使用されるプログラムを制御します。
+設定されていない場合、<code class="literal">PAGER</code> が代わりに使用されます。</p>
+<p><strong><code class="literal">GIT_EDITOR</code></strong> はテキスト（例えばコミットメッセージ）を編集する必要があるときにGitから起動されるエディタです。
+設定されていない場合、 <code class="literal">EDITOR</code> が代わりに使用されます。</p>
+</section>
+<section class="sect2" title="リポジトリの場所">
+<h3 id="_リポジトリの場所">リポジトリの場所</h3>
+<p>Gitは、Gitと現在のリポジトリとのインタフェース方法を決定するのに、いくつかの環境変数を使用します。</p>
+<p><strong><code class="literal">GIT_DIR</code></strong> は <code class="literal">.git</code> フォルダの場所です。
+指定されていない場合、Gitはディレクトリツリーを <code class="literal">~</code> または <code class="literal">/</code> にたどり着くまで上っていき、各ディレクトリで <code class="literal">.git</code> ディレクトリを探します。</p>
+<p><strong><code class="literal">GIT_CEILING_DIRECTORIES</code></strong> は <code class="literal">.git</code> ディレクトリを探す際の動作を制御します。
+読み込みが遅いディレクトリにアクセスしている場合（例えばテープドライブ上のディレクトリや、低速なネットワーク越しにアクセスしている場合）、Gitが自動で停止するのを待たずに試行を停止させたくなることもあると思います。特に、シェルプロンプトを構成している最中にGitが呼ばれた場合はそうでしょう。</p>
+<p><strong><code class="literal">GIT_WORK_TREE</code></strong> は、ベアリポジトリ以外のリポジトリで、ワーキングディレクトリのルートとなる場所です。
+指定されていない場合、 <code class="literal">$GIT_DIR</code> の親ディレクトリが代わりに使用されます。</p>
+<p><strong><code class="literal">GIT_INDEX_FILE</code></strong> は、インデックスファイルのパスです（ベアリポジトリ以外でのみ使用されます）。</p>
+<p><strong><code class="literal">GIT_OBJECT_DIRECTORY</code></strong> は、通常 <code class="literal">.git/objects</code> にあるディレクトリの場所を指定するのに使用できます。</p>
+<p><strong><code class="literal">GIT_ALTERNATE_OBJECT_DIRECTORIES</code></strong> は、 <code class="literal">GIT_OBJECT_DIRECTORY</code> にオブジェクトがなかった場合にチェックに行く場所を指示するのに使います。コロン区切りのリスト（ <code class="literal">/dir/one:/dir/two:…</code> のような書式）で指定します。
+大量のプロジェクトに、全く同じ内容の巨大なファイルがあるという状況で、そのファイルを大量に重複して保存したくない場合に、これが利用できます。</p>
+</section>
+<section class="sect2" title="Pathspec">
+<h3 id="_pathspec">Pathspec</h3>
+<p>“pathspec” とは、Gitに何かのパスを指定する方法のことで、ワイルドカードの使用法などが含まれます。
+以下の環境変数は <code class="literal">.gitignore</code> ファイルだけでなく、コマンドライン（ <code class="literal">git add *.c</code> など）でも使用されます。</p>
+<p><strong><code class="literal">GIT_GLOB_PATHSPECS</code> および <code class="literal">GIT_NOGLOB_PATHSPECS</code></strong> は、pathspec において、ワイルドカードのデフォルトの動作を制御します。
+<code class="literal">GIT_GLOB_PATHSPECS</code> に1がセットされている場合、ワイルドカード文字はワイルドカードとして働きます（これがデフォルトの挙動）。 <code class="literal">GIT_NOGLOB_PATHSPECS</code> に1がセットされている場合、ワイルドカード文字はそれ自身にのみマッチ、つまり <code class="literal">*.c</code> は <code class="literal">.c</code> で終わる名前のファイルすべてではなく、 “*.c” <em>という名前の</em> ファイルにのみマッチします。
+pathspec に <code class="literal">:(glob)</code> や <code class="literal">:(literal)</code> を、 <code class="literal">:(glob)*.c</code> のように指定することで、個々のケースに対してより優先的な設定を行うこともできます。</p>
+<p><strong><code class="literal">GIT_LITERAL_PATHSPECS</code></strong> は上記の振る舞いを両方とも無効にします。ワイルドカード文字は機能を停止し、オーバーライド接頭辞も無効化されます。</p>
+<p><strong><code class="literal">GIT_ICASE_PATHSPECS</code></strong> はすべての pathspec が大文字小文字を区別せず処理するように設定します。</p>
+</section>
+<section class="sect2" title="コミット">
+<h3 id="_コミット">コミット</h3>
+<p>Gitのコミットオブジェクトは通常、最終的に <code class="literal">git-commit-tree</code> によって作成されます。このコマンドは、以下の環境変数に設定されている情報を優先的に使用します。これらの環境変数が存在しない場合にのみ、設定ファイルの値が代わりに使用されます。</p>
+<p><strong><code class="literal">GIT_AUTHOR_NAME</code></strong> は “author” フィールドに使用される、人間に読める形式の名前です。</p>
+<p><strong><code class="literal">GIT_AUTHOR_EMAIL</code></strong> は “author” フィールドで使用するメールアドレスです。</p>
+<p><strong><code class="literal">GIT_AUTHOR_DATE</code></strong> は “author” フィールドで使用するタイムスタンプです。</p>
+<p><strong><code class="literal">GIT_COMMITTER_NAME</code></strong> は “committer” フィールドで使用する人名です。</p>
+<p><strong><code class="literal">GIT_COMMITTER_EMAIL</code></strong> は “committer” フィールドで使用するメールアドレスです。</p>
+<p><strong><code class="literal">GIT_COMMITTER_DATE</code></strong> は “committer” フィールドで使用するタイムスタンプです。</p>
+<p><strong><code class="literal">EMAIL</code></strong> は、設定値 <code class="literal">user.email</code> が設定されていない場合に代わりに使用されるメールアドレスです。
+<em>この環境変数自体が</em> 設定されていない場合、Gitはシステムのユーザ名とホスト名を代わりに使用します。</p>
+</section>
+<section class="sect2" title="ネットワーク">
+<h3 id="_ネットワーク">ネットワーク</h3>
+<p>Git はHTTP越しのネットワーク操作に <code class="literal">curl</code> ライブラリを使用しています。そのため、 <strong><code class="literal">GIT_CURL_VERBOSE</code></strong> はそのライブラリが生成するメッセージをすべて出力するようGitに指示します。
+これはコマンドラインで <code class="literal">curl -v</code> を実行するのと似たようなものです。</p>
+<p><strong><code class="literal">GIT_SSL_NO_VERIFY</code></strong> は、SSL証明書の検証を行わないようにGitへ指示します。
+これは、GitリポジトリをHTTPS経由で利用するために自己署名証明書を使っている場合や、Gitサーバーのセットアップ中で正式な証明書のインストールが完了していない場合などに必要になります。</p>
+<p>あるHTTP操作のデータレートが秒間 <strong><code class="literal">GIT_HTTP_LOW_SPEED_LIMIT</code></strong> バイトより低い状態が、 <strong><code class="literal">GIT_HTTP_LOW_SPEED_TIME</code></strong> 秒より長く続いた場合、Gitはその操作を中断します。
+これらの環境変数は設定ファイルの <code class="literal">http.lowSpeedLimit</code> および <code class="literal">http.lowSpeedTime</code> の値より優先されます。</p>
+<p><strong><code class="literal">GIT_HTTP_USER_AGENT</code></strong> はGitがHTTPで通信する際のuser-agent文字列を設定します。
+デフォルトの値は <code class="literal">git/2.0.0</code> のような内容です。</p>
+</section>
+<section class="sect2" title="差分取得とマージ">
+<h3 id="_差分取得とマージ">差分取得とマージ</h3>
+<p><strong><code class="literal">GIT_DIFF_OPTS</code></strong> ですが、これは名前の付け方に少し問題ありと言えます。
+有効な値は <code class="literal">-u&lt;n&gt;</code> または <code class="literal">--unified=&lt;n&gt;</code> だけです。これは、 <code class="literal">git diff</code> コマンドで表示されるコンテキスト行の行数を制御します。</p>
+<p><strong><code class="literal">GIT_EXTERNAL_DIFF</code></strong> は設定ファイルの <code class="literal">diff.external</code> の値をオーバーライドします。
+設定されている場合、ここで指定したプログラムが <code class="literal">git diff</code> の実行時に呼び出されます。</p>
+<p><strong><code class="literal">GIT_DIFF_PATH_COUNTER</code></strong> および <strong><code class="literal">GIT_DIFF_PATH_TOTAL</code></strong> は、 <code class="literal">GIT_EXTERNAL_DIFF</code> または <code class="literal">diff.external</code> で指定したプログラムの内部で使用すると便利です。
+前者は、処理中の一連のファイルの中で何番目のファイルの差分を処理しているか（1から始まる数値）、後者は処理中の一連のファイルの総数です。</p>
+<div class="itemized-list">
+<ul>
+<li>
+<span class="principal"><code class="literal">GIT_MERGE_VERBOSITY</code> * は、再帰的なマージ戦略の出力を制御します。
+指定できる値は以下の通りです。</span>
+</li>
+</ul>
+</div>
+<div class="itemized-list">
+<ul>
+<li>
+<span class="principal">0 は何も出力しません。例外として、エラーがあった場合はエラーメッセージを1つだけ出力します。</span>
+</li>
+<li>
+<span class="principal">1 はマージコンフリクトのみ表示します。</span>
+</li>
+<li>
+<span class="principal">2 はファイルの変更点のみ表示します。</span>
+</li>
+<li>
+<span class="principal">3 は変更がなく処理をスキップしたファイルを表示します。</span>
+</li>
+<li>
+<span class="principal">4 は処理されたパスをすべて表示します。</span>
+</li>
+<li>
+<span class="principal">5 以上を指定すると、上記のすべてに加えて詳細なデバッグ用の情報を表示します。</span>
+</li>
+</ul>
+</div>
+<p>デフォルト値は2です。</p>
+</section>
+<section class="sect2" title="デバッグ">
+<h3 id="_デバッグ">デバッグ</h3>
+<p>Gitが何をしているか、 <em>本当に</em> 知りたいですか？
+Gitには、組み込みのトレースのほぼ完全なセットが備わっており、ユーザがする必要があるのは、それらをオンにすることだけです。
+これらの環境変数に設定可能な値は次の通りです。</p>
+<div class="itemized-list">
+<ul>
+<li>
+<span class="principal">“true”、“1”、“2” – 対象のカテゴリのトレースは標準エラー出力へ書き出されます。</span>
+</li>
+<li>
+<span class="principal"><code class="literal">/</code> から始まる絶対パス文字列 – 対象のトレースの出力はそのファイルへ書き出されます。</span>
+</li>
+</ul>
+</div>
+<p><strong><code class="literal">GIT_TRACE</code></strong> は、どの特定のカテゴリにも当てはまらない、一般的なトレースを制御します。
+これには、エイリアスの展開や、他のサブプログラムへの処理の引き渡しなどが含まれます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> GIT_TRACE=true git lga
+20:12:49.877982 git.c:554               trace: exec: &#39;git-lga&#39;
+20:12:49.878369 run-command.c:341       trace: run_command: &#39;git-lga&#39;
+20:12:49.879529 git.c:282               trace: alias expansion: lga =&gt; &#39;log&#39; &#39;--graph&#39; &#39;--pretty=oneline&#39; &#39;--abbrev-commit&#39; &#39;--decorate&#39; &#39;--all&#39;
+20:12:49.879885 git.c:349               trace: built-in: git &#39;log&#39; &#39;--graph&#39; &#39;--pretty=oneline&#39; &#39;--abbrev-commit&#39; &#39;--decorate&#39; &#39;--all&#39;
+20:12:49.899217 run-command.c:341       trace: run_command: &#39;less&#39;
+20:12:49.899675 run-command.c:192       trace: exec: &#39;less&#39;</code></pre>
+</figure>
+<p><strong><code class="literal">GIT_TRACE_PACK_ACCESS</code></strong> はパックファイルへのアクセスに関するトレースを制御します。
+最初のフィールドはアクセスされているパックファイル、次のフィールドはそのファイル内でのオフセットです。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> GIT_TRACE_PACK_ACCESS=true git status
+20:10:12.081397 sha1_file.c:2088        .git/objects/pack/pack-c3fa...291e.pack 12
+20:10:12.081886 sha1_file.c:2088        .git/objects/pack/pack-c3fa...291e.pack 34662
+20:10:12.082115 sha1_file.c:2088        .git/objects/pack/pack-c3fa...291e.pack 35175
+<span style="font-weight: bold">#</span> […]
+20:10:12.087398 sha1_file.c:2088        .git/objects/pack/pack-e80e...e3d2.pack 56914983
+20:10:12.087419 sha1_file.c:2088        .git/objects/pack/pack-e80e...e3d2.pack 14303666
+On branch master
+Your branch is up-to-date with &#39;origin/master&#39;.
+nothing to commit, working directory clean</code></pre>
+</figure>
+<p><strong><code class="literal">GIT_TRACE_PACKET</code></strong> はネットワーク操作におけるパケットレベルのトレースを有効にします。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> GIT_TRACE_PACKET=true git ls-remote origin
+20:15:14.867043 pkt-line.c:46           packet:          git&lt; # service=git-upload-pack
+20:15:14.867071 pkt-line.c:46           packet:          git&lt; 0000
+20:15:14.867079 pkt-line.c:46           packet:          git&lt; 97b8860c071898d9e162678ea1035a8ced2f8b1f HEAD\0multi_ack thin-pack side-band side-band-64k ofs-delta shallow no-progress include-tag multi_ack_detailed no-done symref=HEAD:refs/heads/master agent=git/2.0.4
+20:15:14.867088 pkt-line.c:46           packet:          git&lt; 0f20ae29889d61f2e93ae00fd34f1cdb53285702 refs/heads/ab/add-interactive-show-diff-func-name
+20:15:14.867094 pkt-line.c:46           packet:          git&lt; 36dc827bc9d17f80ed4f326de21247a5d1341fbc refs/heads/ah/doc-gitk-config
+<span style="font-weight: bold">#</span> […]</code></pre>
+</figure>
+<p><strong><code class="literal">GIT_TRACE_PERFORMANCE</code></strong> は性能データのログ出力を制御します。
+ログには、一つ一つのGit呼び出しにかかった時間が出力されます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> GIT_TRACE_PERFORMANCE=true git gc
+20:18:19.499676 trace.c:414             performance: 0.374835000 s: git command: &#39;git&#39; &#39;pack-refs&#39; &#39;--all&#39; &#39;--prune&#39;
+20:18:19.845585 trace.c:414             performance: 0.343020000 s: git command: &#39;git&#39; &#39;reflog&#39; &#39;expire&#39; &#39;--all&#39;
+Counting objects: 170994, done.
+Delta compression using up to 8 threads.
+Compressing objects: 100% (43413/43413), done.
+Writing objects: 100% (170994/170994), done.
+Total 170994 (delta 126176), reused 170524 (delta 125706)
+20:18:23.567927 trace.c:414             performance: 3.715349000 s: git command: &#39;git&#39; &#39;pack-objects&#39; &#39;--keep-true-parents&#39; &#39;--honor-pack-keep&#39; &#39;--non-empty&#39; &#39;--all&#39; &#39;--reflog&#39; &#39;--unpack-unreachable=2.weeks.ago&#39; &#39;--local&#39; &#39;--delta-base-offset&#39; &#39;.git/objects/pack/.tmp-49190-pack&#39;
+20:18:23.584728 trace.c:414             performance: 0.000910000 s: git command: &#39;git&#39; &#39;prune-packed&#39;
+20:18:23.605218 trace.c:414             performance: 0.017972000 s: git command: &#39;git&#39; &#39;update-server-info&#39;
+20:18:23.606342 trace.c:414             performance: 3.756312000 s: git command: &#39;git&#39; &#39;repack&#39; &#39;-d&#39; &#39;-l&#39; &#39;-A&#39; &#39;--unpack-unreachable=2.weeks.ago&#39;
+Checking connectivity: 170994, done.
+20:18:25.225424 trace.c:414             performance: 1.616423000 s: git command: &#39;git&#39; &#39;prune&#39; &#39;--expire&#39; &#39;2.weeks.ago&#39;
+20:18:25.232403 trace.c:414             performance: 0.001051000 s: git command: &#39;git&#39; &#39;rerere&#39; &#39;gc&#39;
+20:18:25.233159 trace.c:414             performance: 6.112217000 s: git command: &#39;git&#39; &#39;gc&#39;</code></pre>
+</figure>
+<p><strong><code class="literal">GIT_TRACE_SETUP</code></strong> はGitがリポジトリや環境を操作する際に何を見ているかを表示します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> GIT_TRACE_SETUP=true git status
+20:19:47.086765 trace.c:315             setup: git_dir: .git
+20:19:47.087184 trace.c:316             setup: worktree: /Users/ben/src/git
+20:19:47.087191 trace.c:317             setup: cwd: /Users/ben/src/git
+20:19:47.087194 trace.c:318             setup: prefix: (null)
+On branch master
+Your branch is up-to-date with &#39;origin/master&#39;.
+nothing to commit, working directory clean</code></pre>
+</figure>
+</section>
+<section class="sect2" title="その他">
+<h3 id="_その他">その他</h3>
+<p><strong><code class="literal">GIT_SSH</code></strong> は、指定されている場合、GitがSSHホストへ接続する際に <code class="literal">ssh</code> の代わりに呼び出されるプログラムです。
+これは <code class="literal">$GIT_SSH [username@]host [-p &lt;port&gt;] &lt;command&gt;</code> のように呼び出されます。
+注意事項として、これは <code class="literal">ssh</code> の呼び出し方をカスタマイズする最も手軽な方法というわけではありません。追加のコマンドラインパラメタがサポートされないので、ラッパースクリプトを書いて、 <code class="literal">GIT_SSH</code> がそのスクリプトを指すようにする必要があります。
+その場合は単に <code class="literal">~/.ssh/config</code> ファイルを使用する方が簡単でしょう。</p>
+<p><strong><code class="literal">GIT_ASKPASS</code></strong> は設定ファイルの <code class="literal">core.askpass</code> の値をオーバーライドします。
+これはユーザによる認証情報の入力が必要なときに呼び出されるプログラムで、コマンドライン引数としてプロンプトのテキストを受け取り、応答を標準出力へ返すようになっている必要があります。
+（このサブシステムの詳細については <a id="xref--ch07-git-tools--r_credential_caching" href="ch07-git-tools.xhtml#r_credential_caching" class="xref">認証情報の保存</a> を参照してください）</p>
+<p><strong><code class="literal">GIT_NAMESPACE</code></strong> は名前空間内の参照へのアクセス制御を行います。これは <code class="literal">--namespace</code> フラグと同様です。
+これがもっとも便利なのは、サーバーで一つのリポジトリの複数のフォークを単一のリポジトリへ格納したいが、参照だけは別々に分けておきたい場合です。</p>
+<p><strong><code class="literal">GIT_FLUSH</code></strong> は、Gitに非バッファI/Oを使用するように強制します。標準出力への書き出しを逐次的に行いたい場合に使用します。
+1を設定すると、Gitは出力をより頻繁にフラッシュします。0を設定すると、すべての出力がバッファリングされます。
+デフォルト（この環境変数が設定されていない場合）では、動作と出力モードに合わせて適切なバッファリングスキームが選択されます。</p>
+<p><strong><code class="literal">GIT_REFLOG_ACTION</code></strong> では、reflogへ出力される説明用のテキストを指定できます。
+次に例を示します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> GIT_REFLOG_ACTION=<span style="font-style: italic">&quot;my action&quot;</span> git commit --allow-empty -m <span style="font-style: italic">&#39;my message&#39;</span>
+[master 9e3d55a] my message
+<span style="font-weight: bold">$</span> git reflog -1
+9e3d55a HEAD@{0}: my action: my message</code></pre>
+</figure>
+</section>
+</section>
+<section class="sect1" title="まとめ">
+<h2 id="_まとめ">まとめ</h2>
+<p>Git がバックグラウンドで行っている処理について、とてもよく理解できたことと思います。また、その実装の方法についても、ある程度の理解が得られたと思います。
+この章では、各種の配管コマンド – 本書の他の章で学んだ磁器コマンドよりも、低レベルでシンプルなコマンド – を何度も使いました。
+Gitがどのように機能しているのかを、より低いレベルで理解すれば、なぜそのようなことを行うのかも容易に理解できるようになるでしょうし、自分のワークフローがうまく機能するように自前のツールや補助スクリプトを書くのもより楽になるはずです。</p>
+<p>内容アドレスファイルシステムとしてのGitは、とても強力なツールで、単なるバージョン管理システム以上のものとして使うことも簡単にできます。
+この技術を使って自前の素晴らしいアプリケーションを実装したり、Gitの進んだ使い方をより気楽に利用したりするのに、この章で得たGitの内部に関する知識が役立つことを願っています。</p>
+</section>
+</section>
+</body>
+</html>

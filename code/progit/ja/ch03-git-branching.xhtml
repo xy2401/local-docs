@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Git のブランチ機能</title>
+<link rel="stylesheet" type="text/css" href="styles/epub3.css"/>
+<link rel="stylesheet" type="text/css" href="styles/epub3-css3-only.css" media="(min-device-width: 0px)"/>
+<script type="text/javascript">
+document.addEventListener('DOMContentLoaded', function(event, reader) {
+  if (!(reader = navigator.epubReadingSystem)) {
+    if (navigator.userAgent.indexOf(' calibre/') >= 0) reader = { name: 'calibre-desktop' };
+    else if (window.parent == window || !(reader = window.parent.navigator.epubReadingSystem)) return;
+  }
+  document.body.setAttribute('class', reader.name.toLowerCase().replace(/ /g, '-'));
+});
+</script>
+</head>
+<body>
+<section class="chapter" title="Git のブランチ機能" epub:type="chapter" id="ch03-git-branching">
+<header>
+<div class="chapter-header">
+<h1 class="chapter-title"><small class="subtitle"><b>Git</b> <b>のブランチ機能</b></small></h1>
+</div>
+</header>
+<p></p>
+<p>ほぼすべてと言っていいほどの VCS が、何らかの形式でブランチ機能に対応しています。
+ブランチとは、開発の本流から分岐し、本流の開発を邪魔することなく作業を続ける機能のことです。
+多くの VCS ツールでは、これは多少コストのかかる処理になっています。
+ソースコードディレクトリを新たに作る必要があるなど、巨大なプロジェクトでは非常に時間がかかってしまうことがよくあります。</p>
+<p>Git のブランチモデルは、Git の機能の中でもっともすばらしいものだという人もいるほどです。
+そしてこの機能こそが Git を他の VCS とは一線を画すものとしています。
+何がそんなにすばらしいのでしょう?
+Git のブランチ機能は圧倒的に軽量です。ブランチの作成はほぼ一瞬で完了しますし、ブランチの切り替えも高速に行えます。
+その他大勢の VCS とは異なり、Git では頻繁にブランチ作成とマージを繰り返すワークフローを推奨しています。
+一日に複数のブランチを切ることさえ珍しくありません。
+この機能を理解して身につけることで、あなたはパワフルで他に類を見ないツールを手に入れることになります。
+これは、あなたの開発手法を文字通り一変させてくれるでしょう。</p>
+<section class="sect1" title="ブランチとは">
+<h2 id="r_git_branches_overview">ブランチとは</h2>
+<p>Git のブランチの仕組みについてきちんと理解するには、少し後戻りして Git がデータを格納する方法を知っておく必要があります。</p>
+<p><a id="xref--ch01-introduction" href="ch01-introduction.xhtml" class="xref">使い始める</a> で説明したように、Git はチェンジセットや差分としてデータを保持しているのではありません。そうではなく、スナップショットとして保持しています。</p>
+<p>Git にコミットすると、Git はコミットオブジェクトを作成して格納します。このオブジェクトには、あなたがステージしたスナップショットへのポインタや作者・メッセージのメタデータ、そしてそのコミットの直接の親となるコミットへのポインタが含まれています。最初のコミットの場合は親はいません。通常のコミットの場合は親がひとつ存在します。複数のブランチからマージした場合は、親も複数となります。</p>
+<p>これを視覚化して考えるために、ここに 3 つのファイルを含むディレクトリがあると仮定しましょう。3 つのファイルをすべてステージしてコミットしたところです。ステージしたファイルについてチェックサム (<a href="ch01-introduction.xhtml" class="xref">使い始める</a> で説明した SHA-1 ハッシュ) を計算し、そのバージョンのファイルを Git ディレクトリに格納し (Git はファイルを blob として扱います)、そしてそのチェックサムをステージングエリアに追加します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git add README test.rb LICENSE
+<span style="font-weight: bold">$</span> git commit -m <span style="font-style: italic">&#39;The initial commit of my project&#39;</span></code></pre>
+</figure>
+<p><code class="literal">git commit</code> を実行してコミットを作るときに、Git は各サブディレクトリ (今回の場合はルートディレクトリひとつだけ) のチェックサムを計算して、そのツリーオブジェクトを Git リポジトリに格納します。
+それから、コミットオブジェクトを作ります。このオブジェクトは、コミットのメタデータとルートツリーへのポインタを保持しており、必要に応じてスナップショットを再作成できるようになります。</p>
+<p>この時点で、Git リポジトリには 5 つのオブジェクトが含まれています。3 つのファイルそれぞれの中身をあらわす blob オブジェクト、ディレクトリの中身の一覧とどのファイルがどの blob に対応するかをあらわすツリーオブジェクト、そしてそのルートツリーおよびすべてのメタデータへのポインタを含むコミットオブジェクトです。</p>
+<figure class="image">
+<div class="content">
+<img src="images/commit-and-tree.png" alt="コミットおよびそのツリー"/>
+</div>
+<figcaption>Figure 1. コミットおよびそのツリー</figcaption>
+</figure>
+<p>なんらかの変更を終えて再びコミットすると、次のコミットには直近のコミットへのポインタが格納されます。</p>
+<figure class="image">
+<div class="content">
+<img src="images/commits-and-parents.png" alt="コミットおよびその親"/>
+</div>
+<figcaption>Figure 2. コミットおよびその親</figcaption>
+</figure>
+<p>Git におけるブランチとは、単にこれら三つのコミットを指す軽量なポインタに過ぎません。Git のデフォルトのブランチ名は <code class="literal">master</code> です。最初にコミットした時点で、直近のコミットを指す <code class="literal">master</code> ブランチが作られます。その後コミットを繰り返すたびに、このポインタは自動的に進んでいきます。</p>
+<aside class="admonition note" title="Note" epub:type="note">
+<div class="content">
+<p>Git の “master” ブランチは、特別なブランチというわけではありません。
+その他のブランチと、何ら変わるところのないものです。
+ほぼすべてのリポジトリが “master” ブランチを持っているたったひとつの理由は、
+<code class="literal">git init</code> コマンドがデフォルトで作るブランチが “master” である (そして、ほとんどの人はわざわざそれを変更しようとは思わない) というだけのことです。</p>
+</div>
+</aside>
+<figure class="image">
+<div class="content">
+<img src="images/branch-and-history.png" alt="ブランチおよびそのコミットの歴史"/>
+</div>
+<figcaption>Figure 3. ブランチおよびそのコミットの歴史</figcaption>
+</figure>
+<section class="sect2" title="新しいブランチの作成">
+<h3 id="r_create_new_branch">新しいブランチの作成</h3>
+<p></p>
+<p>新しいブランチを作成したら、いったいどうなるのでしょうか?
+単に新たな移動先を指す新しいポインタが作られるだけです。
+では、新しい testing ブランチを作ってみましょう。
+次の <code class="literal">git branch</code> コマンドを実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch testing</code></pre>
+</figure>
+<p>これで、新しいポインタが作られます。
+現時点ではふたつのポインタは同じ位置を指しています。</p>
+<figure class="image">
+<div class="content">
+<img src="images/two-branches.png" alt="ふたつのブランチが同じ一連のコミットを指す"/>
+</div>
+<figcaption>Figure 4. ふたつのブランチが同じ一連のコミットを指す</figcaption>
+</figure>
+<p>Git は、あなたが今どのブランチで作業しているのかをどうやって知るのでしょうか?
+それを保持する特別なポインタが <code class="literal">HEAD</code> と呼ばれるものです。
+これは、Subversion や CVS といった他の VCS における <code class="literal">HEAD</code> の概念とはかなり違うものであることに注意しましょう。
+Git では、HEAD はあなたが作業しているローカルブランチへのポインタとなります。
+今回の場合は、あなたはまだ master ブランチにいます。
+<code class="literal">git branch</code> コマンドは新たにブランチを作成するだけであり、
+そのブランチに切り替えるわけではありません。</p>
+<figure class="image">
+<div class="content">
+<img src="images/head-to-master.png" alt="ブランチを指す HEAD"/>
+</div>
+<figcaption>Figure 5. ブランチを指す HEAD</figcaption>
+</figure>
+<p>この状況を確認するのは簡単です。
+単に <code class="literal">git log</code> コマンドを実行するだけで、ブランチポインタがどこを指しているかを教えてくれます。
+このときに指定するオプションは、<code class="literal">--decorate</code> です。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git log --oneline --decorate
+f30ab (HEAD -&gt; master, testing) add feature #32 - ability to add new formats to the central interface
+34ac2 Fixed bug #1328 - stack overflow under certain conditions
+98ca9 The initial commit of my project</code></pre>
+</figure>
+<p>“master” と “testing” の両ブランチが、コミット <code class="literal">f30ab</code> の横に表示されていることがわかります。</p>
+</section>
+<section class="sect2" title="ブランチの切り替え">
+<h3 id="r_switching_branches">ブランチの切り替え</h3>
+<p></p>
+<p>ブランチを切り替えるには <code class="literal">git checkout</code> コマンドを実行します。
+それでは、新しい <code class="literal">testing</code> ブランチに移動してみましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout testing</code></pre>
+</figure>
+<p>これで、<code class="literal">HEAD</code> は <code class="literal">testing</code> ブランチを指すようになります。</p>
+<figure class="image">
+<div class="content">
+<img src="images/head-to-testing.png" alt="HEAD は現在のブランチを指す"/>
+</div>
+<figcaption>Figure 6. HEAD は現在のブランチを指す</figcaption>
+</figure>
+<p>それがどうしたって?
+では、ここで別のコミットをしてみましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> vim test.rb
+<span style="font-weight: bold">$</span> git commit -a -m <span style="font-style: italic">&#39;made a change&#39;</span></code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/advance-testing.png" alt="HEAD が指すブランチが、コミットによって移動する"/>
+</div>
+<figcaption>Figure 7. HEAD が指すブランチが、コミットによって移動する</figcaption>
+</figure>
+<p>興味深いことに、<code class="literal">testing</code> ブランチはひとつ進みましたが <code class="literal">master</code> ブランチは変わっていません。
+<code class="literal">git checkout</code> でブランチを切り替えたときの状態のままです。それでは <code class="literal">master</code> ブランチに戻ってみましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master</code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/checkout-master.png" alt="チェックアウトによって HEAD が移動する"/>
+</div>
+<figcaption>Figure 8. チェックアウトによって HEAD が移動する</figcaption>
+</figure>
+<p>このコマンドは二つの作業をしています。
+まず HEAD ポインタが指す先を <code class="literal">master</code> ブランチに戻し、そして作業ディレクトリ内のファイルを <code class="literal">master</code> が指すスナップショットの状態に戻します。
+つまり、この時点以降に行った変更は、これまでのプロジェクトから分岐した状態になるということです。
+これは、<code class="literal">testing</code> ブランチで一時的に行った作業を巻き戻したことになります。
+ここから改めて別の方向に進めるということになります。</p>
+<aside class="admonition note" title="Note: ブランチを切り替えると、作業ディレクトリのファイルが変更される" epub:type="note">
+<h2>ブランチを切り替えると、作業ディレクトリのファイルが変更される</h2>
+<div class="content">
+<p>気をつけておくべき重要なこととして、Git でブランチを切り替えると、作業ディレクトリのファイルが変更されることを知っておきましょう。
+古いブランチに切り替えると、作業ディレクトリ内のファイルは、最後にそのブランチ上でコミットした時点の状態まで戻ってしまいます。
+Git がこの処理をうまくできない場合は、ブランチの切り替えができません。</p>
+</div>
+</aside>
+<p>それでは、ふたたび変更を加えてコミットしてみましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> vim test.rb
+<span style="font-weight: bold">$</span> git commit -a -m <span style="font-style: italic">&#39;made other changes&#39;</span></code></pre>
+</figure>
+<p>これで、プロジェクトの歴史が二つに分かれました (<a id="xref-rdivergent_history" href="#rdivergent_history" class="xref">分裂した歴史</a> を参照ください)。
+新たなブランチを作成してそちらに切り替え、何らかの作業を行い、メインブランチに戻って別の作業をした状態です。
+どちらの変更も、ブランチごとに分離しています。ブランチを切り替えつつそれぞれの作業を進め、必要に応じてマージすることができます。
+これらをすべて、シンプルに <code class="literal">branch</code> コマンドと <code class="literal">checkout</code> コマンドそして <code class="literal">commit</code> コマンドで行えるのです。</p>
+<figure id="rdivergent_history" class="image">
+<div class="content">
+<img src="images/advance-master.png" alt="分裂した歴史"/>
+</div>
+<figcaption>Figure 9. 分裂した歴史</figcaption>
+</figure>
+<p>この状況を <code class="literal">git log</code> コマンドで確認することもできます。
+<code class="literal">git log --oneline --decorate --graph --all</code> を実行すると、コミットの歴史を表示するだけではなく、
+ブランチポインタがどのコミットを指しているのかや、歴史がどこで分裂したのかも表示します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git log --oneline --decorate --graph --all
+* c2b9e (HEAD, master) made other changes
+| * 87ab2 (testing) made a change
+|/
+* f30ab add feature #32 - ability to add new formats to the
+* 34ac2 fixed bug #1328 - stack overflow under certain conditions
+* 98ca9 initial commit of my project</code></pre>
+</figure>
+<p>Git におけるブランチとは、実際のところ特定のコミットを指す 40 文字の SHA-1 チェックサムだけを記録したシンプルなファイルです。
+したがって、ブランチを作成したり破棄したりするのは非常にコストの低い作業となります。
+新たなブランチの作成は、単に 41 バイト (40 文字と改行文字) のデータをファイルに書き込むのと同じくらい高速に行えます。</p>
+<p>これが他の大半の VCS ツールのブランチと対照的なところです。
+他のツールでは、プロジェクトのすべてのファイルを新たなディレクトリにコピーしたりすることになります。
+プロジェクトの規模にもよりますが、これには数秒から数分の時間がかかることでしょう。
+Git ならこの処理はほぼ瞬時に行えます。
+また、コミットの時点で親オブジェクトを記録しているので、マージの際にもどこを基準にすればよいのかを自動的に判断してくれます。
+そのためマージを行うのも非常に簡単です。
+これらの機能のおかげで、開発者が気軽にブランチを作成して使えるようになっています。</p>
+<p>では、なぜブランチを切るべきなのかについて見ていきましょう。</p>
+</section>
+</section>
+<section class="sect1" title="ブランチとマージの基本">
+<h2 id="_ブランチとマージの基本">ブランチとマージの基本</h2>
+<p>実際の作業に使うであろう流れを例にとって、ブランチとマージの処理を見てみましょう。
+次の手順で進めます。</p>
+<div class="ordered-list arabic">
+<ol class="arabic">
+<li>
+<span class="principal">ウェブサイトに関する作業を行っている</span>
+</li>
+<li>
+<span class="principal">新たな作業用にブランチを作成する</span>
+</li>
+<li>
+<span class="principal">そのブランチで作業を行う</span>
+</li>
+</ol>
+</div>
+<p>ここで、別の重大な問題が発生したので至急対応してほしいという連絡を受けました。
+その後の流れは次のようになります。</p>
+<div class="ordered-list arabic">
+<ol class="arabic">
+<li>
+<span class="principal">実運用環境用のブランチに戻る</span>
+</li>
+<li>
+<span class="principal">修正を適用するためのブランチを作成する</span>
+</li>
+<li>
+<span class="principal">テストをした後で修正用ブランチをマージし、実運用環境用のブランチにプッシュする</span>
+</li>
+<li>
+<span class="principal">元の作業用ブランチに戻り、作業を続ける</span>
+</li>
+</ol>
+</div>
+<section class="sect2" title="ブランチの基本">
+<h3 id="r_basic_branching">ブランチの基本</h3>
+<p></p>
+<p>まず、すでに数回のコミットを済ませた状態のプロジェクトで作業をしているものと仮定します。</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-branching-1.png" alt="単純なコミットの歴史"/>
+</div>
+<figcaption>Figure 10. 単純なコミットの歴史</figcaption>
+</figure>
+<p>ここで、あなたの勤務先で使っている何らかの問題追跡システムに登録されている問題番号 53 への対応を始めることにしました。
+ブランチの作成と新しいブランチへの切り替えを同時に行うには、<code class="literal">git checkout</code> コマンドに <code class="literal">-b</code> スイッチをつけて実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout -b iss53
+Switched to a new branch &quot;iss53&quot;</code></pre>
+</figure>
+<p>これは、次のコマンドのショートカットです。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch iss53
+<span style="font-weight: bold">$</span> git checkout iss53</code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/basic-branching-2.png" alt="新たなブランチポインタの作成"/>
+</div>
+<figcaption>Figure 11. 新たなブランチポインタの作成</figcaption>
+</figure>
+<p>ウェブサイト上で何らかの作業をしてコミットします。
+そうすると <code class="literal">iss53</code> ブランチが先に進みます。このブランチをチェックアウトしているからです (つまり、<code class="literal">HEAD</code> がそこを指しているということです)。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> vim index.html
+<span style="font-weight: bold">$</span> git commit -a -m <span style="font-style: italic">&#39;added a new footer [issue 53]&#39;</span></code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/basic-branching-3.png" alt="作業した結果、iss53 ブランチが移動した"/>
+</div>
+<figcaption>Figure 12. 作業した結果、iss53 ブランチが移動した</figcaption>
+</figure>
+<p>ここで、ウェブサイトに別の問題が発生したという連絡を受けました。
+そっちのほうを優先して対応する必要があるとのことです。
+Git を使っていれば、ここで <code class="literal">iss53</code> に関する変更をリリースしてしまう必要はありません。
+また、これまでの作業をいったん元に戻してから改めて優先度の高い作業にとりかかるなどという大変な作業も不要です。
+ただ単に、<code class="literal">master</code> ブランチに戻るだけでよいのです。</p>
+<p>しかしその前に注意すべき点があります。
+作業ディレクトリやステージングエリアに未コミットの変更が残っている場合、それがもしチェックアウト先のブランチと衝突する内容ならブランチの切り替えはできません。
+ブランチを切り替える際には、クリーンな状態にしておくのが一番です。
+これを回避する方法もあります (stash およびコミットの amend という処理です) が、後ほど <a id="xref--ch07-git-tools--r_git_stashing" href="ch07-git-tools.xhtml#r_git_stashing" class="xref">作業の隠しかたと消しかた</a> で説明します。
+今回はすべての変更をコミットし終えているので、master ブランチに戻ることができます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master
+Switched to branch &#39;master&#39;</code></pre>
+</figure>
+<p>作業ディレクトリは問題番号 53 の対応を始める前とまったく同じ状態に戻りました。
+これで、緊急の問題対応に集中できます。
+ここで覚えておくべき重要な点は、ブランチを切り替えたときには、Git が作業ディレクトリの状態をリセットし、チェックアウトしたブランチが指すコミットの時と同じ状態にするということです。
+そのブランチにおける直近のコミットと同じ状態にするため、ファイルの追加・削除・変更を自動的に行います。</p>
+<p>次に、緊急の問題対応を行います。
+緊急作業用に hotfix ブランチを作成し、作業をそこで進めるようにしましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout -b hotfix
+Switched to a new branch &#39;hotfix&#39;
+<span style="font-weight: bold">$</span> vim index.html
+<span style="font-weight: bold">$</span> git commit -a -m <span style="font-style: italic">&#39;fixed the broken email address&#39;</span>
+[hotfix 1fb7853] fixed the broken email address
+ 1 file changed, 2 insertions(+)</code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/basic-branching-4.png" alt="`master` から新たに作成した hotfix ブランチ"/>
+</div>
+<figcaption>Figure 13. <code class="literal">master</code> から新たに作成した hotfix ブランチ</figcaption>
+</figure>
+<p>テストをすませて修正がうまくいったことを確認したら、master ブランチにそれをマージしてリリースします。
+ここで使うのが <code class="literal">git merge</code> コマンドです。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master
+<span style="font-weight: bold">$</span> git merge hotfix
+Updating f42c576..3a0874c
+Fast-forward
+ index.html | 2 ++
+ 1 file changed, 2 insertions(+)</code></pre>
+</figure>
+<p>このマージ処理で “fast-forward” というフレーズが登場したのにお気づきでしょうか。
+マージ先のブランチが指すコミットがマージ元のコミットの直接の親であるため、Git がポインタを前に進めたのです。
+言い換えると、あるコミットに対してコミット履歴上で直接到達できる別のコミットをマージしようとした場合、Git は単にポインタを前に進めるだけで済ませます。
+マージ対象が分岐しているわけではないからです。
+この処理のことを “fast-forward” と言います。</p>
+<p>変更した内容が、これで <code class="literal">master</code> ブランチの指すスナップショットに反映されました。これで変更をリリースできます。</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-branching-5.png" alt="`master`が`hotfix`にfast-forwardされた"/>
+</div>
+<figcaption>Figure 14. `master`が`hotfix`にfast-forwardされた</figcaption>
+</figure>
+<p>超重要な修正作業が終わったので、横やりが入る前にしていた作業に戻ることができます。
+しかしその前に、まずは <code class="literal">hotfix</code> ブランチを削除しておきましょう。
+<code class="literal">master</code> ブランチが同じ場所を指しているので、もはやこのブランチは不要だからです。
+削除するには <code class="literal">git branch</code> で <code class="literal">-d</code> オプションを指定します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -d hotfix
+Deleted branch hotfix (3a0874c).</code></pre>
+</figure>
+<p>では、先ほどまで問題番号 53 の対応をしていたブランチに戻り、作業を続けましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout iss53
+Switched to branch &quot;iss53&quot;
+<span style="font-weight: bold">$</span> vim index.html
+<span style="font-weight: bold">$</span> git commit -a -m <span style="font-style: italic">&#39;finished the new footer [issue 53]&#39;</span>
+[iss53 ad82d7a] finished the new footer [issue 53]
+1 file changed, 1 insertion(+)</code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/basic-branching-6.png" alt="`iss53` の作業を続ける"/>
+</div>
+<figcaption>Figure 15. <code class="literal">iss53</code> の作業を続ける</figcaption>
+</figure>
+<p>ここで、<code class="literal">hotfix</code> ブランチ上で行った作業は <code class="literal">iss53</code> ブランチには含まれていないことに注意しましょう。
+もしそれを取得する必要があるのなら、方法はふたつあります。
+ひとつは <code class="literal">git merge master</code> で <code class="literal">master</code> ブランチの内容を <code class="literal">iss53</code> ブランチにマージすること。
+そしてもうひとつはそのまま作業を続け、いつか <code class="literal">iss53</code> ブランチの内容を <code class="literal">master</code> に適用することになった時点で統合することです。</p>
+</section>
+<section class="sect2" title="マージの基本">
+<h3 id="r_basic_merging">マージの基本</h3>
+<p></p>
+<p>問題番号 53 の対応を終え、<code class="literal">master</code> ブランチにマージする準備ができたとしましょう。
+<code class="literal">iss53</code> ブランチのマージは、先ほど <code class="literal">hotfix</code> ブランチをマージしたときとまったく同じような手順でできます。
+つまり、マージ先のブランチに切り替えてから <code class="literal">git merge</code> コマンドを実行するだけです。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master
+Switched to branch &#39;master&#39;
+<span style="font-weight: bold">$</span> git merge iss53
+Merge made by the &#39;recursive&#39; strategy.
+index.html |    1 +
+1 file changed, 1 insertion(+)</code></pre>
+</figure>
+<p>先ほどの <code class="literal">hotfix</code> のマージとはちょっとちがう感じですね。
+今回の場合、開発の歴史が過去のとある時点で分岐しています。
+マージ先のコミットがマージ元のコミットの直系の先祖ではないため、Git 側でちょっとした処理が必要だったのです。
+ここでは、各ブランチが指すふたつのスナップショットとそれらの共通の先祖との間で三方向のマージを行いました。</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-merging-1.png" alt="三つのスナップショットを使ったマージ"/>
+</div>
+<figcaption>Figure 16. 三つのスナップショットを使ったマージ</figcaption>
+</figure>
+<p>単にブランチのポインタを先に進めるのではなく、Git はこの三方向のマージ結果から新たなスナップショットを作成し、それを指す新しいコミットを自動作成します。
+これはマージコミットと呼ばれ、複数の親を持つ特別なコミットとなります。</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-merging-2.png" alt="マージコミット"/>
+</div>
+<figcaption>Figure 17. マージコミット</figcaption>
+</figure>
+<p>マージの基点として使用する共通の先祖を Git が自動的に判別するというのが特筆すべき点です。
+CVS や Subversion (バージョン 1.5 より前のもの) は、マージの基点となるポイントを自分で見つける必要があります。
+これにより、他のシステムに比べて Git のマージが非常に簡単なものとなっているのです。</p>
+<p>これで、今までの作業がマージできました。
+もはや <code class="literal">iss53</code> ブランチは不要です。
+削除してしまい、問題追跡システムのチケットもクローズしておきましょう。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -d iss53</code></pre>
+</figure>
+</section>
+<section class="sect2" title="マージ時のコンフリクト">
+<h3 id="r_basic_merge_conflicts">マージ時のコンフリクト</h3>
+<p></p>
+<p>物事は常にうまくいくとは限りません。
+同じファイルの同じ部分をふたつのブランチで別々に変更してそれをマージしようとすると、Git はそれをうまくマージする方法を見つけられないでしょう。
+問題番号 53 の変更が仮に <code class="literal">hotfix</code> ブランチと同じところを扱っていたとすると、このようなコンフリクトが発生します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git merge iss53
+Auto-merging index.html
+CONFLICT (content): Merge conflict in index.html
+Automatic merge failed; fix conflicts and then commit the result.</code></pre>
+</figure>
+<p>Git は新たなマージコミットを自動的には作成しませんでした。
+コンフリクトを解決するまで、処理は中断されます。
+コンフリクトが発生してマージできなかったのがどのファイルなのかを知るには <code class="literal">git status</code> を実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git status
+On branch master
+You have unmerged paths.
+  (fix conflicts and run &quot;git commit&quot;)
+
+Unmerged paths:
+  (use &quot;git add &lt;file&gt;...&quot; to mark resolution)
+
+    both modified:      index.html
+
+no changes added to commit (use &quot;git add&quot; and/or &quot;git commit -a&quot;)</code></pre>
+</figure>
+<p>コンフリクトが発生してまだ解決されていないものについては unmerged として表示されます。
+Git は、標準的なコンフリクトマーカーをファイルに追加するので、ファイルを開いてそれを解決することにします。
+コンフリクトが発生したファイルの中には、このような部分が含まれています。</p>
+<figure class="listing">
+<pre class="source language-html"><code><span></span><span style="border: 1px solid #FF0000">&lt;&lt;&lt;&lt;&lt;&lt;</span>&lt; <span style="font-weight: bold">HEAD:index.html</span>
+<span style="border: 1px solid #FF0000">&lt;</span>div id=<span style="font-style: italic">&quot;footer&quot;</span>&gt;contact : email.support@github.com&lt;/<span style="font-weight: bold">div</span>&gt;
+=======
+&lt;<span style="font-weight: bold">div</span> id=<span style="font-style: italic">&quot;footer&quot;</span>&gt;
+ please contact us at support@github.com
+&lt;/<span style="font-weight: bold">div</span>&gt;
+&gt;&gt;&gt;&gt;&gt;&gt;&gt; iss53:index.html</code></pre>
+</figure>
+<p>これは、<code class="literal">HEAD</code> (merge コマンドを実行したときにチェックアウトしていたブランチなので、ここでは <code class="literal">master</code> となります) の内容が上の部分 (<code class="literal">=======</code> の上にある内容)、そして <code class="literal">iss53</code> ブランチの内容が下の部分であるということです。
+コンフリクトを解決するには、どちらを採用するかをあなたが判断することになります。
+たとえば、ひとつの解決法としてブロック全体を次のように書き換えます。</p>
+<figure class="listing">
+<pre class="source language-html"><code><span></span>&lt;<span style="font-weight: bold">div</span> id=<span style="font-style: italic">&quot;footer&quot;</span>&gt;
+please contact us at email.support@github.com
+&lt;/<span style="font-weight: bold">div</span>&gt;</code></pre>
+</figure>
+<p>このような解決を各部分に対して行い、<code class="literal">&gt;&gt;&gt;&gt;&gt;</code> の行をすべて除去します。
+そしてすべてのコンフリクトを解決したら、各ファイルに対して <code class="literal">git add</code> を実行して解決済みであることを通知します。
+ファイルをステージすると、Git はコンフリクトが解決されたと見なします。</p>
+<p>コンフリクトの解決をグラフィカルに行いたい場合は <code class="literal">git mergetool</code> を実行します。
+これは、適切なビジュアルマージツールを立ち上げてコンフリクトの解消を行います。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git mergetool
+
+This message is displayed because &#39;merge.tool&#39; is not configured.
+See &#39;git mergetool --tool-help&#39; or &#39;git help config&#39; for more details.
+&#39;git mergetool&#39; will now attempt to use one of the following tools:
+opendiff kdiff3 tkdiff xxdiff meld tortoisemerge gvimdiff diffuse diffmerge ecmerge p4merge araxis bc3 codecompare vimdiff emerge
+Merging:
+index.html
+
+Normal merge conflict for &#39;index.html&#39;:
+  {local}: modified file
+  {remote}: modified file
+Hit return to start merge resolution tool (opendiff):</code></pre>
+</figure>
+<p>デフォルトのツール (Git は <code class="literal">opendiff</code> を選びました。私がこのコマンドを Mac で実行したからです) 以外のマージツールを使いたい場合は、“&#8230;&#8203; one of the following tools:”にあるツール一覧を見ましょう。
+そして、使いたいツールの名前を打ち込みます。</p>
+<aside class="admonition note" title="Note" epub:type="note">
+<div class="content">
+<p>もっと難しいコンフリクトを解消するための方法を知りたい場合は、<a id="xref--ch07-git-tools--r_advanced_merging" href="ch07-git-tools.xhtml#r_advanced_merging" class="xref">高度なマージ手法</a> を参照ください。</p>
+</div>
+</aside>
+<p>マージツールを終了させると、マージに成功したかどうかを Git が尋ねてきます。
+成功したと伝えると、そのファイルを解決済みとマークします。
+もう一度 <code class="literal">git status</code> を実行すれば、すべてのコンフリクトが解消済みであることを確認できます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git status
+On branch master
+All conflicts fixed but you are still merging.
+  (use &quot;git commit&quot; to conclude merge)
+
+Changes to be committed:
+
+    modified:   index.html</code></pre>
+</figure>
+<p>結果に満足し、すべてのコンフリクトがステージされていることが確認できたら、<code class="literal">git commit</code> を実行してマージコミットを完了させます。
+デフォルトのコミットメッセージは、このようになります。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span>Merge branch &#39;iss53&#39;
+
+Conflicts:
+    index.html
+<span style="font-weight: bold">#</span>
+<span style="font-weight: bold">#</span> It looks like you may be committing a merge.
+<span style="font-weight: bold">#</span> If this is not correct, please remove the file
+<span style="font-weight: bold">#</span>	.git/MERGE_HEAD
+<span style="font-weight: bold">#</span> and try again.
+
+
+<span style="font-weight: bold">#</span> Please enter the commit message <span style="font-weight: bold">for</span> your changes. Lines starting
+<span style="font-weight: bold">#</span> with <span style="font-style: italic">&#39;#&#39;</span> will be ignored, and an empty message aborts the commit.
+<span style="font-weight: bold">#</span> On branch master
+<span style="font-weight: bold">#</span> All conflicts fixed but you are still merging.
+<span style="font-weight: bold">#</span>
+<span style="font-weight: bold">#</span> Changes to be committed:
+<span style="font-weight: bold">#</span>	modified:   index.html
+<span style="font-weight: bold">#</span></code></pre>
+</figure>
+<p>このメッセージを変更して、どのようにして衝突を解決したのかを詳しく説明しておくのもよいでしょう。
+後から他の人がそのマージを見たときに、あなたがなぜそのようにしたのかがわかりやすくなります。</p>
+</section>
+</section>
+<section class="sect1" title="ブランチの管理">
+<h2 id="r_branch_management">ブランチの管理</h2>
+<p>
+これまでにブランチの作成、マージ、そして削除を行いました。
+ここで、いくつかのブランチ管理ツールについて見ておきましょう。
+今後ブランチを使い続けるにあたって、これらのツールが便利に使えるでしょう。</p>
+<p><code class="literal">git branch</code> コマンドは、単にブランチを作ったり削除したりするだけのものではありません。
+何も引数を渡さずに実行すると、現在のブランチの一覧を表示します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch
+  iss53
+* master
+  testing</code></pre>
+</figure>
+<p><code class="literal">*</code> という文字が <code class="literal">master</code> ブランチの先頭についていることに注目しましょう。
+これは、現在チェックアウトされているブランチ (<code class="literal">HEAD</code> が指しているブランチ) を意味します。
+つまり、ここでコミットを行うと、<code class="literal">master</code> ブランチがひとつ先に進むということです。
+各ブランチにおける直近のコミットを調べるには <code class="literal">git branch -v</code> を実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -v
+  iss53   93b412c fix javascript issue
+* master  7a98805 Merge branch &#39;iss53&#39;
+  testing 782fd34 add scott to the author list in the readmes</code></pre>
+</figure>
+<p>便利なオプション <code class="literal">--merged</code> と <code class="literal">--no-merged</code> を使うと、この一覧を絞り込んで、現在作業中のブランチにマージ済みのもの (あるいはそうでないもの)
+だけを表示することができます。
+現在作業中のブランチにマージ済みのブランチを調べるには <code class="literal">git branch --merged</code> を実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch --merged
+  iss53
+* master</code></pre>
+</figure>
+<p>すでに先ほど <code class="literal">iss53</code> ブランチをマージしているので、この一覧に表示されています。
+このリストにあがっているブランチのうち先頭に <code class="literal">*</code> がついていないものは、通常は <code class="literal">git branch -d</code> で削除してしまって問題ないブランチです。
+すでにすべての作業が別のブランチに取り込まれているので、何も失うものはありません。</p>
+<p>まだマージされていない作業を持っているすべてのブランチを知るには、<code class="literal">git branch --no-merged</code> を実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch --no-merged
+  testing</code></pre>
+</figure>
+<p>先ほどのブランチとは別のブランチが表示されます。
+まだマージしていない作業が残っているので、このブランチを <code class="literal">git branch -d</code> で削除しようとしても失敗します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -d testing
+error: The branch &#39;testing&#39; is not fully merged.
+If you are sure you want to delete it, run &#39;git branch -D testing&#39;.</code></pre>
+</figure>
+<p>本当にそのブランチを消してしまってよいのなら <code class="literal">-D</code> で強制的に消すこともできます。……と、親切なメッセージで教えてくれていますね。</p>
+</section>
+<section class="sect1" title="ブランチでの作業の流れ">
+<h2 id="_ブランチでの作業の流れ">ブランチでの作業の流れ</h2>
+<p>ブランチとマージの基本操作はわかりましたが、ではそれを実際にどう使えばいいのでしょう?
+このセクションでは、気軽にブランチを切れることでどういった作業ができるようになるのかを説明します。
+みなさんのふだんの開発サイクルにうまく取り込めるかどうかの判断材料としてください。</p>
+<section class="sect2" title="長期稼働用ブランチ">
+<h3 id="_長期稼働用ブランチ">長期稼働用ブランチ</h3>
+<p></p>
+<p>Git では簡単に三方向のマージができるので、あるブランチから別のブランチへのマージを長期間にわたって繰り返すのも簡単なことです。
+つまり、複数のブランチを常にオープンさせておいて、それぞれ開発サイクルにおける別の場面用に使うということもできます。
+定期的にブランチ間でのマージを行うことが可能です。</p>
+<p>Git 開発者の多くはこの考え方にもとづいた作業の流れを採用しています。
+つまり、完全に安定したコードのみを <code class="literal">master</code> ブランチに置き、いつでもリリースできる状態にしているのです。
+それ以外に並行して <code class="literal">develop</code> や <code class="literal">next</code> といった名前のブランチを持ち、安定性をテストするためにそこを使用します。
+常に安定している必要はありませんが、安定した状態になったらそれを <code class="literal">master</code> にマージすることになります。
+また、時にはトピックブランチ (先ほどの例の <code class="literal">iss53</code> ブランチのような短期間のブランチ) を作成し、すべてのテストに通ることやバグが発生していないことを確認することもあります。</p>
+<p>実際のところ今話している内容は、一連のコミットの中のどの部分をポインタが指しているかということです。
+安定版のブランチはコミット履歴上の奥深くにあり、最前線のブランチは履歴上の先端にいます。</p>
+<figure class="image">
+<div class="content">
+<img src="images/lr-branches-1.png" alt="安定版と開発版のブランチの線形表示"/>
+</div>
+<figcaption>Figure 18. 安定版と開発版のブランチの線形表示</figcaption>
+</figure>
+<p>各ブランチを作業用のサイロと考えることもできます。
+一連のコミットが完全にテストを通るようになった時点で、より安定したサイロに移動するのです。</p>
+<figure id="rlrbranch_b" class="image">
+<div class="content">
+<img src="images/lr-branches-2.png" alt="安定版と開発版のブランチの ``サイロ'' 表示"/>
+</div>
+<figcaption>Figure 19. 安定版と開発版のブランチの “サイロ” 表示</figcaption>
+</figure>
+<p>同じようなことを、安定性のレベルを何段階かにして行うこともできます。
+大規模なプロジェクトでは、<code class="literal">proposed</code> あるいは <code class="literal">pu</code> (proposed updates) といったブランチを用意して、<code class="literal">next</code> ブランチあるいは <code class="literal">master</code> ブランチに投入する前にそこでいったんブランチを統合するというようにしています。
+安定性のレベルに応じて何段階かのブランチを作成し、安定性が一段階上がった時点で上位レベルのブランチにマージしていくという考え方です。
+念のために言いますが、このように複数のブランチを常時稼働させることは必須ではありません。
+しかし、巨大なプロジェクトや複雑なプロジェクトに関わっている場合は便利なことでしょう。</p>
+</section>
+<section class="sect2" title="トピックブランチ">
+<h3 id="r_topic_branch">トピックブランチ</h3>
+<p></p>
+<p>一方、トピックブランチはプロジェクトの規模にかかわらず便利なものです。
+トピックブランチとは、短期間だけ使うブランチのことで、何か特定の機能やそれに関連する作業を行うために作成します。
+これは、今までの VCS では実現不可能に等しいことでした。
+ブランチを作成したりマージしたりという作業が非常に手間のかかることだったからです。
+Git では、ブランチを作成して作業をし、マージしてからブランチを削除するという流れを一日に何度も繰り返すことも珍しくありません。</p>
+<p>先ほどのセクションで作成した <code class="literal">iss53</code> ブランチや <code class="literal">hotfix</code> ブランチが、このトピックブランチにあたります。
+ブランチ上で数回コミットし、それをメインブランチにマージしたらすぐに削除しましたね。
+この方法を使えば、コンテキストの切り替えを手早く完全に行うことができます。
+それぞれの作業が別のサイロに分離されており、そのブランチ内の変更は特定のトピックに関するものだけなのですから、コードレビューなどの作業が容易になります。
+一定の間ブランチで保持し続けた変更は、マージできるようになった時点で (ブランチを作成した順や作業した順に関係なく) すぐにマージしていきます。</p>
+<p>次のような例を考えてみましょう。
+まず (<code class="literal">master</code> で) 何らかの作業をし、問題対応のために (<code class="literal">iss91</code> に) ブランチを移動し、そこでなにがしかの作業を行い、「あ、こっちのほうがよかったかも」と気づいたので新たにブランチを作成 (<code class="literal">iss91v2</code>) して思いついたことをそこで試し、いったん master ブランチに戻って作業を続け、うまくいくかどうかわからないちょっとしたアイデアを試すために新たなブランチ (<code class="literal">dumbidea</code> ブランチ) を切りました。
+この時点で、コミットの歴史はこのようになります。</p>
+<figure class="image">
+<div class="content">
+<img src="images/topic-branches-1.png" alt="複数のトピックブランチ"/>
+</div>
+<figcaption>Figure 20. 複数のトピックブランチ</figcaption>
+</figure>
+<p>最終的に、問題を解決するための方法としては二番目 (<code class="literal">iss91v2</code>) のほうがよさげだとわかりました。
+また、ちょっとした思いつきで試してみた <code class="literal">dumbidea</code> ブランチが意外とよさげで、これはみんなに公開すべきだと判断しました。
+最初の <code class="literal">iss91</code> ブランチは放棄してしまい (コミット <code class="literal">C5</code> と <code class="literal">C6</code> の内容は失われます)、他のふたつのブランチをマージしました。
+この時点で、歴史はこのようになっています。</p>
+<figure class="image">
+<div class="content">
+<img src="images/topic-branches-2.png" alt="`dumbidea` と `iss91v2` をマージした後の歴史"/>
+</div>
+<figcaption>Figure 21. <code class="literal">dumbidea</code> と <code class="literal">iss91v2</code> をマージした後の歴史</figcaption>
+</figure>
+<p>Git プロジェクトで考えられるさまざまなワークフローについて、 <a id="xref--ch05-distributed-git" href="ch05-distributed-git.xhtml" class="xref">Git での分散作業</a> でより詳しく扱います。
+次のプロジェクトで、どんな方針でブランチを作っていくかを決めるまでに、まずはこの章を確認しておきましょう。</p>
+<p>ここで重要なのは、これまで作業してきたブランチが完全にローカル環境に閉じていたということです。
+ブランチを作ったりマージしたりといった作業は、すべてみなさんの Git リポジトリ内で完結しており、サーバーとのやりとりは発生していません。</p>
+</section>
+</section>
+<section class="sect1" title="リモートブランチ">
+<h2 id="r_remote_branches">リモートブランチ</h2>
+<p></p>
+<p>リモート参照は、リモートリポジトリにある参照（ポインタ）です。具体的には、ブランチやタグなどを指します。
+リモート参照をすべて取得するには、<code class="literal">git ls-remote [remote]</code> を実行してみてください。また、<code class="literal">git remote show [remote]</code> を実行すれば、リモート参照に加えてその他の情報も取得できます。
+とはいえ、リモート参照の用途としてよく知られているのは、やはりリモート追跡ブランチを活用することでしょう。</p>
+<p>リモート追跡ブランチは、リモートブランチの状態を保持する参照です。
+ローカルに作成される参照ですが、自分で移動することはできません。ネットワーク越しの操作をしたときに自動的に移動します。
+リモート追跡ブランチは、前回リモートリポジトリに接続したときにブランチがどの場所を指していたかを示すブックマークのようなものです。</p>
+<p>ブランチ名は <code class="literal">(remote)/(branch)</code> のようになります。
+たとえば、<code class="literal">origin</code> サーバーに最後に接続したときの <code class="literal">master</code> ブランチの状態を知りたければ <code class="literal">origin/master</code> ブランチをチェックします。
+誰かほかの人と共同で問題に対応しており、相手が <code class="literal">iss53</code> ブランチにプッシュしたとしましょう。
+あなたの手元にはローカルの <code class="literal">iss53</code> ブランチがあります。しかし、サーバー側のブランチは <code class="literal">origin/iss53</code> のコミットを指しています。</p>
+<p>……ちょっと混乱してきましたか?
+では、具体例で考えてみましょう。
+ネットワーク上の <code class="literal">git.ourcompany.com</code> に Git サーバーがあるとします。
+これをクローンすると、Git の <code class="literal">clone</code> コマンドがそれに <code class="literal">origin</code> という名前をつけ、すべてのデータを引き出し、<code class="literal">master</code> ブランチを指すポインタを作成し、そのポインタにローカルで <code class="literal">origin/master</code> という名前をつけます。
+Git はまた、ローカルに <code class="literal">master</code> というブランチも作成します。これは origin の <code class="literal">master</code> ブランチと同じ場所を指しており、ここから何らかの作業を始めます。</p>
+<aside class="admonition note" title="Note: “origin” は特別なものではない" epub:type="note">
+<h2>“origin” は特別なものではない</h2>
+<div class="content">
+<p>Git の “master” ブランチがその他のブランチと何ら変わらないものであるのと同様に、
+“origin” もその他のサーバーと何ら変わりはありません。
+“master” ブランチがよく使われている理由は、ただ単に <code class="literal">git init</code> がデフォルトで作るブランチ名がそうだからというだけのことでした。
+同様に “origin” も、<code class="literal">git clone</code> を実行するときのデフォルトのリモート名です。
+たとえば <code class="literal">git clone -o booyah</code> などと実行すると、デフォルトのリモートブランチは <code class="literal">booyah/master</code> になります。</p>
+</div>
+</aside>
+<figure class="image">
+<div class="content">
+<img src="images/remote-branches-1.png" alt="クローン後のサーバーとローカルのリポジトリ"/>
+</div>
+<figcaption>Figure 22. クローン後のサーバーとローカルのリポジトリ</figcaption>
+</figure>
+<p>ローカルの master ブランチで何らかの作業をしている間に、誰かが <code class="literal">git.ourcompany.com</code> にプッシュして <code class="literal">master</code> ブランチを更新したとしましょう。
+この時点であなたの歴史とは異なる状態になってしまいます。
+また、origin サーバーと再度接続しない限り、<code class="literal">origin/master</code> が指す先は移動しません。</p>
+<figure class="image">
+<div class="content">
+<img src="images/remote-branches-2.png" alt="ローカルとリモートの作業が枝分かれすることがある"/>
+</div>
+<figcaption>Figure 23. ローカルとリモートの作業が枝分かれすることがある</figcaption>
+</figure>
+<p>手元での作業を同期させるには、<code class="literal">git fetch origin</code> コマンドを実行します。
+このコマンドは、まず “origin” が指すサーバー (今回の場合は <code class="literal">git.ourcompany.com</code>) を探し、まだ手元にないデータをすべて取得し、ローカルデータベースを更新し、<code class="literal">origin/master</code> が指す先を最新の位置に変更します。</p>
+<figure class="image">
+<div class="content">
+<img src="images/remote-branches-3.png" alt="`git fetch` によるリモートへの参照の更新"/>
+</div>
+<figcaption>Figure 24. <code class="literal">git fetch</code> によるリモートへの参照の更新</figcaption>
+</figure>
+<p>複数のリモートサーバーがあった場合にリモートのブランチがどのようになるのかを知るために、もうひとつ Git サーバーがあるものと仮定しましょう。
+こちらのサーバーは、チームの一部のメンバーが開発目的にのみ使用しています。
+このサーバーは <code class="literal">git.team1.ourcompany.com</code> にあるものとしましょう。
+このサーバーをあなたの作業中のプロジェクトから参照できるようにするには、<a id="xref--ch02-git-basics" href="ch02-git-basics.xhtml" class="xref">Git の基本</a> で紹介した <code class="literal">git remote add</code> コマンドを使用します。
+このリモートに <code class="literal">teamone</code> という名前をつけ、URL ではなく短い名前で参照できるようにします。</p>
+<figure class="image">
+<div class="content">
+<img src="images/remote-branches-4.png" alt="別のサーバーをリモートとして追加"/>
+</div>
+<figcaption>Figure 25. 別のサーバーをリモートとして追加</figcaption>
+</figure>
+<p><code class="literal">git fetch teamone</code> を実行すれば、まだ手元にないデータをリモートの <code class="literal">teamone</code> サーバーからすべて取得できるようになりました。
+今回､このサーバーが保持してるデータは <code class="literal">origin</code> サーバーが保持するデータの一部なので、Gitは何のデータも取得しません。
+代わりに､ <code class="literal">teamone/master</code> というリモート追跡ブランチが指すコミットを、<code class="literal">teamone</code> サーバーの <code class="literal">master</code> ブランチが指すコミットと同じにします。</p>
+<figure class="image">
+<div class="content">
+<img src="images/remote-branches-5.png" alt="リモート `teamone/master` を追跡するブランチ"/>
+</div>
+<figcaption>Figure 26. リモート <code class="literal">teamone/master</code> を追跡するブランチ</figcaption>
+</figure>
+<section class="sect2" title="プッシュ">
+<h3 id="r_pushing_branches">プッシュ</h3>
+<p></p>
+<p>ブランチの内容をみんなと共有したくなったら、書き込み権限を持つどこかのリモートにそれをプッシュしなければなりません。
+ローカルブランチの内容が自動的にリモートと同期されることはありません。
+共有したいブランチは、明示的にプッシュする必要があります。
+たとえば、共有したくない内容はプライベートなブランチで作業を進め、共有したい内容だけのトピックブランチを作成してそれをプッシュするということもできます。</p>
+<p>手元にある <code class="literal">serverfix</code> というブランチを他人と共有したい場合は、最初のブランチをプッシュしたときと同様の方法でそれをプッシュします。
+つまり <code class="literal">git push &lt;remote&gt; &lt;branch&gt;</code> を実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git push origin serverfix
+Counting objects: 24, done.
+Delta compression using up to 8 threads.
+Compressing objects: 100% (15/15), done.
+Writing objects: 100% (24/24), 1.91 KiB | 0 bytes/s, done.
+Total 24 (delta 2), reused 0 (delta 0)
+To https://github.com/schacon/simplegit
+ * [new branch]      serverfix -&gt; serverfix</code></pre>
+</figure>
+<p>これは、ちょっとしたショートカットです。
+Git はまずブランチ名 <code class="literal">serverfix</code> を <code class="literal">refs/heads/serverfix:refs/heads/serverfix</code> に展開します。
+これは「手元のローカルブランチ serverfix をプッシュして、リモートの serverfix ブランチを更新しろ」という意味です。
+<code class="literal">refs/heads/</code> の部分の意味については <a id="xref--ch10-git-internals" href="ch10-git-internals.xhtml" class="xref">Gitの内側</a> で詳しく説明しますが、これは一般的に省略可能です。
+<code class="literal">git push origin serverfix:serverfix</code> とすることもできます。
+これも同じことで、「こっちの serverfix で、リモートの serverfix を更新しろ」という意味になります。
+この方式を使えば、ローカルブランチの内容をリモートにある別の名前のブランチにプッシュすることができます。
+リモートのブランチ名を <code class="literal">serverfix</code> という名前にしたくない場合は、<code class="literal">git push origin serverfix:awesomebranch</code> とすればローカルの <code class="literal">serverfix</code> ブランチをリモートの <code class="literal">awesomebranch</code> という名前のブランチ名でプッシュすることができます。</p>
+<aside class="admonition note" title="Note: パスワードを毎回入力したくない" epub:type="note">
+<h2>パスワードを毎回入力したくない</h2>
+<div class="content">
+<p>HTTPS URL を使ってプッシュするときに、Git サーバーから、認証用のユーザー名とパスワードを聞かれます。
+デフォルトでは、ターミナルからこれらの情報を入力させるようになっており、この情報を使って、プッシュする権限があなたにあるのかを確認します。</p>
+<p>プッシュするたびに毎回ユーザー名とパスワードを打ち込みたくない場合は、「認証情報キャッシュ」を使うこともできます。
+一番シンプルな方法は、数分間だけメモリに記憶させる方法です。この方法を使いたければ、<code class="literal">git config --global credential.helper cache</code> を実行しましょう。</p>
+<p>それ以外に使える認証情報キャッシュの方式については、<a id="xref--ch07-git-tools--r_credential_caching" href="ch07-git-tools.xhtml#r_credential_caching" class="xref">認証情報の保存</a> を参照ください。</p>
+</div>
+</aside>
+<p>次に誰かがサーバーからフェッチしたときには、その人が取得するサーバー上の <code class="literal">serverfix</code> はリモートブランチ <code class="literal">origin/serverfix</code> となります。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git fetch origin
+remote: Counting objects: 7, done.
+remote: Compressing objects: 100% (2/2), done.
+remote: Total 3 (delta 0), reused 3 (delta 0)
+Unpacking objects: 100% (3/3), done.
+From https://github.com/schacon/simplegit
+ * [new branch]      serverfix    -&gt; origin/serverfix</code></pre>
+</figure>
+<p>注意すべき点は、新しいリモート追跡ブランチを取得したとしても、それが自動的にローカルで編集可能になるわけではないというところです。
+言い換えると、この場合に新たに <code class="literal">serverfix</code> ブランチができるわけではないということです。
+できあがるのは <code class="literal">origin/serverfix</code> ポインタだけであり、これは変更することができません。</p>
+<p>この作業を現在の作業ブランチにマージするには、<code class="literal">git merge origin/serverfix</code> を実行します。
+ローカル環境に <code class="literal">serverfix</code> ブランチを作ってそこで作業を進めたい場合は、リモート追跡ブランチからそれを作成します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout -b serverfix origin/serverfix
+Branch serverfix set up to track remote branch serverfix from origin.
+Switched to a new branch &#39;serverfix&#39;</code></pre>
+</figure>
+<p>これで、<code class="literal">origin/serverfix</code> が指す先から作業を開始するためのローカルブランチができあがりました。</p>
+</section>
+<section class="sect2" title="追跡ブランチ">
+<h3 id="r_tracking_branches">追跡ブランチ</h3>
+<p></p>
+<p>リモート追跡ブランチからローカルブランチにチェックアウトすると、“追跡ブランチ”  というブランチが自動的に作成されます(そしてそれが追跡するブランチを`‘上流ブランチ’'といいます)。
+追跡ブランチとは、リモートブランチと直接のつながりを持つローカルブランチのことです。
+追跡ブランチ上で <code class="literal">git pull</code> を実行すると、Git は自動的に取得元のサーバーとブランチを判断します。</p>
+<p>あるリポジトリをクローンしたら、自動的に <code class="literal">master</code> ブランチを作成し、<code class="literal">origin/master</code> を追跡するようになります。
+しかし、必要に応じてそれ以外の追跡ブランチを作成し、<code class="literal">origin</code> 以外にあるブランチや <code class="literal">master</code> 以外のブランチを追跡させることも可能です。
+シンプルな方法としては、<code class="literal">git checkout -b [branch] [remotename]/[branch]</code> を実行します。
+これはよく使う操作なので、<code class="literal">--track</code> という短縮形も用意されています。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout --track origin/serverfix
+Branch serverfix set up to track remote branch serverfix from origin.
+Switched to a new branch &#39;serverfix&#39;</code></pre>
+</figure>
+<p>この短縮形、あまりにもよく使うので、更なる短縮形も用意されています。チェックアウトしたいブランチ名が（a）まだローカルに存在せず、（b）存在するリモートは1つだけ、の場合、Gitは自動的に追跡ブランチを作ってくれるのです。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout serverfix
+Branch serverfix set up to track remote branch serverfix from origin.
+Switched to a new branch &#39;serverfix&#39;</code></pre>
+</figure>
+<p>ローカルブランチをリモートブランチと違う名前にしたい場合は、最初に紹介した方法でローカルブランチに別の名前を指定します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout -b sf origin/serverfix
+Branch sf set up to track remote branch serverfix from origin.
+Switched to a new branch &#39;sf&#39;</code></pre>
+</figure>
+<p>これで、ローカルブランチ <code class="literal">sf</code> が自動的に <code class="literal">origin/serverfix</code> を追跡するようになりました。</p>
+<p>既に手元にあるローカルブランチを、リモートブランチの取り込み先に設定したい場合や、
+追跡する上流のブランチを変更したい場合は、
+<code class="literal">git branch</code> のオプション <code class="literal">-u</code> あるいは <code class="literal">--set-upstream-to</code> を使って明示的に設定することもできます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -u origin/serverfix
+Branch serverfix set up to track remote branch serverfix from origin.</code></pre>
+</figure>
+<aside class="admonition note" title="Note: 上流の短縮記法" epub:type="note">
+<h2>上流の短縮記法</h2>
+<div class="content">
+<p>追跡ブランチを設定すると、その上流のブランチを参照するときに <code class="literal">@{upstream}</code> や <code class="literal">@{u}</code> という短縮記法が使えるようになります。
+つまり、仮に今 <code class="literal">master</code> ブランチにいて、そのブランチが <code class="literal">origin/master</code> を追跡している場合は、
+<code class="literal">git merge origin/master</code> の代わりに <code class="literal">git merge @{u}</code> としてもかまわないということです。</p>
+</div>
+</aside>
+<p>どのブランチを追跡しているのかを知りたい場合は、<code class="literal">git branch</code> のオプション <code class="literal">-vv</code> が使えます。
+これは、ローカルブランチの一覧に加えて、各ブランチが追跡するリモートブランチや、リモートとの差異を表示します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -vv
+  iss53     7e424c3 [origin/iss53: ahead 2] forgot the brackets
+  master    1ae2a45 [origin/master] deploying index fix
+* serverfix f8674d9 [teamone/server-fix-good: ahead 3, behind 1] this should do it
+  testing   5ea463a trying something new</code></pre>
+</figure>
+<p>ここでは、手元の <code class="literal">iss53</code> ブランチが <code class="literal">origin/iss53</code> を追跡していることと、リモートより二つぶん「先行している (ahead)」ことがわかります。
+つまり、まだサーバーにプッシュしていないコミットが二つあるということです。
+また、<code class="literal">master</code> ブランチは <code class="literal">origin/master</code> を追跡しており、最新の状態であることもわかります。
+同じく、<code class="literal">serverfix</code> ブランチは <code class="literal">teamone</code> サーバー上の <code class="literal">server-fix-good</code> ブランチを追跡しており、三つ先行していると同時に一つ遅れていることがわかります。
+つまり、まだローカルにマージしていないコミットがサーバー上に一つあって、まだサーバーにプッシュしていないコミットがローカルに三つあるということです。
+そして、<code class="literal">testing</code> ブランチは、リモートブランチを追跡していないこともわかります。</p>
+<p>これらの数字は、各サーバーから最後にフェッチした時点以降のものであることに注意しましょう。
+このコマンドを実行したときに各サーバーに照会しているわけではなく、各サーバーから取得したローカルのキャッシュの状態を見ているだけです。
+最新の状態と比べた先行や遅れの数を知りたい場合は、すべてのリモートをフェッチしてからこのコマンドを実行しなければいけません。
+たとえば、<code class="literal">git fetch --all; git branch -vv</code> のようになります。</p>
+</section>
+<section class="sect2" title="プル">
+<h3 id="_プル">プル</h3>
+<p></p>
+<p><code class="literal">git fetch</code> コマンドは、サーバー上の変更のうち、まだ取得していないものをすべて取り込みます。
+しかし、ローカルの作業ディレクトリは書き換えません。
+データを取得するだけで、その後のマージは自分でしなければいけません。
+<code class="literal">git pull</code> コマンドは基本的に、<code class="literal">git fetch</code> の実行直後に <code class="literal">git merge</code> を実行するのと同じ動きになります。
+先ほどのセクションのとおりに追跡ブランチを設定した場合、<code class="literal">git pull</code> は、
+現在のブランチが追跡しているサーバーとブランチを調べ、そのサーバーからフェッチしたうえで、リモートブランチのマージを試みます。</p>
+<p>一般的には、シンプルに <code class="literal">fetch</code> と <code class="literal">merge</code> を明示したほうがよいでしょう。
+<code class="literal">git pull</code> は、時に予期せぬ動きをすることがあります。</p>
+</section>
+<section class="sect2" title="リモートブランチの削除">
+<h3 id="r_delete_branches">リモートブランチの削除</h3>
+<p></p>
+<p>リモートブランチでの作業が終わったとしましょう。
+つまり、あなたや他のメンバーが一通りの作業を終え、それをリモートの <code class="literal">master</code> ブランチ (あるいは安定版のコードラインとなるその他のブランチ) にマージし終えたということです。
+リモートブランチを削除するには、<code class="literal">git push</code> の <code class="literal">--delete</code> オプションを使います。
+サーバーの <code class="literal">serverfix</code> ブランチを削除したい場合は次のようになります。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git push origin --delete serverfix
+To https://github.com/schacon/simplegit
+ - [deleted]         serverfix</code></pre>
+</figure>
+<p>基本的に、このコマンドが行うのは、サーバーからポインタを削除することだけです。
+Git サーバー上でガベージコレクションが行われるまではデータが残っているので、仮に間違って削除してしまったとしても、たいていの場合は簡単に復元できます。</p>
+</section>
+</section>
+<section class="sect1" title="リベース">
+<h2 id="r_rebasing">リベース</h2>
+<p></p>
+<p>Git には、あるブランチの変更を別のブランチに統合するための方法が大きく分けて二つあります。
+<code class="literal">merge</code> と <code class="literal">rebase</code> です。
+このセクションでは、リベースについて「どういう意味か」「どのように行うのか」「なぜそんなにもすばらしいのか」「どんなときに使うのか」を説明します。</p>
+<section class="sect2" title="リベースの基本">
+<h3 id="_リベースの基本">リベースの基本</h3>
+<p>マージについての説明で使用した例を <a id="xref-r_basic_merging" href="#r_basic_merging" class="xref">マージの基本</a> から振り返ってみましょう。
+作業が二つに分岐しており、それぞれのブランチに対してコミットされていることがわかります。</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-rebase-1.png" alt="シンプルな、分岐した歴史"/>
+</div>
+<figcaption>Figure 27. シンプルな、分岐した歴史</figcaption>
+</figure>
+<p>このブランチを統合する最も簡単な方法は、先に説明したように <code class="literal">merge</code> コマンドを使うことです。
+これは、二つのブランチの最新のスナップショット (<code class="literal">C3</code> と <code class="literal">C4</code>) とそれらの共通の祖先 (<code class="literal">C2</code>) による三方向のマージを行い、新しいスナップショットを作成 (そしてコミット) します。</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-rebase-2.png" alt="分岐した作業履歴をひとつに統合する"/>
+</div>
+<figcaption>Figure 28. 分岐した作業履歴をひとつに統合する</figcaption>
+</figure>
+<p>しかし、別の方法もあります。
+<code class="literal">C3</code> で行った変更のパッチを取得し、それを <code class="literal">C4</code> の先端に適用するのです。
+Git では、この作業のことを <em>リベース (rebasing)</em> と呼んでいます。
+<code class="literal">rebase</code> コマンドを使用すると、一方のブランチにコミットされたすべての変更をもう一方のブランチで再現することができます。</p>
+<p>今回の例では、次のように実行します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout experiment
+<span style="font-weight: bold">$</span> git rebase master
+First, rewinding head to replay your work on top of it...
+Applying: added staged command</code></pre>
+</figure>
+<p>これは、まずふたつのブランチ (現在いるブランチとリベース先のブランチ) の共通の先祖に移動し、現在のブランチ上の各コミットの diff を取得して一時ファイルに保存し、現在のブランチの指す先をリベース先のブランチと同じコミットに移動させ、そして先ほどの変更を順に適用していきます。</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-rebase-3.png" alt="`C4` の変更を `C3` にリベース"/>
+</div>
+<figcaption>Figure 29. <code class="literal">C4</code> の変更を <code class="literal">C3</code> にリベース</figcaption>
+</figure>
+<p>この時点で、 <code class="literal">master</code> ブランチに戻って fast-forward マージができるようになりました。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master
+<span style="font-weight: bold">$</span> git merge experiment</code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/basic-rebase-4.png" alt="master ブランチの Fast-forward"/>
+</div>
+<figcaption>Figure 30. master ブランチの Fast-forward</figcaption>
+</figure>
+<p>これで、<code class="literal">C4'</code> が指しているスナップショットの内容は、先ほどのマージの例で <code class="literal">C5</code> が指すスナップショットと全く同じものになりました。
+最終的な統合結果には差がありませんが、リベースのほうがよりすっきりした歴史になります。
+リベース後のブランチのログを見ると、まるで一直線の歴史のように見えます。
+元々平行稼働していたにもかかわらず、それが一連の作業として見えるようになるのです。</p>
+<p>リモートブランチ上での自分のコミットをすっきりさせるために、よくこの作業を行います。
+たとえば、自分がメンテナンスしているのではないプロジェクトに対して貢献したいと考えている場合などです。
+この場合、あるブランチ上で自分の作業を行い、プロジェクトに対してパッチを送る準備ができたらそれを <code class="literal">origin/master</code> にリベースすることになります。
+そうすれば、メンテナは特に統合作業をしなくても単に fast-forward するだけで済ませられるのです。</p>
+<p>あなたが最後に行ったコミットが指すスナップショットは、リベースした結果の最後のコミットであってもマージ後の最終のコミットであっても同じものとなることに注意しましょう。
+違ってくるのは、そこに至る歴史だけです。
+リベースは、一方のラインの作業内容をもう一方のラインに順に適用しますが、マージの場合はそれぞれの最終地点を統合します。</p>
+</section>
+<section class="sect2" title="さらに興味深いリベース">
+<h3 id="_さらに興味深いリベース">さらに興味深いリベース</h3>
+<p>リベース先のブランチ以外でもそのリベースを再現することができます。
+たとえば <a id="xref-rrbdiag_e" href="#rrbdiag_e" class="xref">トピックブランチからさらにトピックブランチを作成した歴史</a> のような歴史を考えてみましょう。
+トピックブランチ (<code class="literal">server</code>) を作成してサーバー側の機能をプロジェクトに追加し、それをコミットしました。
+その後、そこからさらにクライアント側の変更用のブランチ (<code class="literal">client</code>) を切って数回コミットしました。
+最後に、server ブランチに戻ってさらに何度かコミットを行いました。</p>
+<figure id="rrbdiag_e" class="image">
+<div class="content">
+<img src="images/interesting-rebase-1.png" alt="トピックブランチからさらにトピックブランチを作成した歴史"/>
+</div>
+<figcaption>Figure 31. トピックブランチからさらにトピックブランチを作成した歴史</figcaption>
+</figure>
+<p>クライアント側の変更を本流にマージしてリリースしたいけれど、サーバー側の変更はまだそのままテストを続けたいという状況になったとします。
+クライアント側の変更のうちサーバー側にはないもの (<code class="literal">C8</code> と <code class="literal">C9</code>) を <code class="literal">master</code> ブランチで再現するには、<code class="literal">git rebase</code> の <code class="literal">--onto</code> オプションを使用します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git rebase --onto master server client</code></pre>
+</figure>
+<p>これは「client ブランチに移動して <code class="literal">client</code> ブランチと <code class="literal">server</code> ブランチの共通の先祖からのパッチを取得し、<code class="literal">master</code> 上でそれを適用しろ」という意味になります。
+ちょっと複雑ですが、その結果は非常にクールです。</p>
+<figure class="image">
+<div class="content">
+<img src="images/interesting-rebase-2.png" alt="別のトピックブランチから派生したトピックブランチのリベース"/>
+</div>
+<figcaption>Figure 32. 別のトピックブランチから派生したトピックブランチのリベース</figcaption>
+</figure>
+<p>これで、<code class="literal">master</code> ブランチを fast-forward することができるようになりました (<a id="xref-rrbdiag_g" href="#rrbdiag_g" class="xref">master ブランチを fast-forward し、client ブランチの変更を含める</a> を参照ください)。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master
+<span style="font-weight: bold">$</span> git merge client</code></pre>
+</figure>
+<figure id="rrbdiag_g" class="image">
+<div class="content">
+<img src="images/interesting-rebase-3.png" alt="master ブランチを fast-forward し、client ブランチの変更を含める"/>
+</div>
+<figcaption>Figure 33. master ブランチを fast-forward し、client ブランチの変更を含める</figcaption>
+</figure>
+<p>さて、いよいよ server ブランチのほうも取り込む準備ができました。
+server ブランチの内容を <code class="literal">master</code> ブランチにリベースする際には、事前にチェックアウトする必要はなく <code class="literal">git rebase [basebranch] [topicbranch]</code> を実行するだけでだいじょうぶです。
+このコマンドは、トピックブランチ (ここでは <code class="literal">server</code>) をチェックアウトしてその変更をベースブランチ (<code class="literal">master</code>) 上に再現します。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git rebase master server</code></pre>
+</figure>
+<p>これは、<code class="literal">server</code> での作業を <code class="literal">master</code> の作業に続け、結果は <a id="xref-rrbdiag_h" href="#rrbdiag_h" class="xref">server ブランチを master ブランチ上にリベースする</a> のようになります。</p>
+<figure id="rrbdiag_h" class="image">
+<div class="content">
+<img src="images/interesting-rebase-4.png" alt="server ブランチを master ブランチ上にリベースする"/>
+</div>
+<figcaption>Figure 34. server ブランチを master ブランチ上にリベースする</figcaption>
+</figure>
+<p>これで、ベースブランチ (<code class="literal">master</code>) を fast-forward することができます。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master
+<span style="font-weight: bold">$</span> git merge server</code></pre>
+</figure>
+<p>ここで <code class="literal">client</code> ブランチと <code class="literal">server</code> ブランチを削除します。
+すべての作業が取り込まれたので、これらのブランチはもはや不要だからです。
+これらの処理を済ませた結果、最終的な歴史は <a id="xref-rrbdiag_i" href="#rrbdiag_i" class="xref">最終的なコミット履歴</a> のようになりました。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -d client
+<span style="font-weight: bold">$</span> git branch -d server</code></pre>
+</figure>
+<figure id="rrbdiag_i" class="image">
+<div class="content">
+<img src="images/interesting-rebase-5.png" alt="最終的なコミット履歴"/>
+</div>
+<figcaption>Figure 35. 最終的なコミット履歴</figcaption>
+</figure>
+</section>
+<section class="sect2" title="ほんとうは怖いリベース">
+<h3 id="r_rebase_peril">ほんとうは怖いリベース</h3>
+<p></p>
+<p>あぁ、このすばらしいリベース機能。しかし、残念ながら欠点もあります。その欠点はほんの一行でまとめることができます。</p>
+<p><strong>公開リポジトリにプッシュしたコミットをリベースしてはいけない</strong></p>
+<p>この指針に従っている限り、すべてはうまく進みます。
+もしこれを守らなければ、あなたは嫌われ者となり、友人や家族からも軽蔑されることになるでしょう。</p>
+<p>リベースをすると、既存のコミットを破棄して新たなコミットを作成することになります。
+新たに作成したコミットは破棄したものと似てはいますが別物です。
+あなたがどこかにプッシュしたコミットを誰かが取得してその上で作業を始めたとしましょう。
+あなたが <code class="literal">git rebase</code> でそのコミットを書き換えて再度プッシュすると、相手は再びマージすることになります。
+そして相手側の作業を自分の環境にプルしようとするとおかしなことになってしまいます。</p>
+<p>いったん公開した作業をリベースするとどんな問題が発生するのか、例を見てみましょう。
+中央サーバーからクローンした環境上で何らかの作業を進めたものとします。
+現在のコミット履歴はこのようになっています。</p>
+<figure class="image">
+<div class="content">
+<img src="images/perils-of-rebasing-1.png" alt="リポジトリをクローンし、なんらかの作業をすませた状態"/>
+</div>
+<figcaption>Figure 36. リポジトリをクローンし、なんらかの作業をすませた状態</figcaption>
+</figure>
+<p>さて、誰か他の人が、マージを含む作業をしてそれを中央サーバーにプッシュしました。
+それを取得し、リモートブランチの内容を作業環境にマージすると、その歴史はこのような状態になります。</p>
+<figure class="image">
+<div class="content">
+<img src="images/perils-of-rebasing-2.png" alt="さらなるコミットを取得し、作業環境にマージした状態"/>
+</div>
+<figcaption>Figure 37. さらなるコミットを取得し、作業環境にマージした状態</figcaption>
+</figure>
+<p>次に、さきほどマージした作業をプッシュした人が、気が変わったらしく新たにリベースし直したようです。
+なんと <code class="literal">git push --force</code> を使ってサーバー上の歴史を上書きしてしまいました。
+あなたはもう一度サーバーにアクセスし、新しいコミットを手元に取得します。</p>
+<figure id="r_pre_merge_rebase_work" class="image">
+<div class="content">
+<img src="images/perils-of-rebasing-3.png" alt="誰かがリベースしたコミットをプッシュし、あなたの作業環境の元になっているコミットが破棄された"/>
+</div>
+<figcaption>Figure 38. 誰かがリベースしたコミットをプッシュし、あなたの作業環境の元になっているコミットが破棄された</figcaption>
+</figure>
+<p>さあたいへん。
+ここであなたが <code class="literal">git pull</code> を実行すると、両方の歴史の流れを含むマージコミットができあがり、あなたのリポジトリはこのようになります。</p>
+<figure id="r_merge_rebase_work" class="image">
+<div class="content">
+<img src="images/perils-of-rebasing-4.png" alt="同じ作業を再びマージして新たなマージコミットを作成する"/>
+</div>
+<figcaption>Figure 39. 同じ作業を再びマージして新たなマージコミットを作成する</figcaption>
+</figure>
+<p>歴史がこんな状態になっているときに <code class="literal">git log</code> を実行すると、同じ作者による同じメッセージのコミットが二重に表示されてしまいます。
+さらに、あなたがその歴史をサーバにプッシュすると、リベースされたコミット群を中央サーバーに送り込むことになり、他の人たちをさらに混乱させてしまいます。
+他の開発者たちは、<code class="literal">C4</code> や <code class="literal">C6</code> を歴史に取り込みたくないはずです。だからこそ、最初にリベースしたのでしょうからね。</p>
+</section>
+<section class="sect2" title="リベースした場合のリベース">
+<h3 id="r_rebase_rebase">リベースした場合のリベース</h3>
+<p>もしそんな状況になってしまった場合でも、Git がうまい具合に判断して助けてくれることがあります。
+チームの誰かがプッシュした変更が、あなたの作業元のコミットを変更してしまった場合、どれがあなたのコミットでどれが書き換えられたコミットなのかを判断するのは大変です。</p>
+<p>Git は、コミットの SHA-1 チェックサム以外にもうひとつのチェックサムを計算しています。これは、そのコミットで投入されたパッチから計算したものです。
+これを「パッチ ID」と呼びます。</p>
+<p>書き換えられたコミットをプルして、他のメンバーのコミットの後に新たなコミットをリベースしようとしたときに、
+Git は多くの場合、どれがあなたのコミットかを自動的に判断し、そのコミットを新しいブランチの先端に適用してくれます。</p>
+<p>たとえば先ほどの例で考えてみます。<a id="xref-r_pre_merge_rebase_work" href="#r_pre_merge_rebase_work" class="xref">誰かがリベースしたコミットをプッシュし、あなたの作業環境の元になっているコミットが破棄された</a> の場面で、マージする代わりに <code class="literal">git rebase teamone/master</code> を実行すると、Git は次のように動きます。</p>
+<div class="itemized-list">
+<ul>
+<li>
+<span class="principal">私たちのブランチにしかない作業を特定する (C2, C3, C4, C6, C7)</span>
+</li>
+<li>
+<span class="principal">その中から、マージコミットではないものを探す (C2, C3, C4)</span>
+</li>
+<li>
+<span class="principal">その中から、対象のブランチにまだ書き込まれていないものを探す (C4 は C4' と同じパッチなので、ここでは C2 と C3 だけになる)</span>
+</li>
+<li>
+<span class="principal">そのコミットを <code class="literal">teamone/master</code> の先端に適用する</span>
+</li>
+</ul>
+</div>
+<p>その結果は <a id="xref-r_merge_rebase_work" href="#r_merge_rebase_work" class="xref">同じ作業を再びマージして新たなマージコミットを作成する</a> の場合とは異なり、<a id="xref-r_rebase_rebase_work" href="#r_rebase_rebase_work" class="xref">リベース後、強制的にプッシュした作業へのリベース</a> のようになります。</p>
+<figure id="r_rebase_rebase_work" class="image">
+<div class="content">
+<img src="images/perils-of-rebasing-5.png" alt="リベース後、強制的にプッシュした作業へのリベース"/>
+</div>
+<figcaption>Figure 40. リベース後、強制的にプッシュした作業へのリベース</figcaption>
+</figure>
+<p>これがうまくいくのは、あなたの C4 と他のメンバーの C4' がほぼ同じ内容のパッチである場合だけです。
+そうでないと、これらが重複であることを見抜けません (そして、おそらくパッチの適用に失敗するでしょう。その変更は、少なくとも誰かが行っているだろうからです)。</p>
+<p>この操作をシンプルに行うために、通常の <code class="literal">git pull</code> ではなく <code class="literal">git pull --rebase</code> を実行してもかまいません。
+あるいは手動で行う場合は、<code class="literal">git fetch</code> に続けて、たとえば今回の場合なら <code class="literal">git rebase teamone/master</code> を実行します。</p>
+<p><code class="literal">git pull</code> を行うときにデフォルトで <code class="literal">--rebase</code> を指定したい場合は、
+設定項目 <code class="literal">pull.rebase</code> を指定します。たとえば <code class="literal">git config --global pull.rebase true</code> などとすれば、指定できます。</p>
+<p>プッシュする前の作業をきれいに整理する手段としてだけリベースを使い、まだ公開していないコミットだけをリベースすることを心がけていれば、何も問題はありません。
+すでにプッシュした後で、他の人がその後の作業を続けている可能性のあるコミットをリベースした場合は、やっかいな問題を引き起こす可能性があります。
+チームメイトに軽蔑されてしまうかもしれません。</p>
+<p>どこかの時点でどうしてもそうせざるを得ないことになったら、みんなに <code class="literal">git pull --rebase</code> を使わせるように気をつけましょう。
+そうすれば、その後の苦しみをいくらか和らげることができます。</p>
+</section>
+<section class="sect2" title="リベースかマージか">
+<h3 id="_リベースかマージか">リベースかマージか</h3>
+<p></p>
+<p>リベースとマージの実例を見てきました。さて、どちらを使えばいいのか気になるところです。
+その答えをお知らせする前に、「歴史」とはいったい何だったのかを振り返ってみましょう。</p>
+<p>あなたのリポジトリにおけるコミットの歴史は、<strong>実際に発生したできごとの記録</strong> だと見ることもできます。
+これは歴史文書であり、それ自体に意味がある。従って、改ざんなど許されないという観点です。
+この観点に沿って考えると、コミットの歴史を変更することなどあり得ないでしょう。
+実際に起こってしまったことには、ただ黙って <em>従う</em> べきです。
+マージコミットのせいで乱雑になってしまったら?
+実際そうなってしまったのだからしょうがない。
+その記録は、後世の人々に向けてそのまま残しておくべきでしょう。</p>
+<p>別の見方もあります。コミットの歴史は、<strong>そのプロジェクトがどのように作られてきたのかを表す物語である</strong> という考えかたです。
+最初の草稿の段階で本を出版したりはしないでしょう。また、自作ソフトウェア用の管理マニュアルであれば、しっかり推敲する必要があります。
+この立場に立つと、リベースやブランチフィルタリングを使って、将来の読者にとってわかりやすいように、物語を再編しようという考えに至ります。</p>
+<p>さて、元の問いに戻ります。
+マージとリベースではどちらがいいのか。
+お察しのとおり、単純にどちらがよいとは言い切れません。
+Git は強力なツールで、歴史に対していろんな操作をすることができます。しかし、チームやプロジェクトによって、事情はそれぞれ異なります。
+あなたは既に、両者の特徴を理解しています。あなたが今いる状況ではどちらがより適切なのか、それを判断するのはあなたです。</p>
+<p>一般論として、両者のいいとこどりをしたければ、まだプッシュしていないローカルの変更だけをリベースするようにして、
+歴史をきれいに保っておきましょう。プッシュ済みの変更は決してリベースしないようにすれば、問題はおきません。</p>
+</section>
+</section>
+<section class="sect1" title="まとめ">
+<h2 id="_まとめ">まとめ</h2>
+<p>本章では、Git におけるブランチとマージの基本について取り上げました。
+新たなブランチの作成、ブランチの切り替え、ローカルブランチのマージなどの作業が気軽にできるようになったことでしょう。
+また、ブランチを共有サーバーにプッシュして公開したり他の共有ブランチ上で作業をしたり、
+公開する前にブランチをリベースしたりする方法を身につけました。
+次の章では、Gitリポジトリをホスティングするサーバーを自前で構築するために必要なことを、説明します。</p>
+</section>
+</section>
+</body>
+</html>
