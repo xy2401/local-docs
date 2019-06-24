@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>使用 Git 分支</title>
+<link rel="stylesheet" type="text/css" href="styles/epub3.css"/>
+<link rel="stylesheet" type="text/css" href="styles/epub3-css3-only.css" media="(min-device-width: 0px)"/>
+<script type="text/javascript">
+document.addEventListener('DOMContentLoaded', function(event, reader) {
+  if (!(reader = navigator.epubReadingSystem)) {
+    if (navigator.userAgent.indexOf(' calibre/') >= 0) reader = { name: 'calibre-desktop' };
+    else if (window.parent == window || !(reader = window.parent.navigator.epubReadingSystem)) return;
+  }
+  document.body.setAttribute('class', reader.name.toLowerCase().replace(/ /g, '-'));
+});
+</script>
+</head>
+<body>
+<section class="chapter" title="使用 Git 分支" epub:type="chapter" id="ch03-git-branching">
+<header>
+<div class="chapter-header">
+<h1 class="chapter-title"><small class="subtitle"><b>使用</b> <b>Git</b> <b>分支</b></small></h1>
+</div>
+</header>
+<p>
+幾乎每一種版本控制系統（Version Control System，以下簡稱 VCS）都支援某種形式的分支（branch）功能，
+使用分支意味著你可以從開發主線上分離開來，然後在不影響主線的情況下繼續工作；
+在很多 VCS 中，這是個昂貴的過程，常常需要對原始程式碼目錄建立一個完整的副本，對大型專案來說會花費很長時間。</p>
+<p>有人把 Git 的分支模型視為它的「殺手級功能」，正是因為它而讓 Git 在 VCS 社群中顯得與眾不同。
+它有何特別之處呢？
+Git 的分支簡直是難以置信的羽量級，新建分支的操作幾乎可以在瞬間完成，並且一般來說切換不同分支也很快；
+跟其它的 VCS 不一樣的地方是 Git 鼓勵在工作流程中頻繁地使用分支與合併（merge），即使一天之內進行許多次都沒問題。
+理解並掌握這個特性後，它會給你一個強大而獨特的工具，從此完全地改變你的開發方式。</p>
+<section class="sect1" title="簡述分支">
+<h2 id="r_git_branches_overview">簡述分支</h2>
+<p>為了理解 Git 分支（branch）的使用方式，我們需要回顧一下 Git 是如何保存資料的。</p>
+<p>或許你還記得 <a id="xref--ch01-introduction" href="ch01-introduction.xhtml" class="xref">開始</a> 的內容，Git 保存的不是變更集或者差異內容，而是一系列快照。</p>
+<p>當你製造一個提交（commit）時，Git 會儲存一個提交物件，該物件內容包含一個指標，用來代表已預存的快照內容；
+這個物件內容還包含「作者名字和電子郵件」、「你輸入的訊息內容」、「指向前一個提交的指標（該提交的親代提交）」：沒有親代（parent）提交表示它是初始的第一個提交，一般情況下只有一個親代提交，超過一個親代提交表示它是從二個以上的分支合併而來的。</p>
+<p>為了具體說明，讓我們假設你有一個目錄包含了三個檔案，你預存（stage）並提交了它們；
+檔案預存操作會對每一個檔案內容（譯註：請注意，只有檔案「內容」）計算雜湊值（即 <a href="ch01-introduction.xhtml" class="xref">開始</a> 中提到的 SHA-1 雜湊值），然後把那個檔案內容版本保存到 Git 版本庫中（Git 把它們視為 blob 類型的物件），再將這個雜湊值寫入預存區（staging area）：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git add README test.rb LICENSE
+<span style="font-weight: bold">$</span> git commit -m <span style="font-style: italic">&#39;The initial commit of my project&#39;</span></code></pre>
+</figure>
+<p>當使用 <code class="literal">git commit</code> 建立一個提交時，Git 會先計算每一個子目錄（本例中則只有專案根目錄）的雜湊值，然後在 Git 版本庫中將這些目錄記錄為樹（tree）物件；
+之後 Git 建立提交物件，它除了包含相關提交資訊以外，還包含著指向專案根目錄的樹物件指標，如此它就可以在需要的時候重建此次快照內容。</p>
+<p>你的 Git 版本庫現在有五個物件：三個 blob 物件用來儲存檔案內容、一個樹物件用來列出目錄的內容並紀錄各個檔案所對應的 blob 物件、一個提交用來記錄根目錄的樹物件和其他提交資訊。</p>
+<figure class="image">
+<div class="content">
+<img src="images/commit-and-tree.png" alt="單個提交在版本庫中的資料結構。"/>
+</div>
+<figcaption>圖表 1. 單個提交在版本庫中的資料結構</figcaption>
+</figure>
+<p>如果你做一些修改並再次提交，這次的提交會再包含一個指向上次提交的指標（譯注：即下圖中的 parent 欄位）。</p>
+<figure class="image">
+<div class="content">
+<img src="images/commits-and-parents.png" alt="提交和它們的親代提交。"/>
+</div>
+<figcaption>圖表 2. 提交和它們的親代提交</figcaption>
+</figure>
+<p>Git 分支其實只是一個指向某提交的可移動輕量級指標，
+Git 預設分支名稱是 <code class="literal">master</code>，
+隨著不斷地製作提交，<code class="literal">master</code> 分支會為你一直指向最後一個提交，
+它在每次提交的時候都會自動向前移動。</p>
+<aside class="admonition note" title="筆記" epub:type="note">
+<div class="content">
+<p>「master」在 Git 中並不是一個特殊的分支，
+它和其它分支並無分別，
+之所以幾乎每個版本庫裡都會有這個分支的原因是 <code class="literal">git init</code> 命令的預設行為會產生它，而大部分的人就這麼直接使用它。</p>
+</div>
+</aside>
+<figure class="image">
+<div class="content">
+<img src="images/branch-and-history.png" alt="分支及其提交歷史。"/>
+</div>
+<figcaption>圖表 3. 分支及其提交歷史</figcaption>
+</figure>
+<section class="sect2" title="建立一個新的分支">
+<h3 id="r_create_new_branch">建立一個新的分支</h3>
+<p>
+建立一個新分支會發生什麼事呢？
+答案很簡單，建立一個新的、可移動的指標；
+比如新建一個 testing 分支，
+可以使用 <code class="literal">git branch</code> 命令：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch testing</code></pre>
+</figure>
+<p>這會在目前提交上新建一個指標。</p>
+<figure class="image">
+<div class="content">
+<img src="images/two-branches.png" alt="二個分支都指向同一系列的提交歷史。"/>
+</div>
+<figcaption>圖表 4. 二個分支都指向同一系列的提交歷史</figcaption>
+</figure>
+<p>Git 如何知道你目前在哪個分支上工作的呢？
+其實它保存了一個名為 <code class="literal">HEAD</code> 的特別指標；
+請注意它和你可能慣用的其他 VCSs 裡的 <code class="literal">HEAD</code> 概念大不相同，比如 Subversion 或 CVS；
+在 Git 中，它就是一個指向你正在工作中的本地分支的指標（譯注：HEAD 等於「目前的」），
+所以在這個例子中，你仍然在 <code class="literal">master</code> 分支上工作；
+執行 <code class="literal">git branch</code> 命令，只是「建立」一個新的分支——它並不會切換到這個分支。</p>
+<figure class="image">
+<div class="content">
+<img src="images/head-to-master.png" alt="HEAD 指向一個分支。"/>
+</div>
+<figcaption>圖表 5. HEAD 指向一個分支</figcaption>
+</figure>
+<p>你可以很輕鬆地看到分支指標指向何處，只需透過一個簡單的 <code class="literal">git log</code> 命令，
+加上 <code class="literal">--decorate</code> 選項。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git log --oneline --decorate
+f30ab (HEAD -&gt; master, testing) add feature #32 - ability to add new formats to the central interface
+34ac2 Fixed bug #1328 - stack overflow under certain conditions
+98ca9 The initial commit of my project</code></pre>
+</figure>
+<p>你可以看到「master」和「testing」分支就顯示在 <code class="literal">f30ab</code> 提交旁邊。</p>
+</section>
+<section class="sect2" title="在分支之間切換">
+<h3 id="r_switching_branches">在分支之間切換</h3>
+<p>
+要切換到一個已經存在的分支，你可以執行 <code class="literal">git checkout</code> 命令，
+讓我們切換到新的 <code class="literal">testing</code> 分支：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout testing</code></pre>
+</figure>
+<p>這會移動 <code class="literal">HEAD</code> 並指向 <code class="literal">testing</code> 分支。</p>
+<figure class="image">
+<div class="content">
+<img src="images/head-to-testing.png" alt="被 HEAD 指向的分支是目前分支。"/>
+</div>
+<figcaption>圖表 6. 被 HEAD 指向的分支是目前分支</figcaption>
+</figure>
+<p>這樣做有什麼意義呢？
+好吧！讓我們再提交一次：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> vim test.rb
+<span style="font-weight: bold">$</span> git commit -a -m <span style="font-style: italic">&#39;made a change&#39;</span></code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/advance-testing.png" alt="當再次提交時，被 HEAD 指向的分支會往前走。"/>
+</div>
+<figcaption>圖表 7. 當再次提交時，被 HEAD 指向的分支會往前走</figcaption>
+</figure>
+<p>非常有趣，現在 <code class="literal">testing</code> 分支向前移動了，而 <code class="literal">master</code> 分支仍然指向當初在執行 <code class="literal">git checkout</code> 時所在的提交，
+讓我們切回 <code class="literal">master</code> 分支看看：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master</code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/checkout-master.png" alt="當你檢出時，HEAD 會移動。"/>
+</div>
+<figcaption>圖表 8. 當你檢出時，HEAD 會移動</figcaption>
+</figure>
+<p>這條命令做了兩件事，
+它把 HEAD 指標移回去並指向 <code class="literal">master</code> 分支，然後把工作目錄中的檔案換成 <code class="literal">master</code> 分支所指向的快照內容；
+也就是說，現在開始所做的改動，將基於專案中較舊的版本，然後與其它提交歷史分離開來；
+它實際上是取消你在 <code class="literal">testing</code> 分支裡所做的修改，這樣你就可以往不同方向前進。</p>
+<aside class="admonition note" title="筆記: 切換分支會修改工作目錄裡的檔案" epub:type="note">
+<h2>切換分支會修改工作目錄裡的檔案</h2>
+<div class="content">
+<p>重要的是要注意：當你在 Git 中切換分支時，工作目錄內的檔案將會被修改；
+如果切換到舊分支，你的工作目錄會回復到看起來就像當初你最後一次在這個分支提交時的樣子。
+如果 Git 無法很乾淨地切換過去，它就不會讓你切換過去。</p>
+</div>
+</aside>
+<p>讓我們做一些修改並再次提交：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> vim test.rb
+<span style="font-weight: bold">$</span> git commit -a -m <span style="font-style: italic">&#39;made other changes&#39;</span></code></pre>
+</figure>
+<p>現在你的專案歷史開始分離了（詳見 <a id="xref-rdivergent_history" href="#rdivergent_history" class="xref">分離的歷史</a>）；
+你建立並切換到新分支，在上面進行了一些工作，然後切換回到主分支進行了另外一些工作，
+雙方的改變分別隔離在不同的分支裡：你可以在不同分支裡反覆切換，並在時機成熟時把它們合併到一起；
+而所有這些工作只需要簡單的 <code class="literal">branch</code>、<code class="literal">checkout</code>、<code class="literal">commit</code> 命令。</p>
+<figure id="rdivergent_history" class="image">
+<div class="content">
+<img src="images/advance-master.png" alt="分離的歷史。"/>
+</div>
+<figcaption>圖表 9. 分離的歷史</figcaption>
+</figure>
+<p>你一樣可以從 <code class="literal">git log</code> 中輕鬆地看出這件事，
+執行 <code class="literal">git log --oneline --decorate --graph --all</code>，它會印出你的提交歷史，顯示你的分支指標在哪裡，以及歷史如何被分離開來。</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git log --oneline --decorate --graph --all
+* c2b9e (HEAD, master) made other changes
+| * 87ab2 (testing) made a change
+|/
+* f30ab add feature #32 - ability to add new formats to the
+* 34ac2 fixed bug #1328 - stack overflow under certain conditions
+* 98ca9 initial commit of my project</code></pre>
+</figure>
+<p>由於 Git 分支實際上只是一個檔案，該檔案內容是這個分支指向的提交的雜湊值（40 個字元長度的 SHA-1 字串），所以建立和銷毀一個分支就變得非常廉價；
+新建一個分支就是向一個檔寫入 41 個位元組（40 個字元外加一個換行符號）那樣地簡單和快速。</p>
+<p>這樣的分支功能和大多數舊 VCS 的分支功能形成了鮮明的對比，有些分支功能甚至需要複製專案中全部的檔案到另一個資料夾，
+而根據專案檔案數量和大小的不同，可能花費的時間快則幾秒，慢則數分鐘；而在 Git 中幾乎都在瞬間完成。
+還有，因為每次提交時都記錄了親代資訊，將來要合併分支時，它通常會幫我們自動並輕鬆地找到適當的合併基礎；
+這樣子的特性在無形間鼓勵了開發者頻繁地建立和使用分支。</p>
+<p>讓我們來瞧一瞧為什麼你應該要這麼做。</p>
+</section>
+</section>
+<section class="sect1" title="分支和合併的基本用法">
+<h2 id="_分支和合併的基本用法">分支和合併的基本用法</h2>
+<p>讓我們來看一個你在現實生活中，有可能會用到的分支（branch）與合併（merge）工作流程的簡單範例，
+你做了以下動作：</p>
+<div class="ordered-list arabic">
+<ol class="arabic">
+<li>
+<span class="principal">開發一個網站。</span>
+</li>
+<li>
+<span class="principal">建立一個分支以實現一個新故事。</span>
+</li>
+<li>
+<span class="principal">在這個分支上進行開發。</span>
+</li>
+</ol>
+</div>
+<p>此時你接到一個電話，有個很危急的問題需要緊急修正（hotfix），
+你可以按照下面的方式處理：</p>
+<div class="ordered-list arabic">
+<ol class="arabic">
+<li>
+<span class="principal">切換到發佈產品用的分支。</span>
+</li>
+<li>
+<span class="principal">在同一個提交上建立一個新分支，在這個分支上修正問題。</span>
+</li>
+<li>
+<span class="principal">通過測試後，切回發佈產品用的分支，將修正用的分支合併進來，然後再推送（push）出去以發佈產品。</span>
+</li>
+<li>
+<span class="principal">切換到之前實現新需求的分支以繼續工作。</span>
+</li>
+</ol>
+</div>
+<section class="sect2" title="分支的基本用法">
+<h3 id="r_basic_branching">分支的基本用法</h3>
+<p>
+首先，我們假設你正在開發你的專案，並且已經有一些提交（commit）了。</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-branching-1.png" alt="一個簡單的提交歷史。"/>
+</div>
+<figcaption>圖表 10. 一個簡單的提交歷史</figcaption>
+</figure>
+<p>無論你的公司使用的議題追蹤系統（issue-tracking system）是哪一套，你決定要修正其中的議題 #53；
+要同時新建並切換到新分支，你可以在執行 <code class="literal">git checkout</code> 時加上 <code class="literal">-b</code> 選項：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout -b iss53
+Switched to a new branch &quot;iss53&quot;</code></pre>
+</figure>
+<p>它相當於下面這兩條命令：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch iss53
+<span style="font-weight: bold">$</span> git checkout iss53</code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/basic-branching-2.png" alt="建立一個新分支指標。"/>
+</div>
+<figcaption>圖表 11. 建立一個新分支指標</figcaption>
+</figure>
+<p>你開始開發網站，並做了一些提交；
+因為你檢出（checkout）了這個分支（也就是 <code class="literal">HEAD</code> 指標正指向它），<code class="literal">iss53</code> 分支也隨之向前推進：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> vim index.html
+<span style="font-weight: bold">$</span> git commit -a -m <span style="font-style: italic">&#39;added a new footer [issue 53]&#39;</span></code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/basic-branching-3.png" alt="分支 `iss53` 會隨工作進展向前推進。"/>
+</div>
+<figcaption>圖表 12. 分支 <code class="literal">iss53</code> 會隨工作進展向前推進</figcaption>
+</figure>
+<p>現在你接到電話，那個網站有一個問題需要立即修正；
+有了 Git ，你就不用把你的緊急修正連同 <code class="literal">iss53</code> 尚未完成的內容一起部署（deploy）到正式環境；你也不用為了正確地套用修正而先花一大堆功夫回復之前 <code class="literal">iss53</code> 的修改；
+唯一需要做的只是切換回發佈產品用的 <code class="literal">master</code> 分支。</p>
+<p>然而，在切換分支之前，留意一下你的工作目錄或預存區（staging area）裡是否有還沒提交的內容，它可能會和你即要檢出的分支產生衝突（conflict），Git 會因此而不讓你切換分支；
+所以切換分支的時候最好先保持一個乾淨的工作區域。
+稍後會在 <a id="xref--ch07-git-tools--r_git_stashing" href="ch07-git-tools.xhtml#r_git_stashing" class="xref">Stashing and Cleaning</a> 中介紹幾個繞過這種問題的辦法（分別叫做「使用收藏（stashing）」和「提交的修訂方法（commit amending）」）。
+目前先讓我們假設你已經提交了所有的變更，因此你可以切回 <code class="literal">master</code> 分支了：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master
+Switched to branch &#39;master&#39;</code></pre>
+</figure>
+<p>此時工作目錄中的內容和你在解決問題 #53 之前的內容一模一樣，你可以集中精力進行緊急修正了；
+很重要的一點需要牢記：當你切換分支時，Git 會重置（reset）工作目錄內容，就像回到你在這個分支最後一次提交後的內容，
+它會自動地增加、刪除和修改檔案以確保工作目錄的內容和當時的內容完全一樣。</p>
+<p>接下來開始緊急修正；
+讓我們建立一個緊急修正用的分支來進行工作，直到完成它：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout -b hotfix
+Switched to a new branch &#39;hotfix&#39;
+<span style="font-weight: bold">$</span> vim index.html
+<span style="font-weight: bold">$</span> git commit -a -m <span style="font-style: italic">&#39;fixed the broken email address&#39;</span>
+[hotfix 1fb7853] fixed the broken email address
+ 1 file changed, 2 insertions(+)</code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/basic-branching-4.png" alt="基於 `master` 的緊急修正分支。"/>
+</div>
+<figcaption>圖表 13. 基於 <code class="literal">master</code> 的緊急修正分支</figcaption>
+</figure>
+<p>你可以跑一些測試以確保該修正是你想要的，然後切回 <code class="literal">master</code> 分支並把它合併進來，再部署到產品上；
+用 <code class="literal">git merge</code> 命令來進行合併：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master
+<span style="font-weight: bold">$</span> git merge hotfix
+Updating f42c576..3a0874c
+Fast-forward
+ index.html | 2 ++
+ 1 file changed, 2 insertions(+)</code></pre>
+</figure>
+<p>注意合併時有一個「Fast-forward」字眼；
+由於你要合併的分支 <code class="literal">hotfix</code> 所指向的提交 <code class="literal">C4</code> 直接超前了提交 <code class="literal">C2</code>，Git 於是簡單地把分支指標向前推進；
+換句話說，如果想要合併的提交可以直接往回追溯歷史到目前所在的提交，Git 會因為沒有需要合併的工作而簡單地把指標向前推進——這就是所謂的「快進（fast-forward）」。</p>
+<p>現在你的修改已經含在 <code class="literal">master</code> 分支所指向的提交的快照中，你可以部署該修正了。</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-branching-5.png" alt="`master` 被快進到 `hotfix`。"/>
+</div>
+<figcaption>圖表 14. <code class="literal">master</code> 被快進到 <code class="literal">hotfix</code></figcaption>
+</figure>
+<p>在那個超級重要的修正被部署以後，你準備要切回到之前被中斷而正在做的工作；
+然而在那之前，你可以先刪除 <code class="literal">hotfix</code>，因為你不再需要它了——<code class="literal">master</code> 也指向相同的提交；
+使用 <code class="literal">git branch</code> 的 <code class="literal">-d</code> 選項執行刪除操作：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -d hotfix
+Deleted branch hotfix (3a0874c).</code></pre>
+</figure>
+<p>現在你可以切回到之前用來解決議題 #53 且仍在進展中的分支以繼續工作：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout iss53
+Switched to branch &quot;iss53&quot;
+<span style="font-weight: bold">$</span> vim index.html
+<span style="font-weight: bold">$</span> git commit -a -m <span style="font-style: italic">&#39;finished the new footer [issue 53]&#39;</span>
+[iss53 ad82d7a] finished the new footer [issue 53]
+1 file changed, 1 insertion(+)</code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/basic-branching-6.png" alt="繼續在分支 `iss53` 上工作。"/>
+</div>
+<figcaption>圖表 15. 繼續在分支 <code class="literal">iss53</code> 上工作</figcaption>
+</figure>
+<p>這裡值得注意的是之前 <code class="literal">hotfix</code> 分支的修改內容尚未包含到 <code class="literal">iss53</code> 分支的檔案中；
+如果需要納入那個修正，你可以用 <code class="literal">git merge master</code> 把 <code class="literal">master</code> 分支合併到 <code class="literal">iss53</code> 分支；或者等 <code class="literal">iss53</code> 分支完成之後，再將它合併到 <code class="literal">master</code>。</p>
+</section>
+<section class="sect2" title="合併的基本用法">
+<h3 id="r_basic_merging">合併的基本用法</h3>
+<p>
+你已經完成了議題 #53 的工作，並準備好將它合併到 <code class="literal">master</code> 分支；
+要完成這件事，你需要將 <code class="literal">iss53</code> 分支合併到 <code class="literal">master</code> 分支，實際操作和之前合併 <code class="literal">hotfix</code> 分支時差不多，
+只需切回合併目的地的 <code class="literal">master</code> 分支，然後執行 <code class="literal">git merge</code> 命令：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master
+Switched to branch &#39;master&#39;
+<span style="font-weight: bold">$</span> git merge iss53
+Merge made by the &#39;recursive&#39; strategy.
+index.html |    1 +
+1 file changed, 1 insertion(+)</code></pre>
+</figure>
+<p>這次的合併和之前合併 <code class="literal">hotfix</code> 的情況看起來有點不一樣；
+在這種情況下，你的開發歷史是從一個較早的點便開始分離開來，
+由於目前所在的提交（譯註：C4）並不是被合併的分支（譯註：<code class="literal">iss53</code>，它指向 C5）的直接祖先，Git 必需進行一些處理；
+就此例而言，Git 會用兩個分支末端的快照（譯註：C4、C5）以及它們的共同祖先（譯註：C2）進行一次簡單的三方合併（three-way merge）。</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-merging-1.png" alt="典型的合併會用到的三個快照。"/>
+</div>
+<figcaption>圖表 16. 典型的合併會用到的三個快照</figcaption>
+</figure>
+<p>不同於將分支指標向前推進，Git 會對三方合併後的結果產生一個新的快照，並自動建立一個指向這個快照的提交（譯註：C6）。
+這個提交被稱為「合併提交（merge commit）」，特別的是它的親代（parent）超過一個（譯註：C4 和 C5）。</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-merging-2.png" alt="一個合併提交"/>
+</div>
+<figcaption>圖表 17. 一個合併提交</figcaption>
+</figure>
+<p>值得一提的是 Git 會決定哪個共同祖先才是最佳合併基準；這一點和一些較舊的版控工具有所不同，像是 CVS 或 Subversion（1.5 以前的版本），它們需要開發者自己手動找出最佳合併基準；
+這讓 Git 的合併操作比起其他系統都要簡單許多。</p>
+<p>既然你的工作成果已經合併了，也就不再需要 <code class="literal">iss53</code> 分支了，
+你可以在議題追蹤系統中關閉該議題，然後刪除這個分支：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -d iss53</code></pre>
+</figure>
+</section>
+<section class="sect2" title="合併衝突的基本解法">
+<h3 id="r_basic_merge_conflicts">合併衝突的基本解法</h3>
+<p>
+有時候合併過程並不會如此順利，
+如果在不同的分支中都修改了同一個檔案的同一部分，Git 就無法乾淨地合併它們；
+如果你在解決議題 #53 的過程中修改了 <code class="literal">hotfix</code> 中也修改過的部分，將得到類似下面的「合併衝突」結果：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git merge iss53
+Auto-merging index.html
+CONFLICT (content): Merge conflict in index.html
+Automatic merge failed; fix conflicts and then commit the result.</code></pre>
+</figure>
+<p>Git 沒有自動產生新的合併提交，
+它會暫停下來等你解決（resolve）衝突；
+在合併衝突發生後的任何時候，如果你要看看哪些檔案還沒有合併，可以使用 <code class="literal">git status</code>：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git status
+On branch master
+You have unmerged paths.
+  (fix conflicts and run &quot;git commit&quot;)
+
+Unmerged paths:
+  (use &quot;git add &lt;file&gt;...&quot; to mark resolution)
+
+    both modified:      index.html
+
+no changes added to commit (use &quot;git add&quot; and/or &quot;git commit -a&quot;)</code></pre>
+</figure>
+<p>它會列出所有有合併衝突且仍未解決的檔案（譯註：列在 <code class="literal">Unmerged paths:</code> 下面）；
+Git 會在有衝突的檔案裡加入標準的「衝突解決（conflict-resolution）」標記，因此你可以手動開啟它們以解決這些衝突；
+你的檔案會包含類似下面這樣子的區段：</p>
+<figure class="listing">
+<pre class="source language-html"><code><span></span><span style="border: 1px solid #FF0000">&lt;&lt;&lt;&lt;&lt;&lt;</span>&lt; <span style="font-weight: bold">HEAD:index.html</span>
+<span style="border: 1px solid #FF0000">&lt;</span>div id=<span style="font-style: italic">&quot;footer&quot;</span>&gt;contact : email.support@github.com&lt;/<span style="font-weight: bold">div</span>&gt;
+=======
+&lt;<span style="font-weight: bold">div</span> id=<span style="font-style: italic">&quot;footer&quot;</span>&gt;
+ please contact us at support@github.com
+&lt;/<span style="font-weight: bold">div</span>&gt;
+&gt;&gt;&gt;&gt;&gt;&gt;&gt; iss53:index.html</code></pre>
+</figure>
+<p>可以看到 <code class="literal">=======</code> 隔開的上半部分是 <code class="literal">HEAD</code>（即 <code class="literal">master</code> 分支，在執行合併命令前所切換過去的分支）中的內容，下半部分則是在 <code class="literal">iss53</code> 分支中的內容；
+解決衝突的辦法無非是二選一，或者由你自己合併內容；
+比如你可以把這整段內容替換成以下內容而解決這個衝突：</p>
+<figure class="listing">
+<pre class="source language-html"><code><span></span>&lt;<span style="font-weight: bold">div</span> id=<span style="font-style: italic">&quot;footer&quot;</span>&gt;
+please contact us at email.support@github.com
+&lt;/<span style="font-weight: bold">div</span>&gt;</code></pre>
+</figure>
+<p>這個解決方案分別採納了兩個分支中的各一部分內容，並且完整地移除了 <code class="literal">&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code>、<code class="literal">=======</code> 和 <code class="literal">&gt;&gt;&gt;&gt;&gt;&gt;&gt;</code> 這些標記行。
+在解決了每個衝突檔案裡的每個衝突後，對每個檔案執行 <code class="literal">git add</code> 會將它們標記為已解決狀態，
+因為預存（stage）動作代表了衝突已經解決。</p>
+<p>如果你想用圖形介面的工具來解決這些衝突，你可以執行 <code class="literal">git mergetool</code>，它會呼叫一個適當的視覺化合併工具並引導你解決衝突：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git mergetool
+
+This message is displayed because &#39;merge.tool&#39; is not configured.
+See &#39;git mergetool --tool-help&#39; or &#39;git help config&#39; for more details.
+&#39;git mergetool&#39; will now attempt to use one of the following tools:
+opendiff kdiff3 tkdiff xxdiff meld tortoisemerge gvimdiff diffuse diffmerge ecmerge p4merge araxis bc3 codecompare vimdiff emerge
+Merging:
+index.html
+
+Normal merge conflict for &#39;index.html&#39;:
+  {local}: modified file
+  {remote}: modified file
+Hit return to start merge resolution tool (opendiff):</code></pre>
+</figure>
+<p>如果不想用預設的合併工具（因為在 Mac 上執行了該命令，Git 預設選擇了 <code class="literal">opendiff</code>），你可以在「one of the following tools」列表中找到可使用的合併工具，
+然後只要輸入你想使用的工具名稱即可。</p>
+<aside class="admonition note" title="筆記" epub:type="note">
+<div class="content">
+<p>如果你需要更多進階的工具用來解決刁鑽的合併衝突，我們將在 <a id="xref--ch07-git-tools--r_advanced_merging" href="ch07-git-tools.xhtml#r_advanced_merging" class="xref">Advanced Merging</a> 介紹更多合併操作方法。</p>
+</div>
+</aside>
+<p>退出合併工具以後，Git 會詢問你合併是否成功，
+如果回答「是」，它會幫你把相關檔案預存起來，將狀態標記為已解決；
+你可以再次執行 <code class="literal">git status</code> 來確認所有衝突都已經解決：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git status
+On branch master
+All conflicts fixed but you are still merging.
+  (use &quot;git commit&quot; to conclude merge)
+
+Changes to be committed:
+
+    modified:   index.html</code></pre>
+</figure>
+<p>如果你滿意這個結果，並且確認了所有衝突都已經解決也預存了，就可以用 <code class="literal">git commit</code> 來完成這次合併提交；
+預設的提交訊息看起來像這樣：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span>Merge branch &#39;iss53&#39;
+
+Conflicts:
+    index.html
+<span style="font-weight: bold">#</span>
+<span style="font-weight: bold">#</span> It looks like you may be committing a merge.
+<span style="font-weight: bold">#</span> If this is not correct, please remove the file
+<span style="font-weight: bold">#</span>	.git/MERGE_HEAD
+<span style="font-weight: bold">#</span> and try again.
+
+
+<span style="font-weight: bold">#</span> Please enter the commit message <span style="font-weight: bold">for</span> your changes. Lines starting
+<span style="font-weight: bold">#</span> with <span style="font-style: italic">&#39;#&#39;</span> will be ignored, and an empty message aborts the commit.
+<span style="font-weight: bold">#</span> On branch master
+<span style="font-weight: bold">#</span> All conflicts fixed but you are still merging.
+<span style="font-weight: bold">#</span>
+<span style="font-weight: bold">#</span> Changes to be committed:
+<span style="font-weight: bold">#</span>	modified:   index.html
+<span style="font-weight: bold">#</span></code></pre>
+</figure>
+<p>如果解決衝突的理由不是那麼明顯，或是想要幫助將來的人理解為何你要這樣解決衝突，你可以在訊息中提供更多的細節來說明。</p>
+</section>
+</section>
+<section class="sect1" title="分支管理">
+<h2 id="r_branch_management">分支管理</h2>
+<p>
+到目前為止，你已經建立、合併和刪除過分支（branch）；讓我們再來看一些分支管理工具，這將會在你開始全程使用分支時派上用場。</p>
+<p><code class="literal">git branch</code> 命令不僅能建立和刪除分支，
+如果不加任何參數，你將會得到所有分支的簡易清單：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch
+  iss53
+* master
+  testing</code></pre>
+</figure>
+<p>注意 <code class="literal">master</code> 分支前面的 <code class="literal">*</code> 字元，它表示目前所檢出（checkout）的分支（換句話說，<code class="literal">HEAD</code> 指向這個分支）；
+這意味著如果你現在提交，<code class="literal">master</code> 分支將隨之向前移動。
+若要查看各個分支最後一個提交，執行 <code class="literal">git branch -v</code>：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -v
+  iss53   93b412c fix javascript issue
+* master  7a98805 Merge branch &#39;iss53&#39;
+  testing 782fd34 add scott to the author list in the readmes</code></pre>
+</figure>
+<p><code class="literal">--merged</code> 和 <code class="literal">--no-merged</code> 這兩個有用的選項，可以從該清單中篩選出已經合併或尚未合併到目前分支的分支。
+使用 <code class="literal">git branch --merged</code> 來查看哪些分支已被合併到目前分支：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch --merged
+  iss53
+* master</code></pre>
+</figure>
+<p>由於之前的 <code class="literal">iss53</code> 已經被合併了，所以會在列表中看到它；
+在這個列表中沒有被標記 <code class="literal">*</code> 的分支通常都可以用 <code class="literal">git branch -d</code> 刪除；你已經把它們的工作內容整併到其他分支，所以刪掉它們也不會有所損失。</p>
+<p>查看所有包含未合併工作的分支，可以運行 <code class="literal">git branch --no-merged</code>：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch --no-merged
+  testing</code></pre>
+</figure>
+<p>這顯示了你其它的分支；
+由於它包含了還未合併的工作，嘗試使用 <code class="literal">git branch -d</code> 刪除該分支將會失敗：</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -d testing
+error: The branch &#39;testing&#39; is not fully merged.
+If you are sure you want to delete it, run &#39;git branch -D testing&#39;.</code></pre>
+</figure>
+<p>如果你確實想要刪除該分支並丟掉那個工作成果，可以用 <code class="literal">-D</code> 選項來強制執行，就像上面訊息中所提示的。</p>
+</section>
+<section class="sect1" title="分支工作流程">
+<h2 id="_分支工作流程">分支工作流程</h2>
+<p>Now that you have the basics of branching and merging down, what can or should you do with them?
+In this section, we&#8217;ll cover some common workflows that this lightweight branching makes possible, so you can decide if you would like to incorporate it into your own development cycle.</p>
+<section class="sect2" title="長期分支">
+<h3 id="_長期分支">長期分支</h3>
+<p>
+Because Git uses a simple three-way merge, merging from one branch into another multiple times over a long period is generally easy to do.
+This means you can have several branches that are always open and that you use for different stages of your development cycle; you can merge regularly from some of them into others.</p>
+<p>Many Git developers have a workflow that embraces this approach, such as having only code that is entirely stable in their <code class="literal">master</code> branch – possibly only code that has been or will be released.
+They have another parallel branch named <code class="literal">develop</code> or <code class="literal">next</code> that they work from or use to test stability – it isn&#8217;t necessarily always stable, but whenever it gets to a stable state, it can be merged into <code class="literal">master</code>.
+It&#8217;s used to pull in topic branches (short-lived branches, like your earlier <code class="literal">iss53</code> branch) when they&#8217;re ready, to make sure they pass all the tests and don&#8217;t introduce bugs.</p>
+<p>In reality, we&#8217;re talking about pointers moving up the line of commits you&#8217;re making.
+The stable branches are farther down the line in your commit history, and the bleeding-edge branches are farther up the history.</p>
+<figure class="image">
+<div class="content">
+<img src="images/lr-branches-1.png" alt="A linear view of progressive-stability branching."/>
+</div>
+<figcaption>圖表 18. A linear view of progressive-stability branching</figcaption>
+</figure>
+<p>It&#8217;s generally easier to think about them as work silos, where sets of commits graduate to a more stable silo when they&#8217;re fully tested.</p>
+<figure id="rlrbranch_b" class="image">
+<div class="content">
+<img src="images/lr-branches-2.png" alt="A ``silo'' view of progressive-stability branching."/>
+</div>
+<figcaption>圖表 19. A “silo” view of progressive-stability branching</figcaption>
+</figure>
+<p>You can keep doing this for several levels of stability.
+Some larger projects also have a <code class="literal">proposed</code> or <code class="literal">pu</code> (proposed updates) branch that has integrated branches that may not be ready to go into the <code class="literal">next</code> or <code class="literal">master</code> branch.
+The idea is that your branches are at various levels of stability; when they reach a more stable level, they&#8217;re merged into the branch above them.
+Again, having multiple long-running branches isn&#8217;t necessary, but it&#8217;s often helpful, especially when you&#8217;re dealing with very large or complex projects.</p>
+</section>
+<section class="sect2" title="主題分支">
+<h3 id="r_topic_branch">主題分支</h3>
+<p>
+Topic branches, however, are useful in projects of any size.
+A topic branch is a short-lived branch that you create and use for a single particular feature or related work.
+This is something you&#8217;ve likely never done with a VCS before because it&#8217;s generally too expensive to create and merge branches.
+But in Git it&#8217;s common to create, work on, merge, and delete branches several times a day.</p>
+<p>You saw this in the last section with the <code class="literal">iss53</code> and <code class="literal">hotfix</code> branches you created.
+You did a few commits on them and deleted them directly after merging them into your main branch.
+This technique allows you to context-switch quickly and completely – because your work is separated into silos where all the changes in that branch have to do with that topic, it&#8217;s easier to see what has happened during code review and such.
+You can keep the changes there for minutes, days, or months, and merge them in when they&#8217;re ready, regardless of the order in which they were created or worked on.</p>
+<p>Consider an example of doing some work (on <code class="literal">master</code>), branching off for an issue (<code class="literal">iss91</code>), working on it for a bit, branching off the second branch to try another way of handling the same thing (<code class="literal">iss91v2</code>), going back to your <code class="literal">master</code> branch and working there for a while, and then branching off there to do some work that you&#8217;re not sure is a good idea (<code class="literal">dumbidea</code> branch).
+Your commit history will look something like this:</p>
+<figure class="image">
+<div class="content">
+<img src="images/topic-branches-1.png" alt="Multiple topic branches."/>
+</div>
+<figcaption>圖表 20. Multiple topic branches</figcaption>
+</figure>
+<p>Now, let&#8217;s say you decide you like the second solution to your issue best (<code class="literal">iss91v2</code>); and you showed the <code class="literal">dumbidea</code> branch to your coworkers, and it turns out to be genius.
+You can throw away the original <code class="literal">iss91</code> branch (losing commits <code class="literal">C5</code> and <code class="literal">C6</code>) and merge in the other two.
+Your history then looks like this:</p>
+<figure class="image">
+<div class="content">
+<img src="images/topic-branches-2.png" alt="History after merging `dumbidea` and `iss91v2`."/>
+</div>
+<figcaption>圖表 21. History after merging <code class="literal">dumbidea</code> and <code class="literal">iss91v2</code></figcaption>
+</figure>
+<p>We will go into more detail about the various possible workflows for your Git project in <a id="xref--ch05-distributed-git" href="ch05-distributed-git.xhtml" class="xref">分散式的 Git</a>, so before you decide which branching scheme your next project will use, be sure to read that chapter.</p>
+<p>It&#8217;s important to remember when you&#8217;re doing all this that these branches are completely local.
+When you&#8217;re branching and merging, everything is being done only in your Git repository – no server communication is happening.</p>
+</section>
+</section>
+<section class="sect1" title="遠端分支">
+<h2 id="r_remote_branches">遠端分支</h2>
+<p>
+Remote references are references (pointers) in your remote repositories, including branches, tags, and so on.
+You can get a full list of remote references explicitly with <code class="literal">git ls-remote [remote]</code>, or <code class="literal">git remote show [remote]</code> for remote branches as well as more information.
+Nevertheless, a more common way is to take advantage of remote-tracking branches.</p>
+<p>Remote-tracking branches are references to the state of remote branches.
+They&#8217;re local references that you can&#8217;t move; they&#8217;re moved automatically for you whenever you do any network communication.
+Remote-tracking branches act as bookmarks to remind you where the branches in your remote repositories were the last time you connected to them.</p>
+<p>They take the form <code class="literal">(remote)/(branch)</code>.
+For instance, if you wanted to see what the <code class="literal">master</code> branch on your <code class="literal">origin</code> remote looked like as of the last time you communicated with it, you would check the <code class="literal">origin/master</code> branch.
+If you were working on an issue with a partner and they pushed up an <code class="literal">iss53</code> branch, you might have your own local <code class="literal">iss53</code> branch; but the branch on the server would point to the commit at <code class="literal">origin/iss53</code>.</p>
+<p>This may be a bit confusing, so let&#8217;s look at an example.
+Let&#8217;s say you have a Git server on your network at <code class="literal">git.ourcompany.com</code>.
+If you clone from this, Git&#8217;s <code class="literal">clone</code> command automatically names it <code class="literal">origin</code> for you, pulls down all its data, creates a pointer to where its <code class="literal">master</code> branch is, and names it <code class="literal">origin/master</code> locally.
+Git also gives you your own local <code class="literal">master</code> branch starting at the same place as origin&#8217;s <code class="literal">master</code> branch, so you have something to work from.</p>
+<aside class="admonition note" title="筆記: “origin” is not special" epub:type="note">
+<h2>“origin” is not special</h2>
+<div class="content">
+<p>Just like the branch name “master” does not have any special meaning in Git, neither does “origin”.
+While “master” is the default name for a starting branch when you run <code class="literal">git init</code> which is the only reason it&#8217;s widely used, “origin” is the default name for a remote when you run <code class="literal">git clone</code>.
+If you run <code class="literal">git clone -o booyah</code> instead, then you will have <code class="literal">booyah/master</code> as your default remote branch.</p>
+</div>
+</aside>
+<figure class="image">
+<div class="content">
+<img src="images/remote-branches-1.png" alt="Server and local repositories after cloning."/>
+</div>
+<figcaption>圖表 22. Server and local repositories after cloning</figcaption>
+</figure>
+<p>If you do some work on your local <code class="literal">master</code> branch, and, in the meantime, someone else pushes to <code class="literal">git.ourcompany.com</code> and updates its <code class="literal">master</code> branch, then your histories move forward differently.
+Also, as long as you stay out of contact with your origin server, your <code class="literal">origin/master</code> pointer doesn&#8217;t move.</p>
+<figure class="image">
+<div class="content">
+<img src="images/remote-branches-2.png" alt="Local and remote work can diverge."/>
+</div>
+<figcaption>圖表 23. Local and remote work can diverge</figcaption>
+</figure>
+<p>To synchronize your work, you run a <code class="literal">git fetch origin</code> command.
+This command looks up which server “origin” is (in this case, it&#8217;s <code class="literal">git.ourcompany.com</code>), fetches any data from it that you don&#8217;t yet have, and updates your local database, moving your <code class="literal">origin/master</code> pointer to its new, more up-to-date position.</p>
+<figure class="image">
+<div class="content">
+<img src="images/remote-branches-3.png" alt="`git fetch` updates your remote references."/>
+</div>
+<figcaption>圖表 24. <code class="literal">git fetch</code> updates your remote references</figcaption>
+</figure>
+<p>To demonstrate having multiple remote servers and what remote branches for those remote projects look like, let&#8217;s assume you have another internal Git server that is used only for development by one of your sprint teams.
+This server is at <code class="literal">git.team1.ourcompany.com</code>.
+You can add it as a new remote reference to the project you&#8217;re currently working on by running the <code class="literal">git remote add</code> command as we covered in <a id="xref--ch02-git-basics" href="ch02-git-basics.xhtml" class="xref">Git 基礎</a>.
+Name this remote <code class="literal">teamone</code>, which will be your shortname for that whole URL.</p>
+<figure class="image">
+<div class="content">
+<img src="images/remote-branches-4.png" alt="Adding another server as a remote."/>
+</div>
+<figcaption>圖表 25. Adding another server as a remote</figcaption>
+</figure>
+<p>Now, you can run <code class="literal">git fetch teamone</code> to fetch everything the remote <code class="literal">teamone</code> server has that you don&#8217;t have yet.
+Because that server has a subset of the data your <code class="literal">origin</code> server has right now, Git fetches no data but sets a remote-tracking branch called <code class="literal">teamone/master</code> to point to the commit that <code class="literal">teamone</code> has as its <code class="literal">master</code> branch.</p>
+<figure class="image">
+<div class="content">
+<img src="images/remote-branches-5.png" alt="Remote tracking branch for `teamone/master`."/>
+</div>
+<figcaption>圖表 26. Remote tracking branch for <code class="literal">teamone/master</code></figcaption>
+</figure>
+<section class="sect2" title="Pushing">
+<h3 id="r_pushing_branches">Pushing</h3>
+<p>
+When you want to share a branch with the world, you need to push it up to a remote that you have write access to.
+Your local branches aren&#8217;t automatically synchronized to the remotes you write to – you have to explicitly push the branches you want to share.
+That way, you can use private branches for work you don&#8217;t want to share, and push up only the topic branches you want to collaborate on.</p>
+<p>If you have a branch named <code class="literal">serverfix</code> that you want to work on with others, you can push it up the same way you pushed your first branch.
+Run <code class="literal">git push &lt;remote&gt; &lt;branch&gt;</code>:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git push origin serverfix
+Counting objects: 24, done.
+Delta compression using up to 8 threads.
+Compressing objects: 100% (15/15), done.
+Writing objects: 100% (24/24), 1.91 KiB | 0 bytes/s, done.
+Total 24 (delta 2), reused 0 (delta 0)
+To https://github.com/schacon/simplegit
+ * [new branch]      serverfix -&gt; serverfix</code></pre>
+</figure>
+<p>This is a bit of a shortcut.
+Git automatically expands the <code class="literal">serverfix</code> branchname out to <code class="literal">refs/heads/serverfix:refs/heads/serverfix</code>, which means, “Take my serverfix local branch and push it to update the remote&#8217;s serverfix branch.”
+We&#8217;ll go over the <code class="literal">refs/heads/</code> part in detail in <a id="xref--ch10-git-internals" href="ch10-git-internals.xhtml" class="xref">Git Internals</a>, but you can generally leave it off.
+You can also do <code class="literal">git push origin serverfix:serverfix</code>, which does the same thing – it says, “Take my serverfix and make it the remote&#8217;s serverfix.”
+You can use this format to push a local branch into a remote branch that is named differently.
+If you didn&#8217;t want it to be called <code class="literal">serverfix</code> on the remote, you could instead run <code class="literal">git push origin serverfix:awesomebranch</code> to push your local <code class="literal">serverfix</code> branch to the <code class="literal">awesomebranch</code> branch on the remote project.</p>
+<aside class="admonition note" title="筆記: Don&#8217;t type your password every time" epub:type="note">
+<h2>Don&#8217;t type your password every time</h2>
+<div class="content">
+<p>If you&#8217;re using an HTTPS URL to push over, the Git server will ask you for your username and password for authentication.
+By default it will prompt you on the terminal for this information so the server can tell if you&#8217;re allowed to push.</p>
+<p>If you don&#8217;t want to type it every single time you push, you can set up a “credential cache”.
+The simplest is just to keep it in memory for a few minutes, which you can easily set up by running <code class="literal">git config --global credential.helper cache</code>.</p>
+<p>For more information on the various credential caching options available, see <a id="xref--ch07-git-tools--r_credential_caching" href="ch07-git-tools.xhtml#r_credential_caching" class="xref">Credential Storage</a>.</p>
+</div>
+</aside>
+<p>The next time one of your collaborators fetches from the server, they will get a reference to where the server&#8217;s version of <code class="literal">serverfix</code> is under the remote branch <code class="literal">origin/serverfix</code>:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git fetch origin
+remote: Counting objects: 7, done.
+remote: Compressing objects: 100% (2/2), done.
+remote: Total 3 (delta 0), reused 3 (delta 0)
+Unpacking objects: 100% (3/3), done.
+From https://github.com/schacon/simplegit
+ * [new branch]      serverfix    -&gt; origin/serverfix</code></pre>
+</figure>
+<p>It&#8217;s important to note that when you do a fetch that brings down new remote-tracking branches, you don&#8217;t automatically have local, editable copies of them.
+In other words, in this case, you don&#8217;t have a new <code class="literal">serverfix</code> branch – you only have an <code class="literal">origin/serverfix</code> pointer that you can&#8217;t modify.</p>
+<p>To merge this work into your current working branch, you can run <code class="literal">git merge origin/serverfix</code>.
+If you want your own <code class="literal">serverfix</code> branch that you can work on, you can base it off your remote-tracking branch:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout -b serverfix origin/serverfix
+Branch serverfix set up to track remote branch serverfix from origin.
+Switched to a new branch &#39;serverfix&#39;</code></pre>
+</figure>
+<p>This gives you a local branch that you can work on that starts where <code class="literal">origin/serverfix</code> is.</p>
+</section>
+<section class="sect2" title="Tracking Branches">
+<h3 id="r_tracking_branches">Tracking Branches</h3>
+<p>
+Checking out a local branch from a remote-tracking branch automatically creates what is called a “tracking branch” (and the branch it tracks is called an “upstream branch”).
+Tracking branches are local branches that have a direct relationship to a remote branch.
+If you&#8217;re on a tracking branch and type <code class="literal">git pull</code>, Git automatically knows which server to fetch from and branch to merge into.</p>
+<p>When you clone a repository, it generally automatically creates a <code class="literal">master</code> branch that tracks <code class="literal">origin/master</code>.
+However, you can set up other tracking branches if you wish – ones that track branches on other remotes, or don&#8217;t track the <code class="literal">master</code> branch.
+The simple case is the example you just saw, running <code class="literal">git checkout -b [branch] [remotename]/[branch]</code>.
+This is a common enough operation that git provides the <code class="literal">--track</code> shorthand:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout --track origin/serverfix
+Branch serverfix set up to track remote branch serverfix from origin.
+Switched to a new branch &#39;serverfix&#39;</code></pre>
+</figure>
+<p>In fact, this is so common that there&#8217;s even a shortcut for that shortcut. If the branch name you&#8217;re trying to checkout (a) doesn&#8217;t exist and (b) exactly matches a name on only one remote, Git will create a tracking branch for you:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout serverfix
+Branch serverfix set up to track remote branch serverfix from origin.
+Switched to a new branch &#39;serverfix&#39;</code></pre>
+</figure>
+<p>To set up a local branch with a different name than the remote branch, you can easily use the first version with a different local branch name:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout -b sf origin/serverfix
+Branch sf set up to track remote branch serverfix from origin.
+Switched to a new branch &#39;sf&#39;</code></pre>
+</figure>
+<p>Now, your local branch <code class="literal">sf</code> will automatically pull from <code class="literal">origin/serverfix</code>.</p>
+<p>If you already have a local branch and want to set it to a remote branch you just pulled down, or want to change the upstream branch you&#8217;re tracking, you can use the <code class="literal">-u</code> or <code class="literal">--set-upstream-to</code> option to <code class="literal">git branch</code> to explicitly set it at any time.</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -u origin/serverfix
+Branch serverfix set up to track remote branch serverfix from origin.</code></pre>
+</figure>
+<aside class="admonition note" title="筆記: Upstream shorthand" epub:type="note">
+<h2>Upstream shorthand</h2>
+<div class="content">
+<p>When you have a tracking branch set up, you can reference its upstream branch with the <code class="literal">@{upstream}</code> or <code class="literal">@{u}</code> shorthand.
+So if you&#8217;re on the <code class="literal">master</code> branch and it&#8217;s tracking <code class="literal">origin/master</code>, you can say something like <code class="literal">git merge @{u}</code> instead of <code class="literal">git merge origin/master</code> if you wish.</p>
+</div>
+</aside>
+<p>If you want to see what tracking branches you have set up, you can use the <code class="literal">-vv</code> option to <code class="literal">git branch</code>.
+This will list out your local branches with more information including what each branch is tracking and if your local branch is ahead, behind or both.</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -vv
+  iss53     7e424c3 [origin/iss53: ahead 2] forgot the brackets
+  master    1ae2a45 [origin/master] deploying index fix
+* serverfix f8674d9 [teamone/server-fix-good: ahead 3, behind 1] this should do it
+  testing   5ea463a trying something new</code></pre>
+</figure>
+<p>So here we can see that our <code class="literal">iss53</code> branch is tracking <code class="literal">origin/iss53</code> and is “ahead” by two, meaning that we have two commits locally that are not pushed to the server.
+We can also see that our <code class="literal">master</code> branch is tracking <code class="literal">origin/master</code> and is up to date.
+Next we can see that our <code class="literal">serverfix</code> branch is tracking the <code class="literal">server-fix-good</code> branch on our <code class="literal">teamone</code> server and is ahead by three and behind by one, meaning that there is one commit on the server we haven&#8217;t merged in yet and three commits locally that we haven&#8217;t pushed.
+Finally we can see that our <code class="literal">testing</code> branch is not tracking any remote branch.</p>
+<p>It&#8217;s important to note that these numbers are only since the last time you fetched from each server.
+This command does not reach out to the servers, it&#8217;s telling you about what it has cached from these servers locally.
+If you want totally up to date ahead and behind numbers, you&#8217;ll need to fetch from all your remotes right before running this.
+You could do that like this: <code class="literal">git fetch --all; git branch -vv</code></p>
+</section>
+<section class="sect2" title="Pulling">
+<h3 id="_pulling">Pulling</h3>
+<p>
+While the <code class="literal">git fetch</code> command will fetch down all the changes on the server that you don&#8217;t have yet, it will not modify your working directory at all.
+It will simply get the data for you and let you merge it yourself.
+However, there is a command called <code class="literal">git pull</code> which is essentially a <code class="literal">git fetch</code> immediately followed by a <code class="literal">git merge</code> in most cases.
+If you have a tracking branch set up as demonstrated in the last section, either by explicitly setting it or by having it created for you by the <code class="literal">clone</code> or <code class="literal">checkout</code> commands, <code class="literal">git pull</code> will look up what server and branch your current branch is tracking, fetch from that server and then try to merge in that remote branch.</p>
+<p>Generally it&#8217;s better to simply use the <code class="literal">fetch</code> and <code class="literal">merge</code> commands explicitly as the magic of <code class="literal">git pull</code> can often be confusing.</p>
+</section>
+<section class="sect2" title="刪除遠端分支">
+<h3 id="r_delete_branches">刪除遠端分支</h3>
+<p>
+Suppose you&#8217;re done with a remote branch – say you and your collaborators are finished with a feature and have merged it into your remote&#8217;s <code class="literal">master</code> branch (or whatever branch your stable codeline is in).
+You can delete a remote branch using the <code class="literal">--delete</code> option to <code class="literal">git push</code>.
+If you want to delete your <code class="literal">serverfix</code> branch from the server, you run the following:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git push origin --delete serverfix
+To https://github.com/schacon/simplegit
+ - [deleted]         serverfix</code></pre>
+</figure>
+<p>Basically all this does is remove the pointer from the server.
+The Git server will generally keep the data there for a while until a garbage collection runs, so if it was accidentally deleted, it&#8217;s often easy to recover.</p>
+</section>
+</section>
+<section class="sect1" title="衍合">
+<h2 id="r_rebasing">衍合</h2>
+<p>
+In Git, there are two main ways to integrate changes from one branch into another: the <code class="literal">merge</code> and the <code class="literal">rebase</code>.
+In this section you&#8217;ll learn what rebasing is, how to do it, why it&#8217;s a pretty amazing tool, and in what cases you won&#8217;t want to use it.</p>
+<section class="sect2" title="基本衍合">
+<h3 id="_基本衍合">基本衍合</h3>
+<p>If you go back to an earlier example from <a id="xref-r_basic_merging" href="#r_basic_merging" class="xref">合併的基本用法</a>, you can see that you diverged your work and made commits on two different branches.</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-rebase-1.png" alt="Simple divergent history."/>
+</div>
+<figcaption>圖表 27. Simple divergent history</figcaption>
+</figure>
+<p>The easiest way to integrate the branches, as we&#8217;ve already covered, is the <code class="literal">merge</code> command.
+It performs a three-way merge between the two latest branch snapshots (<code class="literal">C3</code> and <code class="literal">C4</code>) and the most recent common ancestor of the two (<code class="literal">C2</code>), creating a new snapshot (and commit).</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-rebase-2.png" alt="Merging to integrate diverged work history."/>
+</div>
+<figcaption>圖表 28. Merging to integrate diverged work history</figcaption>
+</figure>
+<p>However, there is another way: you can take the patch of the change that was introduced in <code class="literal">C4</code> and reapply it on top of <code class="literal">C3</code>.
+In Git, this is called <em>rebasing</em>.
+With the <code class="literal">rebase</code> command, you can take all the changes that were committed on one branch and replay them on another one.</p>
+<p>In this example, you&#8217;d run the following:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout experiment
+<span style="font-weight: bold">$</span> git rebase master
+First, rewinding head to replay your work on top of it...
+Applying: added staged command</code></pre>
+</figure>
+<p>It works by going to the common ancestor of the two branches (the one you&#8217;re on and the one you&#8217;re rebasing onto), getting the diff introduced by each commit of the branch you&#8217;re on, saving those diffs to temporary files, resetting the current branch to the same commit as the branch you are rebasing onto, and finally applying each change in turn.</p>
+<figure class="image">
+<div class="content">
+<img src="images/basic-rebase-3.png" alt="Rebasing the change introduced in `C4` onto `C3`."/>
+</div>
+<figcaption>圖表 29. Rebasing the change introduced in <code class="literal">C4</code> onto <code class="literal">C3</code></figcaption>
+</figure>
+<p>At this point, you can go back to the <code class="literal">master</code> branch and do a fast-forward merge.</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master
+<span style="font-weight: bold">$</span> git merge experiment</code></pre>
+</figure>
+<figure class="image">
+<div class="content">
+<img src="images/basic-rebase-4.png" alt="Fast-forwarding the master branch."/>
+</div>
+<figcaption>圖表 30. Fast-forwarding the master branch</figcaption>
+</figure>
+<p>Now, the snapshot pointed to by <code class="literal">C4'</code> is exactly the same as the one that was pointed to by <code class="literal">C5</code> in the merge example.
+There is no difference in the end product of the integration, but rebasing makes for a cleaner history.
+If you examine the log of a rebased branch, it looks like a linear history: it appears that all the work happened in series, even when it originally happened in parallel.</p>
+<p>Often, you&#8217;ll do this to make sure your commits apply cleanly on a remote branch – perhaps in a project to which you&#8217;re trying to contribute but that you don&#8217;t maintain.
+In this case, you&#8217;d do your work in a branch and then rebase your work onto <code class="literal">origin/master</code> when you were ready to submit your patches to the main project.
+That way, the maintainer doesn&#8217;t have to do any integration work – just a fast-forward or a clean apply.</p>
+<p>Note that the snapshot pointed to by the final commit you end up with, whether it&#8217;s the last of the rebased commits for a rebase or the final merge commit after a merge, is the same snapshot – it&#8217;s only the history that is different.
+Rebasing replays changes from one line of work onto another in the order they were introduced, whereas merging takes the endpoints and merges them together.</p>
+</section>
+<section class="sect2" title="更多有趣的衍合">
+<h3 id="_更多有趣的衍合">更多有趣的衍合</h3>
+<p>You can also have your rebase replay on something other than the rebase target branch.
+Take a history like <a id="xref-rrbdiag_e" href="#rrbdiag_e" class="xref">A history with a topic branch off another topic branch</a>, for example.
+You branched a topic branch (<code class="literal">server</code>) to add some server-side functionality to your project, and made a commit.
+Then, you branched off that to make the client-side changes (<code class="literal">client</code>) and committed a few times.
+Finally, you went back to your server branch and did a few more commits.</p>
+<figure id="rrbdiag_e" class="image">
+<div class="content">
+<img src="images/interesting-rebase-1.png" alt="A history with a topic branch off another topic branch."/>
+</div>
+<figcaption>圖表 31. A history with a topic branch off another topic branch</figcaption>
+</figure>
+<p>Suppose you decide that you want to merge your client-side changes into your mainline for a release, but you want to hold off on the server-side changes until it&#8217;s tested further.
+You can take the changes on client that aren&#8217;t on server (<code class="literal">C8</code> and <code class="literal">C9</code>) and replay them on your <code class="literal">master</code> branch by using the <code class="literal">--onto</code> option of <code class="literal">git rebase</code>:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git rebase --onto master server client</code></pre>
+</figure>
+<p>This basically says, “Check out the client branch, figure out the patches from the common ancestor of the <code class="literal">client</code> and <code class="literal">server</code> branches, and then replay them onto <code class="literal">master</code>.”
+It&#8217;s a bit complex, but the result is pretty cool.</p>
+<figure class="image">
+<div class="content">
+<img src="images/interesting-rebase-2.png" alt="Rebasing a topic branch off another topic branch."/>
+</div>
+<figcaption>圖表 32. Rebasing a topic branch off another topic branch</figcaption>
+</figure>
+<p>Now you can fast-forward your <code class="literal">master</code> branch (see <a id="xref-rrbdiag_g" href="#rrbdiag_g" class="xref">Fast-forwarding your master branch to include the client branch changes</a>):</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master
+<span style="font-weight: bold">$</span> git merge client</code></pre>
+</figure>
+<figure id="rrbdiag_g" class="image">
+<div class="content">
+<img src="images/interesting-rebase-3.png" alt="Fast-forwarding your master branch to include the client branch changes."/>
+</div>
+<figcaption>圖表 33. Fast-forwarding your master branch to include the client branch changes</figcaption>
+</figure>
+<p>Let&#8217;s say you decide to pull in your server branch as well.
+You can rebase the server branch onto the <code class="literal">master</code> branch without having to check it out first by running <code class="literal">git rebase [basebranch] [topicbranch]</code> – which checks out the topic branch (in this case, <code class="literal">server</code>) for you and replays it onto the base branch (<code class="literal">master</code>):</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git rebase master server</code></pre>
+</figure>
+<p>This replays your <code class="literal">server</code> work on top of your <code class="literal">master</code> work, as shown in <a id="xref-rrbdiag_h" href="#rrbdiag_h" class="xref">Rebasing your server branch on top of your master branch</a>.</p>
+<figure id="rrbdiag_h" class="image">
+<div class="content">
+<img src="images/interesting-rebase-4.png" alt="Rebasing your server branch on top of your master branch."/>
+</div>
+<figcaption>圖表 34. Rebasing your server branch on top of your master branch</figcaption>
+</figure>
+<p>Then, you can fast-forward the base branch (<code class="literal">master</code>):</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git checkout master
+<span style="font-weight: bold">$</span> git merge server</code></pre>
+</figure>
+<p>You can remove the <code class="literal">client</code> and <code class="literal">server</code> branches because all the work is integrated and you don&#8217;t need them anymore, leaving your history for this entire process looking like <a id="xref-rrbdiag_i" href="#rrbdiag_i" class="xref">Final commit history</a>:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span><span style="font-weight: bold">$</span> git branch -d client
+<span style="font-weight: bold">$</span> git branch -d server</code></pre>
+</figure>
+<figure id="rrbdiag_i" class="image">
+<div class="content">
+<img src="images/interesting-rebase-5.png" alt="Final commit history."/>
+</div>
+<figcaption>圖表 35. Final commit history</figcaption>
+</figure>
+</section>
+<section class="sect2" title="使用衍和的危險">
+<h3 id="r_rebase_peril">使用衍和的危險</h3>
+<p>
+Ahh, but the bliss of rebasing isn&#8217;t without its drawbacks, which can be summed up in a single line:</p>
+<p><strong>Do not rebase commits that exist outside your repository.</strong></p>
+<p>If you follow that guideline, you&#8217;ll be fine.
+If you don&#8217;t, people will hate you, and you&#8217;ll be scorned by friends and family.</p>
+<p>When you rebase stuff, you&#8217;re abandoning existing commits and creating new ones that are similar but different.
+If you push commits somewhere and others pull them down and base work on them, and then you rewrite those commits with <code class="literal">git rebase</code> and push them up again, your collaborators will have to re-merge their work and things will get messy when you try to pull their work back into yours.</p>
+<p>Let&#8217;s look at an example of how rebasing work that you&#8217;ve made public can cause problems.
+Suppose you clone from a central server and then do some work off that.
+Your commit history looks like this:</p>
+<figure class="image">
+<div class="content">
+<img src="images/perils-of-rebasing-1.png" alt="Clone a repository, and base some work on it."/>
+</div>
+<figcaption>圖表 36. Clone a repository, and base some work on it</figcaption>
+</figure>
+<p>Now, someone else does more work that includes a merge, and pushes that work to the central server.
+You fetch it and merge the new remote branch into your work, making your history look something like this:</p>
+<figure class="image">
+<div class="content">
+<img src="images/perils-of-rebasing-2.png" alt="Fetch more commits, and merge them into your work."/>
+</div>
+<figcaption>圖表 37. Fetch more commits, and merge them into your work</figcaption>
+</figure>
+<p>Next, the person who pushed the merged work decides to go back and rebase their work instead; they do a <code class="literal">git push --force</code> to overwrite the history on the server.
+You then fetch from that server, bringing down the new commits.</p>
+<figure id="r_pre_merge_rebase_work" class="image">
+<div class="content">
+<img src="images/perils-of-rebasing-3.png" alt="Someone pushes rebased commits, abandoning commits you've based your work on."/>
+</div>
+<figcaption>圖表 38. Someone pushes rebased commits, abandoning commits you&#8217;ve based your work on</figcaption>
+</figure>
+<p>Now you&#8217;re both in a pickle.
+If you do a <code class="literal">git pull</code>, you&#8217;ll create a merge commit which includes both lines of history, and your repository will look like this:</p>
+<figure id="r_merge_rebase_work" class="image">
+<div class="content">
+<img src="images/perils-of-rebasing-4.png" alt="You merge in the same work again into a new merge commit."/>
+</div>
+<figcaption>圖表 39. You merge in the same work again into a new merge commit</figcaption>
+</figure>
+<p>If you run a <code class="literal">git log</code> when your history looks like this, you&#8217;ll see two commits that have the same author, date, and message, which will be confusing.
+Furthermore, if you push this history back up to the server, you&#8217;ll reintroduce all those rebased commits to the central server, which can further confuse people.
+It&#8217;s pretty safe to assume that the other developer doesn&#8217;t want <code class="literal">C4</code> and <code class="literal">C6</code> to be in the history; that&#8217;s why they rebased in the first place.</p>
+</section>
+<section class="sect2" title="Rebase When You Rebase">
+<h3 id="r_rebase_rebase">Rebase When You Rebase</h3>
+<p>If you <strong>do</strong> find yourself in a situation like this, Git has some further magic that might help you out.
+If someone on your team force pushes changes that overwrite work that you&#8217;ve based work on, your challenge is to figure out what is yours and what they&#8217;ve rewritten.</p>
+<p>It turns out that in addition to the commit SHA-1 checksum, Git also calculates a checksum that is based just on the patch introduced with the commit.
+This is called a “patch-id”.</p>
+<p>If you pull down work that was rewritten and rebase it on top of the new commits from your partner, Git can often successfully figure out what is uniquely yours and apply them back on top of the new branch.</p>
+<p>For instance, in the previous scenario, if instead of doing a merge when we&#8217;re at <a id="xref-r_pre_merge_rebase_work" href="#r_pre_merge_rebase_work" class="xref">Someone pushes rebased commits, abandoning commits you&#8217;ve based your work on</a> we run <code class="literal">git rebase teamone/master</code>, Git will:</p>
+<div class="itemized-list">
+<ul>
+<li>
+<span class="principal">Determine what work is unique to our branch (C2, C3, C4, C6, C7)</span>
+</li>
+<li>
+<span class="principal">Determine which are not merge commits (C2, C3, C4)</span>
+</li>
+<li>
+<span class="principal">Determine which have not been rewritten into the target branch (just C2 and C3, since C4 is the same patch as C4')</span>
+</li>
+<li>
+<span class="principal">Apply those commits to the top of <code class="literal">teamone/master</code></span>
+</li>
+</ul>
+</div>
+<p>So instead of the result we see in <a id="xref-r_merge_rebase_work" href="#r_merge_rebase_work" class="xref">You merge in the same work again into a new merge commit</a>, we would end up with something more like <a id="xref-r_rebase_rebase_work" href="#r_rebase_rebase_work" class="xref">Rebase on top of force-pushed rebase work.</a>.</p>
+<figure id="r_rebase_rebase_work" class="image">
+<div class="content">
+<img src="images/perils-of-rebasing-5.png" alt="Rebase on top of force-pushed rebase work."/>
+</div>
+<figcaption>圖表 40. Rebase on top of force-pushed rebase work.</figcaption>
+</figure>
+<p>This only works if C4 and C4' that your partner made are almost exactly the same patch.
+Otherwise the rebase won&#8217;t be able to tell that it&#8217;s a duplicate and will add another C4-like patch (which will probably fail to apply cleanly, since the changes would already be at least somewhat there).</p>
+<p>You can also simplify this by running a <code class="literal">git pull --rebase</code> instead of a normal <code class="literal">git pull</code>.
+Or you could do it manually with a <code class="literal">git fetch</code> followed by a <code class="literal">git rebase teamone/master</code> in this case.</p>
+<p>If you are using <code class="literal">git pull</code> and want to make <code class="literal">--rebase</code> the default, you can set the <code class="literal">pull.rebase</code> config value with something like <code class="literal">git config --global pull.rebase true</code>.</p>
+<p>If you treat rebasing as a way to clean up and work with commits before you push them, and if you only rebase commits that have never been available publicly, then you&#8217;ll be fine.
+If you rebase commits that have already been pushed publicly, and people may have based work on those commits, then you may be in for some frustrating trouble, and the scorn of your teammates.</p>
+<p>If you or a partner does find it necessary at some point, make sure everyone knows to run <code class="literal">git pull --rebase</code> to try to make the pain after it happens a little bit simpler.</p>
+</section>
+<section class="sect2" title="衍合及合併的異同">
+<h3 id="_衍合及合併的異同">衍合及合併的異同</h3>
+<p>
+Now that you&#8217;ve seen rebasing and merging in action, you may be wondering which one is better.
+Before we can answer this, let&#8217;s step back a bit and talk about what history means.</p>
+<p>One point of view on this is that your repository&#8217;s commit history is a <strong>record of what actually happened.</strong>
+It&#8217;s a historical document, valuable in its own right, and shouldn&#8217;t be tampered with.
+From this angle, changing the commit history is almost blasphemous; you&#8217;re <em>lying</em> about what actually transpired.
+So what if there was a messy series of merge commits?
+That&#8217;s how it happened, and the repository should preserve that for posterity.</p>
+<p>The opposing point of view is that the commit history is the <strong>story of how your project was made.</strong>
+You wouldn&#8217;t publish the first draft of a book, and the manual for how to maintain your software deserves careful editing.
+This is the camp that uses tools like rebase and filter-branch to tell the story in the way that&#8217;s best for future readers.</p>
+<p>Now, to the question of whether merging or rebasing is better: hopefully you&#8217;ll see that it&#8217;s not that simple.
+Git is a powerful tool, and allows you to do many things to and with your history, but every team and every project is different.
+Now that you know how both of these things work, it&#8217;s up to you to decide which one is best for your particular situation.</p>
+<p>In general the way to get the best of both worlds is to rebase local changes you&#8217;ve made but haven&#8217;t shared yet before you push them in order to clean up your story, but never rebase anything you&#8217;ve pushed somewhere.</p>
+</section>
+</section>
+<section class="sect1" title="總結">
+<h2 id="_總結">總結</h2>
+<p class="last">我們已介紹 Git 基本的分支和合併，
+你應該對於「建立並切換到新分支」、「在不同分支之間切換」、「合併本地分支」感到相當輕鬆寫意；
+你應該也能夠做到「把想要分享的分支推送到共用伺服器上」、「在共享的分支上與其他人協作」、「在分享自己的分支前先進行變基（rebase）」。
+下一章我們將介紹架設自己的 Git 版本庫託管伺服器所需要的知識。</p>
+</section>
+</section>
+</body>
+</html>

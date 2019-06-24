@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Embedding Git in your Applications</title>
+<link rel="stylesheet" type="text/css" href="styles/epub3.css"/>
+<link rel="stylesheet" type="text/css" href="styles/epub3-css3-only.css" media="(min-device-width: 0px)"/>
+<script type="text/javascript">
+document.addEventListener('DOMContentLoaded', function(event, reader) {
+  if (!(reader = navigator.epubReadingSystem)) {
+    if (navigator.userAgent.indexOf(' calibre/') >= 0) reader = { name: 'calibre-desktop' };
+    else if (window.parent == window || !(reader = window.parent.navigator.epubReadingSystem)) return;
+  }
+  document.body.setAttribute('class', reader.name.toLowerCase().replace(/ /g, '-'));
+});
+</script>
+</head>
+<body>
+<section class="chapter" title="Embedding Git in your Applications" epub:type="chapter" id="_embedding_git_in_your_applications">
+<header>
+<div class="chapter-header">
+<h1 class="chapter-title"><small class="subtitle"><b>Embedding</b> <b>Git</b> <b>in</b> <b>your</b> <b>Applications</b></small></h1>
+</div>
+</header>
+<p>If your application is for developers, chances are good that it could benefit from integration with source control.
+Even non-developer applications, such as document editors, could potentially benefit from version-control features, and Git&#8217;s model works very well for many different scenarios.</p>
+<p>If you need to integrate Git with your application, you have essentially three choices: spawning a shell and using the Git command-line tool; Libgit2; and JGit.</p>
+<section class="sect1" title="Command-line Git">
+<h2 id="_command_line_git">Command-line Git</h2>
+<p>One option is to spawn a shell process and use the Git command-line tool to do the work.
+This has the benefit of being canonical, and all of Git&#8217;s features are supported.
+This also happens to be fairly easy, as most runtime environments have a relatively simple facility for invoking a process with command-line arguments.
+However, this approach does have some downsides.</p>
+<p>One is that all the output is in plain text.
+This means that you&#8217;ll have to parse Git&#8217;s occasionally-changing output format to read progress and result information, which can be inefficient and error-prone.</p>
+<p>Another is the lack of error recovery.
+If a repository is corrupted somehow, or the user has a malformed configuration value, Git will simply refuse to perform many operations.</p>
+<p>Yet another is process management.
+Git requires you to maintain a shell environment on a separate process, which can add unwanted complexity.
+Trying to coordinate many of these processes (especially when potentially accessing the same repository from several processes) can be quite a challenge.</p>
+</section>
+<section class="sect1" title="Libgit2">
+<h2 id="_libgit2">Libgit2</h2>
+<p>
+Another option at your disposal is to use Libgit2.
+Libgit2 is a dependency-free implementation of Git, with a focus on having a nice API for use within other programs.
+You can find it at <a href="http://libgit2.github.com" class="link">http://libgit2.github.com</a>.</p>
+<p>First, let&#8217;s take a look at what the C API looks like.
+Here&#8217;s a whirlwind tour:</p>
+<figure class="listing">
+<pre class="source language-c"><code><span></span><span style="font-style: italic">// Open a repository</span>
+git_repository *repo;
+<span style="font-weight: bold">int</span> error = git_repository_open(&amp;repo, <span style="font-style: italic">&quot;/path/to/repository&quot;</span>);
+
+<span style="font-style: italic">// Dereference HEAD to a commit</span>
+git_object *head_commit;
+error = git_revparse_single(&amp;head_commit, repo, <span style="font-style: italic">&quot;HEAD^{commit}&quot;</span>);
+git_commit *commit = (git_commit*)head_commit;
+
+<span style="font-style: italic">// Print some of the commit&#39;s properties</span>
+printf(<span style="font-style: italic">&quot;%s&quot;</span>, git_commit_message(commit));
+<span style="font-weight: bold">const</span> git_signature *author = git_commit_author(commit);
+printf(<span style="font-style: italic">&quot;%s &lt;%s&gt;</span><span style="font-weight: bold; font-style: italic">\n</span><span style="font-style: italic">&quot;</span>, author-&gt;name, author-&gt;email);
+<span style="font-weight: bold">const</span> git_oid *tree_id = git_commit_tree_id(commit);
+
+<span style="font-style: italic">// Cleanup</span>
+git_commit_free(commit);
+git_repository_free(repo);</code></pre>
+</figure>
+<p>The first couple of lines open a Git repository.
+The <code class="literal">git_repository</code> type represents a handle to a repository with a cache in memory.
+This is the simplest method, for when you know the exact path to a repository&#8217;s working directory or <code class="literal">.git</code> folder.
+There&#8217;s also the <code class="literal">git_repository_open_ext</code> which includes options for searching, <code class="literal">git_clone</code> and friends for making a local clone of a remote repository, and <code class="literal">git_repository_init</code> for creating an entirely new repository.</p>
+<p>The second chunk of code uses rev-parse syntax (see <a id="xref--ch07-git-tools--r_branch_references" href="ch07-git-tools.xhtml#r_branch_references" class="xref">Branch References</a> for more on this) to get the commit that HEAD eventually points to.
+The type returned is a <code class="literal">git_object</code> pointer, which represents something that exists in the Git object database for a repository.
+<code class="literal">git_object</code> is actually a “parent” type for several different kinds of objects; the memory layout for each of the “child” types is the same as for <code class="literal">git_object</code>, so you can safely cast to the right one.
+In this case, <code class="literal">git_object_type(commit)</code> would return <code class="literal">GIT_OBJ_COMMIT</code>, so it&#8217;s safe to cast to a <code class="literal">git_commit</code> pointer.</p>
+<p>The next chunk shows how to access the commit&#8217;s properties.
+The last line here uses a <code class="literal">git_oid</code> type; this is Libgit2&#8217;s representation for a SHA-1 hash.</p>
+<p>From this sample, a couple of patterns have started to emerge:</p>
+<div class="itemized-list">
+<ul>
+<li>
+<span class="principal">If you declare a pointer and pass a reference to it into a Libgit2 call, that call will probably return an integer error code.
+A <code class="literal">0</code> value indicates success; anything less is an error.</span>
+</li>
+<li>
+<span class="principal">If Libgit2 populates a pointer for you, you&#8217;re responsible for freeing it.</span>
+</li>
+<li>
+<span class="principal">If Libgit2 returns a <code class="literal">const</code> pointer from a call, you don&#8217;t have to free it, but it will become invalid when the object it belongs to is freed.</span>
+</li>
+<li>
+<span class="principal">Writing C is a bit painful.</span>
+</li>
+</ul>
+</div>
+<p>
+That last one means it isn&#8217;t very probable that you&#8217;ll be writing C when using Libgit2.
+Fortunately, there are a number of language-specific bindings available that make it fairly easy to work with Git repositories from your specific language and environment.
+Let&#8217;s take a look at the above example written using the Ruby bindings for Libgit2, which are named Rugged, and can be found at <a href="https://github.com/libgit2/rugged" class="link">https://github.com/libgit2/rugged</a>.</p>
+<figure class="listing">
+<pre class="source language-ruby"><code><span></span>repo = Rugged::Repository.new(<span style="font-style: italic">&#39;path/to/repository&#39;</span>)
+commit = repo.head.target
+puts commit.message
+puts <span style="font-style: italic">&quot;</span><span style="font-weight: bold; font-style: italic">#{</span>commit.author[<span style="font-style: italic">:name</span>]<span style="font-weight: bold; font-style: italic">}</span><span style="font-style: italic"> &lt;</span><span style="font-weight: bold; font-style: italic">#{</span>commit.author[<span style="font-style: italic">:email</span>]<span style="font-weight: bold; font-style: italic">}</span><span style="font-style: italic">&gt;&quot;</span>
+tree = commit.tree</code></pre>
+</figure>
+<p>As you can see, the code is much less cluttered.
+Firstly, Rugged uses exceptions; it can raise things like <code class="literal">ConfigError</code> or <code class="literal">ObjectError</code>  to signal error conditions.
+Secondly, there&#8217;s no explicit freeing of resources, since Ruby is garbage-collected.
+Let&#8217;s take a look at a slightly more complicated example: crafting a commit from scratch</p>
+<figure class="listing">
+<pre class="source language-ruby"><code><span></span>blob_id = repo.write(<span style="font-style: italic">&quot;Blob contents&quot;</span>, <span style="font-style: italic">:blob</span>) <i class="conum" data-value="1">①</i>
+
+index = repo.index
+index.read_tree(repo.head.target.tree)
+index.add(<span style="font-style: italic">:path</span> =&gt; <span style="font-style: italic">&#39;newfile.txt&#39;</span>, <span style="font-style: italic">:oid</span> =&gt; blob_id) <i class="conum" data-value="2">②</i>
+
+sig = {
+    <span style="font-style: italic">:email</span> =&gt; <span style="font-style: italic">&quot;bob@example.com&quot;</span>,
+    <span style="font-style: italic">:name</span> =&gt; <span style="font-style: italic">&quot;Bob User&quot;</span>,
+    <span style="font-style: italic">:time</span> =&gt; Time.now,
+}
+
+commit_id = Rugged::Commit.create(repo,
+    <span style="font-style: italic">:tree</span> =&gt; index.write_tree(repo), <i class="conum" data-value="3">③</i>
+    <span style="font-style: italic">:author</span> =&gt; sig,
+    <span style="font-style: italic">:committer</span> =&gt; sig, <i class="conum" data-value="4">④</i>
+    <span style="font-style: italic">:message</span> =&gt; <span style="font-style: italic">&quot;Add newfile.txt&quot;</span>, <i class="conum" data-value="5">⑤</i>
+    <span style="font-style: italic">:parents</span> =&gt; repo.empty? ? [] : [ repo.head.target ].compact, <i class="conum" data-value="6">⑥</i>
+    <span style="font-style: italic">:update_ref</span> =&gt; <span style="font-style: italic">&#39;HEAD&#39;</span>, <i class="conum" data-value="7">⑦</i>
+)
+commit = repo.lookup(commit_id) <i class="conum" data-value="8">⑧</i></code></pre>
+</figure>
+<div class="callout-list">
+<ol>
+<li><i class="conum" data-value="1">①</i> Create a new blob, which contains the contents of a new file.</li>
+<li><i class="conum" data-value="2">②</i> Populate the index with the head commit&#8217;s tree, and add the new file at the path <code class="literal">newfile.txt</code>.</li>
+<li><i class="conum" data-value="3">③</i> This creates a new tree in the ODB, and uses it for the new commit.</li>
+<li><i class="conum" data-value="4">④</i> We use the same signature for both the author and committer fields.</li>
+<li><i class="conum" data-value="5">⑤</i> The commit message.</li>
+<li><i class="conum" data-value="6">⑥</i> When creating a commit, you have to specify the new commit&#8217;s parents.
+This uses the tip of HEAD for the single parent.</li>
+<li><i class="conum" data-value="7">⑦</i> Rugged (and Libgit2) can optionally update a reference when making a commit.</li>
+<li><i class="conum" data-value="8">⑧</i> The return value is the SHA-1 hash of a new commit object, which you can then use to get a <code class="literal">Commit</code> object.</li>
+</ol>
+</div>
+<p>The Ruby code is nice and clean, but since Libgit2 is doing the heavy lifting, this code will run pretty fast, too.
+If you&#8217;re not a rubyist, we touch on some other bindings in <a id="xref-r_libgit2_bindings" href="#r_libgit2_bindings" class="xref">Other Bindings</a>.</p>
+<section class="sect2" title="Advanced Functionality">
+<h3 id="_advanced_functionality">Advanced Functionality</h3>
+<p>Libgit2 has a couple of capabilities that are outside the scope of core Git.
+One example is pluggability: Libgit2 allows you to provide custom “backends” for several types of operation, so you can store things in a different way than stock Git does.
+Libgit2 allows custom backends for configuration, ref storage, and the object database, among other things.</p>
+<p>Let&#8217;s take a look at how this works.
+The code below is borrowed from the set of backend examples provided by the Libgit2 team (which can be found at <a href="https://github.com/libgit2/libgit2-backends" class="link">https://github.com/libgit2/libgit2-backends</a>).
+Here&#8217;s how a custom backend for the object database is set up:</p>
+<figure class="listing">
+<pre class="source language-c"><code><span></span>git_odb *odb;
+<span style="font-weight: bold">int</span> error = git_odb_new(&amp;odb); <i class="conum" data-value="1">①</i>
+
+git_odb_backend *my_backend;
+error = git_odb_backend_mine(&amp;my_backend, <span style="font-style: italic">/*…*/</span>); <i class="conum" data-value="2">②</i>
+
+error = git_odb_add_backend(odb, my_backend, 1); <i class="conum" data-value="3">③</i>
+
+git_repository *repo;
+error = git_repository_open(&amp;repo, <span style="font-style: italic">&quot;some-path&quot;</span>);
+error = git_repository_set_odb(odb); <i class="conum" data-value="4">④</i></code></pre>
+</figure>
+<p><em>(Note that errors are captured, but not handled. We hope your code is better than ours.)</em></p>
+<div class="callout-list">
+<ol>
+<li><i class="conum" data-value="1">①</i> Initialize an empty object database (ODB) “frontend,” which will act as a container for the “backends” which are the ones doing the real work.</li>
+<li><i class="conum" data-value="2">②</i> Initialize a custom ODB backend.</li>
+<li><i class="conum" data-value="3">③</i> Add the backend to the frontend.</li>
+<li><i class="conum" data-value="4">④</i> Open a repository, and set it to use our ODB to look up objects.</li>
+</ol>
+</div>
+<p>But what is this <code class="literal">git_odb_backend_mine</code> thing?
+Well, that&#8217;s the constructor for your own ODB implementation, and you can do whatever you want in there, so long as you fill in the <code class="literal">git_odb_backend</code> structure properly.
+Here&#8217;s what it <em>could</em> look like:</p>
+<figure class="listing">
+<pre class="source language-c"><code><span></span><span style="font-weight: bold">typedef</span> <span style="font-weight: bold">struct</span> {
+    git_odb_backend parent;
+
+    <span style="font-style: italic">// Some other stuff</span>
+    <span style="font-weight: bold">void</span> *custom_context;
+} my_backend_struct;
+
+<span style="font-weight: bold">int</span> git_odb_backend_mine(git_odb_backend **backend_out, <span style="font-style: italic">/*…*/</span>)
+{
+    my_backend_struct *backend;
+
+    backend = calloc(1, <span style="font-weight: bold">sizeof</span> (my_backend_struct));
+
+    backend-&gt;custom_context = <span style="border: 1px solid #FF0000">…</span>;
+
+    backend-&gt;parent.read = &amp;my_backend__read;
+    backend-&gt;parent.read_prefix = &amp;my_backend__read_prefix;
+    backend-&gt;parent.read_header = &amp;my_backend__read_header;
+    <span style="font-style: italic">// …</span>
+
+    *backend_out = (git_odb_backend *) backend;
+
+    <span style="font-weight: bold">return</span> GIT_SUCCESS;
+}</code></pre>
+</figure>
+<p>The subtlest constraint here is that <code class="literal">my_backend_struct</code>'s first member must be a <code class="literal">git_odb_backend</code> structure; this ensures that the memory layout is what the Libgit2 code expects it to be.
+The rest of it is arbitrary; this structure can be as large or small as you need it to be.</p>
+<p>The initialization function allocates some memory for the structure, sets up the custom context, and then fills in the members of the <code class="literal">parent</code> structure that it supports.
+Take a look at the <code class="literal">include/git2/sys/odb_backend.h</code> file in the Libgit2 source for a complete set of call signatures; your particular use case will help determine which of these you&#8217;ll want to support.</p>
+</section>
+<section class="sect2" title="Other Bindings">
+<h3 id="r_libgit2_bindings">Other Bindings</h3>
+<p>Libgit2 has bindings for many languages.
+Here we show a small example using a few of the more complete bindings packages as of this writing; libraries exist for many other languages, including C++, Go, Node.js, Erlang, and the JVM, all in various stages of maturity.
+The official collection of bindings can be found by browsing the repositories at <a href="https://github.com/libgit2" class="link">https://github.com/libgit2</a>.
+The code we&#8217;ll write will return the commit message from the commit eventually pointed to by HEAD (sort of like <code class="literal">git log -1</code>).</p>
+<section class="sect3" title="LibGit2Sharp">
+<h4 id="_libgit2sharp">LibGit2Sharp</h4>
+<p>
+If you&#8217;re writing a .NET or Mono application, LibGit2Sharp (<a href="https://github.com/libgit2/libgit2sharp" class="link">https://github.com/libgit2/libgit2sharp</a>) is what you&#8217;re looking for.
+The bindings are written in C#, and great care has been taken to wrap the raw Libgit2 calls with native-feeling CLR APIs.
+Here&#8217;s what our example program looks like:</p>
+<figure class="listing">
+<pre class="source language-csharp"><code><span></span><span style="font-weight: bold">new</span> Repository(<span style="font-style: italic">@&quot;C:\path\to\repo&quot;</span>).Head.Tip.Message;</code></pre>
+</figure>
+<p>For desktop Windows applications, there&#8217;s even a NuGet package that will help you get started quickly.</p>
+</section>
+<section class="sect3" title="objective-git">
+<h4 id="_objective_git">objective-git</h4>
+<p>
+If your application is running on an Apple platform, you&#8217;re likely using Objective-C as your implementation language.
+Objective-Git (<a href="https://github.com/libgit2/objective-git" class="link">https://github.com/libgit2/objective-git</a>) is the name of the Libgit2 bindings for that environment.
+The example program looks like this:</p>
+<figure class="listing">
+<pre class="source language-objc"><code><span></span>GTRepository *repo =
+    [[GTRepository alloc] initWithURL:[NSURL fileURLWithPath: <span style="font-style: italic">@&quot;/path/to/repo&quot;</span>] error:NULL];
+NSString *msg = [[[repo headReferenceWithError:NULL] resolvedTarget] message];</code></pre>
+</figure>
+<p>Objective-git is fully interoperable with Swift, so don&#8217;t fear if you&#8217;ve left Objective-C behind.</p>
+</section>
+<section class="sect3" title="pygit2">
+<h4 id="_pygit2">pygit2</h4>
+<p>
+The bindings for Libgit2 in Python are called Pygit2, and can be found at <a href="http://www.pygit2.org/" class="link">http://www.pygit2.org/</a>.
+Our example program:</p>
+<figure class="listing">
+<pre class="source language-python"><code><span></span>pygit2.Repository(<span style="font-style: italic">&quot;/path/to/repo&quot;</span>) <span style="font-style: italic"># open repository</span>
+    .head                          <span style="font-style: italic"># get the current branch</span>
+    .peel(pygit2.Commit)           <span style="font-style: italic"># walk down to the commit</span>
+    .message                       <span style="font-style: italic"># read the message</span></code></pre>
+</figure>
+</section>
+</section>
+<section class="sect2" title="Further Reading">
+<h3 id="_further_reading">Further Reading</h3>
+<p>Of course, a full treatment of Libgit2&#8217;s capabilities is outside the scope of this book.
+If you want more information on Libgit2 itself, there&#8217;s API documentation at <a href="https://libgit2.github.com/libgit2" class="link">https://libgit2.github.com/libgit2</a>, and a set of guides at <a href="https://libgit2.github.com/docs" class="link">https://libgit2.github.com/docs</a>.
+For the other bindings, check the bundled README and tests; there are often small tutorials and pointers to further reading there.</p>
+</section>
+</section>
+<section class="sect1" title="JGit">
+<h2 id="_jgit">JGit</h2>
+<p>
+If you want to use Git from within a Java program, there is a fully featured Git library called JGit.
+JGit is a relatively full-featured implementation of Git written natively in Java, and is widely used in the Java community.
+The JGit project is under the Eclipse umbrella, and its home can be found at <a href="http://www.eclipse.org/jgit" class="link">http://www.eclipse.org/jgit</a>.</p>
+<section class="sect2" title="Getting Set Up">
+<h3 id="_getting_set_up">Getting Set Up</h3>
+<p>There are a number of ways to connect your project with JGit and start writing code against it.
+Probably the easiest is to use Maven – the integration is accomplished by adding the following snippet to the <code class="literal">&lt;dependencies&gt;</code> tag in your pom.xml file:</p>
+<figure class="listing">
+<pre class="source language-xml"><code><span></span><span style="font-weight: bold">&lt;dependency&gt;</span>
+    <span style="font-weight: bold">&lt;groupId&gt;</span>org.eclipse.jgit<span style="font-weight: bold">&lt;/groupId&gt;</span>
+    <span style="font-weight: bold">&lt;artifactId&gt;</span>org.eclipse.jgit<span style="font-weight: bold">&lt;/artifactId&gt;</span>
+    <span style="font-weight: bold">&lt;version&gt;</span>3.5.0.201409260305-r<span style="font-weight: bold">&lt;/version&gt;</span>
+<span style="font-weight: bold">&lt;/dependency&gt;</span></code></pre>
+</figure>
+<p>The <code class="literal">version</code> will most likely have advanced by the time you read this; check <a href="http://mvnrepository.com/artifact/org.eclipse.jgit/org.eclipse.jgit" class="link">http://mvnrepository.com/artifact/org.eclipse.jgit/org.eclipse.jgit</a> for updated repository information.
+Once this step is done, Maven will automatically acquire and use the JGit libraries that you&#8217;ll need.</p>
+<p>If you would rather manage the binary dependencies yourself, pre-built JGit binaries are available from <a href="http://www.eclipse.org/jgit/download" class="link">http://www.eclipse.org/jgit/download</a>.
+You can build them into your project by running a command like this:</p>
+<figure class="listing">
+<pre class="source language-console"><code><span></span>javac -cp .:org.eclipse.jgit-3.5.0.201409260305-r.jar App.java
+java -cp .:org.eclipse.jgit-3.5.0.201409260305-r.jar App</code></pre>
+</figure>
+</section>
+<section class="sect2" title="Plumbing">
+<h3 id="_plumbing">Plumbing</h3>
+<p>JGit has two basic levels of API: plumbing and porcelain.
+The terminology for these comes from Git itself, and JGit is divided into roughly the same kinds of areas: porcelain APIs are a friendly front-end for common user-level actions (the sorts of things a normal user would use the Git command-line tool for), while the plumbing APIs are for interacting with low-level repository objects directly.</p>
+<p>The starting point for most JGit sessions is the <code class="literal">Repository</code> class, and the first thing you&#8217;ll want to do is create an instance of it.
+For a filesystem-based repository (yes, JGit allows for other storage models), this is accomplished using <code class="literal">FileRepositoryBuilder</code>:</p>
+<figure class="listing">
+<pre class="source language-java"><code><span></span><span style="font-style: italic">// Create a new repository</span>
+Repository newlyCreatedRepo = FileRepositoryBuilder.create(
+    <span style="font-weight: bold">new</span> File(<span style="font-style: italic">&quot;/tmp/new_repo/.git&quot;</span>));
+newlyCreatedRepo.create();
+
+<span style="font-style: italic">// Open an existing repository</span>
+Repository existingRepo = <span style="font-weight: bold">new</span> FileRepositoryBuilder()
+    .setGitDir(<span style="font-weight: bold">new</span> File(<span style="font-style: italic">&quot;my_repo/.git&quot;</span>))
+    .build();</code></pre>
+</figure>
+<p>The builder has a fluent API for providing all the things it needs to find a Git repository, whether or not your program knows exactly where it&#8217;s located.
+It can use environment variables (<code class="literal">.readEnvironment()</code>), start from a place in the working directory and search (<code class="literal">.setWorkTree(…).findGitDir()</code>), or just open a known <code class="literal">.git</code> directory as above.</p>
+<p>Once you have a <code class="literal">Repository</code> instance, you can do all sorts of things with it.
+Here&#8217;s a quick sampling:</p>
+<figure class="listing">
+<pre class="source language-java"><code><span></span><span style="font-style: italic">// Get a reference</span>
+Ref master = repo.getRef(<span style="font-style: italic">&quot;master&quot;</span>);
+
+<span style="font-style: italic">// Get the object the reference points to</span>
+ObjectId masterTip = master.getObjectId();
+
+<span style="font-style: italic">// Rev-parse</span>
+ObjectId obj = repo.resolve(<span style="font-style: italic">&quot;HEAD^{tree}&quot;</span>);
+
+<span style="font-style: italic">// Load raw object contents</span>
+ObjectLoader loader = repo.open(masterTip);
+loader.copyTo(System.out);
+
+<span style="font-style: italic">// Create a branch</span>
+RefUpdate createBranch1 = repo.updateRef(<span style="font-style: italic">&quot;refs/heads/branch1&quot;</span>);
+createBranch1.setNewObjectId(masterTip);
+createBranch1.update();
+
+<span style="font-style: italic">// Delete a branch</span>
+RefUpdate deleteBranch1 = repo.updateRef(<span style="font-style: italic">&quot;refs/heads/branch1&quot;</span>);
+deleteBranch1.setForceUpdate(<span style="font-weight: bold">true</span>);
+deleteBranch1.delete();
+
+<span style="font-style: italic">// Config</span>
+Config cfg = repo.getConfig();
+String name = cfg.getString(<span style="font-style: italic">&quot;user&quot;</span>, <span style="font-weight: bold">null</span>, <span style="font-style: italic">&quot;name&quot;</span>);</code></pre>
+</figure>
+<p>There&#8217;s quite a bit going on here, so let&#8217;s go through it one section at a time.</p>
+<p>The first line gets a pointer to the <code class="literal">master</code> reference.
+JGit automatically grabs the <em>actual</em> master ref, which lives at <code class="literal">refs/heads/master</code>, and returns an object that lets you fetch information about the reference.
+You can get the name (<code class="literal">.getName()</code>), and either the target object of a direct reference (<code class="literal">.getObjectId()</code>) or the reference pointed to by a symbolic ref (<code class="literal">.getTarget()</code>).
+Ref objects are also used to represent tag refs and objects, so you can ask if the tag is “peeled,” meaning that it points to the final target of a (potentially long) string of tag objects.</p>
+<p>The second line gets the target of the <code class="literal">master</code> reference, which is returned as an ObjectId instance.
+ObjectId represents the SHA-1 hash of an object, which might or might not exist in Git&#8217;s object database.
+The third line is similar, but shows how JGit handles the rev-parse syntax (for more on this, see <a href="ch07-git-tools.xhtml#r_branch_references" class="xref">Branch References</a>); you can pass any object specifier that Git understands, and JGit will return either a valid ObjectId for that object, or <code class="literal">null</code>.</p>
+<p>The next two lines show how to load the raw contents of an object.
+In this example, we call <code class="literal">ObjectLoader.copyTo()</code> to stream the contents of the object directly to stdout, but ObjectLoader also has methods to read the type and size of an object, as well as return it as a byte array.
+For large objects (where <code class="literal">.isLarge()</code> returns <code class="literal">true</code>), you can call <code class="literal">.openStream()</code> to get an InputStream-like object that can read the raw object data without pulling it all into memory at once.</p>
+<p>The next few lines show what it takes to create a new branch.
+We create a RefUpdate instance, configure some parameters, and call <code class="literal">.update()</code> to trigger the change.
+Directly following this is the code to delete that same branch.
+Note that <code class="literal">.setForceUpdate(true)</code> is required for this to work; otherwise the <code class="literal">.delete()</code> call will return <code class="literal">REJECTED</code>, and nothing will happen.</p>
+<p>The last example shows how to fetch the <code class="literal">user.name</code> value from the Git configuration files.
+This Config instance uses the repository we opened earlier for local configuration, but will automatically detect the global and system configuration files and read values from them as well.</p>
+<p>This is only a small sampling of the full plumbing API; there are many more methods and classes available.
+Also not shown here is the way JGit handles errors, which is through the use of exceptions.
+JGit APIs sometimes throw standard Java exceptions (such as <code class="literal">IOException</code>), but there are a host of JGit-specific exception types that are provided as well (such as <code class="literal">NoRemoteRepositoryException</code>, <code class="literal">CorruptObjectException</code>, and <code class="literal">NoMergeBaseException</code>).</p>
+</section>
+<section class="sect2" title="Porcelain">
+<h3 id="_porcelain">Porcelain</h3>
+<p>The plumbing APIs are rather complete, but it can be cumbersome to string them together to achieve common goals, like adding a file to the index, or making a new commit.
+JGit provides a higher-level set of APIs to help out with this, and the entry point to these APIs is the <code class="literal">Git</code> class:</p>
+<figure class="listing">
+<pre class="source language-java"><code><span></span>Repository repo;
+<span style="font-style: italic">// construct repo...</span>
+Git git = <span style="font-weight: bold">new</span> Git(repo);</code></pre>
+</figure>
+<p>The Git class has a nice set of high-level <em>builder</em>-style methods that can be used to construct some pretty complex behavior.
+Let&#8217;s take a look at an example – doing something like <code class="literal">git ls-remote</code>:</p>
+<figure class="listing">
+<pre class="source language-java"><code><span></span>CredentialsProvider cp = <span style="font-weight: bold">new</span> UsernamePasswordCredentialsProvider(<span style="font-style: italic">&quot;username&quot;</span>, <span style="font-style: italic">&quot;p4ssw0rd&quot;</span>);
+Collection&lt;Ref&gt; remoteRefs = git.lsRemote()
+    .setCredentialsProvider(cp)
+    .setRemote(<span style="font-style: italic">&quot;origin&quot;</span>)
+    .setTags(<span style="font-weight: bold">true</span>)
+    .setHeads(<span style="font-weight: bold">false</span>)
+    .call();
+<span style="font-weight: bold">for</span> (Ref ref : remoteRefs) {
+    System.out.println(ref.getName() + <span style="font-style: italic">&quot; -&gt; &quot;</span> + ref.getObjectId().name());
+}</code></pre>
+</figure>
+<p>This is a common pattern with the Git class; the methods return a command object that lets you chain method calls to set parameters, which are executed when you call <code class="literal">.call()</code>.
+In this case, we&#8217;re asking the <code class="literal">origin</code> remote for tags, but not heads.
+Also notice the use of a <code class="literal">CredentialsProvider</code> object for authentication.</p>
+<p>Many other commands are available through the Git class, including but not limited to <code class="literal">add</code>, <code class="literal">blame</code>, <code class="literal">commit</code>, <code class="literal">clean</code>, <code class="literal">push</code>, <code class="literal">rebase</code>, <code class="literal">revert</code>, and <code class="literal">reset</code>.</p>
+</section>
+<section class="sect2" title="Further Reading">
+<h3 id="_further_reading_2">Further Reading</h3>
+<p>This is only a small sampling of JGit&#8217;s full capabilities.
+If you&#8217;re interested and want to learn more, here&#8217;s where to look for information and inspiration:</p>
+<div class="itemized-list">
+<ul>
+<li>
+<span class="principal">The official JGit API documentation is available online at <a href="http://download.eclipse.org/jgit/docs/latest/apidocs" class="link">http://download.eclipse.org/jgit/docs/latest/apidocs</a>.
+These are standard Javadoc, so your favorite JVM IDE will be able to install them locally, as well.</span>
+</li>
+<li>
+<span class="principal">The JGit Cookbook at <a href="https://github.com/centic9/jgit-cookbook" class="link">https://github.com/centic9/jgit-cookbook</a> has many examples of how to do specific tasks with JGit.</span>
+</li>
+<li>
+<span class="principal">There are several good resources pointed out at <a href="http://stackoverflow.com/questions/6861881" class="link">http://stackoverflow.com/questions/6861881</a>.</span>
+</li>
+</ul>
+</div>
+</section>
+</section>
+</section>
+</body>
+</html>
