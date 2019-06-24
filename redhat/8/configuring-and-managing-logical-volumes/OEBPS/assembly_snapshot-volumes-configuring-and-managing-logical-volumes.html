@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 8. Snapshot logical volumes</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_snapshot-volumes-configuring-and-managing-logical-volumes"/>Chapter 8. Snapshot logical volumes</h1></div></div></div><p>
+			The LVM snapshot feature provides the ability to create virtual images of a device at a particular instant without causing a service interruption.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="con_snapshot_volumes_snapshot-volumes"/>Snapshot Volumes</h1></div></div></div><p>
+				The LVM snapshot feature provides the ability to create virtual images of a device at a particular instant without causing a service interruption. When a change is made to the original device (the origin) after a snapshot is taken, the snapshot feature makes a copy of the changed data area as it was prior to the change so that it can reconstruct the state of the device.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					LVM supports thinly-provisioned snapshots.
+				</p></div><p>
+				Because a snapshot copies only the data areas that change after the snapshot is created, the snapshot feature requires a minimal amount of storage. For example, with a rarely updated origin, 3-5 % of the origin’s capacity is sufficient to maintain the snapshot.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Snapshot copies of a file system are virtual copies, not an actual media backup for a file system. Snapshots do not provide a substitute for a backup procedure.
+				</p></div><p>
+				The size of the snapshot governs the amount of space set aside for storing the changes to the origin volume. For example, if you made a snapshot and then completely overwrote the origin the snapshot would have to be at least as big as the origin volume to hold the changes. You need to dimension a snapshot according to the expected level of change. So for example a short-lived snapshot of a read-mostly volume, such as <code class="literal">/usr</code>, would need less space than a long-lived snapshot of a volume that sees a greater number of writes, such as <code class="literal">/home</code>.
+			</p><p>
+				If a snapshot runs full, the snapshot becomes invalid, since it can no longer track changes on the origin volume. You should regularly monitor the size of the snapshot. Snapshots are fully resizable, however, so if you have the storage capacity you can increase the size of the snapshot volume to prevent it from getting dropped. Conversely, if you find that the snapshot volume is larger than you need, you can reduce the size of the volume to free up space that is needed by other logical volumes.
+			</p><p>
+				When you create a snapshot file system, full read and write access to the origin stays possible. If a chunk on a snapshot is changed, that chunk is marked and never gets copied from the original volume.
+			</p><p>
+				There are several uses for the snapshot feature:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						Most typically, a snapshot is taken when you need to perform a backup on a logical volume without halting the live system that is continuously updating the data.
+					</li><li class="listitem">
+						You can execute the <code class="literal">fsck</code> command on a snapshot file system to check the file system integrity and determine whether the original file system requires file system repair.
+					</li><li class="listitem">
+						Because the snapshot is read/write, you can test applications against production data by taking a snapshot and running tests against the snapshot, leaving the real data untouched.
+					</li><li class="listitem">
+						You can create LVM volumes for use with Red Hat Virtualization. LVM snapshots can be used to create snapshots of virtual guest images. These snapshots can provide a convenient way to modify existing guests or create new guests with minimal additional storage.
+					</li></ul></div><p>
+				You can use the <code class="literal">--merge</code> option of the <code class="literal">lvconvert</code> command to merge a snapshot into its origin volume. One use for this feature is to perform system rollback if you have lost data or files or otherwise need to restore your system to a previous state. After you merge the snapshot volume, the resulting logical volume will have the origin volume’s name, minor number, and UUID and the merged snapshot is removed.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_creating-snapshot-volumes-snapshot-volumes"/>Creating snapshot volumes</h1></div></div></div><p>
+				Use the <code class="literal">-s</code> argument of the <code class="literal">lvcreate</code> command to create a snapshot volume. A snapshot volume is writable.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					LVM snapshots are not supported across the nodes in a cluster. You cannot create a snapshot volume in a shared volume group. However, if you need to create a consistent backup of data on a shared logical volume you can activate the volume exclusively and then create the snapshot.
+				</p></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Snapshots are supported for RAID logical volumes.
+				</p></div><p>
+				LVM does not allow you to create a snapshot volume that is larger than the size of the origin volume plus needed metadata for the volume. If you specify a snapshot volume that is larger than this, the system will create a snapshot volume that is only as large as will be needed for the size of the origin.
+			</p><p>
+				By default, a snapshot volume is skipped during normal activation commands.
+			</p><p>
+				The following procedure creates an origin logical volume named <code class="literal">origin</code> and a snapshot volume of the original volume named <code class="literal">snap</code>.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Create a logical volume named <code class="literal">origin</code> from the volume group <code class="literal">VG</code>.
+					</p><pre class="literallayout"># <code class="literal">lvcreate -L 1G -n origin VG</code>
+  Logical volume "origin" created.</pre></li><li class="listitem"><p class="simpara">
+						Create a snapshot logical volume of <code class="literal">/dev/VG/origin</code> that is 100 MB in size named <code class="literal">snap</code>. If the original logical volume contains a file system, you can mount the snapshot logical volume on an arbitrary directory in order to access the contents of the file system to run a backup while the original file system continues to get updated.
+					</p><pre class="literallayout"># <code class="literal">lvcreate --size 100M --snapshot --name snap /dev/VG/origin</code>
+  Logical volume "snap" created.</pre></li><li class="listitem"><p class="simpara">
+						Display the status of logical volume <code class="literal">/dev/VG/origin</code>, showing all snapshot logical volumes and their status (active or inactive).
+					</p><pre class="literallayout"># <code class="literal">lvdisplay /dev/VG/origin</code>
+  --- Logical volume ---
+  LV Path                /dev/VG/origin
+  LV Name                origin
+  VG Name                VG
+  LV UUID                EsFoBp-CB9H-Epl5-pUO4-Yevi-EdFS-xtFnaF
+  LV Write Access        read/write
+  LV Creation host, time host-083.virt.lab.msp.redhat.com, 2019-04-11 14:45:06 -0500
+  LV snapshot status     source of
+                         snap [active]
+  LV Status              available
+  # open                 0
+  LV Size                1.00 GiB
+  Current LE             256
+  Segments               1
+  Allocation             inherit
+  Read ahead sectors     auto
+  - currently set to     8192
+  Block device           253:6</pre></li><li class="listitem">
+						The <code class="literal">lvs</code> command, by default, displays the origin volume and the current percentage of the snapshot volume being used. The following example shows the default output for the <code class="literal">lvs</code> command after you have created the snapshot volume, with a display that includes the devices that constitute the logical volumes.
+					</li></ol></div><pre class="literallayout"># <code class="literal">lvs -a -o +devices</code>
+  LV              VG            Attr       LSize   Pool   Origin Data%  Meta%  Move Log Cpy%Sync Convert Devices
+  origin          VG            owi-a-s---   1.00g                                                       /dev/sde1(0)
+  snap            VG            swi-a-s--- 100.00m        origin 0.00                                    /dev/sde1(256)</pre><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+					Because the snapshot increases in size as the origin volume changes, it is important to monitor the percentage of the snapshot volume regularly with the <code class="literal">lvs</code> command to be sure it does not fill. A snapshot that is 100% full is lost completely, as a write to unchanged parts of the origin would be unable to succeed without corrupting the snapshot.
+				</p></div><p>
+				In addition to the snapshot itself being invalidated when full, any mounted file systems on that snapshot device are forcibly unmounted, avoiding the inevitable file system errors upon access to the mount point. In addition, you can specify the <code class="literal">snapshot_autoextend_threshold</code> option in the <code class="literal">lvm.conf</code> file. This option allows automatic extension of a snapshot whenever the remaining snapshot space drops below the threshold you set. This feature requires that there be unallocated space in the volume group.
+			</p><p>
+				LVM does not allow you to create a snapshot volume that is larger than the size of the origin volume plus needed metadata for the volume. Similarly, automatic extension of a snapshot will not increase the size of a snapshot volume beyond the maximum calculated size that is necessary for the snapshot. Once a snapshot has grown large enough to cover the origin, it is no longer monitored for automatic extension.
+			</p><p>
+				Information on setting <code class="literal">snapshot_autoextend_threshold</code> and <code class="literal">snapshot_autoextend_percent</code> is provided in the <code class="literal">/etc/lvm/lvm.conf</code> file itself.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_merging-snapshot-volumes-snapshot-volumes"/>Merging snapshot volumes</h1></div></div></div><p>
+				You can use the <code class="literal">--merge</code> option of the <code class="literal">lvconvert</code> command to merge a snapshot into its origin volume. If both the origin and snapshot volume are not open, the merge will start immediately. Otherwise, the merge will start the first time either the origin or snapshot are activated and both are closed. Merging a snapshot into an origin that cannot be closed, for example a root file system, is deferred until the next time the origin volume is activated. When merging starts, the resulting logical volume will have the origin’s name, minor number and UUID. While the merge is in progress, reads or writes to the origin appear as they were directed to the snapshot being merged. When the merge finishes, the merged snapshot is removed.
+			</p><p>
+				The following command merges snapshot volume <code class="literal">vg00/lvol1_snap</code> into its origin.
+			</p><pre class="literallayout"># <code class="literal">lvconvert --merge vg00/lvol1_snap</code></pre><p>
+				You can specify multiple snapshots on the command line, or you can use LVM object tags to specify that multiple snapshots be merged to their respective origins. In the following example, logical volumes <code class="literal">vg00/lvol1</code>, <code class="literal">vg00/lvol2</code>, and <code class="literal">vg00/lvol3</code> are all tagged with the tag <code class="literal">@some_tag</code>. The following command merges the snapshot logical volumes for all three volumes serially: <code class="literal">vg00/lvol1</code>, then <code class="literal">vg00/lvol2</code>, then <code class="literal">vg00/lvol3</code>. If the <code class="literal">--background</code> option were used, all snapshot logical volume merges would start in parallel.
+			</p><pre class="literallayout"># <code class="literal">lvconvert --merge @some_tag</code></pre><p>
+				For further information on the <code class="literal">lvconvert --merge</code> command, see the <code class="literal">lvconvert</code>(8) man page.
+			</p></div></div></body></html>

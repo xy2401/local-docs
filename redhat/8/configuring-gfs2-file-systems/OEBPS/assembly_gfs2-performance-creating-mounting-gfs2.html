@@ -1,0 +1,410 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 6. Improving GFS2 performance</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_gfs2-performance-creating-mounting-gfs2"/>Chapter 6. Improving GFS2 performance</h1></div></div></div><p>
+			This section provides advice for improving GFS2 peformance.
+		</p><p>
+			For general recommendations for deploying and upgrading Red Hat Enterprise Linux clusters using the High Availability Add-On and Red Hat Global File System 2 (GFS2) see the article "Red Hat Enterprise Linux Cluster, High Availability, and GFS Deployment Best Practices" on the Red Hat Customer Portal at <a class="link" href="https://access.redhat.com/kb/docs/DOC-40821">https://access.redhat.com/kb/docs/DOC-40821</a>.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_gfs2-defragment-gfs2-performance"/>GFS2 file system defragmentation</h1></div></div></div><p>
+				While there is no defragmentation tool for GFS2 on Red Hat Enterprise Linux, you can defragment individual files by identifying them with the <code class="literal">filefrag</code> tool, copying them to temporary files, and renaming the temporary files to replace the originals.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_gfs2-node-locking-gfs2-performance"/>GFS2 Node Locking</h1></div></div></div><p>
+				In order to get the best performance from a GFS2 file system, it is important to understand some of the basic theory of its operation. A single node file system is implemented alongside a cache, the purpose of which is to eliminate latency of disk accesses when using frequently requested data. In Linux the page cache (and historically the buffer cache) provide this caching function.
+			</p><p>
+				With GFS2, each node has its own page cache which may contain some portion of the on-disk data. GFS2 uses a locking mechanism called <span class="emphasis"><em>glocks</em></span> (pronounced gee-locks) to maintain the integrity of the cache between nodes. The glock subsystem provides a cache management function which is implemented using the <span class="emphasis"><em>distributed lock manager</em></span> (DLM) as the underlying communication layer.
+			</p><p>
+				The glocks provide protection for the cache on a per-inode basis, so there is one lock per inode which is used for controlling the caching layer. If that glock is granted in shared mode (DLM lock mode: PR) then the data under that glock may be cached upon one or more nodes at the same time, so that all the nodes may have local access to the data.
+			</p><p>
+				If the glock is granted in exclusive mode (DLM lock mode: EX) then only a single node may cache the data under that glock. This mode is used by all operations which modify the data (such as the <code class="literal">write</code> system call).
+			</p><p>
+				If another node requests a glock which cannot be granted immediately, then the DLM sends a message to the node or nodes which currently hold the glocks blocking the new request to ask them to drop their locks. Dropping glocks can be (by the standards of most file system operations) a long process. Dropping a shared glock requires only that the cache be invalidated, which is relatively quick and proportional to the amount of cached data.
+			</p><p>
+				Dropping an exclusive glock requires a log flush, and writing back any changed data to disk, followed by the invalidation as per the shared glock.
+			</p><p>
+				The difference between a single node file system and GFS2, then, is that a single node file system has a single cache and GFS2 has a separate cache on each node. In both cases, latency to access cached data is of a similar order of magnitude, but the latency to access uncached data is much greater in GFS2 if another node has previously cached that same data.
+			</p><p>
+				Operations such as <code class="literal">read</code> (buffered), <code class="literal">stat,</code> and <code class="literal">readdir</code> only require a shared glock. Operations such as <code class="literal">write</code> (buffered), <code class="literal">mkdir</code>, <code class="literal">rmdir</code>, and <code class="literal">unlink</code> require an exclusive glock. Direct I/O read/write operations require a deferred glock if no allocation is taking place, or an exclusive glock if the write requires an allocation (that is, extending the file, or hole filling).
+			</p><p>
+				There are two main performance considerations which follow from this. First, read-only operations parallelize extremely well across a cluster, since they can run independently on every node. Second, operations requiring an exclusive glock can reduce performance, if there are multiple nodes contending for access to the same inode(s). Consideration of the working set on each node is thus an important factor in GFS2 file system performance such as when, for example, you perform a file system backup, as described in <a class="link" href="assembly_creating-mounting-gfs2-configuring-gfs2-file-systems.html#proc_backing-up-a-gfs2-filesystem-creating-mounting-gfs2" title="Backing up a GFS2 file system">Backing up a GFS2 file system</a>.
+			</p><p>
+				A further consequence of this is that we recommend the use of the <code class="literal">noatime</code> and <code class="literal">nodiratime</code> mount options with GFS2 whenever possible. This prevents reads from requiring exclusive locks to update the <code class="literal">atime</code> timestamp.
+			</p><p>
+				For users who are concerned about the working set or caching efficiency, GFS2 provides tools that allow you to monitor the performance of a GFS2 file system: Performance Co-Pilot and GFS2 tracepoints.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Due to the way in which GFS2’s caching is implemented the best performance is obtained when either of the following takes place:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							An inode is used in a read-only fashion across all nodes.
+						</li><li class="listitem">
+							An inode is written or modified from a single node only.
+						</li></ul></div><p>
+					Note that inserting and removing entries from a directory during file creation and deletion counts as writing to the directory inode.
+				</p><p>
+					It is possible to break this rule provided that it is broken relatively infrequently. Ignoring this rule too often will result in a severe performance penalty.
+				</p><p>
+					If you <code class="literal">mmap</code>() a file on GFS2 with a read/write mapping, but only read from it, this only counts as a read.
+				</p><p>
+					If you do not set the <code class="literal">noatime</code> <code class="literal">mount</code> parameter, then reads will also result in writes to update the file timestamps. We recommend that all GFS2 users should mount with <code class="literal">noatime</code> unless they have a specific requirement for <code class="literal">atime</code>.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="con_posix-locking-issues-gfs2-performance"/>Issues with Posix locking</h1></div></div></div><p>
+				When using Posix locking, you should take the following into account:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						Use of Flocks will yield faster processing than use of Posix locks.
+					</li><li class="listitem">
+						Programs using Posix locks in GFS2 should avoid using the <code class="literal">GETLK</code> function since, in a clustered environment, the process ID may be for a different node in the cluster.
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="con_troubleshooting-gfs2-performance-gfs2-performance"/>Performance tuning with GFS2</h1></div></div></div><p>
+				It is usually possible to alter the way in which a troublesome application stores its data in order to gain a considerable performance advantage.
+			</p><p>
+				A typical example of a troublesome application is an email server. These are often laid out with a spool directory containing files for each user (<code class="literal">mbox</code>), or with a directory for each user containing a file for each message (<code class="literal">maildir</code>). When requests arrive over IMAP, the ideal arrangement is to give each user an affinity to a particular node. That way their requests to view and delete email messages will tend to be served from the cache on that one node. Obviously if that node fails, then the session can be restarted on a different node.
+			</p><p>
+				When mail arrives by means of SMTP, then again the individual nodes can be set up so as to pass a certain user’s mail to a particular node by default. If the default node is not up, then the message can be saved directly into the user’s mail spool by the receiving node. Again this design is intended to keep particular sets of files cached on just one node in the normal case, but to allow direct access in the case of node failure.
+			</p><p>
+				This setup allows the best use of GFS2’s page cache and also makes failures transparent to the application, whether <code class="literal">imap</code> or <code class="literal">smtp</code>.
+			</p><p>
+				Backup is often another tricky area. Again, if it is possible it is greatly preferable to back up the working set of each node directly from the node which is caching that particular set of inodes. If you have a backup script which runs at a regular point in time, and that seems to coincide with a spike in the response time of an application running on GFS2, then there is a good chance that the cluster may not be making the most efficient use of the page cache.
+			</p><p>
+				Obviously, if you are in the position of being able to stop the application in order to perform a backup, then this will not be a problem. On the other hand, if a backup is run from just one node, then after it has completed a large portion of the file system will be cached on that node, with a performance penalty for subsequent accesses from other nodes. This can be mitigated to a certain extent by dropping the VFS page cache on the backup node after the backup has completed with following command:
+			</p><pre class="literallayout">echo -n 3 &gt;/proc/sys/vm/drop_caches</pre><p>
+				However this is not as good a solution as taking care to ensure the working set on each node is either shared, mostly read-only across the cluster, or accessed largely from a single node.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="con_gfs2-lockdump-gfs2-performance"/>Troubleshooting GFS2 performance with the GFS2 lock dump</h1></div></div></div><p>
+				If your cluster performance is suffering because of inefficient use of GFS2 caching, you may see large and increasing I/O wait times. You can make use of GFS2’s lock dump information to determine the cause of the problem.
+			</p><p>
+				This section provides an overview of the GFS2 lock dump.
+			</p><p>
+				The GFS2 lock dump information can be gathered from the <code class="literal">debugfs</code> file which can be found at the following path name, assuming that <code class="literal">debugfs</code> is mounted on <code class="literal">/sys/kernel/debug/</code>:
+			</p><pre class="literallayout">/sys/kernel/debug/gfs2/<span class="emphasis"><em>fsname</em></span>/glocks</pre><p>
+				The content of the file is a series of lines. Each line starting with G: represents one glock, and the following lines, indented by a single space, represent an item of information relating to the glock immediately before them in the file.
+			</p><p>
+				The best way to use the <code class="literal">debugfs</code> file is to use the <code class="literal">cat</code> command to take a copy of the complete content of the file (it might take a long time if you have a large amount of RAM and a lot of cached inodes) while the application is experiencing problems, and then looking through the resulting data at a later date.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					It can be useful to make two copies of the <code class="literal">debugfs</code> file, one a few seconds or even a minute or two after the other. By comparing the holder information in the two traces relating to the same glock number, you can tell whether the workload is making progress (it is just slow) or whether it has become stuck (which is always a bug and should be reported to Red Hat support immediately).
+				</p></div><p>
+				Lines in the <code class="literal">debugfs</code> file starting with H: (holders) represent lock requests either granted or waiting to be granted. The flags field on the holders line f: shows which: The 'W' flag refers to a waiting request, the 'H' flag refers to a granted request. The glocks which have large numbers of waiting requests are likely to be those which are experiencing particular contention.
+			</p><p>
+				<a class="xref" href="assembly_gfs2-performance-creating-mounting-gfs2.html#tb-glock-flags" title="Table 6.1. Glock flags">Table 6.1, “Glock flags”</a> shows the meanings of the different glock flags and <a class="xref" href="assembly_gfs2-performance-creating-mounting-gfs2.html#tb-glock-holderflags" title="Table 6.2. Glock holder flags">Table 6.2, “Glock holder flags”</a> shows the meanings of the different glock holder flags.
+			</p><div class="table"><a id="tb-glock-flags"/><p class="title"><strong>Table 6.1. Glock flags</strong></p><div class="table-contents"><table summary="Glock flags" border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Flag</th><th style="text-align: left" valign="top">Name</th><th style="text-align: left" valign="top">Meaning</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+								b
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Blocking
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Valid when the locked flag is set, and indicates that the operation that has been requested from the DLM may block. This flag is cleared for demotion operations and for "try" locks. The purpose of this flag is to allow gathering of stats of the DLM response time independent from the time taken by other nodes to demote locks.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								d
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Pending demote
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								A deferred (remote) demote request
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								D
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Demote
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								A demote request (local or remote)
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								f
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Log flush
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The log needs to be committed before releasing this glock
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								F
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Frozen
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Replies from remote nodes ignored - recovery is in progress. This flag is not related to file system freeze, which uses a different mechanism, but is used only in recovery.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								i
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Invalidate in progress
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								In the process of invalidating pages under this glock
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								I
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Initial
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Set when DLM lock is associated with this glock
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								l
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Locked
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The glock is in the process of changing state
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								L
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								LRU
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Set when the glock is on the LRU list
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								o
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Object
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Set when the glock is associated with an object (that is, an inode for type 2 glocks, and a resource group for type 3 glocks)
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								p
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Demote in progress
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The glock is in the process of responding to a demote request
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								q
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Queued
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Set when a holder is queued to a glock, and cleared when the glock is held, but there are no remaining holders. Used as part of the algorithm the calculates the minimum hold time for a glock.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								r
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Reply pending
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Reply received from remote node is awaiting processing
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								y
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Dirty
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Data needs flushing to disk before releasing this glock
+							</p>
+							 </td></tr></tbody></table></div></div><div class="table"><a id="tb-glock-holderflags"/><p class="title"><strong>Table 6.2. Glock holder flags</strong></p><div class="table-contents"><table summary="Glock holder flags" border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Flag</th><th style="text-align: left" valign="top">Name</th><th style="text-align: left" valign="top">Meaning</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+								a
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Async
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Do not wait for glock result (will poll for result later)
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								A
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Any
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Any compatible lock mode is acceptable
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								c
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								No cache
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								When unlocked, demote DLM lock immediately
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								e
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								No expire
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Ignore subsequent lock cancel requests
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								E
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								exact
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Must have exact lock mode
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								F
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								First
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Set when holder is the first to be granted for this lock
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								H
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Holder
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Indicates that requested lock is granted
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								p
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Priority
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Enqueue holder at the head of the queue
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								t
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Try
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								A "try" lock
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								T
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Try 1CB
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								A "try" lock that sends a callback
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								W
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Wait
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Set while waiting for request to complete
+							</p>
+							 </td></tr></tbody></table></div></div><p>
+				Having identified a glock which is causing a problem, the next step is to find out which inode it relates to. The glock number (n: on the G: line) indicates this. It is of the form <span class="emphasis"><em>type</em></span>/<span class="emphasis"><em>number</em></span> and if <span class="emphasis"><em>type</em></span> is 2, then the glock is an inode glock and the <span class="emphasis"><em>number</em></span> is an inode number. To track down the inode, you can then run <code class="literal">find -inum <span class="emphasis"><em>number</em></span></code> where <span class="emphasis"><em>number</em></span> is the inode number converted from the hex format in the glocks file into decimal.
+			</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+					If you run the <code class="literal">find</code> command on a file system when it is experiencing lock contention, you are likely to make the problem worse. It is a good idea to stop the application before running the <code class="literal">find</code> command when you are looking for contended inodes.
+				</p></div><p>
+				<a class="xref" href="assembly_gfs2-performance-creating-mounting-gfs2.html#tb-glock-types" title="Table 6.3. Glock types">Table 6.3, “Glock types”</a> shows the meanings of the different glock types.
+			</p><div class="table"><a id="tb-glock-types"/><p class="title"><strong>Table 6.3. Glock types</strong></p><div class="table-contents"><table summary="Glock types" border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Type number</th><th style="text-align: left" valign="top">Lock type</th><th style="text-align: left" valign="top">Use</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+								1
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Trans
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Transaction lock
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								2
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Inode
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Inode metadata and data
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								3
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Rgrp
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Resource group metadata
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								4
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Meta
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The superblock
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								5
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Iopen
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Inode last closer detection
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								6
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Flock
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								<code class="literal">flock</code>(2) syscall
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								8
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Quota
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Quota operations
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								9
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Journal
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Journal mutex
+							</p>
+							 </td></tr></tbody></table></div></div><p>
+				If the glock that was identified was of a different type, then it is most likely to be of type 3: (resource group). If you see significant numbers of processes waiting for other types of glock under normal loads, report this to Red Hat support.
+			</p><p>
+				If you do see a number of waiting requests queued on a resource group lock there may be a number of reasons for this. One is that there are a large number of nodes compared to the number of resource groups in the file system. Another is that the file system may be very nearly full (requiring, on average, longer searches for free blocks). The situation in both cases can be improved by adding more storage and using the <code class="literal">gfs2_grow</code> command to expand the file system.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="enabling-data-journaling-gfs2-performance"/>Enabling data journaling</h1></div></div></div><p>
+				Ordinarily, GFS2 writes only metadata to its journal. File contents are subsequently written to disk by the kernel’s periodic sync that flushes file system buffers. An <code class="literal">fsync()</code> call on a file causes the file’s data to be written to disk immediately. The call returns when the disk reports that all data is safely written.
+			</p><p>
+				Data journaling can result in a reduced <code class="literal">fsync()</code> time for very small files because the file data is written to the journal in addition to the metadata. This advantage rapidly reduces as the file size increases. Writing to medium and larger files will be much slower with data journaling turned on.
+			</p><p>
+				Applications that rely on <code class="literal">fsync()</code> to sync file data may see improved performance by using data journaling. Data journaling can be enabled automatically for any GFS2 files created in a flagged directory (and all its subdirectories). Existing files with zero length can also have data journaling turned on or off.
+			</p><p>
+				Enabling data journaling on a directory sets the directory to "inherit jdata", which indicates that all files and directories subsequently created in that directory are journaled. You can enable and disable data journaling on a file with the <code class="literal">chattr</code> command.
+			</p><p>
+				The following commands enable data journaling on the <code class="literal">/mnt/gfs2/gfs2_dir/newfile</code> file and then check whether the flag has been set properly.
+			</p><pre class="literallayout"># <code class="literal">chattr +j /mnt/gfs2/gfs2_dir/newfile</code>
+# <code class="literal">lsattr /mnt/gfs2/gfs2_dir</code>
+---------j--- /mnt/gfs2/gfs2_dir/newfile</pre><p>
+				The following commands disable data journaling on the <code class="literal">/mnt/gfs2/gfs2_dir/newfile</code> file and then check whether the flag has been set properly.
+			</p><pre class="literallayout"># <code class="literal">chattr -j /mnt/gfs2/gfs2_dir/newfile</code>
+# <code class="literal">lsattr /mnt/gfs2/gfs2_dir</code>
+------------- /mnt/gfs2/gfs2_dir/newfile</pre><p>
+				You can also use the <code class="literal">chattr</code> command to set the <code class="literal">j</code> flag on a directory. When you set this flag for a directory, all files and directories subsequently created in that directory are journaled. The following set of commands sets the <code class="literal">j</code> flag on the <code class="literal">gfs2_dir</code> directory, then checks whether the flag has been set properly. After this, the commands create a new file called <code class="literal">newfile</code> in the <code class="literal">/mnt/gfs2/gfs2_dir</code> directory and then check whether the <code class="literal">j</code> flag has been set for the file. Since the <code class="literal">j</code> flag is set for the directory, then <code class="literal">newfile</code> should also have journaling enabled.
+			</p><pre class="literallayout"># <code class="literal">chattr -j /mnt/gfs2/gfs2_dir</code>
+# <code class="literal">lsattr /mnt/gfs2</code>
+---------j--- /mnt/gfs2/gfs2_dir
+# <code class="literal">touch /mnt/gfs2/gfs2_dir/newfile</code>
+# <code class="literal">lsattr /mnt/gfs2/gfs2_dir</code>
+---------j--- /mnt/gfs2/gfs2_dir/newfile</pre></div></div></body></html>

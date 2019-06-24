@@ -1,0 +1,618 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 3. Using NVDIMM persistent memory storage</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="using-nvdimm-persistent-memory-storage_managing-storage-devices"/>Chapter 3. Using NVDIMM persistent memory storage</h1></div></div></div><p>
+			As a system administrator, you can enable and manage various types of storage on Non-Volatile Dual In-line Memory Modules (NVDIMM) devices connected to your system.
+		</p><p>
+			For installing Red Hat Enterprise Linux 8 on NVDIMM storage, see <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/performing_a_standard_rhel_installation/graphical-installation_graphical-installation#installing-to-a-nvdimm-device_storage-devices">Installing to an NVDIMM device</a> instead.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="the-nvdimm-persistent-memory-technology_using-nvdimm-persistent-memory-storage"/>The NVDIMM persistent memory technology</h1></div></div></div><p>
+				NVDIMM persistent memory, also called storage class memory or <code class="literal">pmem</code>, is a combination of memory and storage.
+			</p><p>
+				NVDIMM combines the durability of storage with the low access latency and the high bandwidth of dynamic RAM (DRAM):
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						NVDIMM storage is byte-addressable, so it can be accessed by using the CPU load and store instructions. In addition to the <code class="literal">read()</code> and <code class="literal">write()</code> system calls, which are required for accessing traditional block-based storage, NVDIMM also supports direct load and store programming model.
+					</li><li class="listitem">
+						The performance characteristics of NVDIMM are similar to DRAM with very low access latency, typically in the tens to hundreds of nanoseconds.
+					</li><li class="listitem">
+						Data stored on NVDIMM are preserved when the power is off, like with storage.
+					</li><li class="listitem">
+						The direct access (DAX) technology enables applications to memory map storage directly, without going through the system page cache. This frees up DRAM for other purposes.
+					</li></ul></div><p>
+				NVDIMM is beneficial in use cases such as:
+			</p><div class="variablelist"><dl class="variablelist"><dt><span class="term">Databases</span></dt><dd>
+							The reduced storage access latency on NVDIMM can dramatically improve database performance.
+						</dd><dt><span class="term">Rapid restart</span></dt><dd><p class="simpara">
+							Rapid restart is also called the warm cache effect. For example, a file server has none of the file contents in memory after starting. As clients connect and read or write data, that data is cached in the page cache. Eventually, the cache contains mostly hot data. After a reboot, the system must start the process again on traditional storage.
+						</p><p class="simpara">
+							NVDIMM enables an application to keep the warm cache across reboots if the application is designed properly. In this example, there would be no page cache involved: the application would cache data directly in the persistent memory.
+						</p></dd><dt><span class="term">Fast write-cache</span></dt><dd>
+							File servers often do not acknowledge a client’s write request until the data is on durable media. Using NVDIMM as a fast write cache enables a file server to acknowledge the write request quickly thanks to the low latency.
+						</dd></dl></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="nvdimm-interleaving-and-regions_using-nvdimm-persistent-memory-storage"/>NVDIMM interleaving and regions</h1></div></div></div><p>
+				NVDIMM devices support grouping into interleaved regions.
+			</p><p>
+				NVDIMM devices can be grouped into interleave sets in the same way as regular DRAM. An interleave set is similar to a RAID 0 level (stripe) configuration across multiple DIMMs. An Interleave set is also called a <span class="emphasis"><em>region</em></span>.
+			</p><p>
+				Interleaving has the following advantages:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						NVDIMM devices benefit from increased performance when they are configured into interleave sets.
+					</li><li class="listitem">
+						Interleaving can combine multiple smaller NVDIMM devices into a larger logical device.
+					</li></ul></div><p>
+				NVDIMM interleave sets are configured in the system BIOS or UEFI firmware.
+			</p><p>
+				Red Hat Enterprise Linux creates one region device for each interleave set.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="nvdimm-namespaces_using-nvdimm-persistent-memory-storage"/>NVDIMM namespaces</h1></div></div></div><p>
+				NVDIMM regions are divided into one or more namespaces. Namespaces enable you to access the device using different methods, based on the type of the namespace.
+			</p><p>
+				Some NVDIMM devices do not support multiple namespaces on a region:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						If your ⁠NVDIMM device supports labels, you can subdivide the region into namespaces.
+					</li><li class="listitem">
+						If your NVDIMM device does not support labels, the region can only contain a single namespace. In that case, Red Hat Enterprise Linux creates a default namespace that covers the entire region.
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="nvdimm-access-modes_using-nvdimm-persistent-memory-storage"/>NVDIMM access modes</h1></div></div></div><p>
+				You can configure NVDIMM namespaces to use either of the following modes:
+			</p><div class="variablelist"><dl class="variablelist"><dt><span class="term"><code class="literal">sector</code></span></dt><dd><p class="simpara">
+							Presents the storage as a fast block device. This mode is useful for legacy applications that have not been modified to use NVDIMM storage, or for applications that make use of the full I/O stack, including Device Mapper.
+						</p><p class="simpara">
+							A <code class="literal">sector</code> device can be used in the same way as any other block device on the system. You can create partitions or file systems on it, configure it as part of a software RAID set, or use it as the cache device for <code class="literal">dm-cache</code>.
+						</p><p class="simpara">
+							Devices in this mode are available at <code class="literal">/dev/pmem<span class="emphasis"><em>N</em></span>s</code>. See the <code class="literal">blockdev</code> value listed after creating the namespace.
+						</p></dd><dt><span class="term"><code class="literal">devdax</code>, or device direct access (DAX)</span></dt><dd><p class="simpara">
+							Enables NVDIMM devices to support direct access programming as described in the Storage Networking Industry Association (SNIA) Non-Volatile Memory (NVM) Programming Model specification. In this mode, I/O bypasses the storage stack of the kernel. Therefore, no Device Mapper drivers can be used.
+						</p><p class="simpara">
+							Device DAX provides raw access to NVDIMM storage by using a DAX character device node. Data on a <code class="literal">devdax</code> device can be made durable using CPU cache flushing and fencing instructions. Certain databases and virtual machine hypervisors might benefit from this mode. File systems cannot be created on <code class="literal">devdax</code> devices.
+						</p><p class="simpara">
+							Devices in this mode are available at <code class="literal">/dev/dax<span class="emphasis"><em>N</em></span>.<span class="emphasis"><em>M</em></span></code>. See the <code class="literal">chardev</code> value listed after creating the namespace.
+						</p></dd><dt><span class="term"><code class="literal">fsdax</code>, or file system direct access (DAX)</span></dt><dd><p class="simpara">
+							Enables NVDIMM devices to support direct access programming as described in the Storage Networking Industry Association (SNIA) Non-Volatile Memory (NVM) Programming Model specification. In this mode, I/O bypasses the storage stack of the kernel, and many Device Mapper drivers therefore cannot be used.
+						</p><p class="simpara">
+							You can create file systems on file system DAX devices.
+						</p><p class="simpara">
+							Devices in this mode are available at <code class="literal">/dev/pmem<span class="emphasis"><em>N</em></span></code>. See the <code class="literal">blockdev</code> value listed after creating the namespace.
+						</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+								The file system DAX technology is provided only as a Technology Preview, and is not supported by Red Hat.
+							</p></div></dd><dt><span class="term"><code class="literal">raw</code></span></dt><dd><p class="simpara">
+							Presents a memory disk that does not support DAX. In this mode, namespaces have several limitations and should not be used.
+						</p><p class="simpara">
+							Devices in this mode are available at <code class="literal">/dev/pmem<span class="emphasis"><em>N</em></span></code>. See the <code class="literal">blockdev</code> value listed after creating the namespace.
+						</p></dd></dl></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="creating-a-sector-namespace-on-an-nvdimm-to-act-as-a-block-device_using-nvdimm-persistent-memory-storage"/>Creating a sector namespace on an NVDIMM to act as a block device</h1></div></div></div><p>
+				You can configure an NVDIMM device in sector mode, which is also called <span class="emphasis"><em>legacy mode</em></span>, to support traditional, block-based storage.
+			</p><p>
+				You can either:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						reconfigure an existing namespace to sector mode, or
+					</li><li class="listitem">
+						create a new sector namespace if there is available space.
+					</li></ul></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="prerequisites-creating-a-sector-namespace-on-an-nvdimm-to-act-as-a-block-device"/>Prerequisites</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							An NVDIMM device is attached to your system.
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="installing-ndctl_creating-a-sector-namespace-on-an-nvdimm-to-act-as-a-block-device"/>Installing ndctl</h2></div></div></div><p>
+					This procedure installs the <code class="literal">ndctl</code> utility, which is used to configure and monitor NVDIMM devices.
+				</p><h4><a id="procedure_9"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							To install the <code class="literal">ndctl</code> utility, use the following command:
+						</p><pre class="screen"># yum install ndctl</pre></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="reconfiguring-an-existing-nvdimm-namespace-to-sector-mode_creating-a-sector-namespace-on-an-nvdimm-to-act-as-a-block-device"/>Reconfiguring an existing NVDIMM namespace to sector mode</h2></div></div></div><p>
+					This procedure reconfigures an NVDIMM namespace to sector mode for use as a fast block device.
+				</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+						Reconfiguring a namespace deletes all data previously stored on the namespace.
+					</p></div><h4><a id="prerequisites_5"/>Prerequisites</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">ndctl</code> utility is installed. See <a class="xref" href="using-nvdimm-persistent-memory-storage_managing-storage-devices.html#installing-ndctl_creating-a-sector-namespace-on-an-nvdimm-to-act-as-a-block-device" title="Installing ndctl">the section called “Installing ndctl”</a>.
+						</li></ul></div><h4><a id="procedure_10"/>Procedure</h4><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Reconfigure the selected namespace to sector mode:
+						</p><pre class="screen"># ndctl create-namespace \
+        --force \
+        --reconfig=<span class="emphasis"><em><span class="replaceable">namespace-ID</span></em></span> \
+        --mode=sector</pre><div class="example"><a id="idm140236351491792"/><p class="title"><strong>Example 3.1. Reconfiguring namespace1.0 in sector mode</strong></p><div class="example-contents"><p>
+								To reconfigure the <code class="literal">namespace1.0</code> namespace to use <code class="literal">sector</code> mode:
+							</p><pre class="screen"># ndctl create-namespace \
+        --force \
+        --reconfig=namespace1.0 \
+        --mode=sector
+
+{
+  "dev":"namespace1.0",
+  "mode":"sector",
+  "size":"11.99 GiB (12.87 GB)",
+  "uuid":"5805480e-90e6-407e-96a4-23e1cde2ed78",
+  "raw_uuid":"879d9e9f-fd43-4ed5-b64f-3bcd0781391a",
+  "sector_size":4096,
+  "blockdev":"pmem1s",
+  "numa_node":1
+}</pre></div></div></li><li class="listitem">
+							The reconfigured namespace is now available under the <code class="literal">/dev</code> directory as <code class="literal">/dev/pmem<span class="emphasis"><em>N</em></span>s</code>.
+						</li></ol></div><h4><a id="additional_resources_6"/>Additional resources</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">ndctl-create-namespace(1)</code> man page
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="creating-a-new-nvdimm-namespace-in-sector-mode_creating-a-sector-namespace-on-an-nvdimm-to-act-as-a-block-device"/>Creating a new NVDIMM namespace in sector mode</h2></div></div></div><p>
+					This procedure creates a new sector namespace on an NVDIMM device, enabling you to use it as a traditional block device.
+				</p><h4><a id="prerequisites_6"/>Prerequisites</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">ndctl</code> utility is installed. See <a class="xref" href="using-nvdimm-persistent-memory-storage_managing-storage-devices.html#installing-ndctl_creating-a-sector-namespace-on-an-nvdimm-to-act-as-a-block-device" title="Installing ndctl">the section called “Installing ndctl”</a>.
+						</li><li class="listitem">
+							The NVDIMM device supports labels.
+						</li></ul></div><h4><a id="procedure_11"/>Procedure</h4><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							List the <code class="literal">pmem</code> regions on your system that have available space. In the following example, space is available in the <code class="literal">region5</code> and <code class="literal">region4</code> regions:
+						</p><pre class="screen"># ndctl list --regions
+
+[
+  {
+    "dev":"<span class="strong"><strong>region5</strong></span>",
+    "size":270582939648,
+    "available_size":270582939648,
+    "type":"pmem",
+    "iset_id":-7337419320239190016
+  },
+  {
+    "dev":"<span class="strong"><strong>region4</strong></span>",
+    "size":270582939648,
+    "available_size":270582939648,
+    "type":"pmem",
+    "iset_id":-137289417188962304
+  }
+]</pre></li><li class="listitem"><p class="simpara">
+							On any of the available regions, allocate one or more namespaces:
+						</p><pre class="screen"># ndctl create-namespace \
+        --mode=sector \
+        --region=<span class="emphasis"><em><span class="replaceable">regionN</span></em></span> \
+        --size=<span class="emphasis"><em><span class="replaceable">namespace-size</span></em></span></pre><div class="example"><a id="idm140236380061600"/><p class="title"><strong>Example 3.2. Creating a namespace on a region</strong></p><div class="example-contents"><p>
+								The following command creates a 36-GiB sector namespace on <code class="literal">region4</code>:
+							</p><pre class="screen"># ndctl create-namespace \
+        --mode=sector \
+        --region=region4 \
+        --size=36G</pre></div></div></li><li class="listitem">
+							The new namespace is now available under the <code class="literal">/dev</code> directory as <code class="literal">/dev/pmem<span class="emphasis"><em>N</em></span>s</code>.
+						</li></ol></div><h4><a id="additional_resources_7"/>Additional resources</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">ndctl-create-namespace(1)</code> man page
+						</li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="creating-a-device-dax-namespace-on-an-nvdimm_using-nvdimm-persistent-memory-storage"/>Creating a device DAX namespace on an NVDIMM</h1></div></div></div><p>
+				You can configure an NVDIMM device in device DAX mode to support character storage with direct access capabilities.
+			</p><p>
+				You can either:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						reconfigure an existing namespace to device DAX mode, or
+					</li><li class="listitem">
+						create a new device DAX namespace if there is available space.
+					</li></ul></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="prerequisites-creating-a-device-dax-namespace-on-an-nvdimm"/>Prerequisites</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							An NVDIMM device is attached to your system.
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="nvdimm-in-device-direct-access-mode_creating-a-device-dax-namespace-on-an-nvdimm"/>NVDIMM in device direct access mode</h2></div></div></div><p>
+					Device direct access (device DAX, <code class="literal">devdax</code>) provides a means for applications to directly access storage, without the involvement of a file system. The benefit of device DAX is that it provides a guaranteed fault granularity, which can be configured using the <code class="literal">--align</code> option of the <code class="literal">ndctl</code> utility
+				</p><p>
+					For the Intel 64 and AMD64 architecture, the following fault granularities are supported:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							4 KiB
+						</li><li class="listitem">
+							2 MiB
+						</li><li class="listitem">
+							1 GiB
+						</li></ul></div><p>
+					Device DAX nodes support only the following system calls:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							<code class="literal">open()</code>
+						</li><li class="listitem">
+							<code class="literal">close()</code>
+						</li><li class="listitem">
+							<code class="literal">mmap()</code>
+						</li></ul></div><p>
+					The <code class="literal">read()</code> and <code class="literal">write()</code> variants are not supported because the device DAX use case is tied to persistent memory programming.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="installing-ndctl_creating-a-device-dax-namespace-on-an-nvdimm"/>Installing ndctl</h2></div></div></div><p>
+					This procedure installs the <code class="literal">ndctl</code> utility, which is used to configure and monitor NVDIMM devices.
+				</p><h4><a id="procedure_12"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							To install the <code class="literal">ndctl</code> utility, use the following command:
+						</p><pre class="screen"># yum install ndctl</pre></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="reconfiguring-an-existing-nvdimm-namespace-to-device-dax-mode_creating-a-device-dax-namespace-on-an-nvdimm"/>Reconfiguring an existing NVDIMM namespace to device DAX mode</h2></div></div></div><p>
+					This procedure reconfigures a namespace on an NVDIMM device to device DAX mode, and enables you to store data on the namespace.
+				</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+						Reconfiguring a namespace deletes all data previously stored on the namespace.
+					</p></div><h4><a id="prerequisites_7"/>Prerequisites</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">ndctl</code> utility is installed. See <a class="xref" href="using-nvdimm-persistent-memory-storage_managing-storage-devices.html#installing-ndctl_creating-a-device-dax-namespace-on-an-nvdimm" title="Installing ndctl">the section called “Installing ndctl”</a>.
+						</li></ul></div><h4><a id="procedure_13"/>Procedure</h4><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							List all namespaces on your system:
+						</p><pre class="screen"># ndctl list --namespaces --idle
+
+[
+  {
+    "dev":"<span class="strong"><strong>namespace1.0</strong></span>",
+    "mode":"raw",
+    "size":34359738368,
+    "state":"disabled",
+    "numa_node":1
+  },
+  {
+    "dev":"<span class="strong"><strong>namespace0.0</strong></span>",
+    "mode":"raw",
+    "size":34359738368,
+    "state":"disabled",
+    "numa_node":0
+  }
+]</pre></li><li class="listitem"><p class="simpara">
+							Reconfigure any namespace:
+						</p><pre class="screen"># ndctl create-namespace \
+        --force \
+        --mode=devdax \
+        --reconfig=<span class="emphasis"><em><span class="replaceable">namespace-ID</span></em></span></pre><div class="example"><a id="idm140236406469360"/><p class="title"><strong>Example 3.3. Reconfiguring a namespace as device DAX</strong></p><div class="example-contents"><p>
+								The following command reconfigures <code class="literal">namespace0.0</code> for data storage that supports DAX. It is aligned to a 2-MiB fault granularity to ensure that the operating system faults in 2-MiB pages at a time:
+							</p><pre class="screen"># ndctl create-namespace \
+        --force \
+        --mode=devdax \
+        --align=2M \
+        --reconfig=namespace0.0</pre></div></div></li><li class="listitem">
+							The namespace is now available at the <code class="literal">/dev/dax<span class="emphasis"><em>N</em></span>.<span class="emphasis"><em>M</em></span></code> path.
+						</li></ol></div><h4><a id="additional_resources_8"/>Additional resources</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">ndctl-create-namespace(1)</code> man page
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="creating-a-new-nvdimm-namespace-in-device-dax-mode_creating-a-device-dax-namespace-on-an-nvdimm"/>Creating a new NVDIMM namespace in device DAX mode</h2></div></div></div><p>
+					This procedure creates a new device DAX namespace on an NVDIMM device, enabling you to store data on the namespace.
+				</p><h4><a id="prerequisites_8"/>Prerequisites</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">ndctl</code> utility is installed. See <a class="xref" href="using-nvdimm-persistent-memory-storage_managing-storage-devices.html#installing-ndctl_creating-a-device-dax-namespace-on-an-nvdimm" title="Installing ndctl">the section called “Installing ndctl”</a>.
+						</li><li class="listitem">
+							The NVDIMM device supports labels.
+						</li></ul></div><h4><a id="procedure_14"/>Procedure</h4><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							List the <code class="literal">pmem</code> regions on your system that have available space. In the following example, space is available in the <code class="literal">region5</code> and <code class="literal">region4</code> regions:
+						</p><pre class="screen"># ndctl list --regions
+
+[
+  {
+    "dev":"<span class="strong"><strong>region5</strong></span>",
+    "size":270582939648,
+    "available_size":270582939648,
+    "type":"pmem",
+    "iset_id":-7337419320239190016
+  },
+  {
+    "dev":"<span class="strong"><strong>region4</strong></span>",
+    "size":270582939648,
+    "available_size":270582939648,
+    "type":"pmem",
+    "iset_id":-137289417188962304
+  }
+]</pre></li><li class="listitem"><p class="simpara">
+							On any of the available regions, allocate one or more namespaces:
+						</p><pre class="screen"># ndctl create-namespace \
+        --mode=devdax \
+        --region=<span class="emphasis"><em><span class="replaceable">regionN</span></em></span> \
+        --size=<span class="emphasis"><em><span class="replaceable">namespace-size</span></em></span></pre><div class="example"><a id="idm140236353541216"/><p class="title"><strong>Example 3.4. Creating a namespace on a region</strong></p><div class="example-contents"><p>
+								The following command creates a 36-GiB device DAX namespace on <code class="literal">region4</code>. It is aligned to a 2-MiB fault granularity to ensure that the operating system faults in 2-MiB pages at a time:
+							</p><pre class="screen"># ndctl create-namespace \
+        --mode=devdax \
+        --region=region4 \
+        --align=2M \
+        --size=36G
+
+{
+  "dev":"namespace1.2",
+  "mode":"devdax",
+  "map":"dev",
+  "size":"35.44 GiB (38.05 GB)",
+  "uuid":"5ae01b9c-1ebf-4fb6-bc0c-6085f73d31ee",
+  "raw_uuid":"4c8be2b0-0842-4bcb-8a26-4bbd3b44add2",
+  "daxregion":{
+    "id":1,
+    "size":"35.44 GiB (38.05 GB)",
+    "align":2097152,
+    "devices":[
+      {
+        "chardev":"dax1.2",
+        "size":"35.44 GiB (38.05 GB)"
+      }
+    ]
+  },
+  "numa_node":1
+}</pre></div></div></li><li class="listitem">
+							The namespace is now available at the <code class="literal">/dev/dax<span class="emphasis"><em>N</em></span>.<span class="emphasis"><em>M</em></span></code> path.
+						</li></ol></div><h4><a id="additional_resources_9"/>Additional resources</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">ndctl-create-namespace(1)</code> man page
+						</li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="creating-a-file-system-dax-namespace-on-an-nvdimm_using-nvdimm-persistent-memory-storage"/>Creating a file system DAX namespace on an NVDIMM</h1></div></div></div><p>
+				You can configure an NVDIMM device in file system DAX mode to support a file system with direct access capabilities.
+			</p><p>
+				You can either:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						reconfigure an existing namespace to file system DAX mode, or
+					</li><li class="listitem">
+						create a new file system DAX namespace if there is available space.
+					</li></ul></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+					The file system DAX technology is provided only as a Technology Preview, and is not supported by Red Hat.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="prerequisites-creating-a-file-system-dax-namespace-on-an-nvdimm"/>Prerequisites</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							An NVDIMM device is attached to your system.
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="nvdimm-in-file-system-direct-access-mode_creating-a-file-system-dax-namespace-on-an-nvdimm"/>NVDIMM in file system direct access mode</h2></div></div></div><p>
+					When an NVDIMM device is configured in file system direct access (file system DAX, <code class="literal">fsdax</code>) mode, a file system can be created on top of it.
+				</p><p>
+					Any application that performs an <code class="literal">mmap()</code> operation on a file on this file system gets direct access to its storage. This enables the direct access programming model on NVDIMM. The file system must be mounted with the <code class="literal">-o dax</code> option in order for direct mapping to happen.
+				</p><h4><a id="per_page_metadata_allocation"/>Per-page metadata allocation</h4><p>
+					This mode requires allocating per-page metadata in the system DRAM or on the NVDIMM device itself. The overhead of this data structure is 64 bytes per each 4-KiB page:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							On small devices, the amount of overhead is small enough to fit in DRAM with no problems. For example, a 16-GiB namespace only requires 256 MiB for page structures. Because NVDIMM devices are usually small and expensive, storing the page tracking data structures in DRAM is preferable.
+						</li><li class="listitem">
+							On NVDIMM devices that are be terabytes in size or larger, the amount of memory required to store the page tracking data structures might exceed the amount of DRAM in the system. One TiB of NVDIMM requires 16 GiB just for page structures. As a result, storing the data structures on the NVDIMM itself is preferable in such cases.
+						</li></ul></div><p>
+					You can configure where per-page metadata are stored using the <code class="literal">--map</code> option when configuring a namespace:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							To allocate in the system RAM, use <code class="literal">--map=mem</code>.
+						</li><li class="listitem">
+							To allocate on the NVDIMM, use <code class="literal">--map=dev</code>.
+						</li></ul></div><h4><a id="partitions_and_file_systems_on_fsdax"/>Partitions and file systems on fsdax</h4><p>
+					When creating partitions on an <code class="literal">fsdax</code> device, partitions must be aligned on page boundaries. On the Intel 64 and AMD64 architecture, at least 4 KiB alignment is required for the start and end of the partition. 2 MiB is the preferred alignment.
+				</p><p>
+					On Red Hat Enterprise Linux 8, both the XFS and ext4 file system can be created on NVDIMM as a Technology Preview.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="installing-ndctl_creating-a-file-system-dax-namespace-on-an-nvdimm"/>Installing ndctl</h2></div></div></div><p>
+					This procedure installs the <code class="literal">ndctl</code> utility, which is used to configure and monitor NVDIMM devices.
+				</p><h4><a id="procedure_15"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							To install the <code class="literal">ndctl</code> utility, use the following command:
+						</p><pre class="screen"># yum install ndctl</pre></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="reconfiguring-an-existing-nvdimm-namespace-to-file-system-dax-mode_creating-a-file-system-dax-namespace-on-an-nvdimm"/>Reconfiguring an existing NVDIMM namespace to file system DAX mode</h2></div></div></div><p>
+					This procedure reconfigures a namespace on an NVDIMM device to file system DAX mode, and enables you to store files on the namespace.
+				</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+						Reconfiguring a namespace deletes all data previously stored on the namespace.
+					</p></div><h4><a id="prerequisites_9"/>Prerequisites</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">ndctl</code> utility is installed. See <a class="xref" href="using-nvdimm-persistent-memory-storage_managing-storage-devices.html#installing-ndctl_creating-a-file-system-dax-namespace-on-an-nvdimm" title="Installing ndctl">the section called “Installing ndctl”</a>.
+						</li></ul></div><h4><a id="procedure_16"/>Procedure</h4><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							List all namespaces on your system:
+						</p><pre class="screen"># ndctl list --namespaces --idle
+
+[
+  {
+    "dev":"<span class="strong"><strong>namespace1.0</strong></span>",
+    "mode":"raw",
+    "size":34359738368,
+    "state":"disabled",
+    "numa_node":1
+  },
+  {
+    "dev":"<span class="strong"><strong>namespace0.0</strong></span>",
+    "mode":"raw",
+    "size":34359738368,
+    "state":"disabled",
+    "numa_node":0
+  }
+]</pre></li><li class="listitem"><p class="simpara">
+							Reconfigure any namespace:
+						</p><pre class="screen"># ndctl create-namespace \
+        --force \
+        --mode=fsdax \
+        --reconfig=<span class="emphasis"><em><span class="replaceable">namespace-ID</span></em></span></pre><div class="example"><a id="idm140236398183968"/><p class="title"><strong>Example 3.5. Reconfiguring a namespace as file system DAX</strong></p><div class="example-contents"><p>
+								To use <code class="literal">namespace0.0</code> for a file system that supports DAX, use the following command:
+							</p><pre class="screen"># ndctl create-namespace \
+        --force \
+        --mode=fsdax \
+        --reconfig=namespace0.0
+
+{
+  "dev":"namespace0.0",
+  "mode":"fsdax",
+  "size":"32.00 GiB (34.36 GB)",
+  "uuid":"ab91cc8f-4c3e-482e-a86f-78d177ac655d",
+  "blockdev":"pmem0",
+  "numa_node":0
+}</pre></div></div></li><li class="listitem">
+							The namespace is now available at the <code class="literal">/dev/pmem<span class="emphasis"><em>N</em></span></code> path.
+						</li></ol></div><h4><a id="additional_resources_10"/>Additional resources</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">ndctl-create-namespace(1)</code> man page
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="creating-a-new-nvdimm-namespace-in-file-system-dax-mode_creating-a-file-system-dax-namespace-on-an-nvdimm"/>Creating a new NVDIMM namespace in file system DAX mode</h2></div></div></div><p>
+					This procedure creates a new file system DAX namespace on an NVDIMM device, enabling you to store files on the namespace.
+				</p><h4><a id="prerequisites_10"/>Prerequisites</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">ndctl</code> utility is installed. See <a class="xref" href="using-nvdimm-persistent-memory-storage_managing-storage-devices.html#installing-ndctl_creating-a-file-system-dax-namespace-on-an-nvdimm" title="Installing ndctl">the section called “Installing ndctl”</a>.
+						</li><li class="listitem">
+							The NVDIMM device supports labels.
+						</li></ul></div><h4><a id="procedure_17"/>Procedure</h4><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							List the <code class="literal">pmem</code> regions on your system that have available space. In the following example, space is available in the <code class="literal">region5</code> and <code class="literal">region4</code> regions:
+						</p><pre class="screen"># ndctl list --regions
+
+[
+  {
+    "dev":"<span class="strong"><strong>region5</strong></span>",
+    "size":270582939648,
+    "available_size":270582939648,
+    "type":"pmem",
+    "iset_id":-7337419320239190016
+  },
+  {
+    "dev":"<span class="strong"><strong>region4</strong></span>",
+    "size":270582939648,
+    "available_size":270582939648,
+    "type":"pmem",
+    "iset_id":-137289417188962304
+  }
+]</pre></li><li class="listitem"><p class="simpara">
+							On any of the available regions, allocate one or more namespaces:
+						</p><pre class="screen"># ndctl create-namespace \
+        --mode=fsdax \
+        --region=<span class="emphasis"><em><span class="replaceable">regionN</span></em></span> \
+        --size=<span class="emphasis"><em><span class="replaceable">namespace-size</span></em></span></pre><div class="example"><a id="idm140236284465696"/><p class="title"><strong>Example 3.6. Creating a namespace on a region</strong></p><div class="example-contents"><p>
+								The following command creates a 36-GiB file system DAX namespace on <code class="literal">region4</code>:
+							</p><pre class="screen"># ndctl create-namespace \
+        --mode=fsdax \
+        --region=region4 \
+        --size=36G
+
+{
+  "dev":"namespace4.0",
+  "mode":"fsdax",
+  "size":"35.44 GiB (38.05 GB)",
+  "uuid":"9c5330b5-dc90-4f7a-bccd-5b558fa881fe",
+  "blockdev":"<span class="strong"><strong>pmem4</strong></span>",
+  "numa_node":0
+}</pre></div></div></li><li class="listitem">
+							The namespace is now available at the <code class="literal">/dev/pmem<span class="emphasis"><em>N</em></span></code> path.
+						</li></ol></div><h4><a id="additional_resources_11"/>Additional resources</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">ndctl-create-namespace(1)</code> man page
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="creating-a-file-system-on-a-file-system-dax-device_creating-a-file-system-dax-namespace-on-an-nvdimm"/>Creating a file system on a file system DAX device</h2></div></div></div><p>
+					This procedure creates a file system on a file system DAX device and mounts the file system.
+				</p><h4><a id="procedure_18"/>Procedure</h4><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Optionally, create a partition on the file system DAX device. See <a class="xref" href="assembly_getting-started-with-partitions_managing-storage-devices.html#assembly_creating-a-partition_assembly_getting-started-with-partitions" title="Creating a partition">the section called “Creating a partition”</a>.
+						</p><p class="simpara">
+							By default, the <code class="literal">parted</code> tool aligns partitions on 1 MiB boundaries. For the first partition, specify 2 MiB as the start of the partition. If the size of the partition is a multiple of 2 MiB, all other partitions are also aligned.
+						</p></li><li class="listitem"><p class="simpara">
+							Create an XFS or ext4 file system on the partition or the NVDIMM device.
+						</p><p class="simpara">
+							For XFS, disable shared copy-on-write data extents when creating the file system:
+						</p><pre class="screen"># mkfs.xfs -m reflink=0 <span class="emphasis"><em><span class="replaceable">fsdax-partition-or-device</span></em></span></pre></li><li class="listitem"><p class="simpara">
+							Mount the file system with the <code class="literal">-o fsdax</code> mount option:
+						</p><pre class="screen"># mount -o fsdax <span class="emphasis"><em><span class="replaceable">fsdax-partition-or-device</span></em></span> <span class="emphasis"><em><span class="replaceable">mount-point</span></em></span></pre></li><li class="listitem">
+							Applications can now use persistent memory and create files in the <span class="emphasis"><em><span class="replaceable">mount-point</span></em></span> directory, open the files, and use the <code class="literal">mmap</code> operation to map the files for direct access.
+						</li></ol></div><h4><a id="additional_resources_12"/>Additional resources</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">mkfs.xfs(8)</code> man page
+						</li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="troubleshooting-nvdimm-persistent-memory_using-nvdimm-persistent-memory-storage"/>Troubleshooting NVDIMM persistent memory</h1></div></div></div><p>
+				You can detect and fix different kinds of errors on NVDIMM devices.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="prerequisites-troubleshooting-nvdimm-persistent-memory"/>Prerequisites</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							An NVDIMM device is connected to your system and configured.
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="installing-ndctl_troubleshooting-nvdimm-persistent-memory"/>Installing ndctl</h2></div></div></div><p>
+					This procedure installs the <code class="literal">ndctl</code> utility, which is used to configure and monitor NVDIMM devices.
+				</p><h4><a id="procedure_19"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							To install the <code class="literal">ndctl</code> utility, use the following command:
+						</p><pre class="screen"># yum install ndctl</pre></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="monitoring-nvdimm-health-using-s-m-a-r-t-_troubleshooting-nvdimm-persistent-memory"/>Monitoring NVDIMM health using S.M.A.R.T.</h2></div></div></div><p>
+					Some NVDIMM devices support Self-Monitoring, Analysis and Reporting Technology (S.M.A.R.T.) interfaces for retrieving health information.
+				</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						Monitor NVDIMM health regularly to prevent data loss. If S.M.A.R.T. reports problems with the health status of an NVDIMM device, replace it as described in <a class="xref" href="using-nvdimm-persistent-memory-storage_managing-storage-devices.html#detecting-and-replacing-a-broken-nvdimm-device_troubleshooting-nvdimm-persistent-memory" title="Detecting and replacing a broken NVDIMM device">the section called “Detecting and replacing a broken NVDIMM device”</a>.
+					</p></div><h4><a id="prerequisites_11"/>Prerequisites</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							On some systems, the <code class="literal">acpi_ipmi</code> driver must be loaded to retrieve health information using the following command:
+						</p><pre class="screen"># modprobe acpi_ipmi</pre></li></ul></div><h4><a id="procedure_20"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							To access the health information, use the following command:
+						</p><pre class="screen"># ndctl list --dimms --health
+
+...
+    {
+      "dev":"nmem0",
+      "id":"802c-01-1513-b3009166",
+      "handle":1,
+      "phys_id":22,
+      "health":
+      {
+        "health_state":"ok",
+        "temperature_celsius":25.000000,
+        "spares_percentage":99,
+        "alarm_temperature":false,
+        "alarm_spares":false,
+        "temperature_threshold":50.000000,
+        "spares_threshold":20,
+        "life_used_percentage":1,
+        "shutdown_state":"clean"
+      }
+     }
+...</pre></li></ul></div><h4><a id="additional_resources_13"/>Additional resources</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">ndctl-list(1)</code> man page
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="detecting-and-replacing-a-broken-nvdimm-device_troubleshooting-nvdimm-persistent-memory"/>Detecting and replacing a broken NVDIMM device</h2></div></div></div><p>
+					If you find error messages related to NVDIMM reported in your system log or by S.M.A.R.T., it might mean an NVDIMM device is failing. In that case, it is necessary to:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							Detect which NVDIMM device is failing
+						</li><li class="listitem">
+							Back up data stored on it
+						</li><li class="listitem">
+							Physically replace the device
+						</li></ol></div><h4><a id="procedure_21"/>Procedure</h4><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							To detect the broken device, use the following command:
+						</p><pre class="screen"># ndctl list --dimms --regions --health --media-errors --human</pre><p class="simpara">
+							The <code class="literal">badblocks</code> field shows which NVDIMM is broken. Note its name in the <code class="literal">dev</code> field.
+						</p><div class="example"><a id="idm140236399025552"/><p class="title"><strong>Example 3.7. Health status of NVDIMM devices</strong></p><div class="example-contents"><p>
+								In the following example, the NVDIMM named <code class="literal">nmem0</code> is broken:
+							</p><pre class="screen"># ndctl list --dimms --regions --health --media-errors --human
+
+...
+  "regions":[
+    {
+      "dev":"region0",
+      "size":"250.00 GiB (268.44 GB)",
+      "available_size":0,
+      "type":"pmem",
+      "numa_node":0,
+      "iset_id":"0xXXXXXXXXXXXXXXXX",
+      "mappings":[
+        {
+          "dimm":"nmem1",
+          "offset":"0x10000000",
+          "length":"0x1f40000000",
+          "position":1
+        },
+        {
+          "dimm":"nmem0",
+          "offset":"0x10000000",
+          "length":"0x1f40000000",
+          "position":0
+        }
+      ],
+      "badblock_count":1,
+      "badblocks":[
+        {
+          "offset":65536,
+          "length":1,
+          "dimms":[
+            "nmem0"
+          ]
+        }
+      ],
+      "persistence_domain":"memory_controller"
+    }
+  ]
+}</pre></div></div></li><li class="listitem"><p class="simpara">
+							Use the following command to find the <code class="literal">phys_id</code> attribute of the broken NVDIMM:
+						</p><pre class="screen"># ndctl list --dimms --human</pre><p class="simpara">
+							From the previous example, you know that <code class="literal">nmem0</code> is the broken NVDIMM. Therefore, find the <code class="literal">phys_id</code> attribute of <code class="literal">nmem0</code>.
+						</p><div class="example"><a id="idm140236384314976"/><p class="title"><strong>Example 3.8. The phys_id attributes of NVDIMMs</strong></p><div class="example-contents"><p>
+								In the following example, the <code class="literal">phys_id</code> is <code class="literal">0x10</code>:
+							</p><pre class="screen"># ndctl list --dimms --human
+
+[
+  {
+    "dev":"nmem1",
+    "id":"XXXX-XX-XXXX-XXXXXXXX",
+    "handle":"0x120",
+    "phys_id":"0x1c"
+  },
+  {
+    "dev":"nmem0",
+    "id":"XXXX-XX-XXXX-XXXXXXXX",
+    "handle":"0x20",
+    "phys_id":"0x10",
+    "flag_failed_flush":true,
+    "flag_smart_event":true
+  }
+]</pre></div></div></li><li class="listitem"><p class="simpara">
+							Use the following command to find the memory slot of the broken NVDIMM:
+						</p><pre class="screen"># dmidecode</pre><p class="simpara">
+							In the output, find the entry where the <code class="literal">Handle</code> identifier matches the <code class="literal">phys_id</code> attribute of the broken NVDIMM. The <code class="literal">Locator</code> field lists the memory slot used by the broken NVDIMM.
+						</p><div class="example"><a id="idm140236350329024"/><p class="title"><strong>Example 3.9. NVDIMM Memory Slot Listing</strong></p><div class="example-contents"><p>
+								In the following example, the <code class="literal">nmem0</code> device matches the <code class="literal">0x0010</code> identifier and uses the <code class="literal">DIMM-XXX-YYYY</code> memory slot:
+							</p><pre class="screen"># dmidecode
+
+...
+Handle 0x0010, DMI type 17, 40 bytes
+Memory Device
+        Array Handle: 0x0004
+        Error Information Handle: Not Provided
+        Total Width: 72 bits
+        Data Width: 64 bits
+        Size: 125 GB
+        Form Factor: DIMM
+        Set: 1
+        Locator: DIMM-XXX-YYYY
+        Bank Locator: Bank0
+        Type: Other
+        Type Detail: Non-Volatile Registered (Buffered)
+...</pre></div></div></li><li class="listitem"><p class="simpara">
+							Back up all data in the namespaces on the NVDIMM. If you do not back up the data before replacing the NVDIMM, the data will be lost when you remove the NVDIMM from your system.
+						</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+								In some cases, such as when the NVDIMM is completely broken, the backup might fail.
+							</p><p>
+								To prevent this, regularly monitor your NVDIMM devices using S.M.A.R.T. as described in <a class="xref" href="using-nvdimm-persistent-memory-storage_managing-storage-devices.html#monitoring-nvdimm-health-using-s-m-a-r-t-_troubleshooting-nvdimm-persistent-memory" title="Monitoring NVDIMM health using S.M.A.R.T.">the section called “Monitoring NVDIMM health using S.M.A.R.T.”</a> and replace failing NVDIMMs before they break.
+							</p></div><p class="simpara">
+							Use the following command to list the namespaces on the NVDIMM:
+						</p><pre class="screen"># ndctl list --namespaces --dimm=<span class="emphasis"><em><span class="replaceable">DIMM-ID-number</span></em></span></pre><div class="example"><a id="idm140236292368496"/><p class="title"><strong>Example 3.10. NVDIMM namespaces listing</strong></p><div class="example-contents"><p>
+								In the following example, the <code class="literal">nmem0</code> device contains the <code class="literal">namespace0.0</code> and <code class="literal">namespace0.2</code> namespaces, which you need to back up:
+							</p><pre class="screen"># ndctl list --namespaces --dimm=0
+
+[
+  {
+    "dev":"namespace0.2",
+    "mode":"sector",
+    "size":67042312192,
+    "uuid":"XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX",
+    "raw_uuid":"XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX",
+    "sector_size":4096,
+    "blockdev":"pmem0.2s",
+    "numa_node":0
+  },
+  {
+    "dev":"namespace0.0",
+    "mode":"sector",
+    "size":67042312192,
+    "uuid":"XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX",
+    "raw_uuid":"XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX",
+    "sector_size":4096,
+    "blockdev":"pmem0s",
+    "numa_node":0
+  }
+]</pre></div></div></li><li class="listitem">
+							Replace the broken NVDIMM physically.
+						</li></ol></div><h4><a id="additional_resources_14"/>Additional resources</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">ndctl-list(1)</code> man page
+						</li><li class="listitem">
+							The <code class="literal">dmidecode(8)</code> man page
+						</li></ul></div></div></div></div></body></html>

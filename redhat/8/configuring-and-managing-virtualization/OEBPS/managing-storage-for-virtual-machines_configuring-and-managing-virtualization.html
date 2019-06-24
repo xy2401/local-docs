@@ -1,0 +1,1576 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 7. Managing storage for virtual machines</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="managing-storage-for-virtual-machines_configuring-and-managing-virtualization"/>Chapter 7. Managing storage for virtual machines</h1></div></div></div><p>
+			You can manage virtual machine storage using the <a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#managing-storage-for-virtual-machines-using-the-cli_managing-storage-for-virtual-machines" title="Managing storage for virtual machines using the CLI">CLI</a> or the <a class="link" href="using-the-rhel-8-web-console-for-managing-vms_configuring-and-managing-virtualization.html#managing-virtual-machine-disks-using-the-rhel-8-web-console_using-the-rhel-8-web-console-for-managing-vms" title="Managing virtual machine disks using the RHEL 8 web console">web console</a>.
+		</p><p>
+			This documentation provides information on how to manage virtual machine storage using the <code class="literal">virsh</code> command.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="understanding-virtual-machine-storage_managing-storage-for-virtual-machines"/>Understanding virtual machine storage</h1></div></div></div><p>
+				The following sections provide information about storage for virtual machines (VMs), including information about storage pools, storage volumes, and how they are used to provide storage for VMs.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="virtual-machine-storage_understanding-virtual-machine-storage"/>Virtual machine storage</h2></div></div></div><p>
+					The following provides information about how storage pools and storage volumes are used to create storage for VMs.
+				</p><p>
+					A <span class="emphasis"><em>storage pool</em></span> is a quantity of storage managed by the host set aside for use by VMs. <span class="emphasis"><em>Storage volumes</em></span> can be created from space in the storage pools. Each storage volume can be assigned to a VM as a block device on a guest bus.
+				</p><p>
+					Storage pools and volumes are managed using <code class="literal">libvirt</code>. With the <code class="literal">libvirt</code> remote protocol, you can manage all aspects of virtual machine storage. These operations can be performed on a remote host. As a result, a management application, such as the RHEL web console, using <code class="literal">libvirt</code> can enable a user to perform all the required tasks for configuring virtual machine storage.
+				</p><p>
+					The <code class="literal">libvirt</code> API can be used to query the list of volumes in the storage pool or to get information regarding the capacity, allocation, and available storage in the storage pool. A storage volume in the storage pool may be queried to get information such as allocation and capacity, which may differ for sparse volumes.
+				</p><p>
+					For storage pools that support it, the <code class="literal">libvirt</code> API can be used to create, clone, resize, and delete storage volumes. The APIs can also be used to upload data to storage volumes, download data from storage volumes, or wipe data from storage volumes.
+				</p><p>
+					Once a storage pool is started, a storage volume can be assigned to a guest using the storage pool name and storage volume name instead of the host path to the volume in the XML configuration files of the virtual machine.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="understanding-storage-pools_understanding-virtual-machine-storage"/>Storage pools</h2></div></div></div><p>
+					A storage pool is a file, directory, or storage device, managed by <code class="literal">libvirt</code> to provide storage to virtual machines. Storage pools are divided into storage volumes that store virtual machine images or are attached to VMs as additional storage. Multiple guests can share the same storage pool, allowing for better allocation of storage resources.
+				</p><p>
+					Storage pools can be persistent or transient:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							A persistent storage pool survives a system restart of the host machine.
+						</li><li class="listitem">
+							A transient storage pool only exists until the host reboots.
+						</li></ul></div><p>
+					The <code class="literal">virsh pool-define</code> command is used to create a persistent storage pool, and the <code class="literal">virsh pool-create</code> command is used to create a transient storage pool.
+				</p><h4><a id="storage_pool_storage_types"/>Storage pool storage types</h4><p>
+					Storage pools can be either local or network-based (shared):
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							<span class="strong"><strong>Local storage pools</strong></span>
+						</p><p class="simpara">
+							Local storage pools are attached directly to the host server. They include local directories, directly attached disks, physical partitions, and Logical Volume Management (LVM) volume groups on local devices.
+						</p><p class="simpara">
+							Local storage pools are useful for development, testing, and small deployments that do not require migration or large numbers of VMs.
+						</p></li><li class="listitem"><p class="simpara">
+							<span class="strong"><strong>Networked (shared) storage pools</strong></span>
+						</p><p class="simpara">
+							Networked storage pools include storage devices shared over a network using standard protocols.
+						</p></li></ul></div><h4><a id="storage_pool_actions"/>Storage pool actions</h4><p>
+					Storage pools can be stopped (destroyed). This removes the abstraction of the data, but keeps the data intact.
+				</p><p>
+					For example, an NFS server that uses <code class="literal">mount -t nfs nfs.example.com:/path/to/share /path/to/data</code>. A storage administrator responsible could define an NFS Storage Pool on the virtualization host to describe the exported server path and the client target path. This will allow <code class="literal">libvirt</code> to perform the mount either automatically when <code class="literal">libvirt</code> is started or as needed while <code class="literal">libvirt</code> is running. Files with the NFS Server exported directory are listed as storage volumes within the NFS storage pool.
+				</p><p>
+					When the storage volume is added to the VM, the administrator does not need to add the target path to the volume. He just needs to add the storage pool and storage volume by name. Therefore, if the target client path changes, it does not affect the virtual machine.
+				</p><p>
+					When the storage pool is started, <code class="literal">libvirt</code> mounts the share on the specified directory, just as if the system administrator logged in and executed <code class="literal">mount nfs.example.com:/path/to/share /vmdata</code>. If the storage pool is configured to autostart, <code class="literal">libvirt</code> ensures that the NFS shared disk is mounted on the directory specified when <code class="literal">libvirt</code> is started.
+				</p><p>
+					Once the storage pool is started, the files in the NFS shared disk are reported as storage volumes, and the storage volumes' paths may be queried using the <code class="literal">libvirt</code> API. The storage volumes' paths can then be copied into the section of a virtual machine’s XML definition that describes the source storage for the virtual machine’s block devices. In the case of NFS, an application that uses the <code class="literal">libvirt</code> API can create and delete storage volumes in the storage pool (files in the NFS share) up to the limit of the size of the pool (the storage capacity of the share).
+				</p><p>
+					Not all storage pool types support creating and deleting volumes. Stopping the storage pool (<code class="literal">pool-destroy</code>) undoes the start operation, in this case, unmounting the NFS share. The data on the share is not modified by the destroy operation, despite what the name of the command suggests. For more details, see <code class="literal">man virsh</code>.
+				</p><h4><a id="supported_and_unsupported_storage_pool_types"/>Supported and unsupported storage pool types</h4><p>
+					The following is a list of storage pool types supported by RHEL:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							Directory-based storage pools
+						</li><li class="listitem">
+							Disk-based storage pools
+						</li><li class="listitem">
+							Partition-based storage pools
+						</li><li class="listitem">
+							GlusterFS storage pools
+						</li><li class="listitem">
+							iSCSI-based storage pools
+						</li><li class="listitem">
+							LVM-based storage pools
+						</li><li class="listitem">
+							NFS-based storage pools
+						</li><li class="listitem">
+							vHBA-based storage pools with SCSI devices
+						</li><li class="listitem">
+							Multipath-based storage pools
+						</li><li class="listitem">
+							RBD-based storage pools
+						</li></ul></div><p>
+					The following is a list of <code class="literal">libvirt</code> storage pool types that are not supported by RHEL:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							Sheepdog-based storage pools
+						</li><li class="listitem">
+							Vstorage-based storage pools
+						</li><li class="listitem">
+							ZFS-based storage pools
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="storage-volumes_understanding-virtual-machine-storage"/>Storage volumes</h2></div></div></div><p>
+					Storage pools are divided into <code class="literal">storage volumes</code>. Storage volumes are abstractions of physical partitions, LVM logical volumes, file-based disk images, and other storage types handled by <code class="literal">libvirt</code>. Storage volumes are presented to VMs as local storage devices regardless of the underlying hardware.
+				</p><p>
+					On the host machine, a storage volume is referred to by its name and an identifier for the storage pool from which it derives. On the <code class="literal">virsh</code> command line, this takes the form <code class="literal">--pool <span class="emphasis"><em>storage_pool</em></span> <span class="emphasis"><em>volume_name</em></span></code>.
+				</p><p>
+					For example, a volume named <span class="emphasis"><em>firstimage</em></span> in the <span class="emphasis"><em>guest_images</em></span> pool.
+				</p><pre class="literallayout"># <span class="strong"><strong>virsh vol-info --pool guest_images firstimage</strong></span>
+  Name:             firstimage
+  Type:             block
+  Capacity:         20.00 GB
+  Allocation:       20.00 GB</pre></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="managing-storage-for-virtual-machines-using-the-cli_managing-storage-for-virtual-machines"/>Managing storage for virtual machines using the CLI</h1></div></div></div><p>
+				This documentation provides information on how to manage virtual machine storage using the <code class="literal">virsh</code> command.
+			</p><p>
+				You can add, remove, and modify virtual machine storage using the CLI. You can also view information about virtual machine storage.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					In many cases, storage for a VM is created at the same time <a class="link" href="getting-started-with-virtualization-in-rhel-8_configuring-and-managing-virtualization.html#assembly_creating-virtual-machines_virt-getting-started" title="Creating virtual machines">the VM is created</a>. Therefore, the following information primarily relates to advanced management of VM storage.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="viewing-virtual-machine-storage-information-using-the-cli_managing-storage-for-virtual-machines-using-the-cli"/>Viewing virtual machine storage information using the CLI</h2></div></div></div><p>
+					The following provides information about viewing information about storage pools and storage volumes using the CLI.
+				</p><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="viewing-storage-pool-information-using-the-cli_viewing-virtual-machine-storage-information-using-the-cli"/>Viewing storage pool information using the CLI</h3></div></div></div><p>
+						The following provides information on viewing information about storage pools. You can view a list of all storage pools with limited or full details about the storage pools. You can also filter the storage pools listed.
+					</p><h5><a id="procedure_43"/>Procedure</h5><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+								Use the <code class="literal">virsh pool-list</code> command to view storage pool information.
+							</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all --details</strong></span>
+ Name                State    Autostart  Persistent    Capacity  Allocation   Available
+----------------------------------------------------------------------------------------
+ default             running  yes        yes          48.97 GiB   23.93 GiB   25.03 GiB
+ Downloads           running  yes        yes         175.62 GiB   62.02 GiB  113.60 GiB
+ RHEL8-Storage-Pool  running  yes        yes         214.62 GiB   93.02 GiB  168.60 GiB</pre></li></ul></div><h5><a id="additional_resources_32"/>Additional resources</h5><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								For information on the available <code class="literal">virsh pool-list</code> options, see the relevant <code class="literal">man</code> pages.
+							</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="viewing-storage-volume-information-using-the-cli_viewing-virtual-machine-storage-information-using-the-cli"/>Viewing storage volume information using the CLI</h3></div></div></div><p>
+						The following provides information on viewing information about storage pools. You can view a list of all storage pools in a specified storage pool and details about a specified storage pool.
+					</p><h5><a id="procedure_44"/>Procedure</h5><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Use the <code class="literal">virsh vol-list</code> command to list the storage volumes in a specified storage pool.
+							</p><pre class="literallayout"># <span class="strong"><strong>virsh vol-list --pool RHEL8-Storage-Pool --details</strong></span>
+ Name                Path                                               Type   Capacity  Allocation
+---------------------------------------------------------------------------------------------
+ .bash_history       /home/VirtualMachines/.bash_history       file  18.70 KiB   20.00 KiB
+ .bash_logout        /home/VirtualMachines/.bash_logout        file    18.00 B    4.00 KiB
+ .bash_profile       /home/VirtualMachines/.bash_profile       file   193.00 B    4.00 KiB
+ .bashrc             /home/VirtualMachines/.bashrc             file   1.29 KiB    4.00 KiB
+ .git-prompt.sh      /home/VirtualMachines/.git-prompt.sh      file  15.84 KiB   16.00 KiB
+ .gitconfig          /home/VirtualMachines/.gitconfig          file   167.00 B    4.00 KiB
+ RHEL8_Volume.qcow2  /home/VirtualMachines/RHEL8_Volume.qcow2  file  60.00 GiB   13.93 GiB</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+									For information on the available <code class="literal">virsh vol-list</code> options, see the relevant <code class="literal">man</code> pages.
+								</p></div></li><li class="listitem"><p class="simpara">
+								Use the <code class="literal">virsh vol-info</code> command to list the storage volumes in a specified storage pool.
+							</p><pre class="literallayout"># <span class="strong"><strong>vol-info --pool RHEL8-Storage-Pool --vol RHEL8_Volume.qcow2</strong></span>
+Name:           RHEL8_Volume.qcow2
+Type:           file
+Capacity:       60.00 GiB
+Allocation:     13.93 GiB</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+									For information on the available <code class="literal">virsh vol-info</code> options, see the relevant <code class="literal">man</code> pages.
+								</p></div></li></ol></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="creating-storage-for-virtual-machines-using-the-cli_managing-storage-for-virtual-machines-using-the-cli"/>Creating and assigning storage for virtual machines using the CLI</h2></div></div></div><p>
+					The following is a high-level procedure for creating and assigning storage for virtual machines:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							<span class="strong"><strong>Create storage pools</strong></span>
+						</p><p class="simpara">
+							Create one or more storage pools from available storage media. For a list of supported storage pool types, see <a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#understanding-storage-pools_understanding-virtual-machine-storage" title="Storage pools">Storage pool types</a>.
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+									To create persistent storage pools, use the <code class="literal">virsh pool-define</code> and <code class="literal">virsh pool-define-as</code> commands.
+								</p><p class="simpara">
+									The <code class="literal">virsh pool-define</code> command uses an XML file for the pool options. The <code class="literal">virsh pool-define-as</code> command places the options in the command line.
+								</p></li><li class="listitem"><p class="simpara">
+									To create temporary storage pools, use the <code class="literal">virsh pool-create</code> and <code class="literal">virsh pool-create-as</code> commands.
+								</p><p class="simpara">
+									The <code class="literal">virsh pool-create</code> command uses an XML file for the pool options. The <code class="literal">virsh pool-create-as</code> command places the options in the command line.
+								</p></li></ul></div></li></ol></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						All examples and procedures in this documentation are for creating persistent storage pools using the <code class="literal">virsh pool-define</code> command. For more information on the <code class="literal">virsh pool-create</code>, <code class="literal">virsh pool-define-as</code>, and <code class="literal">virsh pool-create-as</code> commands, see the relevant man pages.
+					</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							<span class="strong"><strong>Create storage volumes</strong></span>
+						</p><p class="simpara">
+							Create one or more <a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#creating-and-assigning-storage-volumes-using-the-cli_creating-storage-for-virtual-machines-using-the-cli" title="Creating and assigning storage volumes using the CLI">storage volumes</a> from the available storage pools.
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								All examples and procedures in this documentation are for creating storage using the <code class="literal">virsh vol‑create</code> command. For more information on the <code class="literal">virsh vol-create-as</code> command, see the relevant man pages.
+							</p></div></li><li class="listitem"><p class="simpara">
+							<span class="strong"><strong>Assign storage devices to a virtual machine</strong></span>
+						</p><p class="simpara">
+							Assign one or more storage devices abstracted from storage volumes to a guest virtual machine.
+						</p></li></ol></div><p>
+					The following sections provide information on creating and assigning storage using the CLI:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							<a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#creating-and-assigning-directory-based-storage-for-virtual-machines-using-the-cli_creating-storage-for-virtual-machines-using-the-cli" title="Creating and assigning directory-based storage for virtual machines using the CLI">Directory-based storage</a>
+						</li><li class="listitem">
+							<a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#creating-and-assigning-partition-based-storage-for-virtual-machines-using-the-cli_creating-storage-for-virtual-machines-using-the-cli" title="Creating and assigning filesystem-based storage for virtual machines using the CLI">Filesystem-based storage</a>
+						</li><li class="listitem">
+							<a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#creating-and-assigning-glusterfs-storage-for-virtual-machines-using-the-cli_creating-storage-for-virtual-machines-using-the-cli" title="Creating and assigning GlusterFS storage for virtual machines using the CLI">GlusterFS-based storage</a>
+						</li><li class="listitem">
+							<a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#creating-and-assigning-iscsi-based-storage-for-virtual-machines-using-the-cli_creating-storage-for-virtual-machines-using-the-cli" title="Creating and assigning iSCSI-based storage for virtual machines using the CLI">iSCSI-based storage</a>
+						</li><li class="listitem">
+							<a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#creating-and-assigning-lvm-based-storage-for-virtual-machines-using-the-cli_creating-storage-for-virtual-machines-using-the-cli" title="Creating and assigning LVM-based storage for virtual machines using the CLI">LVM-based storage</a>
+						</li><li class="listitem">
+							<a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#creating-and-assigning-nfs-storage-for-virtual-machines-using-the-cli_creating-storage-for-virtual-machines-using-the-cli" title="Creating and assigning network-based storage for virtual machines using the CLI">NFS-based storage</a>
+						</li><li class="listitem">
+							<a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#creating-and-assigning-vhba-based-storage-for-virtual-machines-using-the-cli_creating-storage-for-virtual-machines-using-the-cli" title="Creating and assigning vHBA-based storage for virtual machines using the CLI">vHBA-based storage</a>
+						</li></ul></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="creating-and-assigning-directory-based-storage-for-virtual-machines-using-the-cli_creating-storage-for-virtual-machines-using-the-cli"/>Creating and assigning directory-based storage for virtual machines using the CLI</h3></div></div></div><p>
+						The following provides information about creating directory-based storage pools and storage volumes and assigning volumes to virtual machines.
+					</p><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="creating-directory-based-storage-pools-using-the-cli_creating-and-assigning-directory-based-storage-for-virtual-machines-using-the-cli"/>Creating directory-based storage pools using the CLI</h4></div></div></div><p>
+							The following provides instructions for creating directory-based storage pools.
+						</p><h6><a id="procedure_45"/>Procedure</h6><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Define the storage pool in an XML file</strong></span>
+								</p><p class="simpara">
+									Create a temporary XML file containing the storage pool parameters required for the new device.
+								</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										For information on the required parameters, refer to <a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#directory-based-storage-pool-parameters_creating-and-assigning-directory-based-storage-for-virtual-machines-using-the-cli" title="Directory-based storage pool parameters">Parameters</a>.
+									</p></div></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Create a storage pool</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-define</code> command to create a persistent storage pool based on the XML file created in the previous step.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-define ~/guest_images.xml</strong></span>
+  Pool defined from guest_images_fs</pre></li></ol></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								You can delete the XML file created in step 1 after running the <code class="literal">virsh pool-define</code> command.
+							</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Define the storage pool target path</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-build</code> command to create a storage pool target path for a pre-formatted file system storage pool, initialize the storage source device, and define the format of the data.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-build guest_images_fs</strong></span>
+  Pool guest_images_fs built
+
+# <span class="strong"><strong>ls -la /guest_images</strong></span>
+  total 8
+  drwx------.  2 root root 4096 May 31 19:38 .
+  dr-xr-xr-x. 25 root root 4096 May 31 19:38 ..</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify that the pool was created</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-list</code> command to verify that the pool was created.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+
+  Name                 State      Autostart
+  -----------------------------------------
+  default              active     yes
+  guest_images_fs      inactive   no</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Start the storage pool</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-start</code> command to mount the storage pool.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-start guest_images_fs</strong></span>
+  Pool guest_images_fs started</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										The <code class="literal">virsh pool-start</code> command is only necessary for persistent storage pools. Transient storage pools are automatically started when they are created.
+									</p></div></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>[Optional] Turn on autostart</strong></span>
+								</p><p class="simpara">
+									By default, a storage pool defined with the <code class="literal">virsh</code> command is not set to automatically start each time libvirtd starts. Use the <code class="literal">virsh pool-autostart</code> command to configure the storage pool to autostart.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-autostart guest_images_fs</strong></span>
+  Pool guest_images_fs marked as autostarted</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify the <code class="literal"><span class="emphasis"><em>Autostart</em></span></code> state</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-list</code> command to verify the <code class="literal"><span class="emphasis"><em>Autostart</em></span></code> state.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+
+  Name                 State      Autostart
+  -----------------------------------------
+  default              active     yes
+  guest_images_fs      inactive   yes</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify the storage pool</strong></span>
+								</p><p class="simpara">
+									Verify that the storage pool was created correctly, the sizes reported are as expected, and the state is reported as <code class="literal"><span class="emphasis"><em>running</em></span></code>. Verify there is a <code class="literal">lost+found</code> directory in the target path on the file system, indicating that the device is mounted.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-info guest_images_fs</strong></span>
+  Name:           guest_images_fs
+  UUID:           c7466869-e82a-a66c-2187-dc9d6f0877d0
+  State:          running
+  Persistent:     yes
+  Autostart:      yes
+  Capacity:       458.39 GB
+  Allocation:     197.91 MB
+  Available:      458.20 GB
+
+# <span class="strong"><strong>mount | grep /guest_images</strong></span>
+  /dev/sdc1 on /guest_images type ext4 (rw)
+
+# <span class="strong"><strong>ls -la /guest_images</strong></span>
+  total 24
+  drwxr-xr-x.  3 root root  4096 May 31 19:47 .
+  dr-xr-xr-x. 25 root root  4096 May 31 19:38 ..
+  drwx------.  2 root root 16384 May 31 14:18 lost+found</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="directory-based-storage-pool-parameters_creating-and-assigning-directory-based-storage-for-virtual-machines-using-the-cli"/>Directory-based storage pool parameters</h4></div></div></div><p>
+							The following provides information about the required parameters for a directory-based storage pool and an example.
+						</p><h6><a id="parameters"/>Parameters</h6><p>
+							The following table provides a list of required parameters for the XML file for a directory-based storage pool.
+						</p><div class="table"><a id="idm139710550145888"/><p class="title"><strong>Table 7.1. Directory-based storage pool parameters</strong></p><div class="table-contents"><table summary="Directory-based storage pool parameters" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Description</th><th style="text-align: left" valign="top">XML</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+											The type of storage pool
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;pool type='dir'&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The name of the storage pool
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;name&gt;<code class="literal"><span class="emphasis"><em>name</em></span></code>&lt;/name&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The path specifying the target. This will be the path used for the storage pool.
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;target&gt;<br/>    &lt;path&gt;<code class="literal"><span class="emphasis"><em>target_path</em></span></code>&lt;/path&gt;<br/> &lt;/target&gt;</code>
+										</p>
+										 </td></tr></tbody></table></div></div><h6><a id="example"/>Example</h6><p>
+							The following is an example of an XML file for a storage pool based on the <code class="literal">/guest_images</code> directory:
+						</p><pre class="programlisting">&lt;pool type='dir'&gt;
+  &lt;name&gt;dirpool&lt;/name&gt;
+  &lt;target&gt;
+    &lt;path&gt;/guest_images&lt;/path&gt;
+  &lt;/target&gt;
+&lt;/pool&gt;</pre></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="creating-and-assigning-disk-based-storage-for-virtual-machines-using-the-cli_creating-storage-for-virtual-machines-using-the-cli"/>Creating and assigning disk-based storage for virtual machines using the CLI</h3></div></div></div><p>
+						The following provides information about creating disk-based storage pools and storage volumes and assigning volumes to virtual machines.
+					</p><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="creating-disk-based-storage-pools-using-the-cli_creating-and-assigning-disk-based-storage-for-virtual-machines-using-the-cli"/>Creating disk-based storage pools using the CLI</h4></div></div></div><p>
+							The following provides instructions for creating disk-based storage pools.
+						</p><h6><a id="recommendations"/>Recommendations</h6><p>
+							Be aware of the following before creating a disk-based storage pool:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									Depending on the version of <code class="literal">libvirt</code> being used, dedicating a disk to a storage pool may reformat and erase all data currently stored on the disk device. It is strongly recommended that you back up the data on the storage device before creating a storage pool.
+								</li><li class="listitem"><p class="simpara">
+									Guests should not be given write access to whole disks or block devices (for example, <code class="literal">/dev/sdb</code>). Use partitions (for example, <code class="literal">/dev/sdb1</code>) or LVM volumes.
+								</p><p class="simpara">
+									If you pass an entire block device to the guest, the guest will likely partition it or create its own LVM groups on it. This can cause the host machine to detect these partitions or LVM groups and cause errors.
+								</p></li></ul></div><h6><a id="procedure_46"/>Procedure</h6><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									Relabeled the disk with a GUID Partition Table (GPT) disk label. GPT disk labels allow for creating up to 128 partitions on each device.
+								</p><pre class="literallayout"># <span class="strong"><strong>parted /dev/sdb</strong></span>
+GNU Parted 2.1
+Using /dev/sdb
+Welcome to GNU Parted! Type 'help' to view a list of commands.
+(parted) mklabel
+New disk label type? gpt
+(parted) quit
+Information: You may need to update /etc/fstab.
+#</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Define the storage pool in an XML file</strong></span>
+								</p><p class="simpara">
+									Create a temporary XML file containing the storage pool parameters required for the new device.
+								</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										For information on the required parameters, refer to <a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#disk-based-storage-pool-parameters_creating-and-assigning-disk-based-storage-for-virtual-machines-using-the-cli" title="Disk-based storage pool parameters">Parameters</a>.
+									</p></div></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Create a storage pool</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-define</code> command to create a persistent storage pool based on the XML file created in the previous step.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-define ~/guest_images.xml</strong></span>
+  Pool defined from guest_images_fs</pre></li></ol></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								You can delete the XML file created in step 1 after running the <code class="literal">virsh pool-define</code> command.
+							</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Define the storage pool target path</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-build</code> command to create a storage pool target path for a pre-formatted file-system storage pool, initialize the storage source device, and define the format of the data.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-build guest_images_fs</strong></span>
+  Pool guest_images_fs built
+
+# <span class="strong"><strong>ls -la /guest_images</strong></span>
+  total 8
+  drwx------.  2 root root 4096 May 31 19:38 .
+  dr-xr-xr-x. 25 root root 4096 May 31 19:38 ..</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										Building the target path is only necessary for disk-based, file system-based, and logical storage pools. If <code class="literal">libvirt</code> detects that the source storage device’s data format differs from the selected storage pool type, the build fails, unless the <code class="literal"><span class="emphasis"><em>overwrite</em></span></code> option is specified.
+									</p></div></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify that the pool was created</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-list</code> command to verify that the pool was created.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+
+  Name                 State      Autostart
+  -----------------------------------------
+  default              active     yes
+  guest_images_fs      inactive   no</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Start the storage pool</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-start</code> command to mount the storage pool.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-start guest_images_fs</strong></span>
+  Pool guest_images_fs started</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										The <code class="literal">virsh pool-start</code> command is only necessary for persistent storage pools. Transient storage pools are automatically started when they are created.
+									</p></div></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>[Optional] Turn on autostart</strong></span>
+								</p><p class="simpara">
+									By default, a storage pool defined with the <code class="literal">virsh</code> command is not set to automatically start each time libvirtd starts. Use the <code class="literal">virsh pool-autostart</code> command to configure the storage pool to autostart.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-autostart guest_images_fs</strong></span>
+  Pool guest_images_fs marked as autostarted</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify the <code class="literal"><span class="emphasis"><em>Autostart</em></span></code> state</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-list</code> command to verify the <code class="literal"><span class="emphasis"><em>Autostart</em></span></code> state.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+
+  Name                 State      Autostart
+  -----------------------------------------
+  default              active     yes
+  guest_images_fs      inactive   yes</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify the storage pool</strong></span>
+								</p><p class="simpara">
+									Verify that the storage pool was created correctly, the sizes reported are as expected, and the state is reported as <code class="literal"><span class="emphasis"><em>running</em></span></code>. Verify there is a <code class="literal">lost+found</code> directory in the target path on the file system, indicating that the device is mounted.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-info guest_images_fs</strong></span>
+  Name:           guest_images_fs
+  UUID:           c7466869-e82a-a66c-2187-dc9d6f0877d0
+  State:          running
+  Persistent:     yes
+  Autostart:      yes
+  Capacity:       458.39 GB
+  Allocation:     197.91 MB
+  Available:      458.20 GB
+
+# <span class="strong"><strong>mount | grep /guest_images</strong></span>
+  /dev/sdc1 on /guest_images type ext4 (rw)
+
+# <span class="strong"><strong>ls -la /guest_images</strong></span>
+  total 24
+  drwxr-xr-x.  3 root root  4096 May 31 19:47 .
+  dr-xr-xr-x. 25 root root  4096 May 31 19:38 ..
+  drwx------.  2 root root 16384 May 31 14:18 lost+found</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="disk-based-storage-pool-parameters_creating-and-assigning-disk-based-storage-for-virtual-machines-using-the-cli"/>Disk-based storage pool parameters</h4></div></div></div><p>
+							The following provides information about the required parameters for a directory-based storage pool and an example.
+						</p><h6><a id="parameters_2"/>Parameters</h6><p>
+							The following table provides a list of required parameters for the XML file for a disk-based storage pool.
+						</p><div class="table"><a id="idm139710460136832"/><p class="title"><strong>Table 7.2. Disk-based storage pool parameters</strong></p><div class="table-contents"><table summary="Disk-based storage pool parameters" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Description</th><th style="text-align: left" valign="top">XML</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+											The type of storage pool
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;pool type='disk'&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The name of the storage pool
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;name&gt;<code class="literal"><span class="emphasis"><em>name</em></span></code>&lt;/name&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The path specifying the storage device. For example, <code class="literal">/dev/sdb</code>.
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;source&gt;<br/>    &lt;path&gt;<code class="literal"><span class="emphasis"><em>source_path</em></span></code>&lt;/path&gt;<br/> &lt;/source&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The path specifying the target device. This will be the path used for the storage pool.
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;target&gt;<br/>    &lt;path&gt;<code class="literal"><span class="emphasis"><em>target_path</em></span></code>&lt;/path&gt;<br/> &lt;/target&gt;</code>
+										</p>
+										 </td></tr></tbody></table></div></div><h6><a id="example_2"/>Example</h6><p>
+							The following is an example of an XML file for a disk-based storage pool:
+						</p><pre class="programlisting">&lt;pool type='disk'&gt;
+  &lt;name&gt;phy_disk&lt;/name&gt;
+  &lt;source&gt;
+    &lt;device path='/dev/sdb'/&gt;
+    &lt;format type='gpt'/&gt;
+  &lt;/source&gt;
+  &lt;target&gt;
+    &lt;path&gt;/dev&lt;/path&gt;
+  &lt;/target&gt;
+&lt;/pool&gt;</pre></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="creating-and-assigning-partition-based-storage-for-virtual-machines-using-the-cli_creating-storage-for-virtual-machines-using-the-cli"/>Creating and assigning filesystem-based storage for virtual machines using the CLI</h3></div></div></div><p>
+						The following provides information about creating directory-based storage pools and storage volumes and assigning volumes to virtual machines.
+					</p><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="creating-filesystem-based-storage-pools-using-the-cli_creating-and-assigning-partition-based-storage-for-virtual-machines-using-the-cli"/>Creating filesystem-based storage pools using the CLI</h4></div></div></div><p>
+							The following provides instructions for creating filesystem-based storage pools.
+						</p><h6><a id="recommendations_2"/>Recommendations</h6><p>
+							Do not use this procedure to assign an entire disk as a storage pool (for example, <code class="literal">/dev/sdb</code>). Guests should not be given write access to whole disks or block devices. This method should only be used to assign partitions (for example, <code class="literal">/dev/sdb1</code>) to storage pools.
+						</p><h6><a id="procedure_47"/>Procedure</h6><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Define the storage pool in an XML file</strong></span>
+								</p><p class="simpara">
+									Create a temporary XML file containing the storage pool parameters required for the new device.
+								</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										For information on the required parameters, refer to <a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#filesystem-based-storage-pool-parameters_creating-and-assigning-partition-based-storage-for-virtual-machines-using-the-cli" title="Filesystem-based storage pool parameters">Parameters</a>.
+									</p></div></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Create a storage pool</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-define</code> command to create a persistent storage pool based on the XML file created in the previous step.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-define ~/guest_images.xml</strong></span>
+  Pool defined from guest_images_fs</pre></li></ol></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								You can delete the XML file created in step 1 after running the <code class="literal">virsh pool-define</code> command.
+							</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Define the storage pool target path</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-build</code> command to create a storage pool target path for a pre-formatted filesystem storage pool, initialize the storage source device, and define the format of the data.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-build guest_images_fs</strong></span>
+  Pool guest_images_fs built
+
+# <span class="strong"><strong>ls -la /guest_images</strong></span>
+  total 8
+  drwx------.  2 root root 4096 May 31 19:38 .
+  dr-xr-xr-x. 25 root root 4096 May 31 19:38 ..</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify that the pool was created</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-list</code> command to verify that the pool was created.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+
+  Name                 State      Autostart
+  -----------------------------------------
+  default              active     yes
+  guest_images_fs      inactive   no</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Start the storage pool</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-start</code> command to mount the storage pool.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-start guest_images_fs</strong></span>
+  Pool guest_images_fs started</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										The <code class="literal">virsh pool-start</code> command is only necessary for persistent storage pools. Transient storage pools are automatically started when they are created.
+									</p></div></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>[Optional] Turn on autostart</strong></span>
+								</p><p class="simpara">
+									By default, a storage pool defined with the <code class="literal">virsh</code> command is not set to automatically start each time libvirtd starts. Use the <code class="literal">virsh pool-autostart</code> command to configure the storage pool to autostart.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-autostart guest_images_fs</strong></span>
+  Pool guest_images_fs marked as autostarted</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify the <code class="literal"><span class="emphasis"><em>Autostart</em></span></code> state</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-list</code> command to verify the <code class="literal"><span class="emphasis"><em>Autostart</em></span></code> state.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+
+  Name                 State      Autostart
+  -----------------------------------------
+  default              active     yes
+  guest_images_fs      inactive   yes</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify the storage pool</strong></span>
+								</p><p class="simpara">
+									Verify that the storage pool was created correctly, the sizes reported are as expected, and the state is reported as <code class="literal"><span class="emphasis"><em>running</em></span></code>. Verify there is a <code class="literal">lost+found</code> directory in the target path on the file system, indicating that the device is mounted.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-info guest_images_fs</strong></span>
+  Name:           guest_images_fs
+  UUID:           c7466869-e82a-a66c-2187-dc9d6f0877d0
+  State:          running
+  Persistent:     yes
+  Autostart:      yes
+  Capacity:       458.39 GB
+  Allocation:     197.91 MB
+  Available:      458.20 GB
+
+# <span class="strong"><strong>mount | grep /guest_images</strong></span>
+  /dev/sdc1 on /guest_images type ext4 (rw)
+
+# <span class="strong"><strong>ls -la /guest_images</strong></span>
+  total 24
+  drwxr-xr-x.  3 root root  4096 May 31 19:47 .
+  dr-xr-xr-x. 25 root root  4096 May 31 19:38 ..
+  drwx------.  2 root root 16384 May 31 14:18 lost+found</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="filesystem-based-storage-pool-parameters_creating-and-assigning-partition-based-storage-for-virtual-machines-using-the-cli"/>Filesystem-based storage pool parameters</h4></div></div></div><p>
+							The following provides information about the required parameters for a directory-based storage pool and an example.
+						</p><h6><a id="parameters_3"/>Parameters</h6><p>
+							The following table provides a list of required parameters for the XML file for a filesystem-based storage pool.
+						</p><div class="table"><a id="idm139710490867040"/><p class="title"><strong>Table 7.3. Filesystem-based storage pool parameters</strong></p><div class="table-contents"><table summary="Filesystem-based storage pool parameters" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Description</th><th style="text-align: left" valign="top">XML</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+											The type of storage pool
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;pool type='fs'&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The name of the storage pool
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;name&gt;<code class="literal"><span class="emphasis"><em>name</em></span></code>&lt;/name&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The path specifying the partition. For example, <code class="literal">/dev/sdc1</code>
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;source&gt;<br/>    &lt;device path=<span class="emphasis"><em>device_path</em></span> /&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The filesystem type, for example <span class="strong"><strong>ext4</strong></span>.
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											    <code class="literal">&lt;format type=<span class="emphasis"><em>fs_type</em></span> /&gt;<br/> &lt;/source&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The path specifying the target. This will be the path used for the storage pool.
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;target&gt;<br/>     &lt;path&gt;<code class="literal"><span class="emphasis"><em>path-to-pool</em></span></code>&lt;/path&gt; <br/> &lt;/target&gt;</code>
+										</p>
+										 </td></tr></tbody></table></div></div><h6><a id="example_3"/>Example</h6><p>
+							The following is an example of an XML file for a storage pool based on the <code class="literal">/dev/sdc1</code> partition:
+						</p><pre class="programlisting">&lt;pool type='fs'&gt;
+  &lt;name&gt;guest_images_fs&lt;/name&gt;
+  &lt;source&gt;
+    &lt;device path='/dev/sdc1'/&gt;
+    &lt;format type='auto'/&gt;
+  &lt;/source&gt;
+  &lt;target&gt;
+    &lt;path&gt;/guest_images&lt;/path&gt;
+  &lt;/target&gt;
+&lt;/pool&gt;</pre></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="creating-and-assigning-glusterfs-storage-for-virtual-machines-using-the-cli_creating-storage-for-virtual-machines-using-the-cli"/>Creating and assigning GlusterFS storage for virtual machines using the CLI</h3></div></div></div><p>
+						The following provides information about creating directory-based storage pools and storage volumes and assigning volumes to virtual machines.
+					</p><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="creating-glusterfs-based-storage-pools-using-the-cli_creating-and-assigning-glusterfs-storage-for-virtual-machines-using-the-cli"/>Creating GlusterFS-based storage pools using the CLI</h4></div></div></div><p>
+							GlusterFS is a user space file system that uses File System in Userspace (FUSE).
+						</p><p>
+							The following provides instructions for creating GlusterFS-based storage pools.
+						</p><h6><a id="prerequisites_42"/>Prerequisites</h6><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+									Before a GlusterFS-based storage pool can be created on a host, a Gluster server must be prepared.
+								</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+											Obtain the IP address of the Gluster server by listing its status with the following command:
+										</p><pre class="literallayout"># <span class="strong"><strong>gluster volume status</strong></span>
+Status of volume: gluster-vol1
+Gluster process                           Port	Online	Pid
+------------------------------------------------------------
+Brick 222.111.222.111:/gluster-vol1       49155	  Y    18634
+
+Task Status of Volume gluster-vol1
+------------------------------------------------------------
+There are no active volume tasks</pre></li><li class="listitem">
+											If not installed, install the <code class="literal">glusterfs-fuse</code> package.
+										</li><li class="listitem"><p class="simpara">
+											If not enabled, enable the <code class="literal">virt_use_fusefs</code> boolean. Check that it is enabled.
+										</p><pre class="literallayout"># <span class="strong"><strong>setsebool virt_use_fusefs on</strong></span>
+# <span class="strong"><strong>getsebool virt_use_fusefs</strong></span>
+virt_use_fusefs --&gt; on</pre></li></ol></div></li></ul></div><p>
+							After ensuring that the required packages are installed and enabled, continue creating the storage pool.
+						</p><h6><a id="procedure_48"/>Procedure</h6><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Define the storage pool in an XML file</strong></span>
+								</p><p class="simpara">
+									Create a temporary XML file containing the storage pool parameters required for the new device.
+								</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										For information on the required parameters, refer to <a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#glusterfs-based-storage-pool-parameters_creating-and-assigning-glusterfs-storage-for-virtual-machines-using-the-cli" title="GlusterFS-based storage pool parameters">Parameters</a>.
+									</p></div></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Create a storage pool</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-define</code> command to create a persistent storage pool based on the XML file created in the previous step.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-define ~/guest_images.xml</strong></span>
+  Pool defined from guest_images_fs</pre></li></ol></div><div class="informalexample"><p>
+							You can delete the XML file created in step 1 after running the <code class="literal">virsh pool-define</code> command.
+						</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Define the storage pool target path</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-build</code> command to create a storage pool target path for a pre-formatted file system storage pool, initialize the storage source device, and define the format of the data.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-build guest_images_fs</strong></span>
+  Pool guest_images_fs built
+
+# <span class="strong"><strong>ls -la /guest_images</strong></span>
+  total 8
+  drwx------.  2 root root 4096 May 31 19:38 .
+  dr-xr-xr-x. 25 root root 4096 May 31 19:38 ..</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										Building the target path is only necessary for disk-based, file system-based, and logical storage pools. If <code class="literal">libvirt</code> detects that the source storage device’s data format differs from the selected storage pool type, the build fails, unless the <code class="literal"><span class="emphasis"><em>overwrite</em></span></code> option is specified.
+									</p></div></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify that the pool was created</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-list</code> command to verify that the pool was created.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+
+  Name                 State      Autostart
+  -----------------------------------------
+  default              active     yes
+  guest_images_fs      inactive   no</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Start the storage pool</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-start</code> command to mount the storage pool.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-start guest_images_fs</strong></span>
+  Pool guest_images_fs started</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										The <code class="literal">virsh pool-start</code> command is only necessary for persistent storage pools. Transient storage pools are automatically started when they are created.
+									</p></div></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>[Optional] Turn on autostart</strong></span>
+								</p><p class="simpara">
+									By default, a storage pool defined with the <code class="literal">virsh</code> command is not set to automatically start each time libvirtd starts. Use the <code class="literal">virsh pool-autostart</code> command to configure the storage pool to autostart.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-autostart guest_images_fs</strong></span>
+  Pool guest_images_fs marked as autostarted</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify the <code class="literal"><span class="emphasis"><em>Autostart</em></span></code> state</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-list</code> command to verify the <code class="literal"><span class="emphasis"><em>Autostart</em></span></code> state.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+
+  Name                 State      Autostart
+  -----------------------------------------
+  default              active     yes
+  guest_images_fs      inactive   yes</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify the storage pool</strong></span>
+								</p><p class="simpara">
+									Verify that the storage pool was created correctly, the sizes reported are as expected, and the state is reported as <code class="literal"><span class="emphasis"><em>running</em></span></code>. Verify there is a <code class="literal">lost+found</code> directory in the target path on the file system, indicating that the device is mounted.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-info guest_images_fs</strong></span>
+  Name:           guest_images_fs
+  UUID:           c7466869-e82a-a66c-2187-dc9d6f0877d0
+  State:          running
+  Persistent:     yes
+  Autostart:      yes
+  Capacity:       458.39 GB
+  Allocation:     197.91 MB
+  Available:      458.20 GB
+
+# <span class="strong"><strong>mount | grep /guest_images</strong></span>
+  /dev/sdc1 on /guest_images type ext4 (rw)
+
+# <span class="strong"><strong>ls -la /guest_images</strong></span>
+  total 24
+  drwxr-xr-x.  3 root root  4096 May 31 19:47 .
+  dr-xr-xr-x. 25 root root  4096 May 31 19:38 ..
+  drwx------.  2 root root 16384 May 31 14:18 lost+found</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="glusterfs-based-storage-pool-parameters_creating-and-assigning-glusterfs-storage-for-virtual-machines-using-the-cli"/>GlusterFS-based storage pool parameters</h4></div></div></div><p>
+							The following provides information about the required parameters for a GlusterFS-based storage pool and an example.
+						</p><h6><a id="parameters_4"/>Parameters</h6><p>
+							The following table provides a list of required parameters for the XML file for a GlusterFS-based storage pool.
+						</p><div class="table"><a id="idm139710572811296"/><p class="title"><strong>Table 7.4. GlusterFS-based storage pool parameters</strong></p><div class="table-contents"><table summary="GlusterFS-based storage pool parameters" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Description</th><th style="text-align: left" valign="top">XML</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+											The type of storage pool
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;pool type='gluster'&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The name of the storage pool
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;name&gt;<code class="literal"><span class="emphasis"><em>name</em></span></code>&lt;/name&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The hostname or IP address of the Gluster server
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;source&gt;<br/>    &lt;name=<span class="emphasis"><em>gluster-name</em></span> /&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The name of the Gluster server
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											    <code class="literal">&lt;name&gt;<code class="literal"><span class="emphasis"><em>name</em></span></code>&lt;/name&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The path on the Gluster server used for the storage pool.
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											    <code class="literal">&lt;dir path=<span class="emphasis"><em>gluster-path</em></span> /&gt;<br/> &lt;/source&gt;</code>
+										</p>
+										 </td></tr></tbody></table></div></div><h6><a id="example_4"/>Example</h6><p>
+							The following is an example of an XML file for a storage pool based on the Gluster file system at 111.222.111.222:
+						</p><pre class="programlisting">&lt;pool type='gluster'&gt;
+  &lt;name&gt;Gluster_pool&lt;/name&gt;
+  &lt;source&gt;
+    &lt;host name='111.222.111.222'/&gt;
+    &lt;dir path='/'/&gt;
+    &lt;name&gt;gluster-vol1&lt;/name&gt;
+  &lt;/source&gt;
+&lt;/pool&gt;</pre></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="creating-and-assigning-iscsi-based-storage-for-virtual-machines-using-the-cli_creating-storage-for-virtual-machines-using-the-cli"/>Creating and assigning iSCSI-based storage for virtual machines using the CLI</h3></div></div></div><p>
+						The following provides information about creating iSCSI-based storage pools and storage volumes, securing iSCSI-based storage pools with <code class="literal">libvirt</code> secrets, and assigning volumes to virtual machines.
+					</p><h5><a id="recommendations_3"/>Recommendations</h5><p>
+						Internet Small Computer System Interface (iSCSI) is a network protocol for sharing storage devices. iSCSI connects initiators (storage clients) to targets (storage servers) using SCSI instructions over the IP layer.
+					</p><p>
+						Using iSCSI-based devices to store virtual machines allows for more flexible storage options, such as using iSCSI as a block storage device. The iSCSI devices use a Linux-IO (LIO) target. This is a multi-protocol SCSI target for Linux. In addition to iSCSI, LIO also supports Fibre Channel and Fibre Channel over Ethernet (FCoE).
+					</p><p>
+						If you need to prevent access to an iSCSI storage pool, you can secure it using a <a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#securing-iscsi-storage-pools-with-libvirt-secrets_creating-and-assigning-iscsi-based-storage-for-virtual-machines-using-the-cli" title="Securing iSCSI storage pools with libvirt secrets">libvirt secret</a>.
+					</p><h5><a id="prerequisites-creating-and-assigning-iscsi-based-storage-for-virtual-machines-using-the-cli"/>Prerequisites</h5><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+								Before an iSCSI-based storage pool can be created, iSCSI targets must be created. iSCSI targets are created with the <code class="literal">targetcli</code> package, which provides a command set for creating software-backed iSCSI targets.
+							</p><p class="simpara">
+								For more information and instructions on creating iSCSI targets, see the <span class="emphasis"><em>Red Hat Enterprise Linux Storage Administration Guide</em></span>.
+							</p></li></ul></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="creating-iscsi-based-storage-pools-using-the-cli_creating-and-assigning-iscsi-based-storage-for-virtual-machines-using-the-cli"/>Creating iSCSI-based storage pools using the CLI</h4></div></div></div><p>
+							The following provides instructions for creating iSCSI-based storage pools.
+						</p><h6><a id="procedure_49"/>Procedure</h6><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Define the storage pool in an XML file</strong></span>
+								</p><p class="simpara">
+									Create a temporary XML file containing the storage pool parameters required for the new device.
+								</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										For information on the required parameters, refer to <a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#iscsi-based-storage-pool-parameters_creating-and-assigning-iscsi-based-storage-for-virtual-machines-using-the-cli" title="iSCSI-based storage pool parameters">Parameters</a>.
+									</p></div></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Create a storage pool</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-define</code> command to create a persistent storage pool based on the XML file created in the previous step.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-define ~/guest_images.xml</strong></span>
+  Pool defined from guest_images_fs</pre></li></ol></div><div class="informalexample"><p>
+							You can delete the XML file created in step 1 after running the <code class="literal">virsh pool-define</code> command.
+						</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify that the pool was created</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-list</code> command to verify that the pool was created.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+
+  Name                 State      Autostart
+  -----------------------------------------
+  default              active     yes
+  guest_images_fs      inactive   no</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Start the storage pool</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-start</code> command to mount the storage pool.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-start guest_images_fs</strong></span>
+  Pool guest_images_fs started</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										The <code class="literal">virsh pool-start</code> command is only necessary for persistent storage pools. Transient storage pools are automatically started when they are created.
+									</p></div></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>[Optional] Turn on autostart</strong></span>
+								</p><p class="simpara">
+									By default, a storage pool defined with the <code class="literal">virsh</code> command is not set to automatically start each time libvirtd starts. Use the <code class="literal">virsh pool-autostart</code> command to configure the storage pool to autostart.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-autostart guest_images_fs</strong></span>
+  Pool guest_images_fs marked as autostarted</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify the <code class="literal"><span class="emphasis"><em>Autostart</em></span></code> state</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-list</code> command to verify the <code class="literal"><span class="emphasis"><em>Autostart</em></span></code> state.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+
+  Name                 State      Autostart
+  -----------------------------------------
+  default              active     yes
+  guest_images_fs      inactive   yes</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify the storage pool</strong></span>
+								</p><p class="simpara">
+									Verify that the storage pool was created correctly, the sizes reported are as expected, and the state is reported as <code class="literal"><span class="emphasis"><em>running</em></span></code>. Verify there is a <code class="literal">lost+found</code> directory in the target path on the file system, indicating that the device is mounted.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-info guest_images_fs</strong></span>
+  Name:           guest_images_fs
+  UUID:           c7466869-e82a-a66c-2187-dc9d6f0877d0
+  State:          running
+  Persistent:     yes
+  Autostart:      yes
+  Capacity:       458.39 GB
+  Allocation:     197.91 MB
+  Available:      458.20 GB
+
+# <span class="strong"><strong>mount | grep /guest_images</strong></span>
+  /dev/sdc1 on /guest_images type ext4 (rw)
+
+# <span class="strong"><strong>ls -la /guest_images</strong></span>
+  total 24
+  drwxr-xr-x.  3 root root  4096 May 31 19:47 .
+  dr-xr-xr-x. 25 root root  4096 May 31 19:38 ..
+  drwx------.  2 root root 16384 May 31 14:18 lost+found</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="iscsi-based-storage-pool-parameters_creating-and-assigning-iscsi-based-storage-for-virtual-machines-using-the-cli"/>iSCSI-based storage pool parameters</h4></div></div></div><p>
+							The following provides information about the required parameters for an iSCSI-based storage pool and an example.
+						</p><h6><a id="parameters_5"/>Parameters</h6><p>
+							The following table provides a list of required parameters for the XML file for an iSCSI-based storage pool.
+						</p><div class="table"><a id="idm139710562124800"/><p class="title"><strong>Table 7.5. iSCSI-based storage pool parameters</strong></p><div class="table-contents"><table summary="iSCSI-based storage pool parameters" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Description</th><th style="text-align: left" valign="top">XML</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+											The type of storage pool
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;pool type='iscsi'&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The name of the storage pool
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;name&gt;<code class="literal"><span class="emphasis"><em>name</em></span></code>&lt;/name&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The name of the host
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;source&gt;<br/>   &lt;host name=<span class="emphasis"><em>hostname</em></span> /&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The iSCSI IQN
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											    <code class="literal">&lt;device path= <span class="emphasis"><em>iSCSI_IQN</em></span> /&gt; <br/> &lt;/source&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The path specifying the target. This will be the path used for the storage pool.
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;target&gt; <br/>    &lt;path&gt;<code class="literal"><span class="emphasis"><em>/dev/disk/by-path</em></span></code>&lt;/path&gt; <br/> &lt;/target&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											[Optional] The IQN of the iSCSI initiator. This is only needed when the ACL restricts the LUN to a particular initiator.
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;initiator&gt; <br/>    &lt;iqn name='<span class="emphasis"><em>initiator0</em></span>' /&gt; <br/> &lt;/initiator&gt;</code>
+										</p>
+										 </td></tr></tbody></table></div></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								The IQN of the iSCSI initiator can be determined using the <code class="literal">virsh find-storage-pool-sources-as</code> iscsi command.
+							</p></div><h6><a id="example_5"/>Example</h6><p>
+							The following is an example of an XML file for a storage pool based on the specified iSCSI device:
+						</p><pre class="programlisting">&lt;pool type='iscsi'&gt;
+  &lt;name&gt;iSCSI_pool&lt;/name&gt;
+  &lt;source&gt;
+    &lt;host name='server1.example.com'/&gt;
+    &lt;device path='iqn.2010-05.com.example.server1:iscsirhel7guest'/&gt;
+  &lt;/source&gt;
+  &lt;target&gt;
+    &lt;path&gt;/dev/disk/by-path&lt;/path&gt;
+  &lt;/target&gt;
+&lt;/pool&gt;</pre></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="securing-iscsi-storage-pools-with-libvirt-secrets_creating-and-assigning-iscsi-based-storage-for-virtual-machines-using-the-cli"/>Securing iSCSI storage pools with libvirt secrets</h4></div></div></div><p>
+							User name and password parameters can be configured with <code class="literal">virsh</code> to secure an iSCSI storage pool. This can be configured before or after the pool is defined, but the pool must be started for the authentication settings to take effect.
+						</p><p>
+							The following provides instructions for securing iSCSI-based storage pools with <code class="literal">libvirt</code> secrets.
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								This procedure is required if a <code class="literal"><span class="emphasis"><em>user_ID</em></span></code> and <code class="literal"><span class="emphasis"><em>password</em></span></code> were defined when creating the iSCSI target.
+							</p></div><h6><a id="procedure_50"/>Procedure</h6><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									Create a libvirt secret file with a challenge-handshake authentication protocol (CHAP) user name. For example:
+								</p><pre class="programlisting">&lt;secret ephemeral='no' private='yes'&gt;
+    &lt;description&gt;Passphrase for the iSCSI example.com server&lt;/description&gt;
+    &lt;usage type='iscsi'&gt;
+        &lt;target&gt;iscsirhel7secret&lt;/target&gt;
+    &lt;/usage&gt;
+&lt;/secret&gt;</pre></li><li class="listitem"><p class="simpara">
+									Define the libvirt secret with the <code class="literal">virsh secret-define</code> command.
+								</p><p class="simpara">
+									<code class="literal"># <span class="strong"><strong>virsh secret-define</strong></span> <span class="emphasis"><em>secret.xml</em></span></code>
+								</p></li><li class="listitem"><p class="simpara">
+									Verify the UUID with the <code class="literal">virsh secret-list</code> command.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh secret-list</strong></span>
+UUID                                  Usage
+-------------------------------------------------------------------
+2d7891af-20be-4e5e-af83-190e8a922360  iscsi iscsirhel7secret</pre></li><li class="listitem"><p class="simpara">
+									Assign a secret to the UUID in the output of the previous step using the <code class="literal">virsh secret-set-value</code> command. This ensures that the CHAP username and password are in a libvirt-controlled secret list. For example:
+								</p><pre class="literallayout"># <span class="strong"><strong>MYSECRET=`printf *%s "<span class="emphasis"><em>password123</em></span>" | base64`</strong></span>
+# <span class="strong"><strong>virsh secret-set-value 2d7891af-20be-4e5e-af83-190e8a922360 $MYSECRET</strong></span></pre></li><li class="listitem"><p class="simpara">
+									Add an authentication entry in the storage pool’s XML file using the <code class="literal">virsh edit</code> command, and add an <code class="literal"><span class="strong"><strong>&lt;auth&gt;</strong></span></code> element, specifying <code class="literal"><span class="strong"><strong>authentication type</strong></span></code>, <code class="literal"><span class="strong"><strong>username</strong></span></code>, and <code class="literal"><span class="strong"><strong>secret usage</strong></span></code>.
+								</p><p class="simpara">
+									For example:
+								</p><pre class="programlisting">&lt;pool type='iscsi'&gt;
+  &lt;name&gt;iscsirhel7pool&lt;/name&gt;
+    &lt;source&gt;
+       &lt;host name='192.168.122.1'/&gt;
+       &lt;device path='iqn.2010-05.com.example.server1:iscsirhel7guest'/&gt;
+       &lt;auth type='chap' username='redhat'&gt;
+          &lt;secret usage='iscsirhel7secret'/&gt;
+       &lt;/auth&gt;
+    &lt;/source&gt;
+  &lt;target&gt;
+    &lt;path&gt;/dev/disk/by-path&lt;/path&gt;
+  &lt;/target&gt;
+&lt;/pool&gt;</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										The <code class="literal"><span class="strong"><strong>&lt;auth&gt;</strong></span></code> sub-element exists in different locations within the guest XML’s <code class="literal"><span class="strong"><strong>&lt;pool&gt;</strong></span></code> and <code class="literal"><span class="strong"><strong>&lt;disk&gt;</strong></span></code> elements. For a <code class="literal"><span class="strong"><strong>&lt;pool&gt;</strong></span></code>, <code class="literal"><span class="strong"><strong>&lt;auth&gt;</strong></span></code> is specified within the <code class="literal"><span class="strong"><strong>&lt;source&gt;</strong></span></code> element, as this describes where to find the pool sources, since authentication is a property of some pool sources (iSCSI and RBD). For a <code class="literal"><span class="strong"><strong>&lt;disk&gt;</strong></span></code>, which is a sub-element of a domain, the authentication to the iSCSI or RBD disk is a property of the disk. In addition, the <code class="literal"><span class="strong"><strong>&lt;auth&gt;</strong></span></code> sub-element for a disk differs from that of a storage pool.
+									</p><pre class="programlisting">&lt;auth username='redhat'&gt;
+  &lt;secret type='iscsi' usage='iscsirhel7secret'/&gt;
+&lt;/auth&gt;</pre></div></li><li class="listitem"><p class="simpara">
+									To activate the changes, the storage pool must be activated. If the pool has already been started, stop and restart the storage pool:
+								</p><p class="simpara">
+									<code class="literal"># <span class="strong"><strong>virsh pool-destroy</strong></span> <span class="emphasis"><em>iscsirhel7pool</em></span></code>
+								</p><p class="simpara">
+									<code class="literal"># <span class="strong"><strong>virsh pool-start</strong></span> <span class="emphasis"><em>iscsirhel7pool</em></span></code>
+								</p></li></ol></div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="creating-and-assigning-lvm-based-storage-for-virtual-machines-using-the-cli_creating-storage-for-virtual-machines-using-the-cli"/>Creating and assigning LVM-based storage for virtual machines using the CLI</h3></div></div></div><p>
+						The following provides information about creating LVM-based storage pools and storage volumes and assigning volumes to virtual machines.
+					</p><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="creating-lvm-based-storage-pools-using-the-cli_creating-and-assigning-lvm-based-storage-for-virtual-machines-using-the-cli"/>Creating LVM-based storage pools using the CLI</h4></div></div></div><p>
+							The following provides instructions for creating LVM-based storage pools.
+						</p><h6><a id="recommendations_4"/>Recommendations</h6><p>
+							Be aware of the following before creating an LVM-based storage pool:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									LVM-based storage pools do not provide the full flexibility of LVM.
+								</li><li class="listitem">
+									<code class="literal">libvirt</code> supports thin logical volumes, but does not provide the features of thin storage pools.
+								</li><li class="listitem"><p class="simpara">
+									LVM-based storage pools are volume groups. You can create volume groups using Logical Volume Manager commands or <code class="literal">virsh</code> commands. To manage volume groups using the <code class="literal">virsh</code> interface, use the <code class="literal">virsh</code> commands to create volume groups.
+								</p><p class="simpara">
+									For more information about volume groups, refer to the <span class="emphasis"><em>Red Hat Enterprise Linux Logical Volume Manager Administration Guide</em></span>.
+								</p></li><li class="listitem">
+									LVM-based storage pools require a full disk partition. If activating a new partition or device with these procedures, the partition will be formatted and all data will be erased. If using the host’s existing Volume Group (VG) nothing will be erased. It is recommended to back up the storage device before starting.
+								</li></ul></div><h6><a id="procedure_51"/>Procedure</h6><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Define the storage pool in an XML file</strong></span>
+								</p><p class="simpara">
+									Create a temporary XML file containing the storage pool parameters required for the new device.
+								</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										For information on the required parameters, refer to <a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#lvm-based-storage-pool-parameters_creating-and-assigning-lvm-based-storage-for-virtual-machines-using-the-cli" title="LVM-based storage pool parameters">Parameters</a>.
+									</p></div></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Create a storage pool</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-define</code> command to create a persistent storage pool based on the XML file created in the previous step.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-define ~/guest_images.xml</strong></span>
+  Pool defined from guest_images_fs</pre></li></ol></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								You can delete the XML file created in step 1 after running the <code class="literal">virsh pool-define</code> command.
+							</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify that the pool was created</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-list</code> command to verify that the pool was created.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+
+  Name                 State      Autostart
+  -----------------------------------------
+  default              active     yes
+  guest_images_fs      inactive   no</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Start the storage pool</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-start</code> command to mount the storage pool.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-start guest_images_fs</strong></span>
+  Pool guest_images_fs started</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										The <code class="literal">virsh pool-start</code> command is only necessary for persistent storage pools. Transient storage pools are automatically started when they are created.
+									</p></div></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>[Optional] Turn on autostart</strong></span>
+								</p><p class="simpara">
+									By default, a storage pool defined with the <code class="literal">virsh</code> command is not set to automatically start each time libvirtd starts. Use the <code class="literal">virsh pool-autostart</code> command to configure the storage pool to autostart.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-autostart guest_images_fs</strong></span>
+  Pool guest_images_fs marked as autostarted</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify the <code class="literal"><span class="emphasis"><em>Autostart</em></span></code> state</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-list</code> command to verify the <code class="literal"><span class="emphasis"><em>Autostart</em></span></code> state.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+
+  Name                 State      Autostart
+  -----------------------------------------
+  default              active     yes
+  guest_images_fs      inactive   yes</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify the storage pool</strong></span>
+								</p><p class="simpara">
+									Verify that the storage pool was created correctly, the sizes reported are as expected, and the state is reported as <code class="literal"><span class="emphasis"><em>running</em></span></code>. Verify there is a <code class="literal">lost+found</code> directory in the target path on the file system, indicating that the device is mounted.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-info guest_images_fs</strong></span>
+  Name:           guest_images_fs
+  UUID:           c7466869-e82a-a66c-2187-dc9d6f0877d0
+  State:          running
+  Persistent:     yes
+  Autostart:      yes
+  Capacity:       458.39 GB
+  Allocation:     197.91 MB
+  Available:      458.20 GB
+
+# <span class="strong"><strong>mount | grep /guest_images</strong></span>
+  /dev/sdc1 on /guest_images type ext4 (rw)
+
+# <span class="strong"><strong>ls -la /guest_images</strong></span>
+  total 24
+  drwxr-xr-x.  3 root root  4096 May 31 19:47 .
+  dr-xr-xr-x. 25 root root  4096 May 31 19:38 ..
+  drwx------.  2 root root 16384 May 31 14:18 lost+found</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="lvm-based-storage-pool-parameters_creating-and-assigning-lvm-based-storage-for-virtual-machines-using-the-cli"/>LVM-based storage pool parameters</h4></div></div></div><p>
+							The following provides information about the required parameters for an LVM-based storage pool and an example.
+						</p><h6><a id="parameters_6"/>Parameters</h6><p>
+							The following table provides a list of required parameters for the XML file for a LVM-based storage pool.
+						</p><div class="table"><a id="idm139710573849408"/><p class="title"><strong>Table 7.6. LVM-based storage pool parameters</strong></p><div class="table-contents"><table summary="LVM-based storage pool parameters" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Description</th><th style="text-align: left" valign="top">XML</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+											The type of storage pool
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;pool type='logical'&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The name of the storage pool
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;name&gt;<code class="literal"><span class="emphasis"><em>name</em></span></code>&lt;/name&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The path to the device for the storage pool
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;source&gt; <br/>    &lt;device path='<span class="emphasis"><em>device_path</em></span>' /&gt;`</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The name of the volume group
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											    <code class="literal">&lt;name&gt;<code class="literal"><span class="emphasis"><em>VG-name</em></span></code>&lt;/name&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The virtual group format
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											    <code class="literal">&lt;format type='lvm2' /&gt; <br/> &lt;/source&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The target path
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;target&gt; <br/>    &lt;path=<span class="emphasis"><em>target_path</em></span> /&gt;<br/> &lt;/target&gt;</code>
+										</p>
+										 </td></tr></tbody></table></div></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								If the logical volume group is made of multiple disk partitions, there may be multiple source devices listed. For example:
+							</p><pre class="screen">&lt;source&gt;
+  &lt;device path='/dev/sda1'/&gt;
+  &lt;device path='/dev/sdb3'/&gt;
+  &lt;device path='/dev/sdc2'/&gt;
+  ...
+&lt;/source&gt;</pre></div><h6><a id="example_6"/>Example</h6><p>
+							The following is an example of an XML file for a storage pool based on the specified LVM:
+						</p><pre class="programlisting">&lt;pool type='logical'&gt;
+  &lt;name&gt;guest_images_lvm&lt;/name&gt;
+  &lt;source&gt;
+    &lt;device path='/dev/sdc'/&gt;
+    &lt;name&gt;libvirt_lvm&lt;/name&gt;
+    &lt;format type='lvm2'/&gt;
+  &lt;/source&gt;
+  &lt;target&gt;
+    &lt;path&gt;/dev/libvirt_lvm&lt;/path&gt;
+  &lt;/target&gt;
+&lt;/pool&gt;</pre></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="creating-and-assigning-nfs-storage-for-virtual-machines-using-the-cli_creating-storage-for-virtual-machines-using-the-cli"/>Creating and assigning network-based storage for virtual machines using the CLI</h3></div></div></div><p>
+						The following provides information about creating network-based storage pools and storage volumes and assigning volumes to virtual machines.
+					</p><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="prerequisites-creating-and-assigning-nfs-storage-for-virtual-machines-using-the-cli"/>Prerequisites</h4></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									To create an Network File System (NFS)-based storage pool, an NFS Server should already be configured to be used by the host machine. For more information about NFS, refer to the <span class="emphasis"><em>Red Hat Enterprise Linux Storage Administration Guide</em></span>.
+								</li><li class="listitem">
+									Ensure that the required utilities for the file system used is installed on the host. For example, <code class="literal">cifs-utils</code> for Common Internet File Systems (CIFS) and <code class="literal">glusterfs.fuse</code> for GlusterFS.
+								</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="creating-nfs-based-storage-pools-using-the-cli_creating-and-assigning-nfs-storage-for-virtual-machines-using-the-cli"/>Creating network-based storage pools using the CLI</h4></div></div></div><p>
+							The following provides instructions for creating network-based storage pools.
+						</p><h6><a id="procedure_52"/>Procedure</h6><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Define the storage pool in an XML file</strong></span>
+								</p><p class="simpara">
+									Create a temporary XML file containing the storage pool parameters required for the new device.
+								</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										For information on the required parameters, refer to <a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#nfs-based-storage-pool-parameters_creating-and-assigning-nfs-storage-for-virtual-machines-using-the-cli" title="NFS-based storage pool parameters">Parameters</a>.
+									</p></div></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Create a storage pool</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-define</code> command to create a persistent storage pool based on the XML file created in the previous step.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-define ~/guest_images.xml</strong></span>
+  Pool defined from guest_images_fs</pre></li></ol></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								You can delete the XML file created in step 1 after running the <code class="literal">virsh pool-define</code> command.
+							</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Define the storage pool target path</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-build</code> command to create a storage pool target path for a pre-formatted file system storage pool, initialize the storage source device, and define the format of the data.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-build guest_images_fs</strong></span>
+  Pool guest_images_fs built
+
+# <span class="strong"><strong>ls -la /guest_images</strong></span>
+  total 8
+  drwx------.  2 root root 4096 May 31 19:38 .
+  dr-xr-xr-x. 25 root root 4096 May 31 19:38 ..</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify that the pool was created</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-list</code> command to verify that the pool was created.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+
+  Name                 State      Autostart
+  -----------------------------------------
+  default              active     yes
+  guest_images_fs      inactive   no</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Start the storage pool</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-start</code> command to mount the storage pool.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-start guest_images_fs</strong></span>
+  Pool guest_images_fs started</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										The <code class="literal">virsh pool-start</code> command is only necessary for persistent storage pools. Transient storage pools are automatically started when they are created.
+									</p></div></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>[Optional] Turn on autostart</strong></span>
+								</p><p class="simpara">
+									By default, a storage pool defined with the <code class="literal">virsh</code> command is not set to automatically start each time libvirtd starts. Use the <code class="literal">virsh pool-autostart</code> command to configure the storage pool to autostart.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-autostart guest_images_fs</strong></span>
+  Pool guest_images_fs marked as autostarted</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify the <code class="literal"><span class="emphasis"><em>Autostart</em></span></code> state</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-list</code> command to verify the <code class="literal"><span class="emphasis"><em>Autostart</em></span></code> state.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+
+  Name                 State      Autostart
+  -----------------------------------------
+  default              active     yes
+  guest_images_fs      inactive   yes</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify the storage pool</strong></span>
+								</p><p class="simpara">
+									Verify that the storage pool was created correctly, the sizes reported are as expected, and the state is reported as <code class="literal"><span class="emphasis"><em>running</em></span></code>. Verify there is a <code class="literal">lost+found</code> directory in the target path on the file system, indicating that the device is mounted.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-info guest_images_fs</strong></span>
+  Name:           guest_images_fs
+  UUID:           c7466869-e82a-a66c-2187-dc9d6f0877d0
+  State:          running
+  Persistent:     yes
+  Autostart:      yes
+  Capacity:       458.39 GB
+  Allocation:     197.91 MB
+  Available:      458.20 GB
+
+# <span class="strong"><strong>mount | grep /guest_images</strong></span>
+  /dev/sdc1 on /guest_images type ext4 (rw)
+
+# <span class="strong"><strong>ls -la /guest_images</strong></span>
+  total 24
+  drwxr-xr-x.  3 root root  4096 May 31 19:47 .
+  dr-xr-xr-x. 25 root root  4096 May 31 19:38 ..
+  drwx------.  2 root root 16384 May 31 14:18 lost+found</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="nfs-based-storage-pool-parameters_creating-and-assigning-nfs-storage-for-virtual-machines-using-the-cli"/>NFS-based storage pool parameters</h4></div></div></div><p>
+							The following provides information about the required parameters for an NFS-based storage pool and an example.
+						</p><h6><a id="parameters_7"/>Parameters</h6><p>
+							The following table provides a list of required parameters for the XML file for an NFS-based storage pool.
+						</p><div class="table"><a id="idm139710566810800"/><p class="title"><strong>Table 7.7. NFS-based storage pool parameters</strong></p><div class="table-contents"><table summary="NFS-based storage pool parameters" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Description</th><th style="text-align: left" valign="top">XML</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+											The type of storage pool
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;pool type='netfs'&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The name of the storage pool
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;name&gt;<code class="literal"><span class="emphasis"><em>name</em></span></code>&lt;/name&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The hostname of the network server where the mount point is located. This can be a hostname or an IP address.
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;source&gt; <br/>    &lt;host name=<span class="emphasis"><em>hostname</em></span></code> <code class="literal">/&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The format of the storage pool
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											One of the following:
+										</p>
+										 <p>
+											    <code class="literal">&lt;format type='nfs' /&gt;</code>
+										</p>
+										 <p>
+											    <code class="literal">&lt;format type='glusterfs' /&gt;</code>
+										</p>
+										 <p>
+											    <code class="literal">&lt;format type='cifs' /&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The directory used on the network server
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											    <code class="literal">&lt;dir path=<span class="emphasis"><em>source_path</em></span></code> <code class="literal">/&gt; <br/> &lt;/source&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The path specifying the target. This will be the path used for the storage pool.
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;target&gt; <br/>    &lt;path&gt;<code class="literal"><span class="emphasis"><em>target_path</em></span></code>&lt;/path&gt; <br/> &lt;/target&gt;</code>
+										</p>
+										 </td></tr></tbody></table></div></div><h6><a id="example_7"/>Example</h6><p>
+							The following is an example of an XML file for a storage pool based on the <code class="literal">/home/net_mount</code> directory of the <code class="literal">file_server</code> NFS server:
+						</p><pre class="programlisting">&lt;pool type='netfs'&gt;
+  &lt;name&gt;nfspool&lt;/name&gt;
+  &lt;source&gt;
+    &lt;host name='file_server'/&gt;
+    &lt;format type='nfs'/&gt;
+    &lt;dir path='/home/net_mount'/&gt;
+  &lt;/source&gt;
+  &lt;target&gt;
+    &lt;path&gt;/var/lib/libvirt/images/nfspool&lt;/path&gt;
+  &lt;/target&gt;
+&lt;/pool&gt;</pre></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="creating-and-assigning-vhba-based-storage-for-virtual-machines-using-the-cli_creating-storage-for-virtual-machines-using-the-cli"/>Creating and assigning vHBA-based storage for virtual machines using the CLI</h3></div></div></div><p>
+						The following provides information about creating vHBA-based storage pools and storage volumes and assigning volumes to virtual machines.
+					</p><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="recommendations-creating-and-assigning-vhba-based-storage-for-virtual-machines-using-the-cli"/>Recommendations</h4></div></div></div><p>
+							<span class="emphasis"><em>N_Port ID Virtualization</em></span> (NPIV) is a software technology that allows sharing of a single physical Fibre Channel host bus adapter (HBA). This allows multiple guests to see the same storage from multiple physical hosts, and thus allows for easier migration paths for the storage. As a result, there is no need for the migration to create or copy storage, as long as the correct storage path is specified.
+						</p><p>
+							In virtualization, the <span class="emphasis"><em>virtual host bus adapter</em></span>, or <span class="emphasis"><em>vHBA</em></span>, controls the Logical Unit Numbers (LUNs) for virtual machines. For a host to share one Fibre Channel device path between multiple KVM guests, a vHBA must be created for each virtual machine. A single vHBA must not be used by multiple KVM guests.
+						</p><p>
+							Each vHBA for NPIV is identified by its parent HBA and its own World Wide Node Name (WWNN) and World Wide Port Name (WWPN). The path to the storage is determined by the WWNN and WWPN values. The parent HBA can be defined as <code class="literal"><span class="emphasis"><em>scsi_host#</em></span></code> or as a WWNN/WWPN pair.
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								If a parent HBA is defined as <code class="literal"><span class="emphasis"><em>scsi_host#</em></span></code> and hardware is added to the host machine, the <code class="literal"><span class="emphasis"><em>scsi_host#</em></span></code> assignment may change. Therefore, it is recommended that you define a parent HBA using a WWNN/WWPN pair.
+							</p></div><p>
+							It is recommended that you define a <code class="literal">libvirt</code> storage pool based on the vHBA, because this preserves the vHBA configuration.
+						</p><p>
+							Using a libvirt storage pool has two primary advantages:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									The libvirt code can easily find the LUN’s path via virsh command output.
+								</li><li class="listitem">
+									Virtual machine migration requires only defining and starting a storage pool with the same vHBA name on the target machine. To do this, the vHBA LUN, libvirt storage pool and volume name must be specified in the virtual machine’s XML configuration.
+								</li></ul></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								Before creating a vHBA, it is recommended that you configure storage array (SAN)-side zoning in the host LUN to provide isolation between guests and prevent the possibility of data corruption.
+							</p></div><p>
+							To create a persistent vHBA configuration, first create a libvirt <span class="strong"><strong>'scsi'</strong></span> storage pool XML file. For information on the XML file, see <a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#creating-vhbas_creating-and-assigning-vhba-based-storage-for-virtual-machines-using-the-cli" title="Creating vHBAs">Creating vHBAs</a>. When creating a single vHBA that uses a storage pool on the same physical HBA, it is recommended to use a stable location for the <code class="literal">&lt;path&gt;</code> value, such as one of the <code class="literal">/dev/disk/by-{<span class="emphasis"><em>path|id|uuid|label</em></span>}</code> locations on your system.
+						</p><p>
+							When creating multiple vHBAs that use storage pools on the same physical HBA, the value of the <code class="literal">&lt;path&gt;</code> field must be only <code class="literal">/dev/</code>, otherwise storage pool volumes are visible only to one of the vHBAs, and devices from the host cannot be exposed to multiple guests with the NPIV configuration.
+						</p><p>
+							For more information on <code class="literal">&lt;path&gt;</code> and the elements in <code class="literal">&lt;target&gt;</code>, see <a class="link" href="https://libvirt.org/formatstorage.html#StoragePoolTarget">upstream libvirt documentation</a>.
+						</p></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="prerequisites-creating-and-assigning-vhba-based-storage-for-virtual-machines-using-the-cli"/>Prerequisites</h4></div></div></div><p>
+							Before creating a vHBA-based storage pools with SCSI devices, create a vHBA.
+						</p></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="creating-vhbas_creating-and-assigning-vhba-based-storage-for-virtual-machines-using-the-cli"/>Creating vHBAs</h4></div></div></div><p>
+							The following provides instructions on creating a virtual host bus adapter (vHBA).
+						</p><h6><a id="procedure_53"/>Procedure</h6><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									Locate the HBAs on your host system, using the <code class="literal">virsh nodedev-list --cap vports</code> command.
+								</p><p class="simpara">
+									The following example shows a host that has two HBAs that support vHBA:
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh nodedev-list --cap vports</strong></span>
+scsi_host3
+scsi_host4</pre></li><li class="listitem"><p class="simpara">
+									View the HBA’s details, using the <code class="literal">virsh nodedev-dumpxml <span class="emphasis"><em>HBA_device</em></span></code> command.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh nodedev-dumpxml scsi_host3</strong></span></pre><p class="simpara">
+									The output from the command lists the <code class="literal">&lt;name&gt;</code>, <code class="literal">&lt;wwnn&gt;</code>, and <code class="literal">&lt;wwpn&gt;</code> fields, which are used to create a vHBA. <code class="literal">&lt;max_vports&gt;</code> shows the maximum number of supported vHBAs. For example:
+								</p><pre class="programlisting">&lt;device&gt;
+  &lt;name&gt;scsi_host3&lt;/name&gt;
+  &lt;path&gt;/sys/devices/pci0000:00/0000:00:04.0/0000:10:00.0/host3&lt;/path&gt;
+  &lt;parent&gt;pci_0000_10_00_0&lt;/parent&gt;
+  &lt;capability type='scsi_host'&gt;
+    &lt;host&gt;3&lt;/host&gt;
+    &lt;unique_id&gt;0&lt;/unique_id&gt;
+    &lt;capability type='fc_host'&gt;
+      &lt;wwnn&gt;20000000c9848140&lt;/wwnn&gt;
+      &lt;wwpn&gt;10000000c9848140&lt;/wwpn&gt;
+      &lt;fabric_wwn&gt;2002000573de9a81&lt;/fabric_wwn&gt;
+    &lt;/capability&gt;
+    &lt;capability type='vport_ops'&gt;
+      &lt;max_vports&gt;127&lt;/max_vports&gt;
+      &lt;vports&gt;0&lt;/vports&gt;
+    &lt;/capability&gt;
+  &lt;/capability&gt;
+&lt;/device&gt;</pre><p class="simpara">
+									In this example, the <code class="literal">&lt;max_vports&gt;</code> value shows there are a total 127 virtual ports available for use in the HBA configuration. The <code class="literal">&lt;vports&gt;</code> value shows the number of virtual ports currently being used. These values update after creating a vHBA.
+								</p></li><li class="listitem"><p class="simpara">
+									Create an XML file similar to one of the following for the vHBA host. In these examples, the file is named <code class="literal">vhba_host3.xml</code>.
+								</p><p class="simpara">
+									This example uses <code class="literal"><span class="strong"><strong>scsi_host3</strong></span></code> to describe the parent vHBA.
+								</p><pre class="programlisting">&lt;device&gt;
+  &lt;parent&gt;scsi_host3&lt;/parent&gt;
+  &lt;capability type='scsi_host'&gt;
+    &lt;capability type='fc_host'&gt;
+    &lt;/capability&gt;
+  &lt;/capability&gt;
+&lt;/device&gt;</pre><p class="simpara">
+									This example uses a WWNN/WWPN pair to describe the parent vHBA.
+								</p><pre class="programlisting">&lt;device&gt;
+  &lt;name&gt;vhba&lt;/name&gt;
+  &lt;parent wwnn='20000000c9848140' wwpn='10000000c9848140'/&gt;
+  &lt;capability type='scsi_host'&gt;
+    &lt;capability type='fc_host'&gt;
+    &lt;/capability&gt;
+  &lt;/capability&gt;
+&lt;/device&gt;</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										The WWNN and WWPN values must match those in the HBA details seen in the previous step.
+									</p></div><p class="simpara">
+									The <code class="literal">&lt;parent&gt;</code> field specifies the HBA device to associate with this vHBA device. The details in the <code class="literal">&lt;device&gt;</code> tag are used in the next step to create a new vHBA device for the host. For more information on the <code class="literal">nodedev</code> XML format, see <a class="link" href="https://libvirt.org/formatnode.html">the libvirt upstream pages</a>.
+								</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										The <code class="literal">virsh</code> command does not provide a way to define the <code class="literal">parent_wwnn</code>, <code class="literal">parent_wwpn</code>, or <code class="literal">parent_fabric_wwn</code> attributes.
+									</p></div></li><li class="listitem"><p class="simpara">
+									Create a VHBA based on the XML file created in the previous step using the <code class="literal">virsh nodev-create</code> command.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh nodedev-create vhba_host3</strong></span>
+Node device scsi_host5 created from vhba_host3.xml</pre></li><li class="listitem"><p class="simpara">
+									Verify the new vHBA’s details (scsi_host5) uaing the <code class="literal">virsh nodedev-dumpxml</code> command:
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh nodedev-dumpxml scsi_host5</strong></span>
+&lt;device&gt;
+  &lt;name&gt;scsi_host5&lt;/name&gt;
+  &lt;path&gt;/sys/devices/pci0000:00/0000:00:04.0/0000:10:00.0/host3/vport-3:0-0/host5&lt;/path&gt;
+  &lt;parent&gt;scsi_host3&lt;/parent&gt;
+  &lt;capability type='scsi_host'&gt;
+    &lt;host&gt;5&lt;/host&gt;
+    &lt;unique_id&gt;2&lt;/unique_id&gt;
+    &lt;capability type='fc_host'&gt;
+      &lt;wwnn&gt;5001a4a93526d0a1&lt;/wwnn&gt;
+      &lt;wwpn&gt;5001a4ace3ee047d&lt;/wwpn&gt;
+      &lt;fabric_wwn&gt;2002000573de9a81&lt;/fabric_wwn&gt;
+    &lt;/capability&gt;
+  &lt;/capability&gt;
+&lt;/device&gt;</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="creating-vhba-based-storage-pools-using-the-cli_creating-and-assigning-vhba-based-storage-for-virtual-machines-using-the-cli"/>Creating vHBA-based storage pools using the CLI</h4></div></div></div><p>
+							The following provides instructions for creating vHBA-based storage pools.
+						</p><h6><a id="prerequisites_43"/>Prerequisites</h6><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									Ensure that there are vHBAs. For more information, see <a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#creating-vhbas_creating-and-assigning-vhba-based-storage-for-virtual-machines-using-the-cli" title="Creating vHBAs">Creating vHBAs</a>.
+								</li></ul></div><h6><a id="procedure_54"/>Procedure</h6><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Define the storage pool in an XML file</strong></span>
+								</p><p class="simpara">
+									Create a temporary XML file containing the storage pool parameters required for the new device.
+								</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										For information on the required parameters, refer to <a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#vhba-based-storage-pool-parameters_creating-and-assigning-vhba-based-storage-for-virtual-machines-using-the-cli" title="vHBA-based storage pool parameters">Parameters</a>.
+									</p></div></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Create a storage pool</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-define</code> command to create a persistent storage pool based on the XML file created in the previous step.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-define ~/guest_images.xml</strong></span>
+  Pool defined from guest_images_fs</pre></li></ol></div><div class="informalexample"><p>
+							You can delete the XML file created in step 1 after running the <code class="literal">virsh pool-define</code> command.
+						</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify that the pool was created</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-list</code> command to verify that the pool was created.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+
+  Name                 State      Autostart
+  -----------------------------------------
+  default              active     yes
+  guest_images_fs      inactive   no</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Start the storage pool</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-start</code> command to mount the storage pool.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-start guest_images_fs</strong></span>
+  Pool guest_images_fs started</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										The <code class="literal">virsh pool-start</code> command is only necessary for persistent storage pools. Transient storage pools are automatically started when they are created.
+									</p></div></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>[Optional] Turn on autostart</strong></span>
+								</p><p class="simpara">
+									By default, a storage pool defined with the <code class="literal">virsh</code> command is not set to automatically start each time libvirtd starts. Use the <code class="literal">virsh pool-autostart</code> command to configure the storage pool to autostart.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-autostart guest_images_fs</strong></span>
+  Pool guest_images_fs marked as autostarted</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify the <code class="literal"><span class="emphasis"><em>Autostart</em></span></code> state</strong></span>
+								</p><p class="simpara">
+									Use the <code class="literal">virsh pool-list</code> command to verify the <code class="literal"><span class="emphasis"><em>Autostart</em></span></code> state.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+
+  Name                 State      Autostart
+  -----------------------------------------
+  default              active     yes
+  guest_images_fs      inactive   yes</pre></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Verify the storage pool</strong></span>
+								</p><p class="simpara">
+									Verify that the storage pool was created correctly, the sizes reported are as expected, and the state is reported as <code class="literal"><span class="emphasis"><em>running</em></span></code>. Verify there is a <code class="literal">lost+found</code> directory in the target path on the file system, indicating that the device is mounted.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-info guest_images_fs</strong></span>
+  Name:           guest_images_fs
+  UUID:           c7466869-e82a-a66c-2187-dc9d6f0877d0
+  State:          running
+  Persistent:     yes
+  Autostart:      yes
+  Capacity:       458.39 GB
+  Allocation:     197.91 MB
+  Available:      458.20 GB
+
+# <span class="strong"><strong>mount | grep /guest_images</strong></span>
+  /dev/sdc1 on /guest_images type ext4 (rw)
+
+# <span class="strong"><strong>ls -la /guest_images</strong></span>
+  total 24
+  drwxr-xr-x.  3 root root  4096 May 31 19:47 .
+  dr-xr-xr-x. 25 root root  4096 May 31 19:38 ..
+  drwx------.  2 root root 16384 May 31 14:18 lost+found</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="vhba-based-storage-pool-parameters_creating-and-assigning-vhba-based-storage-for-virtual-machines-using-the-cli"/>vHBA-based storage pool parameters</h4></div></div></div><p>
+							The following provides information about the required parameters for a vHBA-based storage pool and an example.
+						</p><h6><a id="parameters_8"/>Parameters</h6><p>
+							The following table provides a list of required parameters for the XML file for a vHBA-based storage pool.
+						</p><div class="table"><a id="idm139710573980768"/><p class="title"><strong>Table 7.8. vHBA-based storage pool parameters</strong></p><div class="table-contents"><table summary="vHBA-based storage pool parameters" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Description</th><th style="text-align: left" valign="top">XML</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+											The type of storage pool
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;pool type='scsi'&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The name of the storage pool
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;name&gt;<code class="literal"><span class="emphasis"><em>name</em></span></code>&lt;/name&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The identifier of the vHBA. The <code class="literal">parent</code> attribute is optional.
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;source&gt; <br/>    &lt;adapter type='fc_host'<br/>    [parent=<span class="emphasis"><em>parent_scsi_device</em></span>]<br/>    wwnn='<span class="emphasis"><em>WWNN</em></span>'<br/>    wwpn='<span class="emphasis"><em>WWPN</em></span>' /&gt;<br/> &lt;/source&gt;</code>
+										</p>
+										 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+											The target path. This will be the path used for the storage pool.
+										</p>
+										 </td><td style="text-align: left" valign="top"> <p>
+											<code class="literal">&lt;target&gt; <br/>    &lt;path=<span class="emphasis"><em>target_path</em></span> /&gt;<br/> &lt;/target&gt;</code>
+										</p>
+										 </td></tr></tbody></table></div></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+								When the <code class="literal">&lt;path&gt;</code> field is <code class="literal"><span class="strong"><strong>/dev/</strong></span></code>, <code class="literal">libvirt</code> generates a unique short device path for the volume device path. For example, <code class="literal"><span class="strong"><strong>/dev/sdc</strong></span></code>. Otherwise, the physical host path is used. For example, <code class="literal"><span class="strong"><strong>/dev/disk/by-path/pci-0000:10:00.0-fc-0x5006016044602198-lun-0</strong></span></code>. The unique short device path allows the same volume to be listed in multiple guests by multiple storage pools. If the physical host path is used by multiple guests, duplicate device type warnings may occur.
+							</p></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								The <code class="literal">parent</code> attribute can be used in the <code class="literal">&lt;adapter&gt;</code> field to identify the physical HBA parent from which the NPIV LUNs by varying paths can be used. This field, <code class="literal">scsi_hostN</code>, is combined with the <code class="literal">vports</code> and <code class="literal">max_vports</code> attributes to complete the parent identification. The <code class="literal">parent</code>, <code class="literal">parent_wwnn</code>, <code class="literal">parent_wwpn</code>, or <code class="literal">parent_fabric_wwn</code> attributes provide varying degrees of assurance that after the host reboots the same HBA is used.
+							</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+										If no <code class="literal">parent</code> is specified, <code class="literal">libvirt</code> uses the first <code class="literal">scsi_hostN</code> adapter that supports NPIV.
+									</li><li class="listitem">
+										If only the <code class="literal">parent</code> is specified, problems can arise if additional SCSI host adapters are added to the configuration.
+									</li><li class="listitem">
+										If <code class="literal">parent_wwnn</code> or <code class="literal">parent_wwpn</code> is specified, after the host reboots the same HBA is used.
+									</li><li class="listitem">
+										If <code class="literal">parent_fabric_wwn</code> is used, after the host reboots an HBA on the same fabric is selected, regardless of the <code class="literal">scsi_hostN</code> used.
+									</li></ul></div></div><h6><a id="examples"/>Examples</h6><p>
+							The following are examples of XML files for vHBA-based storage pools.
+						</p><p>
+							The following is an example of a storage pool that is the only storage pool on the HBA:
+						</p><pre class="programlisting">&lt;pool type='scsi'&gt;
+  &lt;name&gt;vhbapool_host3&lt;/name&gt;
+  &lt;source&gt;
+    &lt;adapter type='fc_host' wwnn='5001a4a93526d0a1' wwpn='5001a4ace3ee047d'/&gt;
+  &lt;/source&gt;
+  &lt;target&gt;
+    &lt;path&gt;/dev/disk/by-path&lt;/path&gt;
+  &lt;/target&gt;
+&lt;/pool&gt;</pre><p>
+							The following is an example of a storage pool that is one of several storage pools that use a single vHBA and uses the <code class="literal">parent</code> attribute to identify the SCSI host device:
+						</p><pre class="programlisting">&lt;pool type='scsi'&gt;
+  &lt;name&gt;vhbapool_host3&lt;/name&gt;
+  &lt;source&gt;
+    &lt;adapter type='fc_host' parent='scsi_host3' wwnn='5001a4a93526d0a1' wwpn='5001a4ace3ee047d'/&gt;
+  &lt;/source&gt;
+  &lt;target&gt;
+    &lt;path&gt;/dev/disk/by-path&lt;/path&gt;
+  &lt;/target&gt;
+&lt;/pool&gt;</pre></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="assigning-scsi-lun-based-storage-volumes-to-virtual-machines-using-the-cli_creating-and-assigning-vhba-based-storage-for-virtual-machines-using-the-cli"/>Assigning and connecting SCSI LUN-based storage volumes to virtual machines using the CLI</h4></div></div></div><p>
+							The following provides information on how to configure a virtual machine to use a vHBA LUN and how to reconnect to an exposed LUN after a hardware failure.
+						</p><div class="section"><div class="titlepage"><div><div><h5 class="title"><a id="prerequisites-assigning-scsi-lun-based-storage-volumes-to-virtual-machines-using-the-cli"/>Prerequisites</h5></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+										Ensure that there are one or more vHBA storage pools.
+									</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h5 class="title"><a id="creating-vhba-based-storage-pools-using-the-cli_assigning-scsi-lun-based-storage-volumes-to-virtual-machines-using-the-cli"/>Creating vHBA-based storage pools using the CLI</h5></div></div></div><p>
+								The following provides instructions for creating vHBA-based storage pools.
+							</p><h7><a id="prerequisites_44"/>Prerequisites</h7><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+										Ensure that there are vHBAs. For more information, see <a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#creating-vhbas_creating-and-assigning-vhba-based-storage-for-virtual-machines-using-the-cli" title="Creating vHBAs">Creating vHBAs</a>.
+									</li></ul></div><h7><a id="procedure_55"/>Procedure</h7><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+										<span class="strong"><strong>Define the storage pool in an XML file</strong></span>
+									</p><p class="simpara">
+										Create a temporary XML file containing the storage pool parameters required for the new device.
+									</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+											For information on the required parameters, refer to <a class="link" href="managing-storage-for-virtual-machines_configuring-and-managing-virtualization.html#vhba-based-storage-pool-parameters_creating-and-assigning-vhba-based-storage-for-virtual-machines-using-the-cli" title="vHBA-based storage pool parameters">Parameters</a>.
+										</p></div></li><li class="listitem"><p class="simpara">
+										<span class="strong"><strong>Create a storage pool</strong></span>
+									</p><p class="simpara">
+										Use the <code class="literal">virsh pool-define</code> command to create a persistent storage pool based on the XML file created in the previous step.
+									</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-define ~/guest_images.xml</strong></span>
+  Pool defined from guest_images_fs</pre></li></ol></div><div class="informalexample"><p>
+								You can delete the XML file created in step 1 after running the <code class="literal">virsh pool-define</code> command.
+							</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+										<span class="strong"><strong>Verify that the pool was created</strong></span>
+									</p><p class="simpara">
+										Use the <code class="literal">virsh pool-list</code> command to verify that the pool was created.
+									</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+
+  Name                 State      Autostart
+  -----------------------------------------
+  default              active     yes
+  guest_images_fs      inactive   no</pre></li><li class="listitem"><p class="simpara">
+										<span class="strong"><strong>Start the storage pool</strong></span>
+									</p><p class="simpara">
+										Use the <code class="literal">virsh pool-start</code> command to mount the storage pool.
+									</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-start guest_images_fs</strong></span>
+  Pool guest_images_fs started</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+											The <code class="literal">virsh pool-start</code> command is only necessary for persistent storage pools. Transient storage pools are automatically started when they are created.
+										</p></div></li><li class="listitem"><p class="simpara">
+										<span class="strong"><strong>[Optional] Turn on autostart</strong></span>
+									</p><p class="simpara">
+										By default, a storage pool defined with the <code class="literal">virsh</code> command is not set to automatically start each time libvirtd starts. Use the <code class="literal">virsh pool-autostart</code> command to configure the storage pool to autostart.
+									</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-autostart guest_images_fs</strong></span>
+  Pool guest_images_fs marked as autostarted</pre></li><li class="listitem"><p class="simpara">
+										<span class="strong"><strong>Verify the <code class="literal"><span class="emphasis"><em>Autostart</em></span></code> state</strong></span>
+									</p><p class="simpara">
+										Use the <code class="literal">virsh pool-list</code> command to verify the <code class="literal"><span class="emphasis"><em>Autostart</em></span></code> state.
+									</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+
+  Name                 State      Autostart
+  -----------------------------------------
+  default              active     yes
+  guest_images_fs      inactive   yes</pre></li><li class="listitem"><p class="simpara">
+										<span class="strong"><strong>Verify the storage pool</strong></span>
+									</p><p class="simpara">
+										Verify that the storage pool was created correctly, the sizes reported are as expected, and the state is reported as <code class="literal"><span class="emphasis"><em>running</em></span></code>. Verify there is a <code class="literal">lost+found</code> directory in the target path on the file system, indicating that the device is mounted.
+									</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-info guest_images_fs</strong></span>
+  Name:           guest_images_fs
+  UUID:           c7466869-e82a-a66c-2187-dc9d6f0877d0
+  State:          running
+  Persistent:     yes
+  Autostart:      yes
+  Capacity:       458.39 GB
+  Allocation:     197.91 MB
+  Available:      458.20 GB
+
+# <span class="strong"><strong>mount | grep /guest_images</strong></span>
+  /dev/sdc1 on /guest_images type ext4 (rw)
+
+# <span class="strong"><strong>ls -la /guest_images</strong></span>
+  total 24
+  drwxr-xr-x.  3 root root  4096 May 31 19:47 .
+  dr-xr-xr-x. 25 root root  4096 May 31 19:38 ..
+  drwx------.  2 root root 16384 May 31 14:18 lost+found</pre></li></ol></div></div></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="creating-and-assigning-storage-volumes-using-the-cli_creating-storage-for-virtual-machines-using-the-cli"/>Creating and assigning storage volumes using the CLI</h3></div></div></div><p>
+						The following provides information on creating storage volumes from storage pools and assigning the storage volumes to virtual machines using the CLI. The procedure is the same for all types of storage pools.
+					</p><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="prerequisites-creating-and-assigning-storage-volumes-using-the-cli"/>Prerequisites</h4></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									Storage pools on the host with unallocated space
+								</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h4 class="title"><a id="procedure-creating-and-assigning-storage-volumes-using-the-cli"/>Procedure</h4></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Define a storage volume in an XML file</strong></span>
+								</p><p class="simpara">
+									Create a temporary XML file containing the storage volume’s parameters.
+								</p><p class="simpara">
+									The following is a list of required storage volume parameters:
+								</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											<span class="strong"><strong>name</strong></span> - The name of the storage volume.
+										</li><li class="listitem">
+											<span class="strong"><strong>allocation</strong></span> - The total storage allocation for the storage volume.
+										</li><li class="listitem">
+											<span class="strong"><strong>capacity</strong></span> - The logical capacity of the storage volume. If the volume is sparse, this value can differ from the <code class="literal"><span class="emphasis"><em>allocation</em></span></code> value.
+										</li><li class="listitem"><p class="simpara">
+											<span class="strong"><strong>target</strong></span> - The path to the storage volume on the host system and optionally its permissions and label.
+										</p><p class="simpara">
+											The following shows an example a storage volume definition XML file. In this example, the file is saved to <code class="literal">~/guest_volume.xml</code>.
+										</p><pre class="screen">  &lt;volume&gt;
+    &lt;name&gt;volume1&lt;/name&gt;
+    &lt;allocation&gt;0&lt;/allocation&gt;
+    &lt;capacity&gt;20G&lt;/capacity&gt;
+    &lt;target&gt;
+      &lt;path&gt;/var/lib/virt/images/sparse.img&lt;/path&gt;
+    &lt;/target&gt;
+  &lt;/volume&gt;</pre></li></ul></div></li><li class="listitem"><p class="simpara">
+									<span class="strong"><strong>Create and assign the storage volume</strong></span>
+								</p><p class="simpara">
+									The <code class="literal">virsh vol-create</code> and <code class="literal">virsh vol-create-as</code> commands are used to create storage volumes from most storage pools types.
+								</p><p class="simpara">
+									The following is a list of the storage pool types that do not support the <code class="literal">virsh vol-create</code> and <code class="literal">virsh vol-create-as</code> commands and the methods to use with each of them to create storage volumes:
+								</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+											<span class="strong"><strong>GlusterFS-based</strong></span> - Use the <code class="literal">qemu-img</code> command to create storage volumes.
+										</li><li class="listitem">
+											<span class="strong"><strong>iSCSI-based</strong></span> - Prepare the iSCSI LUNs in advance on the iSCSI server.
+										</li><li class="listitem">
+											<span class="strong"><strong>Multipath-based</strong></span> - Use the <code class="literal">multipathd</code> command to prepare or manage the multipath.
+										</li><li class="listitem">
+											<span class="strong"><strong>vHBA-based</strong></span> - Prepare the fibre channel card in advance.
+										</li></ul></div><p class="simpara">
+									Use the <code class="literal">virsh vol-create</code> command to create and assign the storage volume based on the XML file. Specify the virtual machine to which the storage volume will be assigned in the <code class="literal">virsh vol-create</code> command.
+								</p><pre class="literallayout"># <span class="strong"><strong>virsh vol-create guest_images_dir ~/guest_volume.xml</strong></span>
+  Vol volume1 created</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+										You can delete the XML file created in step 1 after running the <code class="literal">virsh vol-create</code> command.
+									</p></div><p class="simpara">
+									For GlusterFS-based, multipath-based, and RBD-based storage pools, describe the storage volume using the following XML format and add it to the domain XML:
+								</p><pre class="screen">  &lt;disk type='network' device='disk'&gt;
+    &lt;driver name='qemu' type='raw'/&gt;
+    &lt;source protocol='gluster' name='Volume1/Image'&gt;
+      &lt;host name='example.org' port='6000'/&gt;
+    &lt;/source&gt;
+    &lt;target dev='vda' bus='virtio'/&gt;
+    &lt;address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x0'/&gt;
+  &lt;/disk&gt;</pre><p class="simpara">
+									For multipath-based storage pools, describe the storage volume using the following XML format and add it to the domain XML:
+								</p><pre class="screen">&lt;disk type='block' device='disk'&gt;
+&lt;driver name='qemu' type='raw'/&gt;
+&lt;source dev='/dev/mapper/mpatha' /&gt;
+&lt;target dev='sdc' bus='scsi'/&gt;
+&lt;/disk&gt;</pre><p class="simpara">
+									For RBD-based storage pools, describe the storage volume using the following XML format and add it to the domain XML:
+								</p><pre class="screen">  &lt;disk type='network' device='disk'&gt;
+    &lt;driver name='qemu' type='raw'/&gt;
+    &lt;source protocol='rbd' name='pool/image'&gt;
+      &lt;host name='mon1.example.org' port='6321'/&gt;
+    &lt;/source&gt;
+    &lt;target dev='vdc' bus='virtio'/&gt;
+  &lt;/disk&gt;</pre></li></ol></div></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="deleting-storage-for-virtual-machines-using-the-cli_managing-storage-for-virtual-machines-using-the-cli"/>Deleting storage for virtual machines using the CLI</h2></div></div></div><p>
+					The following provides information about deleting storage pools and storage volumes using the CLI.
+				</p><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="deleting-storage-pools-using-the-cli_deleting-storage-for-virtual-machines-using-the-cli"/>Deleting storage pools using the CLI</h3></div></div></div><p>
+						The following provides information on deleting storage pools.
+					</p><h5><a id="prerequisites_45"/>Prerequisites</h5><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								To avoid negatively affecting other virtual machines that use the storage pool you want to delete, it is recommended that you stop the storage pool and release any resources being used by it.
+							</li></ul></div><h5><a id="procedure_56"/>Procedure</h5><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								List the defined storage pools using the <code class="literal">virsh pool-list</code> command.
+							</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+Name                 State      Autostart
+-------------------------------------------
+default              active     yes
+Downloads            active     yes
+RHEL8-Storage-Pool   active     yes</pre></li><li class="listitem"><p class="simpara">
+								Stop the storage pool you want to delete using the <code class="literal">virsh pool-destroy</code> command.
+							</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-destroy Downloads</strong></span>
+Pool Downloads destroyed</pre></li><li class="listitem"><p class="simpara">
+								(<span class="emphasis"><em>Optional</em></span>) For some some types of storage pools, you can optionally remove the directory where the storage pool resides using the <code class="literal">virsh pool-delete</code> command. Note that to remove the directory where the storage pool resides, it must be empty.
+							</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-delete Downloads</strong></span>
+Pool Downloads deleted</pre></li><li class="listitem"><p class="simpara">
+								Delete the definition of the storage pool using the <code class="literal">virsh pool-undefine</code> command.
+							</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-undefine Downloads</strong></span>
+Pool Downloads has been undefined</pre></li><li class="listitem"><p class="simpara">
+								Confirm that the storage pool was deleted.
+							</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-list --all</strong></span>
+Name                 State      Autostart
+-------------------------------------------
+default              active     yes
+RHEL8-Storage-Pool   active     yes</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h3 class="title"><a id="deleting-storage-volumes-using-the-cli_deleting-storage-for-virtual-machines-using-the-cli"/>Deleting storage volumes using the CLI</h3></div></div></div><p>
+						The following provides information on deleting storage volumes using the CLI.
+					</p><h5><a id="prerequisites_46"/>Prerequisites</h5><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								To avoid negatively affecting virtual machines that use the storage volume you want to delete, it is recommended that you release any resources using it.
+							</li></ul></div><h5><a id="procedure_57"/>Procedure</h5><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								List the defined storage volumes in a storage pool using the <code class="literal">virsh vol-list</code> command. The command must specify the name or path of a storage volume.
+							</p><pre class="literallayout"># <span class="strong"><strong>virsh vol-list --pool RHEL8-Storage-Pool</strong></span>
+ Name                 Path
+---------------------------------------------------------------
+ .bash_history        /home/VirtualMachines/.bash_history
+ .bash_logout         /home/VirtualMachines/.bash_logout
+ .bash_profile        /home/VirtualMachines/.bash_profile
+ .bashrc              /home/VirtualMachines/.bashrc
+ .git-prompt.sh       /home/VirtualMachines/.git-prompt.sh
+ .gitconfig           /home/VirtualMachines/.gitconfig
+ RHEL8_Volume.qcow2   /home/VirtualMachines/RHEL8_Volume.qcow2</pre></li><li class="listitem"><p class="simpara">
+								Delete storage volumes using the <code class="literal">virsh vol-delete</code> command. The command must specify the name or path of the storage volume and the storage pool from which the storage volume is abstracted.
+							</p><pre class="literallayout"># <span class="strong"><strong>virsh pool-delete RHEL8_Volume.qcow2</strong></span>
+Pool RHEL8_Volume.qcow2 deleted</pre></li></ol></div></div></div></div></div></body></html>

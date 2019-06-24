@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 23. Configuring multi-site clusters with Pacemaker</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_configuring-multisite-cluster-configuring-and-managing-high-availability-clusters"/>Chapter 23. Configuring multi-site clusters with Pacemaker</h1></div></div></div><p>
+			When a cluster spans more than one site, issues with network connectivity between the sites can lead to split-brain situations. When connectivity drops, there is no way for a node on one site to determine whether a node on another site has failed or is still functioning with a failed site interlink. In addition, it can be problematic to provide high availability services across two sites which are too far apart to keep synchronous.
+		</p><p>
+			To address these issues, Pacemaker provides full support for the ability to configure high availability clusters that span multiple sites through the use of a Booth cluster ticket manager.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="con_booth-cluster-ticket-manager-configuring-multisite-cluster"/>Overview of Booth cluster ticket manager</h1></div></div></div><p>
+				The Booth <span class="emphasis"><em>ticket manager</em></span> is a distributed service that is meant to be run on a different physical network than the networks that connect the cluster nodes at particular sites. It yields another, loose cluster, a <span class="emphasis"><em>Booth formation</em></span>, that sits on top of the regular clusters at the sites. This aggregated communication layer facilitates consensus-based decision processes for individual Booth tickets.
+			</p><p>
+				A Booth <span class="emphasis"><em>ticket</em></span> is a singleton in the Booth formation and represents a time-sensitive, movable unit of authorization. Resources can be configured to require a certain ticket to run. This can ensure that resources are run at only one site at a time, for which a ticket or tickets have been granted.
+			</p><p>
+				You can think of a Booth formation as an overlay cluster consisting of clusters running at different sites, where all the original clusters are independent of each other. It is the Booth service which communicates to the clusters whether they have been granted a ticket, and it is Pacemaker that determines. whether to run resources in a cluster based on a Pacemaker ticket constraint. This means that when using the ticket manager, each of the clusters can run its own resources as well as shared resources. For example there can be resources A, B and C running only in one cluster, resources D, E, and F running only in the other cluster, and resources G and H running in either of the two clusters as determined by a ticket. It is also possible to have an additional resource J that could run in either of the two clusters as determined by a separate ticket.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc-configuring-multisite-with-booth-configuring-multisite-cluster"/>Configuring multi-site clusters with Pacemaker</h1></div></div></div><p>
+				The following procedure provides an outline of the steps you follow to configure a multi-site configuration that uses the Booth ticket manager.
+			</p><p>
+				These example commands use the following arrangement:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						Cluster 1 consists of the nodes <code class="literal">cluster1-node1</code> and <code class="literal">cluster1-node2</code>
+					</li><li class="listitem">
+						Cluster 1 has a floating IP address assigned to it of 192.168.11.100
+					</li><li class="listitem">
+						Cluster 2 consists of <code class="literal">cluster2-node1</code> and <code class="literal">cluster2-node2</code>
+					</li><li class="listitem">
+						Cluster 2 has a floating IP address assigned to it of 192.168.22.100
+					</li><li class="listitem">
+						The arbitrator node is <code class="literal">arbitrator-node</code> with an ip address of 192.168.99.100
+					</li><li class="listitem">
+						The name of the Booth ticket that this configuration uses is <code class="literal">apacheticket</code>
+					</li></ul></div><p>
+				These example commands assume that the cluster resources for an Apache service have been configured as part of the resource group <code class="literal">apachegroup</code> for each cluster. It is not required that the resources and resource groups be the same on each cluster to configure a ticket constraint for those resources, since the Pacemaker instance for each cluster is independent, but that is a common failover scenario.
+			</p><p>
+				Note that at any time in the configuration procedure you can enter the <code class="literal">pcs booth config</code> command to display the booth configuration for the current node or cluster or the <code class="literal">pcs booth status</code> command to display the current status of booth on the local node.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Install the <code class="literal">booth-site</code> Booth ticket manager package on each node of both clusters.
+					</p><pre class="literallayout">[root@cluster1-node1 ~]# <code class="literal">yum install -y booth-site</code>
+[root@cluster1-node2 ~]# <code class="literal">yum install -y booth-site</code>
+[root@cluster2-node1 ~]# <code class="literal">yum install -y booth-site</code>
+[root@cluster2-node2 ~]# <code class="literal">yum install -y booth-site</code></pre></li><li class="listitem"><p class="simpara">
+						Install the <code class="literal">pcs</code>, <code class="literal">booth-core</code>, and <code class="literal">booth-arbitrator</code> packages on the arbitrator node.
+					</p><pre class="literallayout">[root@arbitrator-node ~]# <code class="literal">yum install -y pcs booth-core booth-arbitrator</code></pre></li><li class="listitem"><p class="simpara">
+						Ensure that ports 9929/tcp and 9929/udp are open on all cluster nodes and on the arbitrator node. To do this:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								Run the following commands on all nodes in both clusters.
+							</li><li class="listitem"><p class="simpara">
+								In addition, enter the following commands on the arbitrator node.
+							</p><pre class="literallayout"># <code class="literal">firewall-cmd --add-port=9929/udp</code>
+# <code class="literal">firewall-cmd --add-port=9929/tcp</code>
+# <code class="literal">firewall-cmd --add-port=9929/udp --permanent</code>
+# <code class="literal">firewall-cmd --add-port=9929/tcp --permanent</code></pre></li></ul></div></li><li class="listitem"><p class="simpara">
+						Create a Booth configuration on one node of one cluster. The addresses you specify for each cluster and for the arbitrator must be IP addresses. For each cluster, you specify a floating IP address.
+					</p><pre class="literallayout">[cluster1-node1 ~] # <code class="literal">pcs booth setup sites 192.168.11.100 192.168.22.100 arbitrators 192.168.99.100</code></pre><p class="simpara">
+						This command creates the configuration files <code class="literal">/etc/booth/booth.conf</code> and <code class="literal">/etc/booth/booth.key</code> on the node from which it is run.
+					</p></li><li class="listitem"><p class="simpara">
+						Create a ticket for the Booth configuration. This is the ticket that you will use to define the resource constraint that will allow resources to run only when this ticket has been granted to the cluster.
+					</p><p class="simpara">
+						This basic failover configuration procedure uses only one ticket, but you can create additional tickets for more complicated scenarios where each ticket is associated with a different resource or resources.
+					</p><pre class="literallayout">[cluster1-node1 ~] # <code class="literal">pcs booth ticket add apacheticket</code></pre></li><li class="listitem"><p class="simpara">
+						Synchronize the Booth configuration to all nodes in the current cluster.
+					</p><pre class="literallayout">[cluster1-node1 ~] # <code class="literal">pcs booth sync</code></pre></li><li class="listitem"><p class="simpara">
+						From the arbitrator node, pull the Booth configuration to the arbitrator. If you have not previously done so, you must first authenticate <code class="literal">pcs</code> to the node from which you are pulling the configuration.
+					</p><pre class="literallayout">[arbitrator-node ~] # <code class="literal">pcs cluster auth cluster1-node1</code>
+[arbitrator-node ~] # <code class="literal">pcs booth pull cluster1-node1</code></pre></li><li class="listitem"><p class="simpara">
+						Pull the Booth configuration to the other cluster and synchronize to all the nodes of that cluster. As with the arbitrator node, if you have not previously done so, you must first authenticate <code class="literal">pcs</code> to the node from which you are pulling the configuration.
+					</p><pre class="literallayout">[cluster2-node1 ~] # <code class="literal">pcs cluster auth cluster1-node1</code>
+[cluster2-node1 ~] # <code class="literal">pcs booth pull cluster1-node1</code>
+[cluster2-node1 ~] # <code class="literal">pcs booth sync</code></pre></li><li class="listitem"><p class="simpara">
+						Start and enable Booth on the arbitrator.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							You must not manually start or enable Booth on any of the nodes of the clusters since Booth runs as a Pacemaker resource in those clusters.
+						</p></div><pre class="literallayout">[arbitrator-node ~] # <code class="literal">pcs booth start</code>
+[arbitrator-node ~] # <code class="literal">pcs booth enable</code></pre></li><li class="listitem"><p class="simpara">
+						Configure Booth to run as a cluster resource on both cluster sites. This creates a resource group with <code class="literal">booth-ip</code> and <code class="literal">booth-service</code> as members of that group.
+					</p><pre class="literallayout">[cluster1-node1 ~] # <code class="literal">pcs booth create ip 192.168.11.100</code>
+[cluster2-node1 ~] # <code class="literal">pcs booth create ip 192.168.22.100</code></pre></li><li class="listitem"><p class="simpara">
+						Add a ticket constraint to the resource group you have defined for each cluster.
+					</p><pre class="literallayout">[cluster1-node1 ~] # <code class="literal">pcs constraint ticket add apacheticket apachegroup</code>
+[cluster2-node1 ~] # <code class="literal">pcs constraint ticket add apacheticket apachegroup</code></pre><p class="simpara">
+						You can enter the following command to display the currently configured ticket constraints.
+					</p><pre class="literallayout">pcs constraint ticket [show]</pre></li><li class="listitem"><p class="simpara">
+						Grant the ticket you created for this setup to the first cluster.
+					</p><p class="simpara">
+						Note that it is not necessary to have defined ticket constraints before granting a ticket. Once you have initially granted a ticket to a cluster, then Booth takes over ticket management unless you override this manually with the <code class="literal">pcs booth ticket revoke</code> command. For information on the <code class="literal">pcs booth</code> administration commands, see the PCS help screen for the <code class="literal">pcs booth</code> command.
+					</p><pre class="literallayout">[cluster1-node1 ~] # <code class="literal">pcs booth ticket grant apacheticket</code></pre></li></ol></div><p>
+				It is possible to add or remove tickets at any time, even after completing this procedure. After adding or removing a ticket, however, you must synchronize the configuration files to the other nodes and clusters as well as to the arbitrator and grant the ticket as is shown in this procedure.
+			</p><p>
+				For information on additional Booth administration commands that you can use for cleaning up and removing Booth configuration files, tickets, and resources, see the PCS help screen for the <code class="literal">pcs booth</code> command.
+			</p></div></div></body></html>

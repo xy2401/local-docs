@@ -1,0 +1,299 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 2. Getting started with Pacemaker</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_getting-started-with-pacemaker-configuring-and-managing-high-availability-clusters"/>Chapter 2. Getting started with Pacemaker</h1></div></div></div><p>
+			The following procedures provide an introduction to the tools and processes you use to create a Pacemaker cluster. They are intended for users who are interested in seeing what the cluster software looks like and how it is administered, without needing to configure a working cluster.
+		</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+				These procedures do not create a supported Red Hat cluster, which requires at least two nodes and the configuration of a fencing device.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_learning-to-use-pacemaker-getting-started-with-pacemaker"/>Learning to use Pacemaker</h1></div></div></div><p>
+				This example requires a single node running RHEL 8 and it requires a floating IP address that resides on the same network as one of the node’s statically assigned IP addresses.
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						The node used in this example is <code class="literal">z1.example.com</code>.
+					</li><li class="listitem">
+						The floating IP address used in this example is 192.168.122.120.
+					</li></ul></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Ensure that the name of the node on which you are running is in your <code class="literal">/etc/hosts</code> file.
+				</p></div><p>
+				By working through this procedure, you will learn how to use Pacemaker to set up a cluster, how to display cluster status, and how to configure a cluster service. This example creates an Apache HTTP server as a cluster resource and shows how the cluster responds when the resource fails.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Install the Red Hat High Availability Add-On software packages from the High Availability channel, and start and enable the <code class="literal">pcsd</code> service.
+					</p><pre class="literallayout"># <code class="literal">yum install pcs pacemaker fence-agents-all</code>
+...
+# <code class="literal">systemctl start pcsd.service</code>
+# <code class="literal">systemctl enable pcsd.service</code></pre><p class="simpara">
+						If you are running the <code class="literal">firewalld</code> daemon, enable the ports that are required by the Red Hat High Availability Add-On.
+					</p><pre class="literallayout"># <code class="literal">firewall-cmd --permanent --add-service=high-availability</code>
+# <code class="literal">firewall-cmd --reload</code></pre></li><li class="listitem"><p class="simpara">
+						Set a password for user <code class="literal">hacluster</code> on each node in the cluster and authenticate user <code class="literal">hacluster</code> for each node in the cluster on the node from which you will be running the <code class="literal">pcs</code> commands. This example is using only a single node, the node from which you are running the commands, but this step is included here since it is a necessary step in configuring a supported Red Hat High Availability multi-node cluster.
+					</p><pre class="literallayout"># <code class="literal">passwd hacluster</code>
+...
+# <code class="literal">pcs host auth z1.example.com</code></pre></li><li class="listitem"><p class="simpara">
+						Create a cluster named <code class="literal">my_cluster</code> with one member and check the status of the cluster. This command creates and starts the cluster in one step.
+					</p><pre class="literallayout"># <code class="literal">pcs cluster setup my_cluster --start z1.example.com</code>
+...
+# <code class="literal">pcs cluster status</code>
+Cluster Status:
+ Stack: corosync
+ Current DC: z1.example.com (version 2.0.0-10.el8-b67d8d0de9) - partition with quorum
+ Last updated: Thu Oct 11 16:11:18 2018
+ Last change: Thu Oct 11 16:11:00 2018 by hacluster via crmd on z1.example.com
+ 1 node configured
+ 0 resources configured
+
+PCSD Status:
+  z1.example.com: Online</pre></li><li class="listitem"><p class="simpara">
+						A Red Hat High Availability cluster requires that you configure fencing for the cluster. The reasons for this requirement are described in <a class="link" href="https://access.redhat.com/solutions/15575">Fencing in a Red Hat High Availability Cluster</a>. For this introduction, however, which is intended to show only how to use the basic Pacemaker commands, disable fencing by setting the <code class="literal">stonith-enabled</code> cluster option to <code class="literal">false</code>.
+					</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+							The use of <code class="literal">stonith-enabled=false</code> is completely inappropriate for a production cluster. It tells the cluster to simply pretend that failed nodes are safely fenced.
+						</p></div><pre class="literallayout"># <code class="literal">pcs property set stonith-enabled=false</code></pre></li><li class="listitem"><p class="simpara">
+						Configure a web browser on your system and create a web page to display a simple text message. If you are running the <code class="literal">firewalld</code> daemon, enable the ports that are required by <code class="literal">httpd</code>.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							Do not use <code class="literal">systemctl enable</code> to enable any services that will be managed by the cluster to start at system boot.
+						</p></div><pre class="literallayout"># <code class="literal">yum install -y httpd wget</code>
+...
+# <code class="literal">firewall-cmd --permanent --add-service=http</code>
+# <code class="literal">firewall-cmd --reload</code>
+
+# <code class="literal">cat &lt;&lt;-END &gt;/var/www/html/index.html</code>
+<code class="literal">&lt;html&gt;</code>
+<code class="literal">&lt;body&gt;My Test Site - $(hostname)&lt;/body&gt;</code>
+<code class="literal">&lt;/html&gt;</code>
+<code class="literal">END</code></pre><p class="simpara">
+						In order for the Apache resource agent to get the status of Apache, create the following addition to the existing configuration to enable the status server URL.
+					</p><pre class="literallayout"># <code class="literal">cat &lt;&lt;-END &gt; /etc/httpd/conf.d/status.conf</code>
+<code class="literal">&lt;Location /server-status&gt;</code>
+<code class="literal">SetHandler server-status</code>
+<code class="literal">Order deny,allow</code>
+<code class="literal">Deny from all</code>
+<code class="literal">Allow from 127.0.0.1</code>
+<code class="literal">Allow from ::1</code>
+<code class="literal">&lt;/Location&gt;</code>
+<code class="literal">END</code></pre></li><li class="listitem"><p class="simpara">
+						Create <code class="literal">IPaddr2</code> and <code class="literal">apache</code> resources for the cluster to manage. The 'IPaddr2' resource is a floating IP address that must not be one already associated with a physical node. If the 'IPaddr2' resource’s NIC device is not specified, the floating IP must reside on the same network as the statically assigned IP address used by the node.
+					</p><p class="simpara">
+						You can display a list of all available resource types with the <code class="literal">pcs resource list</code> command. You can use the <code class="literal">pcs resource describe <span class="emphasis"><em>resourcetype</em></span></code> command to display the parameters you can set for the specified resource type. For example, the following command displays the parameters you can set for a resource of type <code class="literal">apache</code>:
+					</p><pre class="literallayout"># <code class="literal">pcs resource describe apache</code>
+...</pre><p class="simpara">
+						In this example, the IP address resource and the apache resource are both configured as part of a group named <code class="literal">apachegroup</code>, which ensures that the resources are kept together to run on the same node when you are configuring a working multi-node cluster.
+					</p><pre class="literallayout"># <code class="literal">pcs resource create ClusterIP ocf:heartbeat:IPaddr2 ip=192.168.122.120 --group apachegroup</code>
+
+# <code class="literal">pcs resource create WebSite ocf:heartbeat:apache configfile=/etc/httpd/conf/httpd.conf statusurl="http://localhost/server-status" --group apachegroup</code>
+
+# <code class="literal">pcs status</code>
+Cluster name: my_cluster
+Stack: corosync
+Current DC: z1.example.com (version 2.0.0-10.el8-b67d8d0de9) - partition with quorum
+Last updated: Fri Oct 12 09:54:33 2018
+Last change: Fri Oct 12 09:54:30 2018 by root via cibadmin on z1.example.com
+
+1 node configured
+2 resources configured
+
+Online: [ z1.example.com ]
+
+Full list of resources:
+
+Resource Group: apachegroup
+    ClusterIP  (ocf::heartbeat:IPaddr2):       Started z1.example.com
+    WebSite    (ocf::heartbeat:apache):        Started z1.example.com
+
+PCSD Status:
+  z1.example.com: Online
+...</pre><p class="simpara">
+						After you have configured a cluster resource, you can use the <code class="literal">pcs resource config</code> command to display the options that are configured for that resource.
+					</p><pre class="literallayout"># <code class="literal">pcs resource config WebSite</code>
+Resource: WebSite (class=ocf provider=heartbeat type=apache)
+ Attributes: configfile=/etc/httpd/conf/httpd.conf statusurl=http://localhost/server-status
+ Operations: start interval=0s timeout=40s (WebSite-start-interval-0s)
+             stop interval=0s timeout=60s (WebSite-stop-interval-0s)
+             monitor interval=1min (WebSite-monitor-interval-1min)</pre></li><li class="listitem">
+						Point your browser to the website you created using the floating IP address you configured. This should display the text message you defined.
+					</li><li class="listitem"><p class="simpara">
+						Stop the apache web service and check the cluster status. Using <code class="literal">killall -9</code> simulates an application-level crash.
+					</p><pre class="literallayout"># <code class="literal">killall -9 httpd</code></pre><p class="simpara">
+						Check the cluster status. You should see that stopping the web service caused a failed action, but that the cluster software restarted the service and you should still be able to access the website.
+					</p><pre class="literallayout"># <code class="literal">pcs status</code>
+Cluster name: my_cluster
+...
+Current DC: z1.example.com (version 1.1.13-10.el7-44eb2dd) - partition with quorum
+1 node and 2 resources configured
+
+Online: [ z1.example.com ]
+
+Full list of resources:
+
+Resource Group: apachegroup
+    ClusterIP  (ocf::heartbeat:IPaddr2):       Started z1.example.com
+    WebSite    (ocf::heartbeat:apache):        Started z1.example.com
+
+Failed Resource Actions:
+* WebSite_monitor_60000 on z1.example.com 'not running' (7): call=13, status=complete, exitreason='none',
+    last-rc-change='Thu Oct 11 23:45:50 2016', queued=0ms, exec=0ms
+
+PCSD Status:
+    z1.example.com: Online</pre><p class="simpara">
+						You can clear the failure status on the resource that failed once the service is up and running again and the failed action notice will no longer appear when you view the cluster status.
+					</p><pre class="literallayout"># <code class="literal">pcs resource cleanup WebSite</code></pre></li><li class="listitem"><p class="simpara">
+						When you are finished looking at the cluster and the cluster status, stop the cluster services on the node. Even though you have only started services on one node for this introduction, the <code class="literal">--all</code> parameter is included since it would stop cluster services on all nodes on an actual multi-node cluster.
+					</p><pre class="literallayout"># <code class="literal">pcs cluster stop --all</code></pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_learning-to-configure-failover-getting-started-with-pacemaker"/>Learning to configure failover</h1></div></div></div><p>
+				This procedure provides an introduction to creating a Pacemaker cluster running a service that will fail over from one node to another when the node on which the service is running becomes unavailable. By working through this procedure, you can learn how to create a service in a two-node cluster and you can then observe what happens to that service when it fails on the node on which it running.
+			</p><p>
+				This example procedure configures a two-node Pacemaker cluster running an Apache HTTP server. You can then stop the Apache service on one node to see how the service remains available.
+			</p><p>
+				This procedure requires as a prerequisite that you have two nodes running Red Hat Enterprise Linux 8 that can communicate with each other, and it requires a floating IP address that resides on the same network as one of the node’s statically assigned IP addresses.
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						The nodes used in this example are <code class="literal">z1.example.com</code> and <code class="literal">z2.example.com</code>.
+					</li><li class="listitem">
+						The floating IP address used in this example is 192.168.122.120.
+					</li></ul></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Ensure that the names of the nodes you are using are in the <code class="literal">/etc/hosts</code> file on each node.
+				</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						On both nodes, install the Red Hat High Availability Add-On software packages from the High Availability channel, and start and enable the <code class="literal">pcsd</code> service.
+					</p><pre class="literallayout"># <code class="literal">yum install pcs pacemaker fence-agents-all</code>
+...
+# <code class="literal">systemctl start pcsd.service</code>
+# <code class="literal">systemctl enable pcsd.service</code></pre><p class="simpara">
+						If you are running the <code class="literal">firewalld</code> daemon, on both nodes enable the ports that are required by the Red Hat High Availability Add-On.
+					</p><pre class="literallayout"># <code class="literal">firewall-cmd --permanent --add-service=high-availability</code>
+# <code class="literal">firewall-cmd --reload</code></pre></li><li class="listitem"><p class="simpara">
+						On both nodes in the cluster, set a password for user <code class="literal">hacluster</code> .
+					</p><pre class="literallayout"># <code class="literal">passwd hacluster</code></pre></li><li class="listitem"><p class="simpara">
+						Authenticate user <code class="literal">hacluster</code> for each node in the cluster on the node from which you will be running the <code class="literal">pcs</code> commands.
+					</p><pre class="literallayout"># <code class="literal">pcs host auth z1.example.com z2.example.com</code></pre></li><li class="listitem"><p class="simpara">
+						Create a cluster named <code class="literal">my_cluster</code> with both nodes as cluster members. This command creates and starts the cluster in one step. You only need to run this from one node in the cluster because <code class="literal">pcs</code> configuration commands take effect for the entire cluster.
+					</p><p class="simpara">
+						On one node in cluster, run the following command.
+					</p><pre class="literallayout"># <code class="literal">pcs cluster setup my_cluster --start z1.example.com z2.example.com</code></pre></li><li class="listitem"><p class="simpara">
+						A Red Hat High Availability cluster requires that you configure fencing for the cluster. The reasons for this requirement are described in <a class="link" href="https://access.redhat.com/solutions/15575">Fencing in a Red Hat High Availability Cluster</a>. For this introduction, however, to show only how failover works in this configuration, disable fencing by setting the <code class="literal">stonith-enabled</code> cluster option to <code class="literal">false</code>
+					</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+							The use of <code class="literal">stonith-enabled=false</code> is completely inappropriate for a production cluster. It tells the cluster to simply pretend that failed nodes are safely fenced.
+						</p></div><pre class="literallayout"># <code class="literal">pcs property set stonith-enabled=false</code></pre></li><li class="listitem"><p class="simpara">
+						After creating a cluster and disabling fencing, check the status of the cluster.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							When you run the <code class="literal">pcs cluster status</code> command, it may show output that temporarily differs slightly from the examples as the system components start up.
+						</p></div><pre class="literallayout"># <code class="literal">pcs cluster status</code>
+Cluster Status:
+ Stack: corosync
+ Current DC: z1.example.com (version 2.0.0-10.el8-b67d8d0de9) - partition with quorum
+ Last updated: Thu Oct 11 16:11:18 2018
+ Last change: Thu Oct 11 16:11:00 2018 by hacluster via crmd on z1.example.com
+ 2 nodes configured
+ 0 resources configured
+
+PCSD Status:
+  z1.example.com: Online
+  z2.example.com: Online</pre></li><li class="listitem"><p class="simpara">
+						On both nodes, configure a web browser and create a web page to display a simple text message. If you are running the <code class="literal">firewalld</code> daemon, enable the ports that are required by <code class="literal">httpd</code>.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							Do not use <code class="literal">systemctl enable</code> to enable any services that will be managed by the cluster to start at system boot.
+						</p></div><pre class="literallayout"># <code class="literal">yum install -y httpd wget</code>
+...
+# <code class="literal">firewall-cmd --permanent --add-service=http</code>
+# <code class="literal">firewall-cmd --reload</code>
+
+# <code class="literal">cat &lt;&lt;-END &gt;/var/www/html/index.html</code>
+<code class="literal">&lt;html&gt;</code>
+<code class="literal">&lt;body&gt;My Test Site - $(hostname)&lt;/body&gt;</code>
+<code class="literal">&lt;/html&gt;</code>
+<code class="literal">END</code></pre><p class="simpara">
+						In order for the Apache resource agent to get the status of Apache, on each node in the cluster create the following addition to the existing configuration to enable the status server URL.
+					</p><pre class="literallayout"># <code class="literal">cat &lt;&lt;-END &gt; /etc/httpd/conf.d/status.conf</code>
+<code class="literal">&lt;Location /server-status&gt;</code>
+<code class="literal">SetHandler server-status</code>
+<code class="literal">Order deny,allow</code>
+<code class="literal">Deny from all</code>
+<code class="literal">Allow from 127.0.0.1</code>
+<code class="literal">Allow from ::1</code>
+<code class="literal">&lt;/Location&gt;</code>
+<code class="literal">END</code></pre></li><li class="listitem"><p class="simpara">
+						Create <code class="literal">IPaddr2</code> and <code class="literal">apache</code> resources for the cluster to manage. The 'IPaddr2' resource is a floating IP address that must not be one already associated with a physical node. If the 'IPaddr2' resource’s NIC device is not specified, the floating IP must reside on the same network as the statically assigned IP address used by the node.
+					</p><p class="simpara">
+						You can display a list of all available resource types with the <code class="literal">pcs resource list</code> command. You can use the <code class="literal">pcs resource describe <span class="emphasis"><em>resourcetype</em></span></code> command to display the parameters you can set for the specified resource type. For example, the following command displays the parameters you can set for a resource of type <code class="literal">apache</code>:
+					</p><pre class="literallayout"># <code class="literal">pcs resource describe apache</code>
+...</pre><p class="simpara">
+						In this example, the IP address resource and the apache resource are both configured as part of a group named <code class="literal">apachegroup</code>, which ensures that the resources are kept together to run on the same node.
+					</p><p class="simpara">
+						Run the following commands from one node in the cluster:
+					</p><pre class="literallayout"># <code class="literal">pcs resource create ClusterIP ocf:heartbeat:IPaddr2 ip=192.168.122.120 --group apachegroup</code>
+
+# <code class="literal">pcs resource create WebSite ocf:heartbeat:apache configfile=/etc/httpd/conf/httpd.conf statusurl="http://localhost/server-status" --group apachegroup</code>
+
+# <code class="literal">pcs status</code>
+Cluster name: my_cluster
+Stack: corosync
+Current DC: z1.example.com (version 2.0.0-10.el8-b67d8d0de9) - partition with quorum
+Last updated: Fri Oct 12 09:54:33 2018
+Last change: Fri Oct 12 09:54:30 2018 by root via cibadmin on z1.example.com
+
+2 nodes configured
+2 resources configured
+
+Online: [ z1.example.com z2.example.com ]
+
+Full list of resources:
+
+Resource Group: apachegroup
+    ClusterIP  (ocf::heartbeat:IPaddr2):       Started z1.example.com
+    WebSite    (ocf::heartbeat:apache):        Started z1.example.com
+
+PCSD Status:
+  z1.example.com: Online
+  z2.example.com: Online
+...</pre><p class="simpara">
+						Note that in this instance, the <code class="literal">apachegroup</code> service is running on node z1.example.com.
+					</p></li><li class="listitem"><p class="simpara">
+						Access the website you created, stop the service on the node on which it is running, and note how the service fails over to the second node.
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+								Point a browser to the website you created using the floating IP address you configured. This should display the text message you defined, displaying the name of the node on which the website is running.
+							</li><li class="listitem"><p class="simpara">
+								Stop the apache web service. Using <code class="literal">killall -9</code> simulates an application-level crash.
+							</p><pre class="literallayout"># <code class="literal">killall -9 httpd</code></pre><p class="simpara">
+								Check the cluster status. You should see that stopping the web service caused a failed action, but that the cluster software restarted the service on the node on which it had been running and you should still be able to access the web browser.
+							</p><pre class="literallayout"># <code class="literal">pcs status</code>
+Cluster name: my_cluster
+Stack: corosync
+Current DC: z1.example.com (version 2.0.0-10.el8-b67d8d0de9) - partition with quorum
+Last updated: Fri Oct 12 09:54:33 2018
+Last change: Fri Oct 12 09:54:30 2018 by root via cibadmin on z1.example.com
+
+2 nodes configured
+2 resources configured
+
+Online: [ z1.example.com z2.example.com ]
+
+Full list of resources:
+
+Resource Group: apachegroup
+    ClusterIP  (ocf::heartbeat:IPaddr2):       Started z1.example.com
+    WebSite    (ocf::heartbeat:apache):        Started z1.example.com
+
+Failed Resource Actions:
+* WebSite_monitor_60000 on z1.example.com 'not running' (7): call=31, status=complete, exitreason='none',
+    last-rc-change='Fri Feb  5 21:01:41 2016', queued=0ms, exec=0ms</pre><p class="simpara">
+								Clear the failure status once the service is up and running again.
+							</p><pre class="literallayout"># <code class="literal">pcs resource cleanup WebSite</code></pre></li><li class="listitem"><p class="simpara">
+								Put the node on which the service is running into standby mode. Note that since we have disabled fencing we can not effectively simulate a node-level failure (such as pulling a power cable) because fencing is required for the cluster to recover from such situations.
+							</p><pre class="literallayout"># <code class="literal">pcs node standby z1.example.com</code></pre></li><li class="listitem"><p class="simpara">
+								Check the status of the cluster and note where the service is now running.
+							</p><pre class="literallayout"># <code class="literal">pcs status</code>
+Cluster name: my_cluster
+Stack: corosync
+Current DC: z1.example.com (version 2.0.0-10.el8-b67d8d0de9) - partition with quorum
+Last updated: Fri Oct 12 09:54:33 2018
+Last change: Fri Oct 12 09:54:30 2018 by root via cibadmin on z1.example.com
+
+2 nodes configured
+2 resources configured
+
+Node z1.example.com: standby
+Online: [ z2.example.com ]
+
+Full list of resources:
+
+Resource Group: apachegroup
+    ClusterIP  (ocf::heartbeat:IPaddr2):       Started z2.example.com
+    WebSite    (ocf::heartbeat:apache):        Started z2.example.com</pre></li><li class="listitem">
+								Access the website. There should be no loss of service, although the display message should indicate the node on which the service is now running.
+							</li></ol></div></li><li class="listitem"><p class="simpara">
+						To restore cluster services to the first node, take the node out of standby mode. This will not necessarily move the service back to that node.
+					</p><pre class="literallayout"># <code class="literal">pcs cluster unstandby z1.example.com</code></pre></li><li class="listitem"><p class="simpara">
+						For final cleanup, stop the cluster services on both nodes.
+					</p><pre class="literallayout"># <code class="literal">pcs cluster stop --all</code></pre></li></ol></div></div></div></body></html>

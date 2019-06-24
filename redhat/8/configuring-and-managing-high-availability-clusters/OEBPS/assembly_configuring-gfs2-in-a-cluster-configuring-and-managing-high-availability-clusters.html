@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 7. GFS2 file systems in a cluster</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_configuring-gfs2-in-a-cluster-configuring-and-managing-high-availability-clusters"/>Chapter 7. GFS2 file systems in a cluster</h1></div></div></div><p>
+			This section provideas:
+		</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+					A procedure to set up a Pacemaker cluster that includes GFS2 file systems
+				</li><li class="listitem">
+					A procedure to migrate RHEL 7 logical volumes that contain GFS2 file systems to a RHEL 8 cluster
+				</li></ul></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_configuring-gfs2-in-a-cluster.adoc-configuring-gfs2-cluster"/>Configuring a GFS2 file system in a cluster</h1></div></div></div><p>
+				This procedure is an outline of the steps required to set up a Pacemaker cluster that includes GFS2 file systems. This example creates three GFS2 file systems on three logical volumes.
+			</p><p>
+				As a prerequisite for this procedure, you must install and start the cluster software on all nodes and create a basic two-node cluster. You must also configure fencing for the cluster. For information on creating a Pacemaker cluster and configuring fencing for the cluster, see <a class="link" href="assembly_creating-high-availability-cluster-configuring-and-managing-high-availability-clusters.html" title="Chapter 4. Creating a Red Hat High-Availability cluster with Pacemaker">Creating a Red Hat High-Availability cluster with Pacemaker</a>.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						On both nodes of the cluster, install the <code class="literal">lvm2-lockd</code>, <code class="literal">gfs2-utils</code>, and <code class="literal">dlm</code> packages. The <code class="literal">lvm2-lockd</code> package is part of the AppStream channel and the <code class="literal">gfs2-utils</code> and <code class="literal">dlm</code> packages are part of the Resilient Storage channel.
+					</p><pre class="literallayout"># <code class="literal">yum install lvm2-lockd gfs2-utils dlm</code></pre></li><li class="listitem"><p class="simpara">
+						Set up a <code class="literal">dlm</code> resource. This is a required dependency for configuring a GFS2 file system in a cluster. This example creates the <code class="literal">dlm</code> resource as part of a resource group named <code class="literal">locking</code>.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs resource create dlm --group locking ocf:pacemaker:controld op monitor interval=30s on-fail=fence</code></pre></li><li class="listitem"><p class="simpara">
+						Clone the <code class="literal">locking</code> resource group so that the resource group can be active on both nodes of the cluster.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs resource clone locking interleave=true</code></pre></li><li class="listitem"><p class="simpara">
+						Set up an <code class="literal">lvmlockd</code> resource as part of the group <code class="literal">locking</code>.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs resource create lvmlockd --group locking ocf:heartbeat:lvmlockd op monitor interval=30s on-fail=fence</code></pre></li><li class="listitem"><p class="simpara">
+						Check the status of the cluster to ensure that the <code class="literal">locking</code> resource group has started on both nodes of the cluster.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs status --full</code>
+Cluster name: my_cluster
+[...]
+
+Online: [ z1.example.com (1) z2.example.com (2) ]
+
+Full list of resources:
+
+ smoke-apc      (stonith:fence_apc):    Started z1.example.com
+ Clone Set: locking-clone [locking]
+     Resource Group: locking:0
+         dlm    (ocf::pacemaker:controld):      Started z1.example.com
+         lvmlockd       (ocf::heartbeat:lvmlockd):      Started z1.example.com
+     Resource Group: locking:1
+         dlm    (ocf::pacemaker:controld):      Started z2.example.com
+         lvmlockd       (ocf::heartbeat:lvmlockd):      Started z2.example.com
+     Started: [ z1.example.com z2.example.com ]</pre></li><li class="listitem"><p class="simpara">
+						Verify that the <code class="literal">lvmlockd</code> daemon is running on both nodes of the cluster.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">ps -ef | grep lvmlockd</code>
+root     12257     1  0 17:45 ?        00:00:00 lvmlockd -p /run/lvmlockd.pid -A 1 -g dlm
+[root@z2 ~]# <code class="literal">ps -ef | grep lvmlockd</code>
+root     12270     1  0 17:45 ?        00:00:00 lvmlockd -p /run/lvmlockd.pid -A 1 -g dlm</pre></li><li class="listitem"><p class="simpara">
+						On one node of the cluster, create two shared volume groups. One volume group will contain two GFS2 file systems, and the other volume group will contain one GFS2 file system.
+					</p><p class="simpara">
+						The following command creates the shared volume group <code class="literal">shared_vg1</code> on <code class="literal">/dev/vdb</code>.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">vgcreate --shared shared_vg1 /dev/vdb</code>
+  Physical volume "/dev/vdb" successfully created.
+  Volume group "shared_vg1" successfully created
+  VG shared_vg1 starting dlm lockspace
+  Starting locking.  Waiting until locks are ready...</pre><p class="simpara">
+						The following command creates the shared volume group <code class="literal">shared_vg2</code> on <code class="literal">/dev/vdc</code>.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">vgcreate --shared shared_vg2 /dev/vdc</code>
+  Physical volume "/dev/vdc" successfully created.
+  Volume group "shared_vg2" successfully created
+  VG shared_vg2 starting dlm lockspace
+  Starting locking.  Waiting until locks are ready...</pre></li><li class="listitem"><p class="simpara">
+						On the second node in the cluster, start the lock manager for each of the shared volume groups.
+					</p><pre class="literallayout">[root@z2 ~]# <code class="literal">vgchange --lock-start shared_vg1</code>
+  VG shared_vg1 starting dlm lockspace
+  Starting locking.  Waiting until locks are ready...
+[root@z2 ~]# <code class="literal">vgchange --lock-start shared_vg2</code>
+  VG shared_vg2 starting dlm lockspace
+  Starting locking.  Waiting until locks are ready...</pre></li><li class="listitem"><p class="simpara">
+						On one node in the cluster, create the shared logical volumes and format the volumes with a GFS2 file system. Ensure that you create enough journals for each of the nodes in your cluster.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">lvcreate --activate sy -L5G -n shared_lv1 shared_vg1</code>
+  Logical volume "shared_lv1" created.
+[root@z1 ~]# <code class="literal">lvcreate --activate sy -L5G -n shared_lv2 shared_vg1</code>
+  Logical volume "shared_lv2" created.
+[root@z1 ~]# <code class="literal">lvcreate --activate sy -L5G -n shared_lv1 shared_vg2</code>
+  Logical volume "shared_lv1" created.
+
+[root@z1 ~]# <code class="literal">mkfs.gfs2 -j2 -p lock_dlm -t my_cluster:gfs2-demo1 /dev/shared_vg1/shared_lv1</code>
+[root@z1 ~]# <code class="literal">mkfs.gfs2 -j2 -p lock_dlm -t my_cluster:gfs2-demo2 /dev/shared_vg1/shared_lv2</code>
+[root@z1 ~]# <code class="literal">mkfs.gfs2 -j2 -p lock_dlm -t my_cluster:gfs2-demo3 /dev/shared_vg2/shared_lv1</code></pre></li><li class="listitem"><p class="simpara">
+						Create an <code class="literal">LVM-activate</code> resource for each logical volume to automatically activate that logical volume on all nodes.
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Create an <code class="literal">LVM-activate</code> resource named <code class="literal">sharedlv1</code> for the logical volume <code class="literal">shared_lv1</code> in volume group <code class="literal">shared_vg1</code>. This command also creates the resource group <code class="literal">shared_vg1</code> that includes the resource. In this example, the resource group has the same name as the shared volume group that includes the logical volume.
+							</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs resource create sharedlv1 --group shared_vg1 ocf:heartbeat:LVM-activate lvname=shared_lv1 vgname=shared_vg1 activation_mode=shared vg_access_mode=lvmlockd</code></pre></li><li class="listitem"><p class="simpara">
+								Create an <code class="literal">LVM-activate</code> resource named <code class="literal">sharedlv2</code> for the logical volume <code class="literal">shared_lv2</code> in volume group <code class="literal">shared_vg1</code>. This resource will also be part of the resource group <code class="literal">shared_vg1</code>.
+							</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs resource create sharedlv2 --group shared_vg1 ocf:heartbeat:LVM-activate lvname=shared_lv2 vgname=shared_vg1 activation_mode=shared vg_access_mode=lvmlockd</code></pre></li><li class="listitem"><p class="simpara">
+								Create an <code class="literal">LVM-activate</code> resource named <code class="literal">sharedlv3</code> for the logical volume <code class="literal">shared_lv1</code> in volume group <code class="literal">shared_vg2</code>. This command also creates the resource group <code class="literal">shared_vg2</code> that includes the resource.
+							</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs resource create sharedlv3 --group shared_vg2 ocf:heartbeat:LVM-activate lvname=shared_lv1 vgname=shared_vg2 activation_mode=shared vg_access_mode=lvmlockd</code></pre></li></ol></div></li><li class="listitem"><p class="simpara">
+						Clone the two new resource groups.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs resource clone shared_vg1 interleave=true</code>
+[root@z1 ~]# <code class="literal">pcs resource clone shared_vg2 interleave=true</code></pre></li><li class="listitem"><p class="simpara">
+						Configure ordering constraints to ensure that the <code class="literal">locking</code> resource group that includes the <code class="literal">dlm</code> and <code class="literal">lvmlockd</code> resources starts first.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs constraint order start locking-clone then shared_vg1-clone</code>
+Adding locking-clone shared_vg1-clone (kind: Mandatory) (Options: first-action=start then-action=start)
+[root@z1 ~]# <code class="literal">pcs constraint order start locking-clone then shared_vg2-clone</code>
+Adding locking-clone shared_vg2-clone (kind: Mandatory) (Options: first-action=start then-action=start)</pre></li><li class="listitem"><p class="simpara">
+						On both nodes in the cluster, verify that the logical volumes are active. There may be a delay of a few seconds.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">lvs</code>
+  LV         VG          Attr       LSize
+  shared_lv1 shared_vg1  -wi-a----- 5.00g
+  shared_lv2 shared_vg1  -wi-a----- 5.00g
+  shared_lv1 shared_vg2  -wi-a----- 5.00g
+
+[root@z2 ~]# <code class="literal">lvs</code>
+  LV         VG          Attr       LSize
+  shared_lv1 shared_vg1  -wi-a----- 5.00g
+  shared_lv2 shared_vg1  -wi-a----- 5.00g
+  shared_lv1 shared_vg2  -wi-a----- 5.00g</pre></li><li class="listitem"><p class="simpara">
+						Create a file system resource to automatically mount each GFS2 file system on all nodes.
+					</p><p class="simpara">
+						You should not add the file system to the <code class="literal">/etc/fstab</code> file because it will be managed as a Pacemaker cluster resource. Mount options can be specified as part of the resource configuration with <code class="literal">options=<span class="emphasis"><em>options</em></span></code>. Run the <code class="literal">pcs resource describe Filesystem</code> command for full configuration options.
+					</p><p class="simpara">
+						The following commands create the file system resources. These commands add each resource to the resource group that includes the logical volume resource for that file system.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs resource create sharedfs1 --group shared_vg1 ocf:heartbeat:Filesystem device="/dev/shared_vg1/shared_lv1" directory="/mnt/gfs1" fstype="gfs2" options=noatime op monitor interval=10s on-fail=fence</code>
+[root@z1 ~]# <code class="literal">pcs resource create sharedfs2 --group shared_vg1 ocf:heartbeat:Filesystem device="/dev/shared_vg1/shared_lv2" directory="/mnt/gfs2" fstype="gfs2" options=noatime op monitor interval=10s on-fail=fence</code>
+[root@z1 ~]# <code class="literal">pcs resource create sharedfs3 --group shared_vg2 ocf:heartbeat:Filesystem device="/dev/shared_vg2/shared_lv1" directory="/mnt/gfs3" fstype="gfs2" options=noatime op monitor interval=10s on-fail=fence</code></pre></li><li class="listitem"><p class="simpara">
+						Verify that the GFS2 file systems are mounted on both nodes of the cluster.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">mount | grep gfs2</code>
+/dev/mapper/shared_vg1-shared_lv1 on /mnt/gfs1 type gfs2 (rw,noatime,seclabel)
+/dev/mapper/shared_vg1-shared_lv2 on /mnt/gfs2 type gfs2 (rw,noatime,seclabel)
+/dev/mapper/shared_vg2-shared_lv1 on /mnt/gfs3 type gfs2 (rw,noatime,seclabel)
+
+[root@z2 ~]# <code class="literal">mount | grep gfs2</code>
+/dev/mapper/shared_vg1-shared_lv1 on /mnt/gfs1 type gfs2 (rw,noatime,seclabel)
+/dev/mapper/shared_vg1-shared_lv2 on /mnt/gfs2 type gfs2 (rw,noatime,seclabel)
+/dev/mapper/shared_vg2-shared_lv1 on /mnt/gfs3 type gfs2 (rw,noatime,seclabel)</pre></li><li class="listitem"><p class="simpara">
+						Check the status of the cluster.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs status --full</code>
+Cluster name: my_cluster
+[...1
+
+Full list of resources:
+
+ smoke-apc      (stonith:fence_apc):    Started z1.example.com
+ Clone Set: locking-clone [locking]
+     Resource Group: locking:0
+         dlm    (ocf::pacemaker:controld):      Started z2.example.com
+         lvmlockd       (ocf::heartbeat:lvmlockd):      Started z2.example.com
+     Resource Group: locking:1
+         dlm    (ocf::pacemaker:controld):      Started z1.example.com
+         lvmlockd       (ocf::heartbeat:lvmlockd):      Started z1.example.com
+     Started: [ z1.example.com z2.example.com ]
+ Clone Set: shared_vg1-clone [shared_vg1]
+     Resource Group: shared_vg1:0
+         sharedlv1      (ocf::heartbeat:LVM-activate):  Started z2.example.com
+         sharedlv2      (ocf::heartbeat:LVM-activate):  Started z2.example.com
+         sharedfs1      (ocf::heartbeat:Filesystem):    Started z2.example.com
+         sharedfs2      (ocf::heartbeat:Filesystem):    Started z2.example.com
+     Resource Group: shared_vg1:1
+         sharedlv1      (ocf::heartbeat:LVM-activate):  Started z1.example.com
+         sharedlv2      (ocf::heartbeat:LVM-activate):  Started z1.example.com
+         sharedfs1      (ocf::heartbeat:Filesystem):    Started z1.example.com
+         sharedfs2      (ocf::heartbeat:Filesystem):    Started example.co
+     Started: [ z1.example.com z2.example.com ]
+ Clone Set: shared_vg2-clone [shared_vg2]
+     Resource Group: shared_vg2:0
+         sharedlv3      (ocf::heartbeat:LVM-activate):  Started z2.example.com
+         sharedfs3      (ocf::heartbeat:Filesystem):    Started z2.example.com
+     Resource Group: shared_vg2:1
+         sharedlv3      (ocf::heartbeat:LVM-activate):  Started z1.example.com
+         sharedfs3      (ocf::heartbeat:Filesystem):    Started z1.example.com
+     Started: [ z1.example.com z2.example.com ]
+
+...</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_migrate-gfs2-rhel7-rhel8-configuring-gfs2-cluster"/>Migrating a GFS2 file system from RHEL7 to RHEL8</h1></div></div></div><p>
+				In Red Hat Enterprise Linux 8, LVM uses the LVM lock daemon <code class="literal">lvmlockd</code> instead of <code class="literal">clvmd</code> for managing shared storage devices in an active/active cluster. This requires that you configure the logical volumes that your active/active cluster will require as shared logical volumes. Additionally, this requires that you use the <code class="literal">LVM-activate</code> resource to manage an LVM volume and that you use the <code class="literal">lvmlockd</code> resource agent to manage the <code class="literal">lvmlockd</code> daemon. See <a class="link" href="assembly_configuring-gfs2-in-a-cluster-configuring-and-managing-high-availability-clusters.html#proc_configuring-gfs2-in-a-cluster.adoc-configuring-gfs2-cluster" title="Configuring a GFS2 file system in a cluster">Configuring a GFS2 file system in a cluster</a> for a full procedure for configuring a Pacemaker cluster that includes GFS2 file systems using shared logical volumes.
+			</p><p>
+				To use your existing Red Hat Enterprise Linux 7 logical volumes when configuring a RHEL8 cluster that includes GFS2 file systems, perform the following procedure from the RHEL8 cluster. In this example, the clustered RHEL 7 logical volume is part of the volume group <code class="literal">upgrade_gfs_vg</code>.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					The RHEL8 cluster must have the same name as the RHEL7 cluster that includes the GFS2 file system in order for the existing file system to be valid.
+				</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						Ensure that the logical volumes containing the GFS2 file systems are currently inactive. This procedure is safe only if all nodes have stopped using the volume group.
+					</li><li class="listitem"><p class="simpara">
+						From one node in the cluster, forcibly change the volume group to be local.
+					</p><pre class="literallayout">[root@rhel8-01 ~]# <code class="literal">vgchange --lock-type none --lock-opt force upgrade_gfs_vg</code>
+Forcibly change VG lock type to none? [y/n]: y
+  Volume group "upgrade_gfs_vg" successfully changed</pre></li><li class="listitem"><p class="simpara">
+						From one node in the cluster, change the local volume group to a shared volume group
+					</p><pre class="literallayout">[root@rhel8-01 ~]# <code class="literal">vgchange --lock-type dlm upgrade_gfs_vg</code>
+   Volume group "upgrade_gfs_vg" successfully changed</pre></li><li class="listitem"><p class="simpara">
+						On each node in the cluster, start locking for the volume group.
+					</p><pre class="literallayout">[root@rhel8-01 ~]# <code class="literal">vgchange --lock-start upgrade_gfs_vg</code>
+  VG upgrade_gfs_vg starting dlm lockspace
+  Starting locking.  Waiting until locks are ready...
+[root@rhel8-02 ~]# <code class="literal">vgchange --lock-start upgrade_gfs_vg</code>
+  VG upgrade_gfs_vg starting dlm lockspace
+  Starting locking.  Waiting until locks are ready...</pre></li></ol></div><p>
+				After performing this procedure, you can create an <code class="literal">LVM-activate</code> resource for each logical volume.
+			</p></div></div></body></html>

@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 5. Configuring an active/passive Apache HTTP server in a Red Hat High Availability cluster</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_configuring-active-passive-http-server-in-a-cluster-configuring-and-managing-high-availability-clusters"/>Chapter 5. Configuring an active/passive Apache HTTP server in a Red Hat High Availability cluster</h1></div></div></div><p>
+			The following procedure configures an active/passive Apache HTTP server in a two-node Red Hat Enterprise Linux High Availability Add-On cluster using <code class="literal">pcs</code> to configure cluster resources. In this use case, clients access the Apache HTTP server through a floating IP address. The web server runs on one of two nodes in the cluster. If the node on which the web server is running becomes inoperative, the web server starts up again on the second node of the cluster with minimal service interruption.
+		</p><p>
+			<a class="xref" href="assembly_configuring-active-passive-http-server-in-a-cluster-configuring-and-managing-high-availability-clusters.html#configuring-ha-http-291627-haserver_cluster4" title="Figure 5.1. Apache in a Red Hat High Availability Two-Node Cluster">Figure 5.1, “Apache in a Red Hat High Availability Two-Node Cluster”</a> shows a high-level overview of the cluster. The cluster is a two-node Red Hat High Availability cluster which is configured with a network power switch and with shared storage. The cluster nodes are connected to a public network, for client access to the Apache HTTP server through a virtual IP. The Apache server runs on either Node 1 or Node 2, each of which has access to the storage on which the Apache data is kept.
+		</p><div class="figure"><a id="configuring-ha-http-291627-haserver_cluster4"/><p class="title"><strong>Figure 5.1. Apache in a Red Hat High Availability Two-Node Cluster</strong></p><div class="figure-contents"><div class="mediaobject"><img src="images/291627-haserver_cluster4.png" alt="Apache in a Red Hat High Availability Two-Node Cluster"/></div></div></div><p>
+			This use case requires that your system include the following components:
+		</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+					A two-node Red Hat High Availability cluster with power fencing configured for each node. We recommend but do not require a private network. This procedure uses the cluster example provided in <a class="link" href="assembly_creating-high-availability-cluster-configuring-and-managing-high-availability-clusters.html" title="Chapter 4. Creating a Red Hat High-Availability cluster with Pacemaker">Creating a Red Hat High-Availability cluster with Pacemaker</a>.
+				</li><li class="listitem">
+					A public virtual IP address, required for Apache.
+				</li><li class="listitem">
+					Shared storage for the nodes in the cluster, using iSCSI or Fibre Channel.
+				</li></ul></div><p>
+			The cluster is configured with an Apache resource group, which contains the cluster components that the web server requires: an LVM resource, a file system resource, an IP address resource, and a web server resource. This resource group can fail over from one node of the cluster to the other, allowing either node to run the web server. Before creating the resource group for this cluster, you will perform the following procedures:
+		</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+					Configure an <code class="literal">ext4</code> file system on the logical volume <code class="literal">my_lv</code>.
+				</li><li class="listitem">
+					Configure a web server.
+				</li></ol></div><p>
+			After performing these procedures, you create the resource group and the resources it contains.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_configuring-lvm-volume-with-ext4-file-system-configuring-ha-http"/>Configuring an LVM volume with an ext4 file system in a Pacemaker cluster</h1></div></div></div><p>
+				This use case requires that you create an LVM logical volume on storage that is shared between the nodes of the cluster.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					LVM volumes and the corresponding partitions and devices used by cluster nodes must be connected to the cluster nodes only.
+				</p></div><p>
+				The following procedure creates an LVM logical volume and then creates an ext4 file system on that volume for use in a Pacemaker cluster. In this example, the shared partition <code class="literal">/dev/sdb1</code> is used to store the LVM physical volume from which the LVM logical volume will be created.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						On both nodes of the cluster, perform the following steps to set the value for the LVM system ID to the value of the <code class="literal">uname</code> identifier for the system. The LVM system ID will be used to ensure that only the cluster is capable of activating the volume group.
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Set the <code class="literal">system_id_source</code> configuration option in the <code class="literal">/etc/lvm/lvm.conf</code> configuration file to <code class="literal">uname</code>.
+							</p><pre class="literallayout"># Configuration option global/system_id_source.
+system_id_source = "uname"</pre></li><li class="listitem"><p class="simpara">
+								Verify that the LVM system ID on the node matches the <code class="literal">uname</code> for the node.
+							</p><pre class="literallayout"># <code class="literal">lvm systemid</code>
+  system ID: z1.example.com
+# <code class="literal">uname -n</code>
+  z1.example.com</pre></li></ol></div></li><li class="listitem"><p class="simpara">
+						Create the LVM volume and create an ext4 file system on that volume. Since the <code class="literal">/dev/sdb1</code> partition is storage that is shared, you perform this part of the procedure on one node only.
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Create an LVM physical volume on partition <code class="literal">/dev/sdb1</code>.
+							</p><pre class="literallayout"># <code class="literal">pvcreate /dev/sdb1</code>
+  Physical volume "/dev/sdb1" successfully created</pre></li><li class="listitem"><p class="simpara">
+								Create the volume group <code class="literal">my_vg</code> that consists of the physical volume <code class="literal">/dev/sdb1</code>.
+							</p><pre class="literallayout"># <code class="literal">vgcreate my_vg /dev/sdb1</code>
+  Volume group "my_vg" successfully created</pre></li><li class="listitem"><p class="simpara">
+								Verify that the new volume group has the system ID of the node on which you are running and from which you created the volume group.
+							</p><pre class="literallayout"># <code class="literal">vgs -o+systemid</code>
+  VG    #PV #LV #SN Attr   VSize  VFree  System ID
+  my_vg   1   0   0 wz--n- &lt;1.82t &lt;1.82t z1.example.com</pre></li><li class="listitem"><p class="simpara">
+								Create a logical volume using the volume group <code class="literal">my_vg</code>.
+							</p><pre class="literallayout"># <code class="literal">lvcreate -L450 -n my_lv my_vg</code>
+  Rounding up size to full physical extent 452.00 MiB
+  Logical volume "my_lv" created</pre><p class="simpara">
+								You can use the <code class="literal">lvs</code> command to display the logical volume.
+							</p><pre class="literallayout"># <code class="literal">lvs</code>
+  LV      VG      Attr      LSize   Pool Origin Data%  Move Log Copy%  Convert
+  my_lv   my_vg   -wi-a---- 452.00m
+  ...</pre></li><li class="listitem"><p class="simpara">
+								Create an ext4 file system on the logical volume <code class="literal">my_lv</code>.
+							</p><pre class="literallayout"># <code class="literal">mkfs.ext4 /dev/my_vg/my_lv</code>
+mke2fs 1.44.3 (10-July-2018)
+Creating filesystem with 462848 1k blocks and 115824 inodes
+...</pre></li></ol></div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_configuring-apache-http-web-server-configuring-ha-http"/>Configuring an Apache HTTP server</h1></div></div></div><p>
+				The following procedure configures an Apache HTTP server.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Ensure that the Apache HTTP server is installed on each node in the cluster. You also need the <code class="literal">wget</code> tool installed on the cluster to be able to check the status of the Apache HTTP server.
+					</p><p class="simpara">
+						On each node, execute the following command.
+					</p><pre class="literallayout"># <code class="literal">yum install -y httpd wget</code></pre><p class="simpara">
+						If you are running the <code class="literal">firewalld</code> daemon, on each node in the cluster enable the ports that are required by the Red Hat High Availability Add-On.
+					</p><pre class="literallayout"># <code class="literal">firewall-cmd --permanent --add-service=high-availability</code>
+# <code class="literal">firewall-cmd --reload</code></pre></li><li class="listitem"><p class="simpara">
+						In order for the Apache resource agent to get the status of the Apache HTTP server, ensure that the following text is present in the <code class="literal">/etc/httpd/conf/httpd.conf</code> file on each node in the cluster, and ensure that it has not been commented out. If this text is not already present, add the text to the end of the file.
+					</p><pre class="literallayout">&lt;Location /server-status&gt;
+    SetHandler server-status
+    Require local
+&lt;/Location&gt;</pre></li><li class="listitem"><p class="simpara">
+						When you use the <code class="literal">apache</code> resource agent to manage Apache, it does not use <code class="literal">systemd</code>. Because of this, you must edit the <code class="literal">logrotate</code> script supplied with Apache so that it does not use <code class="literal">systemctl</code> to reload Apache.
+					</p><p class="simpara">
+						Remove the following line in the <code class="literal">/etc/logrotate.d/httpd</code> file on each node in the cluster.
+					</p><pre class="literallayout">/bin/systemctl reload httpd.service &gt; /dev/null 2&gt;/dev/null || true</pre><p class="simpara">
+						Replace the line you removed with the following line.
+					</p><pre class="literallayout">/usr/sbin/httpd -f /etc/httpd/conf/httpd.conf -c "PidFile /var/run/httpd.pid" -k graceful &gt; /dev/null 2&gt;/dev/null || true</pre></li><li class="listitem"><p class="simpara">
+						Create a web page for Apache to serve up. On one node in the cluster, mount the file system you created in <a class="link" href="assembly_configuring-active-passive-http-server-in-a-cluster-configuring-and-managing-high-availability-clusters.html#proc_configuring-lvm-volume-with-ext4-file-system-configuring-ha-http" title="Configuring an LVM volume with an ext4 file system in a Pacemaker cluster">Configuring an LVM volume with an ext4 file system</a>, create the file <code class="literal">index.html</code> on that file system, and then unmount the file system.
+					</p><pre class="literallayout"># <code class="literal">mount /dev/my_vg/my_lv /var/www/</code>
+# <code class="literal">mkdir /var/www/html</code>
+# <code class="literal">mkdir /var/www/cgi-bin</code>
+# <code class="literal">mkdir /var/www/error</code>
+# <code class="literal">restorecon -R /var/www</code>
+# <code class="literal">cat &lt;&lt;-END &gt;/var/www/html/index.html</code>
+<code class="literal">&lt;html&gt;</code>
+<code class="literal">&lt;body&gt;Hello&lt;/body&gt;</code>
+<code class="literal">&lt;/html&gt;</code>
+<code class="literal">END</code>
+# <code class="literal">umount /var/www</code></pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_configuring-resources-for-http-server-in-a-cluster-configuring-ha-http"/>Creating the resources and resource groups</h1></div></div></div><p>
+				This use case requires that you create four cluster resources. To ensure these resources all run on the same node, they are configured as part of the resource group <code class="literal">apachegroup</code>. The resources to create are as follows, listed in the order in which they will start.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						An <code class="literal">LVM</code> resource named <code class="literal">my_lvm</code> that uses the LVM volume group you created in <a class="link" href="assembly_configuring-active-passive-http-server-in-a-cluster-configuring-and-managing-high-availability-clusters.html#proc_configuring-lvm-volume-with-ext4-file-system-configuring-ha-http" title="Configuring an LVM volume with an ext4 file system in a Pacemaker cluster">Configuring an LVM volume with an ext4 file system</a>.
+					</li><li class="listitem">
+						A <code class="literal">Filesystem</code> resource named <code class="literal">my_fs</code>, that uses the file system device <code class="literal">/dev/my_vg/my_lv</code> you created in <a class="link" href="assembly_configuring-active-passive-http-server-in-a-cluster-configuring-and-managing-high-availability-clusters.html#proc_configuring-lvm-volume-with-ext4-file-system-configuring-ha-http" title="Configuring an LVM volume with an ext4 file system in a Pacemaker cluster">Configuring an LVM volume with an ext4 file system</a>.
+					</li><li class="listitem">
+						An <code class="literal">IPaddr2</code> resource, which is a floating IP address for the <code class="literal">apachegroup</code> resource group. The IP address must not be one already associated with a physical node. If the <code class="literal">IPaddr2</code> resource’s NIC device is not specified, the floating IP must reside on the same network as one of the node’s statically assigned IP addresses, otherwise the NIC device to assign the floating IP address cannot be properly detected.
+					</li><li class="listitem">
+						An <code class="literal">apache</code> resource named <code class="literal">Website</code> that uses the <code class="literal">index.html</code> file and the Apache configuration you defined in <a class="link" href="assembly_configuring-active-passive-http-server-in-a-cluster-configuring-and-managing-high-availability-clusters.html#proc_configuring-apache-http-web-server-configuring-ha-http" title="Configuring an Apache HTTP server">Configuring an Apache HTTP server</a>.
+					</li></ol></div><p>
+				The following procedure creates the resource group <code class="literal">apachegroup</code> and the resources that the group contains. The resources will start in the order in which you add them to the group, and they will stop in the reverse order in which they are added to the group. Run this procedure from one node of the cluster only.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						The following command creates the <code class="literal">LVM-activate</code> resource <code class="literal">my_lvm</code>. Because the resource group <code class="literal">apachegroup</code> does not yet exist, this command creates the resource group.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							Do not configure more than one <code class="literal">LVM-activate</code> resource that uses the same LVM volume group in an active/passive HA configuration, as this risks data corruption. Additionally, do not configure an <code class="literal">LVM-activate</code> resource as a clone resource in an active/passive HA configuration.
+						</p></div><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs resource create my_lvm ocf:heartbeat:LVM-activate</code> <code class="literal">vgname=my_vg</code> <code class="literal">vg_access_mode=system_id --group apachegroup</code></pre><p class="simpara">
+						When you create a resource, the resource is started automatically. You can use the following command to confirm that the resource was created and has started.
+					</p><pre class="literallayout"># <code class="literal">pcs resource status</code>
+ Resource Group: apachegroup
+     my_lvm	(ocf::heartbeat:LVM-activate):	Started</pre><p class="simpara">
+						You can manually stop and start an individual resource with the <code class="literal">pcs resource disable</code> and <code class="literal">pcs resource enable</code> commands.
+					</p></li><li class="listitem"><p class="simpara">
+						The following commands create the remaining resources for the configuration, adding them to the existing resource group <code class="literal">apachegroup</code>.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs resource create my_fs Filesystem</code> \
+<code class="literal">device="/dev/my_vg/my_lv" directory="/var/www" fstype="ext4"</code> \
+<code class="literal">--group apachegroup</code>
+
+[root@z1 ~]# <code class="literal">pcs resource create VirtualIP IPaddr2 ip=198.51.100.3</code> \
+<code class="literal">cidr_netmask=24 --group apachegroup</code>
+
+[root@z1 ~]# <code class="literal">pcs resource create Website apache</code> \
+<code class="literal">configfile="/etc/httpd/conf/httpd.conf"</code> \
+<code class="literal">statusurl="http://127.0.0.1/server-status" --group apachegroup</code></pre></li><li class="listitem"><p class="simpara">
+						After creating the resources and the resource group that contains them, you can check the status of the cluster. Note that all four resources are running on the same node.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs status</code>
+Cluster name: my_cluster
+Last updated: Wed Jul 31 16:38:51 2013
+Last change: Wed Jul 31 16:42:14 2013 via crm_attribute on z1.example.com
+Stack: corosync
+Current DC: z2.example.com (2) - partition with quorum
+Version: 1.1.10-5.el7-9abe687
+2 Nodes configured
+6 Resources configured
+
+Online: [ z1.example.com z2.example.com ]
+
+Full list of resources:
+ myapc	(stonith:fence_apc_snmp):	Started z1.example.com
+ Resource Group: apachegroup
+     my_lvm	(ocf::heartbeat:LVM):	Started z1.example.com
+     my_fs	(ocf::heartbeat:Filesystem):	Started z1.example.com
+     VirtualIP	(ocf::heartbeat:IPaddr2):	Started z1.example.com
+     Website	(ocf::heartbeat:apache):	Started z1.example.com</pre><p class="simpara">
+						Note that if you have not configured a fencing device for your cluster by default the resources do not start.
+					</p></li><li class="listitem"><p class="simpara">
+						Once the cluster is up and running, you can point a browser to the IP address you defined as the <code class="literal">IPaddr2</code> resource to view the sample display, consisting of the simple word "Hello".
+					</p><pre class="literallayout">Hello</pre><p class="simpara">
+						If you find that the resources you configured are not running, you can run the <code class="literal">pcs resource debug-start <span class="emphasis"><em>resource</em></span></code> command to test the resource configuration.
+					</p></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_testing-resource-configuration-in-a-cluster-configuring-ha-http"/>Testing the resource configuration</h1></div></div></div><p>
+				In the cluster status display shown in <a class="link" href="assembly_configuring-active-passive-http-server-in-a-cluster-configuring-and-managing-high-availability-clusters.html#proc_configuring-resources-for-http-server-in-a-cluster-configuring-ha-http" title="Creating the resources and resource groups">Creating the resources and resource groups</a>, all of the resources are running on node <code class="literal">z1.example.com</code>. You can test whether the resource group fails over to node <code class="literal">z2.example.com</code> by using the following procedure to put the first node in <code class="literal">standby</code> mode, after which the node will no longer be able to host resources.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						The following command puts node <code class="literal">z1.example.com</code> in <code class="literal">standby</code> mode.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs node standby z1.example.com</code></pre></li><li class="listitem"><p class="simpara">
+						After putting node <code class="literal">z1</code> in standby mode, check the cluster status. Note that the resources should now all be running on <code class="literal">z2</code>.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs status</code>
+Cluster name: my_cluster
+Last updated: Wed Jul 31 17:16:17 2013
+Last change: Wed Jul 31 17:18:34 2013 via crm_attribute on z1.example.com
+Stack: corosync
+Current DC: z2.example.com (2) - partition with quorum
+Version: 1.1.10-5.el7-9abe687
+2 Nodes configured
+6 Resources configured
+
+Node z1.example.com (1): standby
+Online: [ z2.example.com ]
+
+Full list of resources:
+
+ myapc	(stonith:fence_apc_snmp):	Started z1.example.com
+ Resource Group: apachegroup
+     my_lvm	(ocf::heartbeat:LVM):	Started z2.example.com
+     my_fs	(ocf::heartbeat:Filesystem):	Started z2.example.com
+     VirtualIP	(ocf::heartbeat:IPaddr2):	Started z2.example.com
+     Website	(ocf::heartbeat:apache):	Started z2.example.com</pre><p class="simpara">
+						The web site at the defined IP address should still display, without interruption.
+					</p></li><li class="listitem"><p class="simpara">
+						To remove <code class="literal">z1</code> from <code class="literal">standby</code> mode, enter the following command.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs cluster unstandby z1.example.com</code></pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							Removing a node from <code class="literal">standby</code> mode does not in itself cause the resources to fail back over to that node.
+						</p></div></li></ol></div></div></div></body></html>

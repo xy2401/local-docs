@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 6. Configuring an active/passive NFS server in a Red Hat High Availability cluster</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_configuring-active-passive-nfs-server-in-a-cluster-configuring-and-managing-high-availability-clusters"/>Chapter 6. Configuring an active/passive NFS server in a Red Hat High Availability cluster</h1></div></div></div><p>
+			The following procedure configures a highly available active/passive NFS server on a two-node Red Hat Enterprise Linux High Availability Add-On cluster using shared storage. The procedure uses <code class="literal">pcs</code> to configure Pacemaker cluster resources. In this use case, clients access the NFS file system through a floating IP address. The NFS server runs on one of two nodes in the cluster. If the node on which the NFS server is running becomes inoperative, the NFS server starts up again on the second node of the cluster with minimal service interruption.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="prerequisites"/>Prerequisites</h1></div></div></div><p>
+				This use case requires that your system include the following components:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						A two-node Red Hat High Availability cluster with power fencing configured for each node. We recommend but do not require a private network. This procedure uses the cluster example provided in <a class="link" href="assembly_creating-high-availability-cluster-configuring-and-managing-high-availability-clusters.html" title="Chapter 4. Creating a Red Hat High-Availability cluster with Pacemaker">Creating a Red Hat High-Availability cluster with Pacemaker</a>.
+					</li><li class="listitem">
+						A public virtual IP address, required for the NFS server.
+					</li><li class="listitem">
+						Shared storage for the nodes in the cluster, using iSCSI or Fibre Channel.
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="procedural_overview"/>Procedural overview</h1></div></div></div><p>
+				Configuring a highly available active/passive NFS server on an existing two-node Red Hat Enterprise Linux High Availability cluster requires that you perform the following steps:
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						Configure an <code class="literal">ext4</code> file system on the LVM logical volume <code class="literal">my_lv</code> on the shared storage for the nodes in the cluster.
+					</li><li class="listitem">
+						Configure an NFS share on the shared storage on the LVM logical volume.
+					</li><li class="listitem">
+						Create the cluster resources.
+					</li><li class="listitem">
+						Test the NFS server you have configured.
+					</li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_configuring-lvm-volume-with-ext4-file-system-configuring-ha-nfs"/>Configuring an LVM volume with an ext4 file system in a Pacemaker cluster</h1></div></div></div><p>
+				This use case requires that you create an LVM logical volume on storage that is shared between the nodes of the cluster.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					LVM volumes and the corresponding partitions and devices used by cluster nodes must be connected to the cluster nodes only.
+				</p></div><p>
+				The following procedure creates an LVM logical volume and then creates an ext4 file system on that volume for use in a Pacemaker cluster. In this example, the shared partition <code class="literal">/dev/sdb1</code> is used to store the LVM physical volume from which the LVM logical volume will be created.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						On both nodes of the cluster, perform the following steps to set the value for the LVM system ID to the value of the <code class="literal">uname</code> identifier for the system. The LVM system ID will be used to ensure that only the cluster is capable of activating the volume group.
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Set the <code class="literal">system_id_source</code> configuration option in the <code class="literal">/etc/lvm/lvm.conf</code> configuration file to <code class="literal">uname</code>.
+							</p><pre class="literallayout"># Configuration option global/system_id_source.
+system_id_source = "uname"</pre></li><li class="listitem"><p class="simpara">
+								Verify that the LVM system ID on the node matches the <code class="literal">uname</code> for the node.
+							</p><pre class="literallayout"># <code class="literal">lvm systemid</code>
+  system ID: z1.example.com
+# <code class="literal">uname -n</code>
+  z1.example.com</pre></li></ol></div></li><li class="listitem"><p class="simpara">
+						Create the LVM volume and create an ext4 file system on that volume. Since the <code class="literal">/dev/sdb1</code> partition is storage that is shared, you perform this part of the procedure on one node only.
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Create an LVM physical volume on partition <code class="literal">/dev/sdb1</code>.
+							</p><pre class="literallayout"># <code class="literal">pvcreate /dev/sdb1</code>
+  Physical volume "/dev/sdb1" successfully created</pre></li><li class="listitem"><p class="simpara">
+								Create the volume group <code class="literal">my_vg</code> that consists of the physical volume <code class="literal">/dev/sdb1</code>.
+							</p><pre class="literallayout"># <code class="literal">vgcreate my_vg /dev/sdb1</code>
+  Volume group "my_vg" successfully created</pre></li><li class="listitem"><p class="simpara">
+								Verify that the new volume group has the system ID of the node on which you are running and from which you created the volume group.
+							</p><pre class="literallayout"># <code class="literal">vgs -o+systemid</code>
+  VG    #PV #LV #SN Attr   VSize  VFree  System ID
+  my_vg   1   0   0 wz--n- &lt;1.82t &lt;1.82t z1.example.com</pre></li><li class="listitem"><p class="simpara">
+								Create a logical volume using the volume group <code class="literal">my_vg</code>.
+							</p><pre class="literallayout"># <code class="literal">lvcreate -L450 -n my_lv my_vg</code>
+  Rounding up size to full physical extent 452.00 MiB
+  Logical volume "my_lv" created</pre><p class="simpara">
+								You can use the <code class="literal">lvs</code> command to display the logical volume.
+							</p><pre class="literallayout"># <code class="literal">lvs</code>
+  LV      VG      Attr      LSize   Pool Origin Data%  Move Log Copy%  Convert
+  my_lv   my_vg   -wi-a---- 452.00m
+  ...</pre></li><li class="listitem"><p class="simpara">
+								Create an ext4 file system on the logical volume <code class="literal">my_lv</code>.
+							</p><pre class="literallayout"># <code class="literal">mkfs.ext4 /dev/my_vg/my_lv</code>
+mke2fs 1.44.3 (10-July-2018)
+Creating filesystem with 462848 1k blocks and 115824 inodes
+...</pre></li></ol></div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_configuring-nfs-share-configuring-ha-nfs"/>Configuring an NFS share</h1></div></div></div><p>
+				The following procedure configures the NFS share for the NFS service failover.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						On both nodes in the cluster, create the <code class="literal">/nfsshare</code> directory.
+					</p><pre class="literallayout"># <code class="literal">mkdir /nfsshare</code></pre></li><li class="listitem"><p class="simpara">
+						On one node in the cluster, perform the following procedure.
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Mount the ext4 file system that you created in <a class="link" href="assembly_configuring-active-passive-nfs-server-in-a-cluster-configuring-and-managing-high-availability-clusters.html#proc_configuring-lvm-volume-with-ext4-file-system-configuring-ha-nfs" title="Configuring an LVM volume with an ext4 file system in a Pacemaker cluster">Configuring an LVM volume with an ext4 file system</a> on the <code class="literal">/nfsshare</code> directory.
+							</p><pre class="literallayout">[root@z1 ~]# <code class="literal">mount /dev/my_vg/my_lv /nfsshare</code></pre></li><li class="listitem"><p class="simpara">
+								Create an <code class="literal">exports</code> directory tree on the <code class="literal">/nfsshare</code> directory.
+							</p><pre class="literallayout">[root@z1 ~]# <code class="literal">mkdir -p /nfsshare/exports</code>
+[root@z1 ~]# <code class="literal">mkdir -p /nfsshare/exports/export1</code>
+[root@z1 ~]# <code class="literal">mkdir -p /nfsshare/exports/export2</code></pre></li><li class="listitem"><p class="simpara">
+								Place files in the <code class="literal">exports</code> directory for the NFS clients to access. For this example, we are creating test files named <code class="literal">clientdatafile1</code> and <code class="literal">clientdatafile2</code>.
+							</p><pre class="literallayout">[root@z1 ~]# <code class="literal">touch /nfsshare/exports/export1/clientdatafile1</code>
+[root@z1 ~]# <code class="literal">touch /nfsshare/exports/export2/clientdatafile2</code></pre></li><li class="listitem"><p class="simpara">
+								Unmount the ext4 file system and deactivate the LVM volume group.
+							</p><pre class="literallayout">[root@z1 ~]# <code class="literal">umount /dev/my_vg/my_lv</code>
+[root@z1 ~]# <code class="literal">vgchange -an my_vg</code></pre></li></ol></div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_configuring_resources_for_nfs_server_in_a_cluster-configuring-ha-nfs"/>Configuring the resources and resource group for an NFS server in a cluster</h1></div></div></div><p>
+				This section provides the procedure for configuring the cluster resources for this use case.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					If you have not configured a fencing device for your cluster, by default the resources do not start.
+				</p><p>
+					If you find that the resources you configured are not running, you can run the <code class="literal">pcs resource debug-start <span class="emphasis"><em>resource</em></span></code> command to test the resource configuration. This starts the service outside of the cluster’s control and knowledge. At the point the configured resources are running again, run <code class="literal">pcs resource cleanup <span class="emphasis"><em>resource</em></span></code> to make the cluster aware of the updates.
+				</p></div><p>
+				The following procedure configures the system resources. To ensure these resources all run on the same node, they are configured as part of the resource group <code class="literal">nfsgroup</code>. The resources will start in the order in which you add them to the group, and they will stop in the reverse order in which they are added to the group. Run this procedure from one node of the cluster only.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Create the LVM-activate resource named <code class="literal">my_lvm</code>. Because the resource group <code class="literal">nfsgroup</code> does not yet exist, this command creates the resource group.
+					</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+							Do not configure more than one <code class="literal">LVM-activate</code> resource that uses the same LVM volume group in an active/passive HA configuration, as this risks data corruption. Additionally, do not configure an <code class="literal">LVM-activate</code> resource as a clone resource in an active/passive HA configuration.
+						</p></div><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs resource create my_lvm ocf:heartbeat:LVM-activate</code> <code class="literal">vgname=my_vg</code> <code class="literal">vg_access_mode=system_id --group nfsgroup</code></pre></li><li class="listitem"><p class="simpara">
+						Check the status of the cluster to verify that the resource is running.
+					</p><pre class="literallayout">root@z1 ~]#  <code class="literal">pcs status</code>
+Cluster name: my_cluster
+Last updated: Thu Jan  8 11:13:17 2015
+Last change: Thu Jan  8 11:13:08 2015
+Stack: corosync
+Current DC: z2.example.com (2) - partition with quorum
+Version: 1.1.12-a14efad
+2 Nodes configured
+3 Resources configured
+
+Online: [ z1.example.com z2.example.com ]
+
+Full list of resources:
+ myapc  (stonith:fence_apc_snmp):       Started z1.example.com
+ Resource Group: nfsgroup
+     my_lvm     (ocf::heartbeat:LVM):   Started z1.example.com
+
+PCSD Status:
+  z1.example.com: Online
+  z2.example.com: Online
+
+Daemon Status:
+  corosync: active/enabled
+  pacemaker: active/enabled
+  pcsd: active/enabled</pre></li><li class="listitem"><p class="simpara">
+						Configure a <code class="literal">Filesystem</code> resource for the cluster.
+					</p><p class="simpara">
+						The following command configures an ext4 <code class="literal">Filesystem</code> resource named <code class="literal">nfsshare</code> as part of the <code class="literal">nfsgroup</code> resource group. This file system uses the LVM volume group and ext4 file system you created in <a class="link" href="assembly_configuring-active-passive-nfs-server-in-a-cluster-configuring-and-managing-high-availability-clusters.html#proc_configuring-lvm-volume-with-ext4-file-system-configuring-ha-nfs" title="Configuring an LVM volume with an ext4 file system in a Pacemaker cluster">Configuring an LVM volume with an ext4 file system</a> and will be mounted on the <code class="literal">/nfsshare</code> directory you created in <a class="link" href="assembly_configuring-active-passive-nfs-server-in-a-cluster-configuring-and-managing-high-availability-clusters.html#proc_configuring-nfs-share-configuring-ha-nfs" title="Configuring an NFS share">Configuring an NFS share</a>.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs resource create nfsshare Filesystem</code> \
+<code class="literal">device=/dev/my_vg/my_lv directory=/nfsshare</code> \
+<code class="literal">fstype=ext4 --group nfsgroup</code></pre><p class="simpara">
+						You can specify mount options as part of the resource configuration for a <code class="literal">Filesystem</code> resource with the <code class="literal">options=<span class="emphasis"><em>options</em></span></code> parameter. Run the <code class="literal">pcs resource describe Filesystem</code> command for full configuration options.
+					</p></li><li class="listitem"><p class="simpara">
+						Verify that the <code class="literal">my_lvm</code> and <code class="literal">nfsshare</code> resources are running.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs status</code>
+...
+Full list of resources:
+ myapc  (stonith:fence_apc_snmp):       Started z1.example.com
+ Resource Group: nfsgroup
+     my_lvm     (ocf::heartbeat:LVM):   Started z1.example.com
+     nfsshare   (ocf::heartbeat:Filesystem):    Started z1.example.com
+...</pre></li><li class="listitem"><p class="simpara">
+						Create the <code class="literal">nfsserver</code> resource named <code class="literal">nfs-daemon</code> as part of the resource group <code class="literal">nfsgroup</code>.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The <code class="literal">nfsserver</code> resource allows you to specify an <code class="literal">nfs_shared_infodir</code> parameter, which is a directory that NFS servers use to store NFS-related stateful information.
+						</p><p>
+							It is recommended that this attribute be set to a subdirectory of one of the <code class="literal">Filesystem</code> resources you created in this collection of exports. This ensures that the NFS servers are storing their stateful information on a device that will become available to another node if this resource group needs to relocate. In this example;
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									<code class="literal">/nfsshare</code> is the shared-storage directory managed by the <code class="literal">Filesystem</code> resource
+								</li><li class="listitem">
+									<code class="literal">/nfsshare/exports/export1</code> and <code class="literal">/nfsshare/exports/export2</code> are the export directories
+								</li><li class="listitem">
+									<code class="literal">/nfsshare/nfsinfo</code> is the shared-information directory for the <code class="literal">nfsserver</code> resource
+								</li></ul></div></div><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs resource create nfs-daemon nfsserver</code> \
+<code class="literal">nfs_shared_infodir=/nfsshare/nfsinfo nfs_no_notify=true</code> \
+<code class="literal">--group nfsgroup</code>
+
+[root@z1 ~]# <code class="literal">pcs status</code>
+...</pre></li><li class="listitem"><p class="simpara">
+						Add the <code class="literal">exportfs</code> resources to export the <code class="literal">/nfsshare/exports</code> directory. These resources are part of the resource group <code class="literal">nfsgroup</code>. This builds a virtual directory for NFSv4 clients. NFSv3 clients can access these exports as well.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The <code class="literal">fsid=0</code> option is required only if you want to create a virtual directory for NFSv4 clients. For more information, see <a class="link" href="https://access.redhat.com/solutions/548083/">How do I configure the fsid option in an NFS server’s /etc/exports file?</a>.
+						</p></div><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs resource create nfs-root exportfs</code> \
+<code class="literal">clientspec=192.168.122.0/255.255.255.0</code> \
+<code class="literal">options=rw,sync,no_root_squash</code> \
+<code class="literal">directory=/nfsshare/exports</code> \
+<code class="literal">fsid=0 --group nfsgroup</code>
+
+[root@z1 ~]# # <code class="literal">pcs resource create nfs-export1 exportfs</code> \
+<code class="literal">clientspec=192.168.122.0/255.255.255.0</code> \
+<code class="literal">options=rw,sync,no_root_squash directory=/nfsshare/exports/export1</code> \
+<code class="literal">fsid=1 --group nfsgroup</code>
+
+[root@z1 ~]# # <code class="literal">pcs resource create nfs-export2 exportfs</code> \
+<code class="literal">clientspec=192.168.122.0/255.255.255.0</code> \
+<code class="literal">options=rw,sync,no_root_squash directory=/nfsshare/exports/export2</code> \
+<code class="literal">fsid=2 --group nfsgroup</code></pre></li><li class="listitem"><p class="simpara">
+						Add the floating IP address resource that NFS clients will use to access the NFS share. This resource is part of the resource group <code class="literal">nfsgroup</code>. For this example deployment, we are using 192.168.122.200 as the floating IP address.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs resource create nfs_ip IPaddr2</code> \
+<code class="literal">ip=192.168.122.200 cidr_netmask=24 --group nfsgroup</code></pre></li><li class="listitem"><p class="simpara">
+						Add an <code class="literal">nfsnotify</code> resource for sending NFSv3 reboot notifications once the entire NFS deployment has initialized. This resource is part of the resource group <code class="literal">nfsgroup</code>.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							For the NFS notification to be processed correctly, the floating IP address must have a host name associated with it that is consistent on both the NFS servers and the NFS client.
+						</p></div><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs resource create nfs-notify nfsnotify</code> \
+<code class="literal">source_host=192.168.122.200 --group nfsgroup</code></pre></li><li class="listitem"><p class="simpara">
+						After creating the resources and the resource constraints, you can check the status of the cluster. Note that all resources are running on the same node.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs status</code>
+...
+Full list of resources:
+ myapc  (stonith:fence_apc_snmp):       Started z1.example.com
+ Resource Group: nfsgroup
+     my_lvm     (ocf::heartbeat:LVM):   Started z1.example.com
+     nfsshare   (ocf::heartbeat:Filesystem):    Started z1.example.com
+     nfs-daemon (ocf::heartbeat:nfsserver):     Started z1.example.com
+     nfs-root   (ocf::heartbeat:exportfs):      Started z1.example.com
+     nfs-export1        (ocf::heartbeat:exportfs):      Started z1.example.com
+     nfs-export2        (ocf::heartbeat:exportfs):      Started z1.example.com
+     nfs_ip     (ocf::heartbeat:IPaddr2):       Started  z1.example.com
+     nfs-notify (ocf::heartbeat:nfsnotify):     Started z1.example.com
+...</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_testing-nfs-resource-configuration-configuring-ha-nfs"/>Testing the NFS resource configuration</h1></div></div></div><p>
+				You can validate your system configuration with the following procedures. You should be able to mount the exported file system with either NFSv3 or NFSv4.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="testing_the_nfs_export"/>Testing the NFS export</h2></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							On a node outside of the cluster, residing in the same network as the deployment, verify that the NFS share can be seen by mounting the NFS share. For this example, we are using the 192.168.122.0/24 network.
+						</p><pre class="literallayout"># <code class="literal">showmount -e 192.168.122.200</code>
+Export list for 192.168.122.200:
+/nfsshare/exports/export1 192.168.122.0/255.255.255.0
+/nfsshare/exports         192.168.122.0/255.255.255.0
+/nfsshare/exports/export2 192.168.122.0/255.255.255.0</pre></li><li class="listitem"><p class="simpara">
+							To verify that you can mount the NFS share with NFSv4, mount the NFS share to a directory on the client node. After mounting, verify that the contents of the export directories are visible. Unmount the share after testing.
+						</p><pre class="literallayout"># <code class="literal">mkdir nfsshare</code>
+# <code class="literal">mount -o "vers=4" 192.168.122.200:export1 nfsshare</code>
+# <code class="literal">ls nfsshare</code>
+clientdatafile1
+# <code class="literal">umount nfsshare</code></pre></li><li class="listitem"><p class="simpara">
+							Verify that you can mount the NFS share with NFSv3. After mounting, verify that the test file <code class="literal">clientdatafile1</code> is visible. Unlike NFSv4, since NFSv3 does not use the virtual file system, you must mount a specific export. Unmount the share after testing.
+						</p><pre class="literallayout"># <code class="literal">mkdir nfsshare</code>
+# <code class="literal">mount -o "vers=3" 192.168.122.200:/nfsshare/exports/export2 nfsshare</code>
+# <code class="literal">ls nfsshare</code>
+clientdatafile2
+# <code class="literal">umount nfsshare</code></pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="testing_for_failover"/>Testing for failover</h2></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							On a node outside of the cluster, mount the NFS share and verify access to the <code class="literal">clientdatafile1</code> we created in <a class="link" href="assembly_configuring-active-passive-nfs-server-in-a-cluster-configuring-and-managing-high-availability-clusters.html#proc_configuring-nfs-share-configuring-ha-nfs" title="Configuring an NFS share">Configuring an NFS share</a>
+						</p><pre class="literallayout"># <code class="literal">mkdir nfsshare</code>
+# <code class="literal">mount -o "vers=4" 192.168.122.200:export1 nfsshare</code>
+# <code class="literal">ls nfsshare</code>
+clientdatafile1</pre></li><li class="listitem"><p class="simpara">
+							From a node within the cluster, determine which node in the cluster is running <code class="literal">nfsgroup</code>. In this example, <code class="literal">nfsgroup</code> is running on <code class="literal">z1.example.com</code>.
+						</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs status</code>
+...
+Full list of resources:
+ myapc  (stonith:fence_apc_snmp):       Started z1.example.com
+ Resource Group: nfsgroup
+     my_lvm     (ocf::heartbeat:LVM):   Started z1.example.com
+     nfsshare   (ocf::heartbeat:Filesystem):    Started z1.example.com
+     nfs-daemon (ocf::heartbeat:nfsserver):     Started z1.example.com
+     nfs-root   (ocf::heartbeat:exportfs):      Started z1.example.com
+     nfs-export1        (ocf::heartbeat:exportfs):      Started z1.example.com
+     nfs-export2        (ocf::heartbeat:exportfs):      Started z1.example.com
+     nfs_ip     (ocf::heartbeat:IPaddr2):       Started  z1.example.com
+     nfs-notify (ocf::heartbeat:nfsnotify):     Started z1.example.com
+...</pre></li><li class="listitem"><p class="simpara">
+							From a node within the cluster, put the node that is running <code class="literal">nfsgroup</code> in standby mode.
+						</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs node standby z1.example.com</code></pre></li><li class="listitem"><p class="simpara">
+							Verify that <code class="literal">nfsgroup</code> successfully starts on the other cluster node.
+						</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs status</code>
+...
+Full list of resources:
+ Resource Group: nfsgroup
+     my_lvm     (ocf::heartbeat:LVM):   Started z2.example.com
+     nfsshare   (ocf::heartbeat:Filesystem):    Started z2.example.com
+     nfs-daemon (ocf::heartbeat:nfsserver):     Started z2.example.com
+     nfs-root   (ocf::heartbeat:exportfs):      Started z2.example.com
+     nfs-export1        (ocf::heartbeat:exportfs):      Started z2.example.com
+     nfs-export2        (ocf::heartbeat:exportfs):      Started z2.example.com
+     nfs_ip     (ocf::heartbeat:IPaddr2):       Started  z2.example.com
+     nfs-notify (ocf::heartbeat:nfsnotify):     Started z2.example.com
+...</pre></li><li class="listitem"><p class="simpara">
+							From the node outside the cluster on which you have mounted the NFS share, verify that this outside node still continues to have access to the test file within the NFS mount.
+						</p><pre class="literallayout"># <code class="literal">ls nfsshare</code>
+clientdatafile1</pre><p class="simpara">
+							Service will be lost briefly for the client during the failover but the client should recover it with no user intervention. By default, clients using NFSv4 may take up to 90 seconds to recover the mount; this 90 seconds represents the NFSv4 file lease grace period observed by the server on startup. NFSv3 clients should recover access to the mount in a matter of a few seconds.
+						</p></li><li class="listitem"><p class="simpara">
+							From a node within the cluster, remove the node that was initially running running <code class="literal">nfsgroup</code> from standby mode. This will not in itself move the cluster resources back to this node.
+						</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs cluster unstandby z1.example.com</code></pre></li></ol></div></div></div></div></body></html>

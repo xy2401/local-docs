@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 5. Deploying cloud images with Image Builder</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="creating-cloud-images-with-composer_composing-a-customized-rhel-system-image"/>Chapter 5. Deploying cloud images with Image Builder</h1></div></div></div><p>
+			Image Builder can create custom system images ready for use in clouds of various providers. To use your customized RHEL system image in a cloud, create the system image with Image Builder using the respective output type, configure your system for uploading the image, and upload the image to your cloud account.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="preparing-for-uploading-aws-ami-images_creating-cloud-images-with-composer"/>Preparing for uploading AWS AMI images</h1></div></div></div><p>
+				This describes steps to configure a system for uploading AWS AMI images.
+			</p><div class="itemizedlist"><p class="title"><strong>Prerequisites</strong></p><ul class="itemizedlist"><li class="listitem">
+						You must have an Access Key ID configured in the <a class="link" href="https://aws.amazon.com/iam/">AWS IAM account manager</a>.
+					</li><li class="listitem">
+						You must have a writable <a class="link" href="https://aws.amazon.com/s3/">S3 bucket</a> prepared.
+					</li></ul></div><div class="orderedlist"><p class="title"><strong>Procedure</strong></p><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Install Python 3 and the <code class="literal">pip</code> tool:
+					</p><pre class="screen"># yum install python3
+# yum install python3-pip</pre></li><li class="listitem"><p class="simpara">
+						Install the <a class="link" href="https://aws.amazon.com/cli/">AWS command line tools</a> with <code class="literal">pip</code>:
+					</p><pre class="screen"># pip3 install awscli</pre></li><li class="listitem"><p class="simpara">
+						Configure the AWS command line client according to your AWS access details:
+					</p><pre class="screen">$ aws configure
+AWS Access Key ID [None]:
+AWS Secret Access Key [None]:
+Default region name [None]:
+Default output format [None]:</pre></li><li class="listitem"><p class="simpara">
+						Configure the AWS command line client to use your bucket:
+					</p><pre class="screen">$ BUCKET=<span class="emphasis"><em>bucketname</em></span>
+$ aws s3 mb s3://$BUCKET</pre><p class="simpara">
+						Replace <span class="emphasis"><em>bucketname</em></span> with the actual bucket name.
+					</p></li><li class="listitem"><p class="simpara">
+						Create a <code class="literal">vmimport</code> S3 Role in IAM and grant it permissions to access S3, if you have not already done so in the past:
+					</p><pre class="screen">$ printf '{ "Version": "2012-10-17", "Statement": [ { "Effect": "Allow", "Principal": { "Service": "vmie.amazonaws.com" }, "Action": "sts:AssumeRole", "Condition": { "StringEquals":{ "sts:Externalid": "vmimport" } } } ] }' &gt; trust-policy.json
+$ printf '{ "Version":"2012-10-17", "Statement":[ { "Effect":"Allow", "Action":[ "s3:GetBucketLocation", "s3:GetObject", "s3:ListBucket" ], "Resource":[ "arn:aws:s3:::%s", "arn:aws:s3:::%s/*" ] }, { "Effect":"Allow", "Action":[ "ec2:ModifySnapshotAttribute", "ec2:CopySnapshot", "ec2:RegisterImage", "ec2:Describe*" ], "Resource":"*" } ] }' $BUCKET $BUCKET &gt; role-policy.json
+$ aws iam create-role --role-name vmimport --assume-role-policy-document file://trust-policy.json
+$ aws iam put-role-policy --role-name vmimport --policy-name vmimport --policy-document file://role-policy.json</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="uploading-an-ami-image-to-aws_creating-cloud-images-with-composer"/>Uploading an AMI image to AWS</h1></div></div></div><p>
+				This section describes how to upload an AMI image to AWS.
+			</p><div class="itemizedlist"><p class="title"><strong>Prerequisites</strong></p><ul class="itemizedlist"><li class="listitem">
+						Your system must be set up for uploading AWS images.
+					</li><li class="listitem">
+						You must have an AWS image created by Image Builder. Use the <code class="literal">ami</code> output type in CLI or <span class="strong"><strong><span class="GUI">Amazon Machine Image Disk (.ami)</span></strong></span> in GUI when creating the image.
+					</li></ul></div><div class="orderedlist"><p class="title"><strong>Procedure</strong></p><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Push the image to S3:
+					</p><pre class="screen">$ AMI=<span class="emphasis"><em>8db1b463-91ee-4fd9-8065-938924398428-disk.ami</em></span>
+$ aws s3 cp $AMI s3://$BUCKET
+Completed 24.2 MiB/4.4 GiB (2.5 MiB/s) with 1 file(s) remaining
+...</pre></li><li class="listitem"><p class="simpara">
+						After the upload to S3 ends, import the image as a snapshot into EC2:
+					</p><pre class="screen">$ printf '{ "Description": "<span class="emphasis"><em>my-image</em></span>", "Format": "raw", "UserBucket": { "S3Bucket": "%s", "S3Key": "%s" } }' $BUCKET $AMI &gt; containers.json
+$ aws ec2 import-snapshot --disk-container file://containers.json</pre><p class="simpara">
+						Replace <span class="emphasis"><em>my-image</em></span> with the name of the image.
+					</p><p class="simpara">
+						To track progress of the import, run:
+					</p><pre class="screen">$ aws ec2 describe-import-snapshot-tasks --filters Name=task-state,Values=active</pre></li><li class="listitem"><p class="simpara">
+						Create an image from the uploaded snapshot by selecting the snapshot in the EC2 console, right clicking on it and selecting <code class="literal">Create Image</code>:
+					</p><p class="simpara">
+						<span class="inlinemediaobject"><img src="images/composer-aws-ec2-select-snapshot.png" alt="composer aws ec2 select snapshot"/></span>
+
+					</p></li><li class="listitem"><p class="simpara">
+						Select the <span class="strong"><strong><span class="GUI"><code class="literal">Virtualization</code> type of <code class="literal">Hardware-assisted virtualization</code></span></strong></span> in the image you create:
+					</p><p class="simpara">
+						<span class="inlinemediaobject"><img src="images/composer-aws-ec2-create-image.png" alt="composer aws ec2 create image"/></span>
+
+					</p></li><li class="listitem">
+						Now you can run an instance using whatever mechanism you like (CLI or AWS Console) from the snapshot. Use your private key via SSH to access the resulting EC2 instance. Log in as <code class="literal">ec2-user</code>.
+					</li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="uploading-vmdk-images-to-vsphere_creating-cloud-images-with-composer"/>Uploading VMDK images to vSphere</h1></div></div></div><p>
+				Image Builder can generate images suitable for uploading to a VMware ESXi or vSphere system. This describes steps to upload an VMDK image to VMware vSphere.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Because VMWare deployments typically does not have cloud-init configured to inject user credentials to virtual machines, we must perform that task ourselves on the blueprint.
+				</p></div><div class="itemizedlist"><p class="title"><strong>Prerequisites</strong></p><ul class="itemizedlist"><li class="listitem">
+						You must have an VMDK image created by Image Builder. Use the <code class="literal">vmdk</code> output type in CLI or <span class="strong"><strong><span class="GUI">VMware Virtual Machine Disk (.vmdk)</span></strong></span> in GUI when creating the image.
+					</li></ul></div><div class="orderedlist"><p class="title"><strong>Procedure</strong></p><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Upload the image into vSphere via HTTP. Click on <code class="literal">Upload Files</code> in the vCenter:
+					</p><p class="simpara">
+						<span class="inlinemediaobject"><img src="images/composer-vmware-upload-image.png" alt="composer vmware upload image"/></span>
+
+					</p></li><li class="listitem"><p class="simpara">
+						When you create a VM, on the <code class="literal">Device Configuration</code>, delete the default <code class="literal">New Hard Disk</code> and use the drop-down to select an <code class="literal">Existing Hard Disk</code> disk image:
+					</p><p class="simpara">
+						<span class="inlinemediaobject"><img src="images/composer-vmware-existing-disk.png" alt="composer vmware existing disk"/></span>
+
+					</p></li><li class="listitem"><p class="simpara">
+						Make sure you use an <code class="literal">IDE</code> device as the <code class="literal">Virtual Device Node</code> for the disk you create. The default value <code class="literal">SCSI</code> results in an unbootable virtual machine.
+					</p><p class="simpara">
+						<span class="inlinemediaobject"><img src="images/composer-vmware-existing-ide.png" alt="composer vmware existing ide"/></span>
+
+					</p></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="uploading-and-qcow2-image-on-openstack_creating-cloud-images-with-composer"/>Uploading QCOW2 image to OpenStack</h1></div></div></div><p>
+				Image Builder can generate images suitable for uploading to OpenStack cloud deployments, and starting instances there. This describes steps to upload an QCOW2 image to OpenStack.
+			</p><div class="itemizedlist"><p class="title"><strong>Prerequisites</strong></p><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						You must have an OpenStack-specific image created by Image Builder. Use the <code class="literal">openstack</code> output type in CLI or <span class="strong"><strong><span class="GUI">OpenStack Image (.qcow2)</span></strong></span> in GUI when creating the image.
+					</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+							Image Builder also offers a generic QCOW2 image type output format as <code class="literal">qcow2</code> or <span class="strong"><strong><span class="GUI">QEMU QCOW2 Image (.qcow2)</span></strong></span>. Do not mistake it with the OpenStack image type which is also in the QCOW2 format, but contains further changes specific to OpenStack.
+						</p></div></li></ul></div><div class="orderedlist"><p class="title"><strong>Procedure</strong></p><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Upload the image to OpenStack and start an instance from it. Use the <code class="literal">Images</code> interface to do this:
+					</p><p class="simpara">
+						<span class="inlinemediaobject"><img src="images/composer-openstack-upload-image.png" alt="composer openstack upload image"/></span>
+
+					</p></li><li class="listitem"><p class="simpara">
+						Start an instance with that image:
+					</p><p class="simpara">
+						<span class="inlinemediaobject"><img src="images/composer-openstack-start-instance.png" alt="composer openstack start instance"/></span>
+
+					</p></li><li class="listitem">
+						You can run the instance using any mechanism (CLI or OpenStack web UI) from the snapshot. Use your private key via SSH to access the resulting instance. Log in as <code class="literal">cloud-user</code>.
+					</li></ol></div></div></div></body></html>

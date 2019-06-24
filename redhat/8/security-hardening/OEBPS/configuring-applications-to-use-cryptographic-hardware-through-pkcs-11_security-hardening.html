@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 4. Configuring applications to use cryptographic hardware through PKCS #11</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="configuring-applications-to-use-cryptographic-hardware-through-pkcs-11_security-hardening"/>Chapter 4. Configuring applications to use cryptographic hardware through PKCS #11</h1></div></div></div><p>
+			Separating parts of your secret information on dedicated cryptographic devices, such as smart cards and cryptographic tokens for end-user authentication and hardware security modules (HSM) for server applications, provides an additional layer of security. In Red Hat Enterprise Linux 8, support for cryptographic hardware through the PKCS #11 API is consistent across different applications, and the isolation of secrets on cryptographic hardware is not a complicated task.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="cryptographic-hardware-support-through-pkcs-11_configuring-applications-to-use-cryptographic-hardware-through-pkcs-11"/>Cryptographic hardware support through PKCS #11</h1></div></div></div><p>
+				PKCS #11 (Public-Key Cryptography Standard) defines an application programming interface (API) to cryptographic devices that hold cryptographic information and perform cryptographic functions. The devices are called tokens and they can be implemented in hardware or software.
+			</p><p>
+				The set of storage object types that can be stored in a PKCS #11 token includes a certificate; a data object; and a public, private, or secret key. These objects can be uniquely identifiable through the PKCS #11 URI scheme.
+			</p><p>
+				PKCS#11 URIs provide a standard way to identify a specific object on a PKCS#11 module according to their attributes. That enables you to configure all libraries and applications with the same configuration string in the form of a URI.
+			</p><p>
+				Red Hat Enterprise Linux 8 provides the OpenSC PKCS #11 driver for smart cards by default. However, hardware tokens and HSMs can have their own PKCS #11 modules that do not have their counterpart in Red Hat Enterprise Linux. You can register such PKCS #11 modules with the <code class="literal">p11-kit</code> tool, which acts as a wrapper over the registered smart card drivers in the system.
+			</p><p>
+				To make your own PKCS #11 module work on the system, add a new text file to the <code class="literal">/etc/pkcs11/modules/</code> directory
+			</p><p>
+				Adding your own PKCS #11 module into the system requires only creating a new text file in the <code class="literal">/etc/pkcs11/modules/</code> directory. For example, the OpenSC configuration file in <code class="literal">p11-kit</code> looks as follows:
+			</p><pre class="screen">$ cat /usr/share/p11-kit/modules/opensc.module
+module: opensc-pkcs11.so</pre><h3><a id="additional_resources_5"/>Additional resources</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<a class="link" href="https://tools.ietf.org/html/rfc7512">The PKCS #11 URI Scheme</a>
+					</li><li class="listitem">
+						<a class="link" href="https://access.redhat.com/blogs/766093/posts/1976313">Controlling access to smart cards</a>
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="using-ssh-keys-stored-on-a-smart-card_configuring-applications-to-use-cryptographic-hardware-through-pkcs-11"/>Using SSH keys stored on a smart card</h1></div></div></div><p>
+				Red Hat Enterprise Linux 8 enables you to use RSA and ECDSA keys stored on a smart card on OpenSSH clients.
+			</p><h3><a id="prerequisites"/>Prerequisites</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						On the client side, the <code class="literal">opensc</code> package is installed and the <code class="literal">pcscd</code> service is running.
+					</li></ul></div><h3><a id="procedure_3"/>Procedure</h3><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						List all keys provided by the OpenSC PKCS#11 module including their PKCS#11 URIs and save the output to the <span class="emphasis"><em>keys.pub</em></span> file:
+					</p><pre class="screen">$ ssh-keygen -D pkcs11: &gt; <span class="emphasis"><em>keys.pub</em></span>
+$ ssh-keygen -D pkcs11:
+ssh-rsa AAAAB3NzaC1yc2E...KKZMzcQZzx pkcs11:id=%02;object=SIGN%20pubkey;token=SSH%20key;manufacturer=piv_II?module-path=/usr/lib64/pkcs11/opensc-pkcs11.so
+ecdsa-sha2-nistp256 AAA...J0hkYnnsM= pkcs11:id=%01;object=PIV%20AUTH%20pubkey;token=SSH%20key;manufacturer=piv_II?module-path=/usr/lib64/pkcs11/opensc-pkcs11.so</pre></li><li class="listitem"><p class="simpara">
+						To enable authentication using a smart card on a remote server (<span class="emphasis"><em>example.com</em></span>), transfer the public key to the remote server. Use the <code class="literal">ssh-copy-id</code> command with <span class="emphasis"><em>keys.pub</em></span> created in the previous step:
+					</p><pre class="screen">ssh-copy-id -f -i <span class="emphasis"><em>keys.pub</em></span> <span class="emphasis"><em>username@example.com</em></span></pre></li><li class="listitem"><p class="simpara">
+						To connect to <span class="emphasis"><em>example.com</em></span> using the ECDSA key from the output of the <code class="literal">ssh-keygen -D</code> command in step 1, you can use just a subset of the URI, which uniquely references your key, for example:
+					</p><pre class="screen">$ ssh -i "pkcs11:id=%01?module-path=/usr/lib64/pkcs11/opensc-pkcs11.so" <span class="emphasis"><em>example.com</em></span>
+Enter PIN for 'SSH key':
+[example.com] $</pre></li><li class="listitem"><p class="simpara">
+						You can use the same URI string in the <code class="literal">~/.ssh/config</code> file to make the configuration permanent:
+					</p><pre class="screen">$ cat ~/.ssh/config
+IdentityFile "pkcs11:id=%01?module-path=/usr/lib64/pkcs11/opensc-pkcs11.so"
+$ ssh <span class="emphasis"><em>example.com</em></span>
+Enter PIN for 'SSH key':
+[example.com] $</pre><p class="simpara">
+						Because OpenSSH uses the <code class="literal">p11-kit-proxy</code> wrapper and the OpenSC PKCS #11 module is registered to PKCS#11 Kit, you can simplify the previous commands:
+					</p><pre class="screen">$ ssh -i "pkcs11:id=%01" <span class="emphasis"><em>example.com</em></span>
+Enter PIN for 'SSH key':
+[example.com] $</pre></li></ol></div><p>
+				If you skip the <code class="literal">id=</code> part of a PKCS #11 URI, OpenSSH loads all keys that are available in the proxy module. This can reduce the amount of typing required:
+			</p><pre class="screen">$ ssh -i pkcs11: <span class="emphasis"><em>example.com</em></span>
+Enter PIN for 'SSH key':
+[example.com] $</pre><h3><a id="additional_resources_6"/>Additional resources</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<a class="link" href="https://fedoramagazine.org/fedora-28-better-smart-card-support-openssh/">Fedora 28: Better smart card support in OpenSSH</a>
+					</li><li class="listitem">
+						<code class="literal">p11-kit(8)</code> man page
+					</li><li class="listitem">
+						<code class="literal">ssh(1)</code> man page
+					</li><li class="listitem">
+						<code class="literal">ssh-keygen(1)</code> man page
+					</li><li class="listitem">
+						<code class="literal">pcscd(8)</code> man page
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="using-hsms-protecting-private-keys-in-apache-and-nginx_configuring-applications-to-use-cryptographic-hardware-through-pkcs-11"/>Using HSMs protecting private keys in Apache and Nginx</h1></div></div></div><p>
+				The <code class="literal">Apache</code> and <code class="literal">Nginx</code> HTTP servers can work with private keys stored on hardware security modules (HSMs), which helps to prevent the keys' disclosure and man-in-the-middle attacks. Note that this usually requires high-performance HSMs for busy servers.
+			</p><div class="title"><strong><code class="literal">Apache</code> HTTP server</strong></div><p>
+					For secure communication in the form of the HTTPS protocol, the <code class="literal">Apache</code> HTTP server (<code class="literal">httpd</code>) uses the OpenSSL library. OpenSSL does not support PKCS #11 natively. To utilize HSMs, you have to install the <code class="literal">openssl-pkcs11</code> package, which provides access to PKCS #11 modules through the engine interface. You can use a PKCS #11 URI instead of a regular file name to specify a server key and a certificate in the <code class="literal">/etc/httpd/conf.d/ssl.conf</code> configuration file, for example:
+				</p><pre class="screen">SSLCertificateFile    "pkcs11:id=%01;token=softhsm;type=cert"
+SSLCertificateKeyFile "pkcs11:id=%01;token=softhsm;type=private?pin-value=111111"</pre><p>
+				Install the <code class="literal">httpd-manual</code> package to obtain complete documentation for the <code class="literal">Apache</code> HTTP Server, including TLS configuration. The directives available in the <code class="literal">/etc/httpd/conf.d/ssl.conf</code> configuration file are described in detail in <a class="link" href="file:///usr/share/httpd/manual/mod/mod_ssl.html">/usr/share/httpd/manual/mod/mod_ssl.html</a>.
+			</p><div class="title"><strong><code class="literal">Nginx</code> HTTP and proxy server</strong></div><p>
+					Because <code class="literal">Nginx</code> also uses the OpenSSL for cryptographic operations, support for PKCS #11 must go through the <code class="literal">openssl-pkcs11</code> engine. <code class="literal">Nginx</code> currently supports only loading private keys from an HSM, and a certificate must be provided separately as a regular file. Modify the <code class="literal">ssl_certificate</code> and <code class="literal">ssl_certificate_key</code> options in the <code class="literal">server</code> section of the <code class="literal">/etc/nginx/nginx.conf</code> configuration file:
+				</p><pre class="screen">ssl_certificate     /path/to/cert.pem
+ssl_certificate_key "engine:pkcs11:pkcs11:token=softhsm;id=%01;type=private?pin-value=111111";</pre><p>
+				Note that the <code class="literal">engine:pkcs11:</code> prefix is needed for the PKCS #11 URI in the <code class="literal">Nginx</code> configuration file. This is because the other <code class="literal">pkcs11</code> prefix refers to the engine name.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring-applications-to-authenticate-using-certificates-from-smart-cards_configuring-applications-to-use-cryptographic-hardware-through-pkcs-11"/>Configuring applications to authenticate using certificates from smart cards</h1></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						The <code class="literal">wget</code> network downloader enables you to specify PKCS #11 URIs instead of paths to locally stored private keys, and thus simplifies creating scripts for tasks that require safely stored private keys and certificates. For example:
+					</p><pre class="screen">$ wget --private-key 'pkcs11:token=softhsm;id=%01;type=private?pin-value=111111' --certificate 'pkcs11:token=softhsm;id=%01;type=cert' https://example.com/</pre><p class="simpara">
+						See the <code class="literal">wget(1)</code> man page for more information.
+					</p></li><li class="listitem"><p class="simpara">
+						Specifying PKCS #11 URI for use by the <code class="literal">curl</code> tool is analogous:
+					</p><pre class="screen">$ curl --key 'pkcs11:token=softhsm;id=%01;type=private?pin-value=111111' --cert 'pkcs11:token=softhsm;id=%01;type=cert' <a class="link" href="https://example.com/">https://example.com/</a></pre><p class="simpara">
+						See the <code class="literal">curl(1)</code> man page for more information.
+					</p></li><li class="listitem">
+						The <code class="literal">Firefox</code> web browser automatically loads the <code class="literal">p11-kit-proxy</code> module. This means that every supported smart card in the system is automatically detected. For using TLS client authentication, no additional setup is required and keys from a smart card are automatically used when a server requests them.
+					</li></ul></div><div class="title"><strong>Using PKCS #11 URIs in custom applications</strong></div><p>
+					If your application uses the <code class="literal">GnuTLS</code> or <code class="literal">NSS</code> library, support for PKCS #11 URIs is ensured by their built-in support for PKCS #11. Also, applications relying on the <code class="literal">OpenSSL</code> library can access cryptographic hardware modules thanks to the <code class="literal">openssl-pkcs11</code> engine.
+				</p><p>
+				With applications that require working with private keys on smart cards and that do not use <code class="literal">NSS</code>, <code class="literal">GnuTLS</code>, or <code class="literal">OpenSSL</code>, use <code class="literal">p11-kit</code> to implement registering PKCS #11 modules.
+			</p><p>
+				See the <code class="literal">p11-kit(8)</code> man page for more information.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="related-information-configuring-applications-to-use-cryptographic-hardware-through-pkcs-11"/>Related information</h1></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<code class="literal">pkcs11.conf(5)</code> man page
+					</li></ul></div></div></div></body></html>

@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 4. Creating a Red Hat High-Availability cluster with Pacemaker</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_creating-high-availability-cluster-configuring-and-managing-high-availability-clusters"/>Chapter 4. Creating a Red Hat High-Availability cluster with Pacemaker</h1></div></div></div><p>
+			The following procedure creates a Red Hat High Availability two-node cluster using <code class="literal">pcs</code>.
+		</p><p>
+			Configuring the cluster in this example requires that your system include the following components:
+		</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+					2 nodes, which will be used to create the cluster. In this example, the nodes used are <code class="literal">z1.example.com</code> and <code class="literal">z2.example.com</code>.
+				</li><li class="listitem">
+					Network switches for the private network. We recommend but do not require a private network for communication among the cluster nodes and other cluster hardware such as network power switches and Fibre Channel switches.
+				</li><li class="listitem">
+					A fencing device for each node of the cluster. This example uses two ports of the APC power switch with a host name of <code class="literal">zapc.example.com</code>.
+				</li></ul></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_installing-cluster-software-creating-high-availability-cluster"/>Installing cluster software</h1></div></div></div><p>
+				The procedure for installing cluster software and configuring your system for cluster creation is as follows.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						On each node in the cluster, install the Red Hat High Availability Add-On software packages along with all available fence agents from the High Availability channel.
+					</p><pre class="literallayout"># <code class="literal">yum install pcs pacemaker fence-agents-all</code></pre><p class="simpara">
+						Alternatively, you can install the Red Hat High Availability Add-On software packages along with only the fence agent that you require with the following command.
+					</p><pre class="literallayout"># <code class="literal">yum install pcs pacemaker fence-agents-<span class="emphasis"><em>model</em></span></code></pre><p class="simpara">
+						The following command displays a listing of the available fence agents.
+					</p><pre class="literallayout"># <code class="literal">rpm -q -a | grep fence</code>
+fence-agents-rhevm-4.0.2-3.el7.x86_64
+fence-agents-ilo-mp-4.0.2-3.el7.x86_64
+fence-agents-ipmilan-4.0.2-3.el7.x86_64
+...</pre><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+							After you install the Red Hat High Availability Add-On packages, you should ensure that your software update preferences are set so that nothing is installed automatically. Installation on a running cluster can cause unexpected behaviors. For more information, see <a class="link" href="https://access.redhat.com/articles/2059253/">Recommended Practices for Applying Software Updates to a RHEL High Availability or Resilient Storage Cluster</a>.
+						</p></div></li><li class="listitem"><p class="simpara">
+						If you are running the <code class="literal">firewalld</code> daemon, execute the following commands to enable the ports that are required by the Red Hat High Availability Add-On.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							You can determine whether the <code class="literal">firewalld</code> daemon is installed on your system with the <code class="literal">rpm -q firewalld</code> command. If it is installed, you can determine whether it is running with the <code class="literal">firewall-cmd --state</code> command.
+						</p></div><pre class="literallayout"># <code class="literal">firewall-cmd --permanent --add-service=high-availability</code>
+# <code class="literal">firewall-cmd --add-service=high-availability</code></pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The ideal firewall configuration for cluster components depends on the local environment, where you may need to take into account such considerations as whether the nodes have multiple network interfaces or whether off-host firewalling is present. The example here, which opens the ports that are generally required by a Pacemaker cluster, should be modified to suit local conditions. <a class="link" href="assembly_creating-high-availability-cluster-configuring-and-managing-high-availability-clusters.html#proc_enabling-ports-for-high-availability-creating-high-availability-cluster" title="Enabling ports for the High Availability Add-On">Enabling ports for the High Availability Add-On</a> shows the ports to enable for the Red Hat High Availability Add-On and provides an explanation for what each port is used for.
+						</p></div></li><li class="listitem"><p class="simpara">
+						In order to use <code class="literal">pcs</code> to configure the cluster and communicate among the nodes, you must set a password on each node for the user ID <code class="literal">hacluster</code>, which is the <code class="literal">pcs</code> administration account. It is recommended that the password for user <code class="literal">hacluster</code> be the same on each node.
+					</p><pre class="literallayout"># <code class="literal">passwd hacluster</code>
+Changing password for user hacluster.
+New password:
+Retype new password:
+passwd: all authentication tokens updated successfully.</pre></li><li class="listitem"><p class="simpara">
+						Before the cluster can be configured, the <code class="literal">pcsd</code> daemon must be started and enabled to start up on boot on each node. This daemon works with the <code class="literal">pcs</code> command to manage configuration across the nodes in the cluster.
+					</p><p class="simpara">
+						On each node in the cluster, execute the following commands to start the <code class="literal">pcsd</code> service and to enable <code class="literal">pcsd</code> at system start.
+					</p><pre class="literallayout"># <code class="literal">systemctl start pcsd.service</code>
+# <code class="literal">systemctl enable pcsd.service</code></pre></li><li class="listitem"><p class="simpara">
+						Authenticate the <code class="literal">pcs</code> user <code class="literal">hacluster</code> for each node in the cluster on the node from which you will be running <code class="literal">pcs</code>.
+					</p><p class="simpara">
+						The following command authenticates user <code class="literal">hacluster</code> on <code class="literal">z1.example.com</code> for both of the nodes in the example two-node cluster, <code class="literal">z1.example.com</code> and <code class="literal">z2.example.com</code>.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs host auth z1.example.com z2.example.com</code>
+Username: <code class="literal">hacluster</code>
+Password:
+z1.example.com: Authorized
+z2.example.com: Authorized</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_creating-high-availability-cluster-creating-high-availability-cluster"/>Creating a high availability cluster</h1></div></div></div><p>
+				This procedure creates a Red Hat High Availability Add-On cluster that consists of the nodes <code class="literal">z1.example.com</code> and <code class="literal">z2.example.com</code>.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Execute the following command from <code class="literal">z1.example.com</code> to create the two-node cluster <code class="literal">my_cluster</code> that consists of nodes <code class="literal">z1.example.com</code> and <code class="literal">z2.example.com</code>. This will propagate the cluster configuration files to both nodes in the cluster. This command includes the <code class="literal">--start</code> option, which will start the cluster services on both nodes in the cluster.
+					</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs cluster setup my_cluster --start</code> <code class="literal">z1.example.com z2.example.com</code></pre></li><li class="listitem"><p class="simpara">
+						Enable the cluster services to run on each node in the cluster when the node is booted.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							For your particular environment, you may choose to leave the cluster services disabled by skipping this step. This allows you to ensure that if a node goes down, any issues with your cluster or your resources are resolved before the node rejoins the cluster. If you leave the cluster services disabled, you will need to manually start the services when you reboot a node by executing the <code class="literal">pcs cluster start</code> command on that node.
+						</p></div><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs cluster enable --all</code></pre></li></ol></div><p>
+				You can display the current status of the cluster with the <code class="literal">pcs cluster status</code> command. Because there may be a slight delay before the cluster is up and running when you start the cluster services with the <code class="literal">--start</code> option of the <code class="literal">pcs cluster setup</code> command, you should ensure that the cluster is up and running before performing any subsequent actions on the cluster and its configuration.
+			</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs cluster status</code>
+Cluster Status:
+ Stack: corosync
+ Current DC: z2.example.com (version 2.0.0-10.el8-b67d8d0de9) - partition with quorum
+ Last updated: Thu Oct 11 16:11:18 2018
+ Last change: Thu Oct 11 16:11:00 2018 by hacluster via crmd on z2.example.com
+ 2 Nodes configured
+ 0 Resources configured
+
+...</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_configure-multiple-ip-creating-high-availability-cluster"/>Creating a high availability cluster with multiple links</h1></div></div></div><p>
+				You can use the <code class="literal">pcs cluster setup</code> command to create a Red Hat High Availability cluster with multiple links by specifying all of the links for each node.
+			</p><p>
+				The format for the command to create a two-node cluster with two links is as follows.
+			</p><pre class="literallayout">pcs cluster setup <span class="emphasis"><em>cluster_name</em></span> <span class="emphasis"><em>node1_name</em></span> addr=<span class="emphasis"><em>node1_link0_address</em></span> addr=<span class="emphasis"><em>node1_link1_address</em></span> <span class="emphasis"><em>node2_name</em></span> addr=<span class="emphasis"><em>node2_link0_address</em></span> addr=<span class="emphasis"><em>node2_link1_address</em></span></pre><p>
+				When creating a cluster with multiple links, you should take the following into account.
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						The order of the <code class="literal">addr=<span class="emphasis"><em>address</em></span></code> parameters is important. The first address specified after a node name is for <code class="literal">link0</code>, the second one for <code class="literal">link1</code>, and so forth.
+					</li><li class="listitem">
+						It is possible to specify up to eight links using the knet transport protocol, which is the default transport protocol.
+					</li><li class="listitem">
+						All nodes must have the same number of <code class="literal">addr=</code> parameters.
+					</li><li class="listitem">
+						Currently, it is not possible to add, remove, or change links in an existing cluster using the <code class="literal">pcs</code> command.
+					</li><li class="listitem">
+						As with single-link clusters, do not mix IPv4 and IPv6 addresses in one link, although you can have one link running IPv4 and the other running IPv6.
+					</li><li class="listitem">
+						As with single-link clusters, you can specify addresses as IP addresses or as names as long as the names resolve to IPv4 or IPv6 addresses for which IPv4 and IPv6 addresses are not mixed in one link.
+					</li></ul></div><p>
+				The following example creates a two-node cluster named <code class="literal">my_twolink_cluster</code> with two nodes, <code class="literal">rh80-node1</code> and <code class="literal">rh80-node2</code>. <code class="literal">rh80-node1</code> has two interfaces, IP address 192.168.122.201 as <code class="literal">link0</code> and 192.168.123.201 as <code class="literal">link1</code>. <code class="literal">rh80-node2</code> has two interfaces, IP address 192.168.122.202 as <code class="literal">link0</code> and 192.168.123.202 as <code class="literal">link1</code>.
+			</p><pre class="literallayout"># <code class="literal">pcs cluster setup my_twolink_cluster rh80-node1 addr=192.168.122.201 addr=192.168.123.201 rh80-node2 addr=192.168.122.202 addr=192.168.123.202</code></pre><p>
+				When adding a node to a cluster with multiple links, you must specify addresses for all links. The following example adds the node <code class="literal">rh80-node3</code> to a cluster, specifying IP address 192.168.122.203 as link0 and 192.168.123.203 as link1.
+			</p><pre class="literallayout"># <code class="literal">pcs cluster node add rh80-node3 addr=192.168.122.203 addr=192.168.123.203</code></pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_configuring-fencing-creating-high-availability-cluster"/>Configuring fencing</h1></div></div></div><p>
+				You must configure a fencing device for each node in the cluster. For information about the fence configuration commands and options, see <a class="link" href="assembly_configuring-fencing-configuring-and-managing-high-availability-clusters.html" title="Chapter 8. Configuring fencing in a Red Hat High Availability cluster">Configuring fencing in a Red Hat High Availability cluster</a>.
+			</p><p>
+				For general information on fencing and its importance in a Red Hat High Availability cluster, see <a class="link" href="https://access.redhat.com/solutions/15575">Fencing in a Red Hat High Availability Cluster</a>.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					When configuring a fencing device, you should ensure that your fencing device does not share power with the node that it controls.
+				</p></div><p>
+				This example uses the APC power switch with a host name of <code class="literal">zapc.example.com</code> to fence the nodes, and it uses the <code class="literal">fence_apc_snmp</code> fencing agent. Because both nodes will be fenced by the same fencing agent, you can configure both fencing devices as a single resource, using the <code class="literal">pcmk_host_map</code> option.
+			</p><p>
+				You create a fencing device by configuring the device as a <code class="literal">stonith</code> resource with the <code class="literal">pcs stonith create</code> command. The following command configures a <code class="literal">stonith</code> resource named <code class="literal">myapc</code> that uses the <code class="literal">fence_apc_snmp</code> fencing agent for nodes <code class="literal">z1.example.com</code> and <code class="literal">z2.example.com</code>. The <code class="literal">pcmk_host_map</code> option maps <code class="literal">z1.example.com</code> to port 1, and <code class="literal">z2.example.com</code> to port 2. The login value and password for the APC device are both <code class="literal">apc</code>. By default, this device will use a monitor interval of sixty seconds for each node.
+			</p><p>
+				Note that you can use an IP address when specifying the host name for the nodes.
+			</p><pre class="literallayout">[root@z1 ~]# <code class="literal">pcs stonith create myapc fence_apc_snmp</code> \
+<code class="literal">ipaddr="zapc.example.com" pcmk_host_map="z1.example.com:1;z2.example.com:2"</code> \
+<code class="literal">login="apc" passwd="apc"</code></pre><p>
+				The following command displays the parameters of an existing STONITH device.
+			</p><pre class="literallayout">[root@rh7-1 ~]# <code class="literal">pcs stonith config myapc</code>
+ Resource: myapc (class=stonith type=fence_apc_snmp)
+  Attributes: ipaddr=zapc.example.com pcmk_host_map=z1.example.com:1;z2.example.com:2 login=apc passwd=apc
+  Operations: monitor interval=60s (myapc-monitor-interval-60s)</pre><p>
+				After configuring your fence device, you should test the device. For information on testing a fence device, see <a class="link" href="assembly_configuring-fencing-configuring-and-managing-high-availability-clusters.html#proc_testing-fence-devices-configuring-fencing" title="Testing a fence device">Testing a fence device</a>.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Do not test your fence device by disabling the network interface, as this will not properly test fencing.
+				</p></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Once fencing is configured and a cluster has been started, a network restart will trigger fencing for the node which restarts the network even when the timeout is not exceeded. For this reason, do not restart the network service while the cluster service is running because it will trigger unintentional fencing on the node.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_cluster-backup-creating-high-availability-cluster"/>Backing up and restoring a cluster configuration</h1></div></div></div><p>
+				You can back up the cluster configuration in a tarball with the following command. If you do not specify a file name, the standard output will be used.
+			</p><pre class="literallayout">pcs config backup <span class="emphasis"><em>filename</em></span></pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					The <code class="literal">pcs config backup</code> command backs up only the cluster configuration itself as configured in the CIB; the configuration of resource daemons is out of the scope of this command. For example if you have configured an Apache resource in the cluster, the resource settings (which are in the CIB) will be backed up, while the Apache daemon settings (as set in`/etc/httpd`) and the files it serves will not be backed up. Similarly, if there is a database resource configured in the cluster, the database itself will not be backed up, while the database resource configuration (CIB) will be.
+				</p></div><p>
+				Use the following command to restore the cluster configuration files on all nodes from the backup. If you do not specify a file name, the standard input will be used. Specifying the <code class="literal">--local</code> option restores only the files on the current node.
+			</p><pre class="literallayout">pcs config restore [--local] [<span class="emphasis"><em>filename</em></span>]</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_enabling-ports-for-high-availability-creating-high-availability-cluster"/>Enabling ports for the High Availability Add-On</h1></div></div></div><p>
+				The ideal firewall configuration for cluster components depends on the local environment, where you may need to take into account such considerations as whether the nodes have multiple network interfaces or whether off-host firewalling is present.
+			</p><p>
+				If you are running the <code class="literal">firewalld</code> daemon, execute the following commands to enable the ports that are required by the Red Hat High Availability Add-On.
+			</p><pre class="literallayout"># <code class="literal">firewall-cmd --permanent --add-service=high-availability</code>
+# <code class="literal">firewall-cmd --add-service=high-availability</code></pre><p>
+				You may need to modify which ports are open to suit local conditions.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					You can determine whether the <code class="literal">firewalld</code> daemon is installed on your system with the <code class="literal">rpm -q firewalld</code> command. If the <code class="literal">firewalld</code> daemon is installed, you can determine whether it is running with the <code class="literal">firewall-cmd --state</code> command.
+				</p></div><p>
+				<a class="xref" href="assembly_creating-high-availability-cluster-configuring-and-managing-high-availability-clusters.html#tb-portenable-HAAR" title="Table 4.1. Ports to Enable for High Availability Add-On">Table 4.1, “Ports to Enable for High Availability Add-On”</a> shows the ports to enable for the Red Hat High Availability Add-On and provides an explanation for what the port is used for.
+			</p><div class="table"><a id="tb-portenable-HAAR"/><p class="title"><strong>Table 4.1. Ports to Enable for High Availability Add-On</strong></p><div class="table-contents"><table summary="Ports to Enable for High Availability Add-On" border="1"><colgroup><col class="col_1"/><col class="col_2"/></colgroup><thead><tr><th style="text-align: left" valign="top">Port</th><th style="text-align: left" valign="top">When Required</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+								TCP 2224
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Default <code class="literal">pcsd</code> port required on all nodes (needed by the pcsd Web UI and required for node-to-node communication). You can configure the <code class="literal">pcsd</code> port by means of the <code class="literal">PCSD_PORT</code> parameter in the <code class="literal">/etc/sysconfig/pcsd</code> file.
+							</p>
+							 <p>
+								It is crucial to open port 2224 in such a way that <code class="literal">pcs</code> from any node can talk to all nodes in the cluster, including itself. When using the Booth cluster ticket manager or a quorum device you must open port 2224 on all related hosts, such as Booth arbiters or the quorum device host.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								TCP 3121
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Required on all nodes if the cluster has any Pacemaker Remote nodes
+							</p>
+							 <p>
+								Pacemaker’s <code class="literal">pacemaker-based</code> daemon on the full cluster nodes will contact the <code class="literal">pacemaker_remoted</code> daemon on Pacemaker Remote nodes at port 3121. If a separate interface is used for cluster communication, the port only needs to be open on that interface. At a minimum, the port should open on Pacemaker Remote nodes to full cluster nodes. Because users may convert a host between a full node and a remote node, or run a remote node inside a container using the host’s network, it can be useful to open the port to all nodes. It is not necessary to open the port to any hosts other than nodes.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								TCP 5403
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Required on the quorum device host when using a quorum device with <code class="literal">corosync-qnetd</code>. The default value can be changed with the <code class="literal">-p</code> option of the <code class="literal">corosync-qnetd</code> command.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								UDP 5404-5412
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Required on corosync nodes to facilitate communication between nodes. It is crucial to open ports 5404-5412 in such a way that <code class="literal">corosync</code> from any node can talk to all nodes in the cluster, including itself.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								TCP 21064
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Required on all nodes if the cluster contains any resources requiring DLM (such as <code class="literal">GFS2</code>).
+							</p>
+							 </td></tr></tbody></table></div></div></div></div></body></html>

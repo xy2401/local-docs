@@ -1,0 +1,568 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 8. Configuring fencing in a Red Hat High Availability cluster</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_configuring-fencing-configuring-and-managing-high-availability-clusters"/>Chapter 8. Configuring fencing in a Red Hat High Availability cluster</h1></div></div></div><p>
+			A node that is unresponsive may still be accessing data. The only way to be certain that your data is safe is to fence the node using STONITH. STONITH is an acronym for "Shoot The Other Node In The Head" and it protects your data from being corrupted by rogue nodes or concurrent access. Using STONITH, you can be certain that a node is truly offline before allowing the data to be accessed from another node.
+		</p><p>
+			STONITH also has a role to play in the event that a clustered service cannot be stopped. In this case, the cluster uses STONITH to force the whole node offline, thereby making it safe to start the service elsewhere.
+		</p><p>
+			For more complete general information on fencing and its importance in a Red Hat High Availability cluster, see <a class="link" href="https://access.redhat.com/solutions/15575">Fencing in a Red Hat High Availability Cluster</a>.
+		</p><p>
+			You implement STONITH in a Pacemaker cluster by configuring fence devices for the nodes of the cluster.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_displaying-fence-agents-configuring-fencing"/>Displaying available fence agents and their options</h1></div></div></div><p>
+				Use the following command to view of list of all available STONITH agents. When you specify a filter, this command displays only the STONITH agents that match the filter.
+			</p><pre class="literallayout">pcs stonith list [<span class="emphasis"><em>filter</em></span>]</pre><p>
+				Use the following command to view the options for the specified STONITH agent.
+			</p><pre class="literallayout">pcs stonith describe <span class="emphasis"><em>stonith_agent</em></span></pre><p>
+				For example, the following command displays the options for the fence agent for APC over telnet/SSH.
+			</p><pre class="literallayout"># <code class="literal">pcs stonith describe fence_apc</code>
+Stonith options for: fence_apc
+  ipaddr (required): IP Address or Hostname
+  login (required): Login Name
+  passwd: Login password or passphrase
+  passwd_script: Script to retrieve password
+  cmd_prompt: Force command prompt
+  secure: SSH connection
+  port (required): Physical plug number or name of virtual machine
+  identity_file: Identity file for ssh
+  switch: Physical switch number on device
+  inet4_only: Forces agent to use IPv4 addresses only
+  inet6_only: Forces agent to use IPv6 addresses only
+  ipport: TCP port to use for connection with device
+  action (required): Fencing Action
+  verbose: Verbose mode
+  debug: Write debug information to given file
+  version: Display version information and exit
+  help: Display help and exit
+  separator: Separator for CSV created by operation list
+  power_timeout: Test X seconds for status change after ON/OFF
+  shell_timeout: Wait X seconds for cmd prompt after issuing command
+  login_timeout: Wait X seconds for cmd prompt after login
+  power_wait: Wait X seconds after issuing ON/OFF
+  delay: Wait X seconds before fencing is started
+  retry_on: Count of attempts to retry power on</pre><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+					For fence agents that provide a <code class="literal">method</code> option, a value of <code class="literal">cycle</code> is unsupported and should not be specified, as it may cause data corruption.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_creating-fence-devices-configuring-fencing"/>Creating a fence device</h1></div></div></div><p>
+				The following command creates a stonith device. For additional available options, see the <code class="literal">pcs stonith -h</code> display.
+			</p><pre class="literallayout">pcs stonith create <span class="emphasis"><em>stonith_id</em></span> <span class="emphasis"><em>stonith_device_type</em></span> [<span class="emphasis"><em>stonith_device_options</em></span>] [op  <span class="emphasis"><em>operation_action</em></span> <span class="emphasis"><em>operation_options</em></span>]</pre><pre class="literallayout"># <code class="literal">pcs stonith create MyStonith fence_virt pcmk_host_list=f1 op monitor interval=30s</code></pre><p>
+				If you use a single fence device for several nodes, using a different port for each node, you do not need to create a device separately for each node. For example, the following command creates a single fencing device called <code class="literal">myapc-west-13</code> that uses an APC power switch called <code class="literal">west-apc</code> and uses port 15 for node <code class="literal">west-13</code>.
+			</p><pre class="literallayout"># <code class="literal">pcs stonith create myapc-west-13 fence_apc pcmk_host_list="west-13" ipaddr="west-apc" login="apc" passwd="apc" port="15"</code></pre><p>
+				The following example, however, uses the APC power switch named <code class="literal">west-apc</code> to fence nodes <code class="literal">west-13</code> using port 15, <code class="literal">west-14</code> using port 17, <code class="literal">west-15</code> using port 18, and <code class="literal">west-16</code> using port 19.
+			</p><pre class="literallayout"># <code class="literal">pcs stonith create myapc fence_apc pcmk_host_list="west-13,west-14,west-15,west-16" ipaddr="west-apc" login="apc" passwd="apc"</code></pre><p>
+				After configuring a fence device, it is imperative that you test the device to ensure that it is working correctly. For information on testing a fence device, see <a class="link" href="assembly_configuring-fencing-configuring-and-managing-high-availability-clusters.html#proc_testing-fence-devices-configuring-fencing" title="Testing a fence device">Testing a fence device</a>.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ref_general-fence-device-properties-configuring-fencing"/>General properties of fencing devices</h1></div></div></div><p>
+				Any cluster node can fence any other cluster node with any fence device, regardless of whether the fence resource is started or stopped. Whether the resource is started controls only the recurring monitor for the device, not whether it can be used, with the following exceptions:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						You can disable a fencing device by running the <code class="literal">pcs stonith disable <span class="emphasis"><em>stonith_id</em></span></code> command. This will prevent any node from using that device.
+					</li><li class="listitem">
+						To prevent a specific node from using a fencing device, you can configure location constraints for the fencing resource with the <code class="literal">pcs constraint location …​ avoids</code> command.
+					</li><li class="listitem">
+						Configuring <code class="literal">stonith-enabled=false</code> will disable fencing altogether. Note, however, that Red Hat does not support clusters when fencing is disabled, as it is not suitable for a production environment.
+					</li></ul></div><p>
+				<a class="xref" href="assembly_configuring-fencing-configuring-and-managing-high-availability-clusters.html#tb-fencedevice-props-HAAR" title="Table 8.1. General Properties of Fencing Devices">Table 8.1, “General Properties of Fencing Devices”</a> describes the general properties you can set for fencing devices.
+			</p><div class="table"><a id="tb-fencedevice-props-HAAR"/><p class="title"><strong>Table 8.1. General Properties of Fencing Devices</strong></p><div class="table-contents"><table summary="General Properties of Fencing Devices" border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/><col class="col_4"/></colgroup><thead><tr><th style="text-align: left" valign="top">Field</th><th style="text-align: left" valign="top">Type</th><th style="text-align: left" valign="top">Default</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_host_map</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								string
+							</p>
+							 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+								A mapping of host names to ports numbers for devices that do not support host names. For example: <code class="literal">node1:1;node2:2,3</code> tells the cluster to use port 1 for node1 and ports 2 and 3 for node2
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_host_list</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								string
+							</p>
+							 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
+								A list of machines controlled by this device (Optional unless <code class="literal">pcmk_host_check=static-list</code>).
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_host_check</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								string
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								* <code class="literal">static-list</code> if either <code class="literal">pcmk_host_list</code> or <code class="literal">pcmk_host_map</code> is set
+							</p>
+							 <p>
+								* Otherwise, <code class="literal">dynamic-list</code> if the fence device supports the <code class="literal">list</code> action
+							</p>
+							 <p>
+								* Otherwise, <code class="literal">status</code> if the fence device supports the <code class="literal">status</code> action
+							</p>
+							 <p>
+								*Otherwise, <code class="literal">none</code>.
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								How to determine which machines are controlled by the device. Allowed values: <code class="literal">dynamic-list</code> (query the device), <code class="literal">static-list</code> (check the <code class="literal">pcmk_host_list</code> attribute), none (assume every device can fence every machine)
+							</p>
+							 </td></tr></tbody></table></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ref_advanced-fence-device-properties-configuring-fencing"/>Advanced fencing configuration options</h1></div></div></div><p>
+				<a class="xref" href="assembly_configuring-fencing-configuring-and-managing-high-availability-clusters.html#tb-fencepropsadvanced-HAAR" title="Table 8.2. Advanced Properties of Fencing Devices">Table 8.2, “Advanced Properties of Fencing Devices”</a> summarizes additional properties you can set for fencing devices. Note that these properties are for advanced use only.
+			</p><div class="table"><a id="tb-fencepropsadvanced-HAAR"/><p class="title"><strong>Table 8.2. Advanced Properties of Fencing Devices</strong></p><div class="table-contents"><table summary="Advanced Properties of Fencing Devices" border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/><col class="col_4"/></colgroup><thead><tr><th style="text-align: left" valign="top">Field</th><th style="text-align: left" valign="top">Type</th><th style="text-align: left" valign="top">Default</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_host_argument</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								string
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								port
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								An alternate parameter to supply instead of port. Some devices do not support the standard port parameter or may provide additional ones. Use this to specify an alternate, device-specific parameter that should indicate the machine to be fenced. A value of <code class="literal">none</code> can be used to tell the cluster not to supply any additional parameters.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_reboot_action</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								string
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								reboot
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								An alternate command to run instead of <code class="literal">reboot</code>. Some devices do not support the standard commands or may provide additional ones. Use this to specify an alternate, device-specific, command that implements the reboot action.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_reboot_timeout</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								time
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								60s
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Specify an alternate timeout to use for reboot actions instead of <code class="literal">stonith-timeout</code>. Some devices need much more/less time to complete than normal. Use this to specify an alternate, device-specific, timeout for reboot actions.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_reboot_retries</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								integer
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								2
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The maximum number of times to retry the <code class="literal">reboot</code> command within the timeout period. Some devices do not support multiple connections. Operations may fail if the device is busy with another task so Pacemaker will automatically retry the operation, if there is time remaining. Use this option to alter the number of times Pacemaker retries reboot actions before giving up.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_off_action</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								string
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								off
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								An alternate command to run instead of <code class="literal">off</code>. Some devices do not support the standard commands or may provide additional ones. Use this to specify an alternate, device-specific, command that implements the off action.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_off_timeout</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								time
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								60s
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Specify an alternate timeout to use for off actions instead of <code class="literal">stonith-timeout</code>. Some devices need much more or much less time to complete than normal. Use this to specify an alternate, device-specific, timeout for off actions.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_off_retries</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								integer
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								2
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The maximum number of times to retry the off command within the timeout period. Some devices do not support multiple connections. Operations may fail if the device is busy with another task so Pacemaker will automatically retry the operation, if there is time remaining. Use this option to alter the number of times Pacemaker retries off actions before giving up.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_list_action</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								string
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								list
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								An alternate command to run instead of <code class="literal">list</code>. Some devices do not support the standard commands or may provide additional ones. Use this to specify an alternate, device-specific, command that implements the list action.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_list_timeout</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								time
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								60s
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Specify an alternate timeout to use for list actions. Some devices need much more or much less time to complete than normal. Use this to specify an alternate, device-specific, timeout for list actions.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_list_retries</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								integer
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								2
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The maximum number of times to retry the <code class="literal">list</code> command within the timeout period. Some devices do not support multiple connections. Operations may fail if the device is busy with another task so Pacemaker will automatically retry the operation, if there is time remaining. Use this option to alter the number of times Pacemaker retries list actions before giving up.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_monitor_action</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								string
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								monitor
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								An alternate command to run instead of <code class="literal">monitor</code>. Some devices do not support the standard commands or may provide additional ones. Use this to specify an alternate, device-specific, command that implements the monitor action.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_monitor_timeout</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								time
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								60s
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Specify an alternate timeout to use for monitor actions instead of <code class="literal">stonith-timeout</code>. Some devices need much more or much less time to complete than normal. Use this to specify an alternate, device-specific, timeout for monitor actions.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_monitor_retries</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								integer
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								2
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The maximum number of times to retry the <code class="literal">monitor</code> command within the timeout period. Some devices do not support multiple connections. Operations may fail if the device is busy with another task so Pacemaker will automatically retry the operation, if there is time remaining. Use this option to alter the number of times Pacemaker retries monitor actions before giving up.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_status_action</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								string
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								status
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								An alternate command to run instead of <code class="literal">status</code>. Some devices do not support the standard commands or may provide additional ones. Use this to specify an alternate, device-specific, command that implements the status action.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_status_timeout</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								time
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								60s
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Specify an alternate timeout to use for status actions instead of <code class="literal">stonith-timeout</code>. Some devices need much more or much less time to complete than normal. Use this to specify an alternate, device-specific, timeout for status actions.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_status_retries</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								integer
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								2
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The maximum number of times to retry the status command within the timeout period. Some devices do not support multiple connections. Operations may fail if the device is busy with another task so Pacemaker will automatically retry the operation, if there is time remaining. Use this option to alter the number of times Pacemaker retries status actions before giving up.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_delay_base</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								time
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								0s
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Enable a base delay for stonith actions and specify a base delay value. In a cluster with an even number of nodes, configuring a delay can help avoid nodes fencing each other at the same time in an even split. A random delay can be useful when the same fence device is used for all nodes, and differing static delays can be useful on each fencing device when a separate device is used for each node The overall delay is derived from a random delay value adding this static delay so that the sum is kept below the maximum delay. If you set <code class="literal">pcmk_delay_base</code> but do not set <code class="literal">pcmk_delay_max</code>, there is no random component to the delay and it will be the value of <code class="literal">pcmk_delay_base</code>.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_delay_max</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								time
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								0s
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								Enable a random delay for stonith actions and specify the maximum of random delay. In a cluster with an even number of nodes, configuring a delay can help avoid nodes fencing each other at the same time in an even split. A random delay can be useful when the same fence device is used for all nodes, and differing static delays can be useful on each fencing device when a separate device is used for each node The overall delay is derived from this random delay value adding a static delay so that the sum is kept below the maximum delay. If you set <code class="literal">pcmk_delay_max</code> but do not set <code class="literal">pcmk_delay_base</code> there is no static component to the delay.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_action_limit</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								integer
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								1
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								The maximum number of actions that can be performed in parallel on this device. The cluster property <code class="literal">concurrent-fencing=true</code> needs to be configured first. A value of -1 is unlimited.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_on_action</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								string
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								on
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								For advanced use only: An alternate command to run instead of <code class="literal">on</code>. Some devices do not support the standard commands or may provide additional ones. Use this to specify an alternate, device-specific, command that implements the <code class="literal">on</code> action.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_on_timeout</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								time
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								60s
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								For advanced use only: Specify an alternate timeout to use for <code class="literal">on</code> actions instead of <code class="literal">stonith-timeout</code>. Some devices need much more or much less time to complete than normal. Use this to specify an alternate, device-specific, timeout for <code class="literal">on</code> actions.
+							</p>
+							 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+								<code class="literal">pcmk_on_retries</code>
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								integer
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								2
+							</p>
+							 </td><td style="text-align: left" valign="top"> <p>
+								For advanced use only: The maximum number of times to retry the <code class="literal">on</code> command within the timeout period. Some devices do not support multiple connections. Operations may <code class="literal">fail</code> if the device is busy with another task so Pacemaker will automatically retry the operation, if there is time remaining. Use this option to alter the number of times Pacemaker retries <code class="literal">on</code> actions before giving up.
+							</p>
+							 </td></tr></tbody></table></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_testing-fence-devices-configuring-fencing"/>Testing a fence device</h1></div></div></div><p>
+				Fencing is a fundamental part of the Red Hat Cluster infrastructure and it is therefore important to validate or test that fencing is working properly.
+			</p><p>
+				Use the following procedure to test a fence device.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Use ssh, telnet, HTTP, or whatever remote protocol is used to connect to the device to manually log in and test the fence device or see what output is given. For example, if you will be configuring fencing for an IPMI-enabled device, then try to log in remotely with <code class="literal">ipmitool</code>. Take note of the options used when logging in manually because those options might be needed when using the fencing agent.
+					</p><p class="simpara">
+						If you are unable to log in to the fence device, verify that the device is pingable, there is nothing such as a firewall configuration that is preventing access to the fence device, remote access is enabled on the fencing device, and the credentials are correct.
+					</p></li><li class="listitem"><p class="simpara">
+						Run the fence agent manually, using the fence agent script. This does not require that the cluster services are running, so you can perform this step before the device is configured in the cluster. This can ensure that the fence device is responding properly before proceeding.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The examples in this section use the <code class="literal">fence_ipmilan</code> fence agent script for an iLO device. The actual fence agent you will use and the command that calls that agent will depend on your server hardware. You should consult the man page for the fence agent you are using to determine which options to specify. You will usually need to know the login and password for the fence device and other information related to the fence device.
+						</p></div><p class="simpara">
+						The following example shows the format you would use to run the <code class="literal">fence_ipmilan</code> fence agent script with <code class="literal">-o status</code> parameter to check the status of the fence device interface on another node without actually fencing it. This allows you to test the device and get it working before attempting to reboot the node. When running this command, you specify the name and password of an iLO user that has power on and off permissions for the iLO device.
+					</p><pre class="literallayout"># <code class="literal">fence_ipmilan -a ipaddress -l username -p password -o status</code></pre><p class="simpara">
+						The following example shows the format you would use to run the <code class="literal">fence_ipmilan</code> fence agent script with the <code class="literal">-o reboot</code> parameter. Running this command on one node reboots the node managed by this iLO device.
+					</p><pre class="literallayout"># <code class="literal">fence_ipmilan -a ipaddress -l username -p password -o reboot</code></pre><p class="simpara">
+						If the fence agent failed to properly do a status, off, on, or reboot action, you should check the hardware, the configuration of the fence device, and the syntax of your commands. In addition, you can run the fence agent script with the debug output enabled. The debug output is useful for some fencing agents to see where in the sequence of events the fencing agent script is failing when logging into the fence device.
+					</p><pre class="literallayout"># <code class="literal">fence_ipmilan -a ipaddress -l username -p password -o status -D /tmp/$(hostname)-fence_agent.debug</code></pre><p class="simpara">
+						When diagnosing a failure that has occurred, you should ensure that the options you specified when manually logging in to the fence device are identical to what you passed on to the fence agent with the fence agent script.
+					</p><p class="simpara">
+						For fence agents that support an encrypted connection, you may see an error due to certificate validation failing, requiring that you trust the host or that you use the fence agent’s <code class="literal">ssl-insecure</code> parameter. Similarly, if SSL/TLS is disabled on the target device, you may need to account for this when setting the SSL parameters for the fence agent.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							If the fence agent that is being tested is a <code class="literal">fence_drac</code>, <code class="literal">fence_ilo</code>, or some other fencing agent for a systems management device that continues to fail, then fall back to trying <code class="literal">fence_ipmilan</code>. Most systems management cards support IPMI remote login and the only supported fencing agent is <code class="literal">fence_ipmilan</code>.
+						</p></div></li><li class="listitem"><p class="simpara">
+						Once the fence device has been configured in the cluster with the same options that worked manually and the cluster has been started, test fencing with the <code class="literal">pcs stonith fence</code> command from any node (or even multiple times from different nodes), as in the following example. The <code class="literal">pcs stonith fence</code> command reads the cluster configuration from the CIB and calls the fence agent as configured to execute the fence action. This verifies that the cluster configuration is correct.
+					</p><pre class="literallayout"># <code class="literal">pcs stonith fence node_name</code></pre><p class="simpara">
+						If the <code class="literal">pcs stonith fence</code> command works properly, that means the fencing configuration for the cluster should work when a fence event occurs. If the command fails, it means that cluster management cannot invoke the fence device through the configuration it has retrieved. Check for the following issues and update your cluster configuration as needed.
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								Check your fence configuration. For example, if you have used a host map you should ensure that the system can find the node using the host name you have provided.
+							</li><li class="listitem">
+								Check whether the password and user name for the device include any special characters that could be misinterpreted by the bash shell. Making sure that you enter passwords and user names surrounded by quotation marks could address this issue.
+							</li><li class="listitem">
+								Check whether you can connect to the device using the exact IP address or host name you specified in the <code class="literal">pcs stonith</code> command. For example, if you give the host name in the stonith command but test by using the IP address, that is not a valid test.
+							</li><li class="listitem"><p class="simpara">
+								If the protocol that your fence device uses is accessible to you, use that protocol to try to connect to the device. For example many agents use ssh or telnet. You should try to connect to the device with the credentials you provided when configuring the device, to see if you get a valid prompt and can log in to the device.
+							</p><p class="simpara">
+								If you determine that all your parameters are appropriate but you still have trouble connecting to your fence device, you can check the logging on the fence device itself, if the device provides that, which will show if the user has connected and what command the user issued. You can also search through the <code class="literal">/var/log/messages</code> file for instances of stonith and error, which could give some idea of what is transpiring, but some agents can provide additional information.
+							</p></li></ul></div></li><li class="listitem"><p class="simpara">
+						Once the fence device tests are working and the cluster is up and running, test an actual failure. To do this, take an action in the cluster that should initiate a token loss.
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+								Take down a network. How you take a network depends on your specific configuration. In many cases, you can physically pull the network or power cables out of the host. For information on simulating a network failure, see <a class="link" href="https://access.redhat.com/solutions/79523/">What is the proper way to simulate a network failure on a RHEL Cluster?</a>.
+							</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+									Disabling the network interface on the local host rather than physically disconnecting the network or power cables is not recommended as a test of fencing because it does not accurately simulate a typical real-world failure.
+								</p></div></li><li class="listitem"><p class="simpara">
+								Block corosync traffic both inbound and outbound using the local firewall.
+							</p><p class="simpara">
+								The following example blocks corosync, assuming the default corosync port is used, <code class="literal">firewalld</code> is used as the local firewall, and the network interface used by corosync is in the default firewall zone:
+							</p><pre class="literallayout"># <code class="literal">firewall-cmd --direct --add-rule ipv4 filter OUTPUT 2 -p udp --dport=5405 -j DROP</code>
+# <code class="literal">firewall-cmd --add-rich-rule='rule family="ipv4" port port="5405" protocol="udp" drop'</code></pre></li><li class="listitem"><p class="simpara">
+								Simulate a crash and panic your machine with <code class="literal">sysrq-trigger</code>. Note, however, that triggering a kernel panic can cause data loss; it is recommended that you disable your cluster resources first.
+							</p><pre class="literallayout"># <code class="literal">echo c &gt; /proc/sysrq-trigger</code></pre></li></ul></div></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_configuring-fencing-levels-configuring-fencing"/>Configuring fencing levels</h1></div></div></div><p>
+				Pacemaker supports fencing nodes with multiple devices through a feature called fencing topologies. To implement topologies, create the individual devices as you normally would and then define one or more fencing levels in the fencing topology section in the configuration.
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						Each level is attempted in ascending numeric order, starting at 1.
+					</li><li class="listitem">
+						If a device fails, processing terminates for the current level. No further devices in that level are exercised and the next level is attempted instead.
+					</li><li class="listitem">
+						If all devices are successfully fenced, then that level has succeeded and no other levels are tried.
+					</li><li class="listitem">
+						The operation is finished when a level has passed (success), or all levels have been attempted (failed).
+					</li></ul></div><p>
+				Use the following command to add a fencing level to a node. The devices are given as a comma-separated list of stonith ids, which are attempted for the node at that level.
+			</p><pre class="literallayout">pcs stonith level add <span class="emphasis"><em>level</em></span> <span class="emphasis"><em>node</em></span> <span class="emphasis"><em>devices</em></span></pre><p>
+				The following command lists all of the fencing levels that are currently configured.
+			</p><pre class="literallayout">pcs stonith level</pre><p>
+				In the following example, there are two fence devices configured for node <code class="literal">rh7-2</code>: an ilo fence device called <code class="literal">my_ilo</code> and an apc fence device called <code class="literal">my_apc</code>. These commands set up fence levels so that if the device <code class="literal">my_ilo</code> fails and is unable to fence the node, then Pacemaker will attempt to use the device <code class="literal">my_apc</code>. This example also shows the output of the <code class="literal">pcs stonith level</code> command after the levels are configured.
+			</p><pre class="literallayout"># <code class="literal">pcs stonith level add 1 rh7-2 my_ilo</code>
+# <code class="literal">pcs stonith level add 2 rh7-2 my_apc</code>
+# <code class="literal">pcs stonith level</code>
+ Node: rh7-2
+  Level 1 - my_ilo
+  Level 2 - my_apc</pre><p>
+				The following command removes the fence level for the specified node and devices. If no nodes or devices are specified then the fence level you specify is removed from all nodes.
+			</p><pre class="literallayout">pcs stonith level remove <span class="emphasis"><em>level</em></span> [<span class="emphasis"><em>node_id</em></span>] [<span class="emphasis"><em>stonith_id</em></span>] ... [<span class="emphasis"><em>stonith_id</em></span>]</pre><p>
+				The following command clears the fence levels on the specified node or stonith id. If you do not specify a node or stonith id, all fence levels are cleared.
+			</p><pre class="literallayout">pcs stonith level clear [<span class="emphasis"><em>node</em></span>|<span class="emphasis"><em>stonith_id</em></span>(s)]</pre><p>
+				If you specify more than one stonith id, they must be separated by a comma and no spaces, as in the following example.
+			</p><pre class="literallayout"># <code class="literal">pcs stonith level clear dev_a,dev_b</code></pre><p>
+				The following command verifies that all fence devices and nodes specified in fence levels exist.
+			</p><pre class="literallayout">pcs stonith level verify</pre><p>
+				You can specify nodes in fencing topology by a regular expression applied on a node name and by a node attribute and its value. For example, the following commands configure nodes <code class="literal">node1</code>, <code class="literal">node2</code>, and <code class="literal">`node3</code> to use fence devices <code class="literal">apc1</code> and <code class="literal">`apc2</code>, and nodes <code class="literal">`node4</code>, <code class="literal">node5</code>, and <code class="literal">`node6</code> to use fence devices <code class="literal">apc3</code> and <code class="literal">`apc4</code>.
+			</p><pre class="literallayout">pcs stonith level add 1 "regexp%node[1-3]" apc1,apc2
+pcs stonith level add 1 "regexp%node[4-6]" apc3,apc4</pre><p>
+				The following commands yield the same results by using node attribute matching.
+			</p><pre class="literallayout">pcs node attribute node1 rack=1
+pcs node attribute node2 rack=1
+pcs node attribute node3 rack=1
+pcs node attribute node4 rack=2
+pcs node attribute node5 rack=2
+pcs node attribute node6 rack=2
+pcs stonith level add 1 attrib%rack=1 apc1,apc2
+pcs stonith level add 1 attrib%rack=2 apc3,apc4</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_configuring-fencing-for-redundant-power-configuring-fencing"/>Configuring fencing for redundant power supplies</h1></div></div></div><p>
+				When configuring fencing for redundant power supplies, the cluster must ensure that when attempting to reboot a host, both power supplies are turned off before either power supply is turned back on.
+			</p><p>
+				If the node never completely loses power, the node may not release its resources. This opens up the possibility of nodes accessing these resources simultaneously and corrupting them.
+			</p><p>
+				You need to define each device only once and to specify that both are required to fence the node, as in the following example.
+			</p><pre class="literallayout"># <code class="literal">pcs stonith create apc1 fence_apc_snmp ipaddr=apc1.example.com login=user passwd='7a4D#1j!pz864' pcmk_host_map="node1.example.com:1;node2.example.com:2"</code>
+
+# <code class="literal">pcs stonith create apc2 fence_apc_snmp ipaddr=apc2.example.com login=user passwd='7a4D#1j!pz864' pcmk_host_map="node1.example.com:1;node2.example.com:2"</code>
+
+# <code class="literal">pcs stonith level add 1 node1.example.com apc1,apc2</code>
+# <code class="literal">pcs stonith level add 1 node2.example.com apc1,apc2</code></pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_displaying-configuring-fence-devices-configuring-fencing"/>Displaying configured fence devices</h1></div></div></div><p>
+				The following command shows all currently configured fence devices. If a <span class="emphasis"><em>stonith_id</em></span> is specified, the command shows the options for that configured stonith device only. If the <code class="literal">--full</code> option is specified, all configured stonith options are displayed.
+			</p><pre class="literallayout">pcs stonith config [<span class="emphasis"><em>stonith_id</em></span>] [--full]</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_modifying-fence-devices-configuring-fencing"/>Modifying and deleting fence devices</h1></div></div></div><p>
+				Use the following command to modify or add options to a currently configured fencing device.
+			</p><pre class="literallayout">pcs stonith update <span class="emphasis"><em>stonith_id</em></span> [<span class="emphasis"><em>stonith_device_options</em></span>]</pre><p>
+				Use the following command to remove a fencing device from the current configuration.
+			</p><pre class="literallayout">pcs stonith delete <span class="emphasis"><em>stonith_id</em></span></pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_manually-fencing-a-node-configuring-fencing"/>Manually fencing a cluster node</h1></div></div></div><p>
+				You can fence a node manually with the following command. If you specify <code class="literal">--off</code> this will use the <code class="literal">off</code> API call to stonith which will turn the node off instead of rebooting it.
+			</p><pre class="literallayout">pcs stonith fence <span class="emphasis"><em>node</em></span> [--off]</pre><p>
+				In a situation where no stonith device is able to fence a node even if it is no longer active, the cluster may not be able to recover the resources on the node. If this occurs, after manually ensuring that the node is powered down you can enter the following command to confirm to the cluster that the node is powered down and free its resources for recovery.
+			</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+					If the node you specify is not actually off, but running the cluster software or services normally controlled by the cluster, data corruption/cluster failure will occur.
+				</p></div><pre class="literallayout">pcs stonith confirm <span class="emphasis"><em>node</em></span></pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_disabling-a-fence-device-configuring-fencing"/>Disabling a fence device</h1></div></div></div><p>
+				To disable a fencing device/resource, you run the <code class="literal">pcs stonith disable</code> command.
+			</p><p>
+				The following command disables the fence device <code class="literal">myapc</code>.
+			</p><pre class="literallayout"># <code class="literal">pcs stonith disable myapc</code></pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_preventing-a-node-from-using-a-fence-device-configuring-fencing"/>Preventing a node from using a fence device</h1></div></div></div><p>
+				To prevent a specific node from using a fencing device, you can configure location constraints for the fencing resource.
+			</p><p>
+				The following example prevents fence device <code class="literal">node1-ipmi</code> from running on <code class="literal">node1</code>.
+			</p><pre class="literallayout"># <code class="literal">pcs constraint location node1-ipmi avoids node1</code></pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_configuring-acpi-for-fence-devices-configuring-fencing"/>Configuring ACPI for use with integrated fence devices</h1></div></div></div><p>
+				If your cluster uses integrated fence devices, you must configure ACPI (Advanced Configuration and Power Interface) to ensure immediate and complete fencing.
+			</p><p>
+				If a cluster node is configured to be fenced by an integrated fence device, disable ACPI Soft-Off for that node. Disabling ACPI Soft-Off allows an integrated fence device to turn off a node immediately and completely rather than attempting a clean shutdown (for example, <code class="literal">shutdown -h now</code>). Otherwise, if ACPI Soft-Off is enabled, an integrated fence device can take four or more seconds to turn off a node (see the note that follows). In addition, if ACPI Soft-Off is enabled and a node panics or freezes during shutdown, an integrated fence device may not be able to turn off the node. Under those circumstances, fencing is delayed or unsuccessful. Consequently, when a node is fenced with an integrated fence device and ACPI Soft-Off is enabled, a cluster recovers slowly or requires administrative intervention to recover.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					The amount of time required to fence a node depends on the integrated fence device used. Some integrated fence devices perform the equivalent of pressing and holding the power button; therefore, the fence device turns off the node in four to five seconds. Other integrated fence devices perform the equivalent of pressing the power button momentarily, relying on the operating system to turn off the node; therefore, the fence device turns off the node in a time span much longer than four to five seconds.
+				</p></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						The preferred way to disable ACPI Soft-Off is to change the BIOS setting to "instant-off" or an equivalent setting that turns off the node without delay, as described in <a class="xref" href="assembly_configuring-fencing-configuring-and-managing-high-availability-clusters.html#s2-bios-setting-CA" title="Disabling ACPI Soft-Off with the BIOS">the section called “Disabling ACPI Soft-Off with the BIOS”</a>.
+					</li></ul></div><p>
+				Disabling ACPI Soft-Off with the BIOS may not be possible with some systems. If disabling ACPI Soft-Off with the BIOS is not satisfactory for your cluster, you can disable ACPI Soft-Off with one of the following alternate methods:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						Setting <code class="literal">HandlePowerKey=ignore</code> in the <code class="literal">/etc/systemd/logind.conf</code> file and verifying that the node node turns off immediately when fenced, as described in <a class="xref" href="assembly_configuring-fencing-configuring-and-managing-high-availability-clusters.html#s2-acpi-disable-logind-CA" title="Disabling ACPI Soft-Off in the logind.conf file">the section called “Disabling ACPI Soft-Off in the logind.conf file”</a>. This is the first alternate method of disabling ACPI Soft-Off.
+					</li><li class="listitem"><p class="simpara">
+						Appending <code class="literal">acpi=off</code> to the kernel boot command line, as described in <a class="xref" href="assembly_configuring-fencing-configuring-and-managing-high-availability-clusters.html#s2-acpi-disable-boot-CA" title="Disabling ACPI completely in the GRUB 2 File">the section called “Disabling ACPI completely in the GRUB 2 File”</a>. This is the second alternate method of disabling ACPI Soft-Off, if the preferred or the first alternate method is not available.
+					</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+							This method completely disables ACPI; some computers do not boot correctly if ACPI is completely disabled. Use this method <span class="emphasis"><em>only</em></span> if the other methods are not effective for your cluster.
+						</p></div></li></ul></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="s2-bios-setting-CA"/>Disabling ACPI Soft-Off with the BIOS</h2></div></div></div><p>
+					You can disable ACPI Soft-Off by configuring the BIOS of each cluster node with the following procedure.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						The procedure for disabling ACPI Soft-Off with the BIOS may differ among server systems. You should verify this procedure with your hardware documentation.
+					</p></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							Reboot the node and start the <code class="literal">BIOS CMOS Setup Utility</code> program.
+						</li><li class="listitem">
+							Navigate to the Power menu (or equivalent power management menu).
+						</li><li class="listitem"><p class="simpara">
+							At the Power menu, set the <code class="literal">Soft-Off by PWR-BTTN</code> function (or equivalent) to <code class="literal">Instant-Off</code> (or the equivalent setting that turns off the node by means of the power button without delay). <a class="xref" href="assembly_configuring-fencing-configuring-and-managing-high-availability-clusters.html#ex-bios-acpi-off-CA" title="BIOS CMOS Setup Utility:"><code class="literal">BIOS CMOS Setup Utility</code>:</a> shows a Power menu with <code class="literal">ACPI Function</code> set to <code class="literal">Enabled</code> and <code class="literal">Soft-Off by PWR-BTTN</code> set to <code class="literal">Instant-Off</code>.
+						</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+								The equivalents to <code class="literal">ACPI Function</code>, <code class="literal">Soft-Off by PWR-BTTN</code>, and <code class="literal">Instant-Off</code> may vary among computers. However, the objective of this procedure is to configure the BIOS so that the computer is turned off by means of the power button without delay.
+							</p></div></li><li class="listitem">
+							Exit the <code class="literal">BIOS CMOS Setup Utility</code> program, saving the BIOS configuration.
+						</li><li class="listitem">
+							Verify that the node turns off immediately when fenced. For information on testing a fence device, see <a class="link" href="assembly_configuring-fencing-configuring-and-managing-high-availability-clusters.html#proc_testing-fence-devices-configuring-fencing" title="Testing a fence device">Testing a fence device</a>.
+						</li></ol></div><p><a id="ex-bios-acpi-off-CA"/></p><div class="title"><strong><code class="literal">BIOS CMOS Setup Utility</code>:</strong></div><p>
+						
+</p><pre class="literallayout">`Soft-Off by PWR-BTTN` set to
+`Instant-Off`</pre><p>
+
+					</p><div class="informalexample"><pre class="literallayout">+---------------------------------------------|-------------------+
+|    ACPI Function             [Enabled]      |    Item Help      |
+|    ACPI Suspend Type         [S1(POS)]      |-------------------|
+|  x Run VGABIOS if S3 Resume   Auto          |   Menu Level   *  |
+|    Suspend Mode              [Disabled]     |                   |
+|    HDD Power Down            [Disabled]     |                   |
+|    Soft-Off by PWR-BTTN      [Instant-Off   |                   |
+|    CPU THRM-Throttling       [50.0%]        |                   |
+|    Wake-Up by PCI card       [Enabled]      |                   |
+|    Power On by Ring          [Enabled]      |                   |
+|    Wake Up On LAN            [Enabled]      |                   |
+|  x USB KB Wake-Up From S3     Disabled      |                   |
+|    Resume by Alarm           [Disabled]     |                   |
+|  x  Date(of Month) Alarm       0            |                   |
+|  x  Time(hh:mm:ss) Alarm       0 :  0 :     |                   |
+|    POWER ON Function         [BUTTON ONLY   |                   |
+|  x KB Power ON Password       Enter         |                   |
+|  x Hot Key Power ON           Ctrl-F1       |                   |
+|                                             |                   |
+|                                             |                   |
++---------------------------------------------|-------------------+</pre><p>
+					This example shows <code class="literal">ACPI Function</code> set to <code class="literal">Enabled</code>, and <code class="literal">Soft-Off by PWR-BTTN</code> set to <code class="literal">Instant-Off</code>.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="s2-acpi-disable-logind-CA"/>Disabling ACPI Soft-Off in the logind.conf file</h2></div></div></div><p>
+					To disable power-key handing in the <code class="literal">/etc/systemd/logind.conf</code> file, use the following procedure.
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Define the following configuration in the <code class="literal">/etc/systemd/logind.conf</code> file:
+						</p><pre class="literallayout">HandlePowerKey=ignore</pre></li><li class="listitem"><p class="simpara">
+							Reload the <code class="literal">systemd</code> configuration:
+						</p><pre class="literallayout"># <code class="literal">systemctl daemon-reload</code></pre></li><li class="listitem">
+							Verify that the node turns off immediately when fenced. For information on testing a fence device, see <a class="link" href="assembly_configuring-fencing-configuring-and-managing-high-availability-clusters.html#proc_testing-fence-devices-configuring-fencing" title="Testing a fence device">Testing a fence device</a>.
+						</li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="s2-acpi-disable-boot-CA"/>Disabling ACPI completely in the GRUB 2 File</h2></div></div></div><p>
+					You can disable ACPI Soft-Off by appending <code class="literal">acpi=off</code> to the GRUB menu entry for a kernel.
+				</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						This method completely disables ACPI; some computers do not boot correctly if ACPI is completely disabled. Use this method <span class="emphasis"><em>only</em></span> if the other methods are not effective for your cluster.
+					</p></div><p>
+					Use the following procedure to disable ACPI in the GRUB 2 file:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Use the <code class="literal">--args</code> option in combination with the <code class="literal">--update-kernel</code> option of the <code class="literal">grubby</code> tool to change the <code class="literal">grub.cfg</code> file of each cluster node as follows:
+						</p><pre class="literallayout"># <code class="literal">grubby --args=acpi=off --update-kernel=ALL</code></pre></li><li class="listitem">
+							Reboot the node.
+						</li><li class="listitem">
+							Verify that the node turns off immediately when fenced. For information on testing a fence device, see <a class="link" href="assembly_configuring-fencing-configuring-and-managing-high-availability-clusters.html#proc_testing-fence-devices-configuring-fencing" title="Testing a fence device">Testing a fence device</a>.
+						</li></ol></div></div></div></div></body></html>
