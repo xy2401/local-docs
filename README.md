@@ -28,6 +28,10 @@ apache
 [Apache Tomcat 9 (9.0.20)](apache/tomcat-9.0-doc/) , 
 [Apache Tomcat 7 (7.0.94)](apache/tomcat-7.0-doc/) , 
 
+[zookeeper doc r3.5.5](apache/zookeeper-r3.5.5/) , 
+[机翻](apache/zookeeper-r3.5.5.zh_CN/) , 
+
+
 eclipse  
 - [Jetty](eclipse/jetty-9.4.16.v20190411/) 
 - [Eclipse OpenJ9](eclipse/openj9-docs-0.13.0/)
