@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 10. LVM cache logical volumes</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_cache-volumes-configuring-and-managing-logical-volumes"/>Chapter 10. LVM cache logical volumes</h1></div></div></div><p>
+			LVM provides full support for LVM cache logical volumes. A cache logical volume uses a small logical volume consisting of fast block devices (such as SSD drives) to improve the performance of a larger and slower logical volume by storing the frequently used blocks on the smaller, faster logical volume.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="con_cache-volume-types-cache-volumes"/>Cache volume types</h1></div></div></div><p>
+				LVM caching uses the following LVM logical volume types. All of these associated logical volumes must be in the same volume group.
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						Origin logical volume — the large, slow logical volume
+					</li><li class="listitem">
+						Cache pool logical volume — the small, fast logical volume, which is composed of two devices: the cache data logical volume, and the cache metadata logical volume
+					</li><li class="listitem">
+						Cache data logical volume — the logical volume containing the data blocks for the cache pool logical volume
+					</li><li class="listitem">
+						Cache metadata logical volume — the logical volume containing the metadata for the cache pool logical volume, which holds the accounting information that specifies where data blocks are stored (for example, on the origin logical volume or the cache data logical volume).
+					</li><li class="listitem">
+						Cache logical volume — the logical volume containing the origin logical volume and the cache pool logical volume. This is the resultant usable device which encapsulates the various cache volume components.
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_creating-lvm-cache-volume-cache-volumes"/>Creating an LVM cache logical volume</h1></div></div></div><p>
+				The following procedure creates an LVM cache logical volume.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Create a volume group that contains a slow physical volume and a fast physical volume. In this example. <code class="literal">/dev/sde1</code> is a slow device and <code class="literal">/dev/sdf1</code> is a fast device and both devices are contained in volume group <code class="literal">VG</code>.
+					</p><pre class="literallayout"># <code class="literal">pvcreate /dev/sde1</code>
+# <code class="literal">pvcreate /dev/sdf1</code>
+# <code class="literal">vgcreate VG /dev/sde1 /dev/sdf1</code></pre></li><li class="listitem"><p class="simpara">
+						Create the origin volume. This example creates an origin volume named <code class="literal">lv</code> that is ten gigabytes in size and that consists of <code class="literal">/dev/sde1</code>, the slow physical volume.
+					</p><pre class="literallayout"># <code class="literal">lvcreate -L 10G -n lv VG /dev/sde1</code></pre></li><li class="listitem"><p class="simpara">
+						Create the cache pool logical volume. This example creates the cache pool logical volume named <code class="literal">cpool</code> on the fast device <code class="literal">/dev/sdf1</code>, which is part of the volume group <code class="literal">VG</code>. The cache pool logical volume this command creates consists of the hidden cache data logical volume <code class="literal">cpool_cdata</code> and the hidden cache metadata logical volume <code class="literal">cpool_cmeta</code>.
+					</p><pre class="literallayout"># <code class="literal">lvcreate --type cache-pool -L 5G -n cpool VG /dev/sdf1</code>
+  Using default stripesize 64.00 KiB.
+  Logical volume "cpool" created.
+# <code class="literal">lvs -a -o name,size,attr,devices VG</code>
+  LV              LSize  Attr       Devices
+  cpool            5.00g Cwi---C--- cpool_cdata(0)
+  [cpool_cdata]    5.00g Cwi------- /dev/sdf1(4)
+  [cpool_cmeta]    8.00m ewi------- /dev/sdf1(2)
+  lv              10.00g -wi-a----- /dev/sde1(0)
+  [lvol0_pmspare]  8.00m ewi------- /dev/sdf1(0)</pre><p class="simpara">
+						For more complicated configurations you may need to create the cache data and the cache metadata logical volumes individually and then combine the volumes into a cache pool logical volume. For information on this procedure, see the <code class="literal">lvmcache</code>(7) man page.
+					</p></li><li class="listitem"><p class="simpara">
+						Create the cache logical volume by linking the cache pool logical volume to the origin logical volume. The resulting user-accessible cache logical volume takes the name of the origin logical volume. The origin logical volume becomes a hidden logical volume with <code class="literal">_corig</code> appended to the original name. Note that this conversion can be done live, although you must ensure you have performed a backup first.
+					</p><pre class="literallayout"># <code class="literal">lvconvert --type cache --cachepool cpool VG/lv</code>
+  Logical volume cpool is now cached.
+# <code class="literal">lvs -a -o name,size,attr,devices VG</code>
+    LV              LSize  Attr       Devices
+    [cpool]          5.00g Cwi---C--- cpool_cdata(0)
+    [cpool_cdata]    5.00g Cwi-ao---- /dev/sdf1(4)
+    [cpool_cmeta]    8.00m ewi-ao---- /dev/sdf1(2)
+    lv              10.00g Cwi-a-C--- lv_corig(0)
+    [lv_corig]      10.00g owi-aoC--- /dev/sde1(0)
+    [lvol0_pmspare]  8.00m ewi------- /dev/sdf1(0)</pre></li><li class="listitem"><p class="simpara">
+						Optionally, you can convert the cached logical volume to a thin pool logical volume. Note that any thin logical volumes created from the pool will share the cache.
+					</p><p class="simpara">
+						The following command uses the fast device, <code class="literal">/dev/sdf1</code>, for allocating the thin pool metadata (<code class="literal">lv_tmeta</code>). This is the same device that is used by the cache pool volume, which means that the thin pool metadata volume shares that device with both the cache data logical volume <code class="literal">cpool_cdata</code> and the cache metadata logical volume <code class="literal">cpool_cmeta</code>.
+					</p><pre class="literallayout"># <code class="literal">lvconvert --type thin-pool VG/lv /dev/sdf1</code>
+   WARNING: Converting logical volume VG/lv to thin pool's data volume with metadata wiping.
+   THIS WILL DESTROY CONTENT OF LOGICAL VOLUME (filesystem etc.)
+ Do you really want to convert VG/lv? [y/n]: <code class="literal">y</code>
+   Converted VG/lv to thin pool.
+# <code class="literal">lvs -a -o name,size,attr,devices vg</code>
+   LV               LSize  Attr       Devices
+   [cpool]           5.00g Cwi---C--- cpool_cdata(0)
+   [cpool_cdata]     5.00g Cwi-ao---- /dev/sdf1(4)
+   [cpool_cmeta]     8.00m ewi-ao---- /dev/sdf1(2)
+   lv               10.00g twi-a-tz-- lv_tdata(0)
+   [lv_tdata]       10.00g Cwi-aoC--- lv_tdata_corig(0)
+   [lv_tdata_corig] 10.00g owi-aoC--- /dev/sde1(0)
+   [lv_tmeta]       12.00m ewi-ao---- /dev/sdf1(1284)
+   [lvol0_pmspare]  12.00m ewi------- /dev/sdf1(0)
+   [lvol0_pmspare]  12.00m ewi------- /dev/sdf1(1287)</pre></li></ol></div><p>
+				For further information on LVM cache volumes, including additional administrative examples, see the <code class="literal">lvmcache</code>(7) man page.
+			</p></div></div></body></html>

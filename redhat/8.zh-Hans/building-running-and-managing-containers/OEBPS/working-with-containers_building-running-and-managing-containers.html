@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 3. Working with containers</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="working-with-containers_building-running-and-managing-containers"/>Chapter 3. Working with containers</h1></div></div></div><p>
+			Containers represent a running or stopped process spawned from the files located in a decompressed container image. Tools for running containers and working with them are described in this section.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="running-containers_building-running-and-managing-containers"/>Running containers</h1></div></div></div><p>
+				When you execute a <code class="literal">podman run</code> command, you essentially spin up and create a new container from a container image. The command you pass on the <code class="literal">podman run</code> command line sees the inside the container as its running environment so, by default, very little can be seen of the host system. For example, by default, the running applications sees:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						The file system provided by the container image.
+					</li><li class="listitem">
+						A new process table from inside the container (no processes from the host can be seen).
+					</li></ul></div><p>
+				If you want to make a directory from the host available to the container, map network ports from the container to the host, limit the amount of memory the container can use, or expand the CPU shares available to the container, you can do those things from the <code class="literal">podman run</code> command line. Here are some examples of <code class="literal">podman run</code> command lines that enable different features.
+			</p><p>
+				<span class="strong"><strong>EXAMPLE #1 (Run a quick command)</strong></span>: This podman command runs the <code class="literal">cat /etc/os-release</code> command to see the type of operating system used as the basis for the container. After the container runs the command, the container exits and is deleted (<code class="literal">--rm</code>).
+			</p><pre class="literallayout"># podman run --rm registry.redhat.io/ubi8/ubi cat /etc/os-release
+NAME="Red Hat Enterprise Linux"
+VERSION="8.0 (Ootpa)"
+ID="rhel"
+ID_LIKE="fedora"
+VERSION_ID="8.0"
+PLATFORM_ID="platform:el8"
+PRETTY_NAME="Red Hat Enterprise Linux 8.0 (Ootpa)"
+ANSI_COLOR="0;31"
+CPE_NAME="cpe:/o:redhat:enterprise_linux:8.0:latest"
+HOME_URL="https://www.redhat.com/"
+BUG_REPORT_URL="https://bugzilla.redhat.com/"
+
+REDHAT_BUGZILLA_PRODUCT="Red Hat Enterprise Linux 8"
+REDHAT_BUGZILLA_PRODUCT_VERSION=8.0
+REDHAT_SUPPORT_PRODUCT="Red Hat Enterprise Linux"
+REDHAT_SUPPORT_PRODUCT_VERSION="8.0"
+...</pre><p>
+				<span class="strong"><strong>EXAMPLE #2 (View the Dockerfile in the container)</strong></span>: This is another example of running a quick command to inspect the content of a container from the host. All layered images that Red Hat provides include the Dockerfile from which they are built in <code class="literal">/root/buildinfo</code>. In this case you do not need to mount any volumes from the host.
+			</p><pre class="literallayout"># podman run --rm registry.access.redhat.com/rhel8/rsyslog  ls /root/buildinfo
+Dockerfile-rhel8-rsyslog-8</pre><p>
+				Now you know what the Dockerfile is called, you can list its contents:
+			</p><pre class="literallayout"># podman run --rm registry.access.redhat.com/rhel8/rsyslog \
+    cat /root/buildinfo/Dockerfile-rhel8-rsyslog-8
+FROM sha256:eb205f07ce7d0bb63bfe560...
+LABEL maintainer="Red Hat, Inc."
+
+RUN INSTALL_PKGS="\
+rsyslog \
+rsyslog-gnutls \
+rsyslog-gssapi \
+rsyslog-mysql \
+rsyslog-pgsql \
+rsyslog-relp \
+" &amp;&amp; yum -y install $INSTALL_PKGS &amp;&amp; rpm -V --nosize
+    --nofiledigest --nomtime --nomode $INSTALL_PKGS &amp;&amp; yum clean all
+LABEL com.redhat.component="rsyslog-container"
+LABEL name="rhel8/rsyslog"
+LABEL version="8.0"
+...</pre><p>
+				<span class="strong"><strong>EXAMPLE #3 (Run a shell inside the container)</strong></span>: Using a container to launch a bash shell lets you look inside the container and change the contents. This sets the name of the container to <code class="literal">mybash</code>. The <code class="literal">-i</code> creates an interactive session and <code class="literal">-t</code> opens a terminal session. Without <code class="literal">-i</code>, the shell would open and then exit. Without <code class="literal">-t</code>, the shell would stay open, but you wouldn’t be able to type anything to the shell.
+			</p><p>
+				Once you run the command, you are presented with a shell prompt and you can start running commands from inside the container:
+			</p><pre class="literallayout"># podman run --name=mybash -it registry.redhat.io/ubi8/ubi /bin/bash
+[root@ed904b8f2d5c/]#  yum install procps-ng
+[root@ed904b8f2d5c/]#  ps -ef
+UID        PID  PPID  C STIME TTY          TIME CMD
+root         1     0  0 00:46 pts/0    00:00:00 /bin/bash
+root        35     1  0 00:51 pts/0    00:00:00 ps -ef
+[root@49830c4f9cc4/]# exit</pre><p>
+				Although the container is no longer running once you exit, the container still exists with the new software package still installed. Use <code class="literal">podman ps -a</code> to list the container:
+			</p><pre class="literallayout"># podman ps -a
+CONTAINER ID IMAGE                 COMMAND   CREATED        STATUS                PORTS NAMES        IS INFRA
+1ca061b47bd7 .../ubi8/ubi:latest   /bin/bash 8 minutes ago  Exited 12 seconds ago       musing_brown false
+...</pre><p>
+				You could start that container again using <code class="literal">podman start</code> with the <code class="literal">-ai</code> options. For example:
+			</p><pre class="literallayout"># podman start -ai mybash
+[root@ed904b8f2d5c/]#</pre><p>
+				<span class="strong"><strong>EXAMPLE #4 (Bind mounting log files)</strong></span>: One way to make log messages from inside a container available to the host system is to bind mount the host’s /dev/log device inside the container. This example illustrates how to run an application in a RHEL container that is named <code class="literal">log_test</code> that generates log messages (just the logger command in this case) and directs those messages to the /dev/log device that is mounted in the container from the host. The <code class="literal">--rm</code> option removes the container after it runs.
+			</p><pre class="literallayout"># podman run --name="log_test" -v /dev/log:/dev/log --rm \
+     registry.redhat.io/ubi8/ubi logger "Testing logging to the host"
+# journalctl -b | grep Testing
+Nov 12 20:00:10 ubi8 root[17210]: Testing logging to the host</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="investigating-running-and-stopped-containers_building-running-and-managing-containers"/>Investigating running and stopped containers</h1></div></div></div><p>
+				After you have some running container, you can list both those containers that are still running and those that have exited or stopped with the <code class="literal">podman ps</code> command. You can also use the <code class="literal">podman inspect</code> to look at specific pieces of information within those containers.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="listing-containers_building-running-and-managing-containers"/>Listing containers</h2></div></div></div><p>
+					Let’s say you have one or more containers running on your host. To work with containers from the host system, you can open a shell and try some of the following commands.
+				</p><p>
+					<code class="literal">podman ps</code>: The ps option shows all containers that are currently running:
+				</p><pre class="literallayout"># podman run -d registry.redhat.io/rhel8/rsyslog
+# podman ps
+CONTAINER ID IMAGE              COMMAND         CREATED       STATUS            PORTS NAMES
+74b1da000a11 rhel8/rsyslog /bin/rsyslog.sh 2 minutes ago Up About a minute       musing_brown</pre><p>
+					If there are containers that are not running, but were not removed (--rm option), the containers are still hanging around and can be restarted. The <code class="literal">podman ps -a</code> command shows all containers, running or stopped.
+				</p><pre class="literallayout"># podman ps -a
+CONTAINER ID IMAGE         COMMAND    CREATED    STATUS                PORTS NAMES     IS INFRA
+d65aecc325a4 ubi8/ubi      /bin/bash  3 secs ago Exited (0) 5 secs ago peaceful_hopper false
+74b1da000a11 rhel8/rsyslog rsyslog.sh 2 mins ago Up About a minute     musing_brown    false</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="inspecting-containers_building-running-and-managing-containers"/>Inspecting containers</h2></div></div></div><p>
+					To inspect the metadata of an existing container, use the <code class="literal">podman inspect</code> command. You can show all metadata or just selected metadata for the container. For example, to show all metadata for a selected container, type:
+				</p><pre class="literallayout"># podman inspect 74b1da000a11
+    ...
+  "ID": "74b1da000a114015886c557deec8bed9dfb80c888097aa83f30ca4074ff55fb2",
+  "Created": "2018-11-13T10:30:31.884673073-05:00",
+  "Path": "/bin/rsyslog.sh",
+  "Args": [
+       "/bin/rsyslog.sh"
+  ],
+  "State": {
+       OciVersion": "1.0.1-dev",
+       Status": "running",
+       Running": true,
+    ...</pre><p>
+					You can also use inspect to pull out particular pieces of information from a container. The information is stored in a hierarchy. So to see the container’s IP address (IPAddress under NetworkSettings), use the <code class="literal">--format</code> option and the identity of the container. For example:
+				</p><pre class="literallayout"># podman inspect --format='{{.NetworkSettings.IPAddress}}' 74b1da000a11
+10.88.0.31</pre><p>
+					Examples of other pieces of information you might want to inspect include .Path (to see the command run with the container), .Args (arguments to the command), .Config.ExposedPorts (TCP or UDP ports exposed from the container), .State.Pid (to see the process id of the container) and .HostConfig.PortBindings (port mapping from container to host). Here’s an example of .State.Pid and .State.StartedAt:
+				</p><pre class="literallayout"># podman inspect --format='{{.State.Pid}}' 74b1da000a11
+19593
+# ps -ef | grep 19593
+root     19593 19583  0 10:30 ?        00:00:00 /usr/sbin/rsyslogd -n
+# podman inspect --format='{{.State.StartedAt}}' 74b1da000a11
+2018-11-13 10:30:35.358175255 -0500 EST</pre><p>
+					In the first example, you can see the process ID of the containerized executable on the host system (PID 19593). The <code class="literal">ps -ef</code> command confirms that it is the rsyslogd daemon running. The second example shows the date and time that the container was run.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="investigating-within-a-container_building-running-and-managing-containers"/>Investigating within a container</h2></div></div></div><p>
+					To investigate within a running container, you can use the <code class="literal">podman exec</code> command. With <code class="literal">podman exec</code>, you can run a command (such as <code class="literal">/bin/bash</code>) to enter a running container process to investigate that container.
+				</p><p>
+					The reason for using <code class="literal">podman exec</code>, instead of just launching the container into a bash shell, is that you can investigate the container as it is running its intended application. By attaching to the container as it is performing its intended task, you get a better view of what the container actually does, without necessarily interrupting the container’s activity.
+				</p><p>
+					Here is an example using <code class="literal">podman exec</code> to look into a running rsyslog, then look around inside that container.
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							<code class="literal">Launch a container</code>: Launch a container such the rsyslog container image described earlier. Type <code class="literal">podman ps</code> to make sure it is running:
+						</p><pre class="literallayout"># podman ps
+CONTAINER ID   IMAGE           COMMAND           CREATED       STATUS        PORTS   NAMES
+74b1da000a11   rsyslog:latest "/usr/rsyslog.sh   6 minutes ago Up 6 minutes          rsyslog</pre></li><li class="listitem"><p class="simpara">
+							Enter the container with <code class="literal">podman exec</code>: Use the container ID or name to open a bash shell to access the running container. Then you can investigate the attributes of the container as follows:
+						</p><pre class="literallayout"># podman exec -it 74b1da000a11 /bin/bash
+[root@74b1da000a11 /]# cat /etc/redhat-release
+Red Hat Enterprise Linux release 8.0
+[root@74b1da000a11 /]# yum install procps-ng
+[root@74b1da000a11 /]# ps -ef
+UID        PID  PPID  C STIME TTY          TIME CMD
+root         1     0  0 15:30 ?        00:00:00 /usr/sbin/rsyslogd -n
+root         8     0  6 16:01 pts/0    00:00:00 /bin/bash
+root        21     8  0 16:01 pts/0    00:00:00 ps -ef
+[root@74b1da000a11 /]# df -h
+Filesystem      Size  Used Avail Use% Mounted on
+overlay          39G  2.5G   37G   7% /
+tmpfs            64M     0   64M   0% /dev
+tmpfs           1.5G  8.7M  1.5G   1% /etc/hosts
+shm              63M     0   63M   0% /dev/shm
+tmpfs           1.5G     0  1.5G   0% /sys/fs/cgroup
+tmpfs           1.5G     0  1.5G   0% /proc/acpi
+tmpfs           1.5G     0  1.5G   0% /proc/scsi
+tmpfs           1.5G     0  1.5G   0% /sys/firmware
+[root@74b1da000a11 /]# uname -r
+4.18.0-80.1.2.el8_0.x86_64
+[root@74b1da000a11 /]# rpm -qa | more
+redhat-release-8.0-0.44.el8.x86_64
+filesystem-3.8-2.el8.x86_64
+basesystem-11-5.el8.noarch
+ncurses-base-6.1-7.20180224.el8.noarch
+...
+bash-4.2# free -m
+              total        used        free      shared  buff/cache   available
+Mem:           1941         560         139          10        1241        1189
+Swap:          1023          15        1008
+[root@74b1da000a11 /]# exit</pre></li></ol></div><p>
+					The commands just run from the bash shell (running inside the container) show you several things.
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The container was built from a RHEL release 8.0 image.
+						</li><li class="listitem">
+							The process table (ps -ef) shows that the /usr/sbin/rsyslogd command is process ID 1.
+						</li><li class="listitem">
+							Processes running in the host’s process table cannot be seen from within the container. Although the rsyslogd process can be seen on the host process table (it was process ID 19593 on the host).
+						</li><li class="listitem">
+							There is no separate kernel running in the container (uname -r shows the host system’s kernel).
+						</li><li class="listitem">
+							The rpm -qa command lets you see the RPM packages that are included inside the container. In other words, there is an RPM database inside of the container.
+						</li><li class="listitem">
+							Viewing memory (free -m) shows the available memory on the host (although what the container can actually use can be limited using cgroups).
+						</li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="starting-and-stopping-containers_building-running-and-managing-containers"/>Starting and stopping containers</h1></div></div></div><p>
+				If you ran a container, but didn’t remove it (<code class="literal">--rm</code>), that container is stored on your local system and ready to run again. To start a previously run container that wasn’t removed, use the <code class="literal">start</code> option. To stop a running container, use the <code class="literal">stop</code> option.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="starting-containers_building-running-and-managing-containers"/>Starting containers</h2></div></div></div><p>
+					A container that doesn’t need to run interactively can sometimes be restarted after being stopped with only the <code class="literal">start</code> option and the container ID or name. For example:
+				</p><pre class="literallayout"># podman start myrhel_httpd
+myrhel_httpd</pre><p>
+					To start a container so you can work with it from the local shell, use the -a (attach) and -i (interactive) options. Once the bash shell starts, run the commands you want inside the container and type exit to kill the shell and stop the container.
+				</p><pre class="literallayout"># podman start -a -i agitated_hopper
+[root@d65aecc325a4 /]#  exit</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="stopping-containers_building-running-and-managing-containers"/>Stopping containers</h2></div></div></div><p>
+					To stop a running container that is not attached to a terminal session, use the stop option and the container ID or number. For example:
+				</p><pre class="literallayout"># podman stop 74b1da000a11
+74b1da000a114015886c557deec8bed9dfb80c888097aa83f30ca4074ff55fb2</pre><p>
+					The <code class="literal">stop</code> option sends a SIGTERM signal to terminate a running container. If the container doesn’t stop after a grace period (10 seconds by default), <code class="literal">podman</code> sends a SIGKILL signal. You could also use the <code class="literal">podman kill</code> command to kill a container (SIGKILL) or send a different signal to a container. Here’s an example of sending a SIGHUP signal to a container (if supported by the application, a SIGHUP causes the application to re-read its configuration files):
+				</p><pre class="literallayout"># podman kill --signal="SIGHUP" 74b1da000a11
+74b1da000a114015886c557deec8bed9dfb80c888097aa83f30ca4074ff55fb2</pre></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="removing-containers_building-running-and-managing-containers"/>Removing containers</h1></div></div></div><p>
+				To see a list of containers that are still hanging around your system, run the <code class="literal">podman ps -a</code> command. To remove containers you no longer need, use the <code class="literal">podman rm</code> command, with the container ID or name as an option. Here is an example:
+			</p><pre class="literallayout"># podman rm goofy_wozniak</pre><p>
+				You can remove multiple containers on the same command line:
+			</p><pre class="literallayout"># podman rm clever_yonath furious_shockley drunk_newton</pre><p>
+				If you want to clear out all your containers, you could use a command like the following to remove all containers (not images) from your local system (make sure you mean it before you do this!):
+			</p><pre class="literallayout"># podman rm $(podman ps -a -q)</pre></div></div></body></html>

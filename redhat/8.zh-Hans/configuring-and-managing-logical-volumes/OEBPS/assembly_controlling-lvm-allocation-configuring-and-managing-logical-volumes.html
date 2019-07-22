@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 13. Controlling LVM allocation</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_controlling-lvm-allocation-configuring-and-managing-logical-volumes"/>Chapter 13. Controlling LVM allocation</h1></div></div></div><p>
+			By default, a volume group allocates physical extents according to common-sense rules such as not placing parallel stripes on the same physical volume. This is the <code class="literal">normal</code> allocation policy. You can use the <code class="literal">--alloc</code> argument of the <code class="literal">vgcreate</code> command to specify an allocation policy of <code class="literal">contiguous</code>, <code class="literal">anywhere</code>, or <code class="literal">cling</code>. In general, allocation policies other than <code class="literal">normal</code> are required only in special cases where you need to specify unusual or nonstandard extent allocation.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ref_lvm-allocation-policies-controlling-lvm-allocation"/>LVM allocation policies</h1></div></div></div><p>
+				When an LVM operation needs to allocate physical extents for one or more logical volumes, the allocation proceeds as follows:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						The complete set of unallocated physical extents in the volume group is generated for consideration. If you supply any ranges of physical extents at the end of the command line, only unallocated physical extents within those ranges on the specified physical volumes are considered.
+					</li><li class="listitem">
+						Each allocation policy is tried in turn, starting with the strictest policy (<code class="literal">contiguous</code>) and ending with the allocation policy specified using the <code class="literal">--alloc</code> option or set as the default for the particular logical volume or volume group. For each policy, working from the lowest-numbered logical extent of the empty logical volume space that needs to be filled, as much space as possible is allocated, according to the restrictions imposed by the allocation policy. If more space is needed, LVM moves on to the next policy.
+					</li></ul></div><p>
+				The allocation policy restrictions are as follows:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						An allocation policy of <code class="literal">contiguous</code> requires that the physical location of any logical extent that is not the first logical extent of a logical volume is adjacent to the physical location of the logical extent immediately preceding it.
+					</p><p class="simpara">
+						When a logical volume is striped or mirrored, the <code class="literal">contiguous</code> allocation restriction is applied independently to each stripe or mirror image (leg) that needs space.
+					</p></li><li class="listitem"><p class="simpara">
+						An allocation policy of <code class="literal">cling</code> requires that the physical volume used for any logical extent be added to an existing logical volume that is already in use by at least one logical extent earlier in that logical volume. If the configuration parameter <code class="literal">allocation/cling_tag_list</code> is defined, then two physical volumes are considered to match if any of the listed tags is present on both physical volumes. This allows groups of physical volumes with similar properties (such as their physical location) to be tagged and treated as equivalent for allocation purposes.
+					</p><p class="simpara">
+						When a Logical Volume is striped or mirrored, the <code class="literal">cling</code> allocation restriction is applied independently to each stripe or mirror image (leg) that needs space.
+					</p></li><li class="listitem"><p class="simpara">
+						An allocation policy of <code class="literal">normal</code> will not choose a physical extent that shares the same physical volume as a logical extent already allocated to a parallel logical volume (that is, a different stripe or mirror image/leg) at the same offset within that parallel logical volume.
+					</p><p class="simpara">
+						When allocating a mirror log at the same time as logical volumes to hold the mirror data, an allocation policy of <code class="literal">normal</code> will first try to select different physical volumes for the log and the data. If that is not possible and the <code class="literal">allocation/mirror_logs_require_separate_pvs</code> configuration parameter is set to 0, it will then allow the log to share physical volume(s) with part of the data.
+					</p><p class="simpara">
+						Similarly, when allocating thin pool metadata, an allocation policy of <code class="literal">normal</code> will follow the same considerations as for allocation of a mirror log, based on the value of the <code class="literal">allocation/thin_pool_metadata_require_separate_pvs</code> configuration parameter.
+					</p></li><li class="listitem">
+						If there are sufficient free extents to satisfy an allocation request but a <code class="literal">normal</code> allocation policy would not use them, the <code class="literal">anywhere</code> allocation policy will, even if that reduces performance by placing two stripes on the same physical volume.
+					</li></ul></div><p>
+				The allocation policies can be changed using the <code class="literal">vgchange</code> command.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					If you rely upon any layout behavior beyond that documented in this section according to the defined allocation policies, you should note that this might change in future versions of the code. For example, if you supply on the command line two empty physical volumes that have an identical number of free physical extents available for allocation, LVM currently considers using each of them in the order they are listed; there is no guarantee that future releases will maintain that property. If it is important to obtain a specific layout for a particular Logical Volume, then you should build it up through a sequence of <code class="literal">lvcreate</code> and <code class="literal">lvconvert</code> steps such that the allocation policies applied to each step leave LVM no discretion over the layout.
+				</p></div><p>
+				To view the way the allocation process currently works in any specific case, you can read the debug logging output, for example by adding the <code class="literal">-vvvv</code> option to a command.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_preventing-lvm-allocation-controlling-lvm-allocation"/>Preventing allocation on a physical volume</h1></div></div></div><p>
+				You can prevent allocation of physical extents on the free space of one or more physical volumes with the <code class="literal">pvchange</code> command. This may be necessary if there are disk errors, or if you will be removing the physical volume.
+			</p><p>
+				The following command disallows the allocation of physical extents on <code class="literal">/dev/sdk1</code>.
+			</p><pre class="literallayout"># <code class="literal">pvchange -x n /dev/sdk1</code></pre><p>
+				You can also use the <code class="literal">-xy</code> arguments of the <code class="literal">pvchange</code> command to allow allocation where it had previously been disallowed.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_extending-lvm-volume-with-cling-allocation-controlling-lvm-allocation"/>Extending a logical volume with the <code class="literal">cling</code> allocation policy</h1></div></div></div><p>
+				When extending an LVM volume, you can use the <code class="literal">--alloc cling</code> option of the <code class="literal">lvextend</code> command to specify the <code class="literal">cling</code> allocation policy. This policy will choose space on the same physical volumes as the last segment of the existing logical volume. If there is insufficient space on the physical volumes and a list of tags is defined in the <code class="literal">/etc/lvm/lvm.conf</code> file, LVM will check whether any of the tags are attached to the physical volumes and seek to match those physical volume tags between existing extents and new extents.
+			</p><p>
+				For example, if you have logical volumes that are mirrored between two sites within a single volume group, you can tag the physical volumes according to where they are situated by tagging the physical volumes with <code class="literal">@site1</code> and <code class="literal">@site2</code> tags. You can then specify the following line in the <code class="literal">lvm.conf</code> file:
+			</p><pre class="literallayout">cling_tag_list = [ "@site1", "@site2" ]</pre><p>
+				In the following example, the <code class="literal">lvm.conf</code> file has been modified to contain the following line:
+			</p><pre class="literallayout">cling_tag_list = [ "@A", "@B" ]</pre><p>
+				Also in this example, a volume group <code class="literal">taft</code> has been created that consists of the physical volumes <code class="literal">/dev/sdb1</code>, <code class="literal">/dev/sdc1</code>, <code class="literal">/dev/sdd1</code>, <code class="literal">/dev/sde1</code>, <code class="literal">/dev/sdf1</code>, <code class="literal">/dev/sdg1</code>, and <code class="literal">/dev/sdh1</code>. These physical volumes have been tagged with tags <code class="literal">A</code>, <code class="literal">B</code>, and <code class="literal">C</code>. The example does not use the <code class="literal">C</code> tag, but this will show that LVM uses the tags to select which physical volumes to use for the mirror legs.
+			</p><pre class="literallayout"># pvs -a -o +pv_tags /dev/sd[bcdefgh]
+  PV         VG   Fmt  Attr PSize  PFree  PV Tags
+  /dev/sdb1  taft lvm2 a--  15.00g 15.00g A
+  /dev/sdc1  taft lvm2 a--  15.00g 15.00g B
+  /dev/sdd1  taft lvm2 a--  15.00g 15.00g B
+  /dev/sde1  taft lvm2 a--  15.00g 15.00g C
+  /dev/sdf1  taft lvm2 a--  15.00g 15.00g C
+  /dev/sdg1  taft lvm2 a--  15.00g 15.00g A
+  /dev/sdh1  taft lvm2 a--  15.00g 15.00g A</pre><p>
+				The following command creates a 10 gigabyte mirrored volume from the volume group <code class="literal">taft</code>.
+			</p><pre class="literallayout"># <code class="literal">lvcreate --type raid1 -m 1 -n mirror --nosync -L 10G taft</code>
+  WARNING: New raid1 won't be synchronised. Don't read what you didn't write!
+  Logical volume "mirror" created</pre><p>
+				The following command shows which devices are used for the mirror legs and RAID metadata subvolumes.
+			</p><pre class="literallayout"># <code class="literal">lvs -a -o +devices</code>
+  LV                VG   Attr       LSize  Log Cpy%Sync Devices
+  mirror            taft Rwi-a-r--- 10.00g       100.00 mirror_rimage_0(0),mirror_rimage_1(0)
+  [mirror_rimage_0] taft iwi-aor--- 10.00g              /dev/sdb1(1)
+  [mirror_rimage_1] taft iwi-aor--- 10.00g              /dev/sdc1(1)
+  [mirror_rmeta_0]  taft ewi-aor---  4.00m              /dev/sdb1(0)
+  [mirror_rmeta_1]  taft ewi-aor---  4.00m              /dev/sdc1(0)</pre><p>
+				The following command extends the size of the mirrored volume, using the <code class="literal">cling</code> allocation policy to indicate that the mirror legs should be extended using physical volumes with the same tag.
+			</p><pre class="literallayout"># <code class="literal">lvextend --alloc cling -L +10G taft/mirror</code>
+  Extending 2 mirror images.
+  Extending logical volume mirror to 20.00 GiB
+  Logical volume mirror successfully resized</pre><p>
+				The following display command shows that the mirror legs have been extended using physical volumes with the same tag as the leg. Note that the physical volumes with a tag of <code class="literal">C</code> were ignored.
+			</p><pre class="literallayout"># <code class="literal">lvs -a -o +devices</code>
+  LV                VG   Attr       LSize  Log Cpy%Sync Devices
+  mirror            taft Rwi-a-r--- 20.00g       100.00 mirror_rimage_0(0),mirror_rimage_1(0)
+  [mirror_rimage_0] taft iwi-aor--- 20.00g              /dev/sdb1(1)
+  [mirror_rimage_0] taft iwi-aor--- 20.00g              /dev/sdg1(0)
+  [mirror_rimage_1] taft iwi-aor--- 20.00g              /dev/sdc1(1)
+  [mirror_rimage_1] taft iwi-aor--- 20.00g              /dev/sdd1(0)
+  [mirror_rmeta_0]  taft ewi-aor---  4.00m              /dev/sdb1(0)
+  [mirror_rmeta_1]  taft ewi-aor---  4.00m              /dev/sdc1(0)</pre></div></div></body></html>

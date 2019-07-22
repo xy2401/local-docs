@@ -1,0 +1,341 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 1. Deploying VDO</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="deploying-vdo_deduplicating-and-compressing-storage"/>Chapter 1. Deploying VDO</h1></div></div></div><p>
+			As a system administrator, you can use VDO to create deduplicated and compressed storage pools.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="con_introduction-to-vdo-deploying-vdo"/>Introduction to VDO</h1></div></div></div><p>
+				Virtual Data Optimizer (VDO) provides inline data reduction for Linux in the form of deduplication, compression, and thin provisioning. When you set up a VDO volume, you specify a block device on which to construct your VDO volume and the amount of logical storage you plan to present.
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						When hosting active VMs or containers, Red Hat recommends provisioning storage at a 10:1 logical to physical ratio: that is, if you are utilizing 1 TB of physical storage, you would present it as 10 TB of logical storage.
+					</li><li class="listitem">
+						For object storage, such as the type provided by Ceph, Red Hat recommends using a 3:1 logical to physical ratio: that is, 1 TB of physical storage would present as 3 TB logical storage.
+					</li></ul></div><p>
+				In either case, you can simply put a file system on top of the logical device presented by VDO and then use it directly or as part of a distributed cloud storage architecture.
+			</p><p>
+				Because VDO is thinly provisioned, the file system and applications only see the logical space in use and are not aware of the actual physical space available. Scripting should be used to monitor the actual available space and generate an alert if use exceeds a threshold: for example, when the VDO volume is 80% full. See <a class="xref" href="maintaining-vdo_deduplicating-and-compressing-storage.html#managing-free-space-on-vdo-volumes_maintaining-vdo" title="Managing free space on VDO volumes">the section called “Managing free space on VDO volumes”</a> for details.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="vdo-deployment-scenarios_deploying-vdo"/>VDO deployment scenarios</h1></div></div></div><p>
+				You can deploy VDO in a variety of ways to provide deduplicated storage for:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						both block and file access
+					</li><li class="listitem">
+						both local and remote storage
+					</li></ul></div><p>
+				Because VDO exposes its deduplicated storage as a standard Linux block device, you can use it with standard file systems, iSCSI and FC target drivers, or as unified storage.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					VDO deployment with Ceph Storage is currently not supported.
+				</p></div><h3><a id="kvm"/>KVM</h3><p>
+				You can deploy VDO on a KVM server configured with Direct Attached Storage.
+			</p><div class="informalfigure"><div class="mediaobject"><img src="images/vdo-kvm1.png" alt="VDO Deployment with KVM"/></div></div><h3><a id="file_systems"/>File systems</h3><p>
+				You can create file systems on top of VDO and expose them to NFS or CIFS users with the NFS server or Samba.
+			</p><div class="informalfigure"><div class="mediaobject"><img src="images/vdo-integration-deploy_file.png" alt="Deduplicated NAS"/></div></div><h3><a id="iscsi_target"/>iSCSI target</h3><p>
+				You can export the entirety of the VDO storage target as an iSCSI target to remote iSCSI initiators.
+			</p><div class="informalfigure"><div class="mediaobject"><img src="images/vdo-integration-deploy_block.png" alt="Deduplicated block storage target"/></div></div><h3><a id="lvm"/>LVM</h3><p>
+				On more feature-rich systems, you can use LVM to provide multiple logical unit numbers (LUNs) that are all backed by the same deduplicated storage pool.
+			</p><p>
+				In the following diagram, the VDO target is registered as a physical volume so that it can be managed by LVM. Multiple logical volumes (<span class="emphasis"><em>LV1</em></span> to <span class="emphasis"><em>LV4</em></span>) are created out of the deduplicated storage pool. In this way, VDO can support multiprotocol unified block or file access to the underlying deduplicated storage pool.
+			</p><div class="informalfigure"><div class="mediaobject"><img src="images/vdo-integration-deploy_unified.png" alt="Deduplicated unified storage"/></div></div><p>
+				Deduplicated unified storage design enables for multiple file systems to collectively use the same deduplication domain through the LVM tools. Also, file systems can take advantage of LVM snapshot, copy-on-write, and shrink or grow features, all on top of VDO.
+			</p><h3><a id="encryption"/>Encryption</h3><p>
+				Device Mapper (DM) mechanisms such as DM Crypt are compatible with VDO. Encrypting VDO volumes helps ensure data security, and any file systems above VDO are still deduplicated.
+			</p><div class="informalfigure"><div class="mediaobject"><img src="images/vdo-integration-vdo_encryption_layering.png" alt="Using VDO with encryption"/></div></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+					Applying the encryption layer above VDO results in little if any data deduplication. Encryption makes duplicate blocks different before VDO can deduplicate them.
+				</p><p>
+					Always place the encryption layer below VDO.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="vdo-requirements_deploying-vdo"/>VDO requirements</h1></div></div></div><p>
+				VDO has certain requirements on its placement and your system resources.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="placement-of-vdo-in-the-storage-stack_vdo-requirements"/>Placement of VDO in the storage stack</h2></div></div></div><p>
+					You should place certain storage layers under VDO and others above VDO:
+				</p><div class="variablelist"><dl class="variablelist"><dt><span class="term">Only under VDO</span></dt><dd><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+										DM Multipath
+									</li><li class="listitem">
+										DM Crypt
+									</li><li class="listitem">
+										Software RAID (LVM or MDRAID)
+									</li></ul></div></dd><dt><span class="term">Only above VDO</span></dt><dd><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+										LVM cache
+									</li><li class="listitem">
+										LVM logical volumes
+									</li><li class="listitem">
+										LVM snapshots
+									</li><li class="listitem">
+										LVM thin provisioning
+									</li></ul></div></dd></dl></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						You can place thick-provisioned layers on top of VDO, but you cannot rely on the guarantees of thick provisioning in that case. Because the VDO layer is thin-provisioned, the effects of thin provisioning apply to all layers above it. If you do not monitor the VDO device, you might run out of physical space on thick-provisioned volumes above VDO.
+					</p></div><p>
+					The following configurations are <span class="strong"><strong>not supported</strong></span>:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							VDO on top of VDO volumes: storage → VDO → LVM → VDO
+						</li><li class="listitem">
+							VDO on top of LVM snapshots
+						</li><li class="listitem">
+							VDO on top of LVM cache
+						</li><li class="listitem">
+							VDO on top of a loopback device
+						</li><li class="listitem">
+							VDO on top of LVM thin provisioning
+						</li><li class="listitem">
+							Encrypted volumes on top of VDO: storage → VDO → DM-Crypt
+						</li><li class="listitem">
+							Partitions on a VDO volume
+						</li><li class="listitem">
+							RAID (LVM, MDRAID, or any other type) on top of a VDO volume
+						</li></ul></div><h4><a id="additional_resources"/>Additional resources</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							For more information on stacking VDO with LVM, see the <a class="link" href="https://access.redhat.com/articles/2106521#vdo">Stacking LVM volumes</a> article.
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="vdo-memory-requirements_vdo-requirements"/>VDO memory requirements</h2></div></div></div><p>
+					Each VDO volume has two distinct memory requirements:
+				</p><h4><a id="the_vdo_module"/>The VDO module</h4><p>
+					VDO requires 370 MB of DRAM plus an additional 268 MB per each 1 TB of physical storage managed by the volume.
+				</p><h4><a id="the_universal_deduplication_service_uds_index"/>The Universal Deduplication Service (UDS) index</h4><p>
+					UDS requires a minimum of 250 MB of DRAM, which is also the default amount that deduplication uses.
+				</p><p>
+					The memory required for the UDS index is determined by the index type and the required size of the deduplication window:
+				</p><div class="informaltable"><table border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Index type</th><th style="text-align: left" valign="top">Deduplication window</th><th style="text-align: left" valign="top">Note</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+									Dense
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									1 TB per 1 GB of RAM
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									A 1 GB dense index is generally sufficient for up to 4 TB of physical storage.
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									Sparse
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									10 TB per 1 GB of RAM
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									A 1 GB sparse index is generally sufficient for up to 40 TB of physical storage.
+								</p>
+								 </td></tr></tbody></table></div><p>
+					The UDS Sparse Indexing feature is the recommended mode for VDO. It relies on the temporal locality of data and attempts to retain only the most relevant index entries in memory. With the sparse index, UDS can maintain a deduplication window that is ten times larger than with dense, while using the same amount of memory.
+				</p><p>
+					Although the sparse index provides the greatest coverage, the dense index provides more deduplication advice. For most workloads, given the same amount of memory, the difference in deduplication rates between dense and sparse indexes is negligible.
+				</p><h4><a id="additional_resources_2"/>Additional resources</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							For concrete examples of UDS index memory requirements, see <a class="xref" href="deploying-vdo_deduplicating-and-compressing-storage.html#examples-of-vdo-requirements-by-physical-volume-size_vdo-requirements" title="Examples of VDO requirements by physical volume size">the section called “Examples of VDO requirements by physical volume size”</a>.
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="vdo-storage-requirements_vdo-requirements"/>VDO storage requirements</h2></div></div></div><p>
+					You can configure a VDO volume to use up to 256 TB of physical storage. Only a certain part of the physical storage is usable to store data. This section provides the calculations to determine the usable size of a VDO-managed volume.
+				</p><p>
+					VDO requires storage for two types of VDO metadata and for the UDS index:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The first type of VDO metadata uses approximately 1 MB for each 4 GB of <span class="emphasis"><em>physical storage</em></span> plus an additional 1 MB per slab.
+						</li><li class="listitem">
+							The second type of VDO metadata consumes approximately 1.25 MB for each 1 GB of <span class="emphasis"><em>logical storage</em></span>, rounded up to the nearest slab.
+						</li><li class="listitem">
+							The amount of storage required for the UDS index depends on the type of index and the amount of RAM allocated to the index. For each 1 GB of RAM, a dense UDS index uses 17 GB of storage, and a sparse UDS index will use 170 GB of storage.
+						</li></ul></div><h4><a id="additional_resources_3"/>Additional resources</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							For concrete examples of VDO storage requirements, see <a class="xref" href="deploying-vdo_deduplicating-and-compressing-storage.html#examples-of-vdo-requirements-by-physical-volume-size_vdo-requirements" title="Examples of VDO requirements by physical volume size">the section called “Examples of VDO requirements by physical volume size”</a>.
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="examples-of-vdo-requirements-by-physical-volume-size_vdo-requirements"/>Examples of VDO requirements by physical volume size</h2></div></div></div><p>
+					The following tables provide approximate system requirements of VDO based on the size of the underlying physical volume. Each table lists requirements appropriate to the intended deployment, such as primary storage or backup storage.
+				</p><p>
+					The exact numbers depend on your configuration of the VDO volume.
+				</p><h4><a id="primary_storage_deployment"/>Primary storage deployment</h4><p>
+					In the primary storage case, the UDS index is between 0.01% to 25% the size of the physical volume.
+				</p><div class="table"><a id="idm140577854167968"/><p class="title"><strong>Table 1.1. Storage and memory requirements for primary storage</strong></p><div class="table-contents"><table summary="Storage and memory requirements for primary storage" border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/><col class="col_4"/></colgroup><thead><tr><th style="text-align: left" valign="top">Physical volume size</th><th style="text-align: left" valign="top">RAM usage</th><th style="text-align: left" valign="top">Disk usage</th><th style="text-align: left" valign="top">Index type</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+									10GB–1TB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									250MB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									2.5 GB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Dense
+								</p>
+								 </td></tr><tr><td rowspan="2" style="text-align: left" valign="top"> <p>
+									2–10TB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									1GB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									10GB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Dense
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									250MB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									22GB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Sparse
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									11–50TB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									2GB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									170GB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Sparse
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									51–100TB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									3GB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									255GB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Sparse
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									101–256TB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									12GB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									1020GB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Sparse
+								</p>
+								 </td></tr></tbody></table></div></div><h4><a id="backup_storage_deployment"/>Backup storage deployment</h4><p>
+					In the backup storage case, the UDS index covers the size of the backup set but is not bigger than the physical volume. If you expect the backup set or the physical size to grow in the future, factor this into the index size.
+				</p><div class="table"><a id="idm140577857978976"/><p class="title"><strong>Table 1.2. Storage and memory requirements for backup storage</strong></p><div class="table-contents"><table summary="Storage and memory requirements for backup storage" border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/><col class="col_4"/></colgroup><thead><tr><th style="text-align: left" valign="top">Physical volume size</th><th style="text-align: left" valign="top">RAM usage</th><th style="text-align: left" valign="top">Disk usage</th><th style="text-align: left" valign="top">Index type</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+									10GB–1TB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									250MB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									2.5 GB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Dense
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									2–10TB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									2GB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									170GB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Sparse
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									11–50TB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									10GB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									850GB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Sparse
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									51–100TB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									20GB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									1700GB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Sparse
+								</p>
+								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
+									101–256TB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									26GB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									3400GB
+								</p>
+								 </td><td style="text-align: left" valign="top"> <p>
+									Sparse
+								</p>
+								 </td></tr></tbody></table></div></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_installing-vdo-deploying-vdo"/>Installing VDO</h1></div></div></div><p>
+				This procedure installs software necessary to create, mount, and manage VDO volumes.
+			</p><h3><a id="procedure"/>Procedure</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						Install the <code class="literal">vdo</code> and <code class="literal">kmod-kvdo</code> packages:
+					</p><pre class="screen"># yum install vdo kmod-kvdo</pre></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_creating-a-vdo-volume-deploying-vdo"/>Creating a VDO volume</h1></div></div></div><p>
+				This procedure creates a VDO volume on a block device.
+			</p><p>
+				When a VDO volume is created, VDO adds an entry to the <code class="literal">/etc/vdoconf.yml</code> configuration file. The <code class="literal">vdo.service</code> systemd unit then uses the entry to start the volume by default.
+			</p><h3><a id="prerequisites"/>Prerequisites</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						Install the VDO software. See <a class="xref" href="deploying-vdo_deduplicating-and-compressing-storage.html#proc_installing-vdo-deploying-vdo" title="Installing VDO">the section called “Installing VDO”</a>.
+					</li></ul></div><h3><a id="procedure_2"/>Procedure</h3><p>
+				In all the following steps, replace <span class="emphasis"><em><span class="replaceable">vdo-name</span></em></span> with the identifier you want to use for your VDO volume; for example, <code class="literal">vdo1</code>. You must use a different name and device for each instance of VDO on the system.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Create the VDO volume:
+					</p><pre class="screen"># vdo create \
+      --name=<span class="emphasis"><em>vdo-name</em></span> \
+      --device=<span class="emphasis"><em>block-device</em></span> \
+      --vdoLogicalSize=<span class="emphasis"><em>logical-size</em></span></pre><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								Replace <span class="emphasis"><em><span class="replaceable">block-device</span></em></span> with the name of the block device where you want to create the VDO volume. For example, <code class="literal">/dev/sde</code>.
+							</li><li class="listitem"><p class="simpara">
+								Replace <span class="emphasis"><em><span class="replaceable">logical-size</span></em></span> with the amount of logical storage that the VDO volume should present:
+							</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+										For active VMs or container storage, use logical size that is <span class="strong"><strong>ten</strong></span> times the physical size of your block device. For example, if your block device is 1TB in size, use <code class="literal">10T</code> here.
+									</li><li class="listitem">
+										For object storage, use logical size that is <span class="strong"><strong>three</strong></span> times the physical size of your block device. For example, if your block device is 1TB in size, use <code class="literal">3T</code> here.
+									</li></ul></div></li><li class="listitem"><p class="simpara">
+								If the physical block device is larger than 16TiB, add the <code class="literal">--vdoSlabSize=32G</code> option to increase the slab size on the volume to 32GiB.
+							</p><p class="simpara">
+								Using the default slab size of 2GiB on block devices larger than 16TiB results in the <code class="literal">vdo create</code> command failing with the following error:
+							</p><pre class="screen">vdo: ERROR - vdoformat: formatVDO failed on '/dev/<span class="emphasis"><em><span class="replaceable">device</span></em></span>': VDO Status: Exceeds maximum number of slabs supported</pre></li></ul></div><div class="example"><a id="idm140577854264576"/><p class="title"><strong>Example 1.1. Creating VDO for container storage</strong></p><div class="example-contents"><p>
+							For example, to create a VDO volume for container storage on a 1TB block device, you might use:
+						</p><pre class="screen"># vdo create \
+      --name=<span class="emphasis"><em>vdo1</em></span> \
+      --device=<span class="emphasis"><em>/dev/sde</em></span> \
+      --vdoLogicalSize=<span class="emphasis"><em>10T</em></span></pre></div></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+							If a failure occurs when creating the VDO volume, remove the volume to clean up. See <a class="xref" href="maintaining-vdo_deduplicating-and-compressing-storage.html#removing-an-unsuccessfully-created-vdo-volume_removing-vdo-volumes" title="Removing an unsuccessfully created VDO volume">the section called “Removing an unsuccessfully created VDO volume”</a> for details.
+						</p></div></li><li class="listitem"><p class="simpara">
+						Create a file system on top of the VDO volume:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+								For the XFS file system:
+							</p><pre class="screen"># mkfs.xfs -K /dev/mapper/<span class="emphasis"><em>vdo-name</em></span></pre></li><li class="listitem"><p class="simpara">
+								For the ext4 file system:
+							</p><pre class="screen"># mkfs.ext4 -E nodiscard /dev/mapper/<span class="emphasis"><em>vdo-name</em></span></pre></li></ul></div></li><li class="listitem"><p class="simpara">
+						Use the following command to wait for the system to register the new device node:
+					</p><pre class="screen"># udevadm settle</pre></li></ol></div><h3><a id="next_steps"/>Next steps</h3><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						Mount the file system. See <a class="xref" href="deploying-vdo_deduplicating-and-compressing-storage.html#mounting-a-vdo-volume_deploying-vdo" title="Mounting a VDO volume">the section called “Mounting a VDO volume”</a> for details.
+					</li><li class="listitem">
+						Enable the <code class="literal">discard</code> feature for the file system on your VDO device. See <a class="xref" href="deploying-vdo_deduplicating-and-compressing-storage.html#enabling-periodic-block-discard_deploying-vdo" title="Enabling periodic block discard">the section called “Enabling periodic block discard”</a> for details.
+					</li></ol></div><h3><a id="additional_resources_4"/>Additional resources</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						The <code class="literal">vdo(8)</code> man page
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="mounting-a-vdo-volume_deploying-vdo"/>Mounting a VDO volume</h1></div></div></div><p>
+				This procedure mounts a file system on a VDO volume, either manually or persistently.
+			</p><h3><a id="prerequisites_2"/>Prerequisites</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						A VDO volume has been created on your system. For instructions, see <a class="xref" href="deploying-vdo_deduplicating-and-compressing-storage.html#proc_creating-a-vdo-volume-deploying-vdo" title="Creating a VDO volume">the section called “Creating a VDO volume”</a>.
+					</li></ul></div><h3><a id="procedure_3"/>Procedure</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						To mount the file system on the VDO volume manually, use:
+					</p><pre class="screen"># mount /dev/mapper/<span class="emphasis"><em><span class="replaceable">vdo-name</span></em></span> <span class="emphasis"><em><span class="replaceable">mount-point</span></em></span></pre></li><li class="listitem"><p class="simpara">
+						To configure the file system to mount automatically at boot, add a line to the <code class="literal">/etc/fstab</code> file:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+								For the XFS file system:
+							</p><pre class="screen">/dev/mapper/<span class="emphasis"><em><span class="replaceable">vdo-name</span></em></span> <span class="emphasis"><em><span class="replaceable">mount-point</span></em></span> xfs defaults,_netdev,x-systemd.device-timeout=0,x-systemd.requires=vdo.service 0 0</pre></li><li class="listitem"><p class="simpara">
+								For the ext4 file system:
+							</p><pre class="screen">/dev/mapper/<span class="emphasis"><em><span class="replaceable">vdo-name</span></em></span> <span class="emphasis"><em><span class="replaceable">mount-point</span></em></span> ext4 defaults,_netdev,x-systemd.device-timeout=0,x-systemd.requires=vdo.service 0 0</pre></li></ul></div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="enabling-periodic-block-discard_deploying-vdo"/>Enabling periodic block discard</h1></div></div></div><p>
+				This procedure enables a <code class="literal">systemd</code> timer that regularly discards unused blocks on all supported file systems.
+			</p><h3><a id="procedure_4"/>Procedure</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						Enable and start the <code class="literal">systemd</code> timer:
+					</p><pre class="screen"># systemctl enable --now fstrim.timer</pre></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_monitoring-vdo_deploying-vdo"/>Monitoring VDO</h1></div></div></div><p>
+				This procedure describes how to obtain usage and efficiency information from a VDO volume.
+			</p><h3><a id="prerequisites_3"/>Prerequisites</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						Install the VDO software. See <a class="xref" href="deploying-vdo_deduplicating-and-compressing-storage.html#proc_installing-vdo-deploying-vdo" title="Installing VDO">the section called “Installing VDO”</a>.
+					</li></ul></div><h3><a id="procedure_5"/>Procedure</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						Use the <code class="literal">vdostats</code> utility to get information about a VDO volume:
+					</p><pre class="screen"># vdostats --human-readable
+
+Device                   1K-blocks    Used     Available    Use%    Space saving%
+/dev/mapper/node1osd1    926.5G       21.0G    905.5G       2%      73%
+/dev/mapper/node1osd2    926.5G       28.2G    898.3G       3%      64%</pre></li></ul></div><h3><a id="additional_resources_5"/>Additional resources</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						The <code class="literal">vdostats(8)</code> man page.
+					</li></ul></div></div></div></body></html>

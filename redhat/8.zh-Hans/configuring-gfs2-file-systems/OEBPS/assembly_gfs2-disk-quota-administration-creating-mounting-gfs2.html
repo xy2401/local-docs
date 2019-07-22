@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 4. GFS2 quota management</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_gfs2-disk-quota-administration-creating-mounting-gfs2"/>Chapter 4. GFS2 quota management</h1></div></div></div><p>
+			File system quotas are used to limit the amount of file system space a user or group can use. A user or group does not have a quota limit until one is set. When a GFS2 file system is mounted with the <code class="literal">quota=on</code> or <code class="literal">quota=account</code> option, GFS2 keeps track of the space used by each user and group even when there are no limits in place. GFS2 updates quota information in a transactional way so system crashes do not require quota usages to be reconstructed.
+		</p><p>
+			To prevent a performance slowdown, a GFS2 node synchronizes updates to the quota file only periodically. The fuzzy quota accounting can allow users or groups to slightly exceed the set limit. To minimize this, GFS2 dynamically reduces the synchronization period as a hard quota limit is approached.
+		</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+				GFS2 supports the standard Linux quota facilities. In order to use this you will need to install the <span class="strong"><strong><span class="application">quota</span></strong></span> RPM. This is the preferred way to administer quotas on GFS2 and should be used for all new deployments of GFS2 using quotas. This section documents GFS2 quota management using these facilities.
+			</p></div><p>
+			For more information on disk quotas, see the <code class="literal">man</code> pages of the following commands:
+		</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+					<code class="literal">quotacheck</code>
+				</li><li class="listitem">
+					<code class="literal">edquota</code>
+				</li><li class="listitem">
+					<code class="literal">repquota</code>
+				</li><li class="listitem">
+					<code class="literal">quota</code>
+				</li></ul></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_configuring-gfs2-disk-quotas-gfs2-disk-quota-administration"/>Configuring GFS2 disk quotas</h1></div></div></div><p>
+				To implement disk quotas, use the following steps:
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						Set up quotas in enforcement or accounting mode.
+					</li><li class="listitem">
+						Initialize the quota database file with current block usage information.
+					</li><li class="listitem">
+						Assign quota policies. (In accounting mode, these policies are not enforced.)
+					</li></ol></div><p>
+				Each of these steps is discussed in detail in the following sections.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="setting_up_quotas_in_enforcement_or_accounting_mode"/>Setting up quotas in enforcement or accounting mode</h2></div></div></div><p>
+					In GFS2 file systems, quotas are disabled by default. To enable quotas for a file system, mount the file system with the <code class="literal">quota=on</code> option specified.
+				</p><p>
+					To mount a file system with quotas enabled, specify <code class="literal">quota=on</code> for the <code class="literal">options</code> argument when creating the GFS2 file system resource in a cluster. For example, the following command specifies that the GFS2 <code class="literal">Filesystem</code> resource being created will be mounted with quotas enabled.
+				</p><pre class="literallayout"># <code class="literal">pcs resource create gfs2mount Filesystem options="quota=on" device=BLOCKDEVICE directory=MOUNTPOINT fstype=gfs2 clone</code></pre><p>
+					It is possible to keep track of disk usage and maintain quota accounting for every user and group without enforcing the limit and warn values. To do this, mount the file system with the <code class="literal">quota=account</code> option specified.
+				</p><p>
+					To mount a file system with quotas disabled, specify <code class="literal">quota=off</code> for the <code class="literal">options</code> argument when creating the GFS2 file system resource in a cluster.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="creating_the_quota_database_files"/>Creating the quota database files</h2></div></div></div><p>
+					After each quota-enabled file system is mounted, the system is capable of working with disk quotas. However, the file system itself is not yet ready to support quotas. The next step is to run the <code class="literal">quotacheck</code> command.
+				</p><p>
+					The <code class="literal">quotacheck</code> command examines quota-enabled file systems and builds a table of the current disk usage per file system. The table is then used to update the operating system’s copy of disk usage. In addition, the file system’s disk quota files are updated.
+				</p><p>
+					To create the quota files on the file system, use the <code class="literal">-u</code> and the <code class="literal">-g</code> options of the <code class="literal">quotacheck</code> command; both of these options must be specified for user and group quotas to be initialized. For example, if quotas are enabled for the <code class="literal">/home</code> file system, create the files in the <code class="literal">/home</code> directory:
+				</p><pre class="literallayout">quotacheck -ug /home</pre></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="assigning_quotas_per_user"/>Assigning quotas per user</h2></div></div></div><p>
+					The last step is assigning the disk quotas with the <code class="literal">edquota</code> command. Note that if you have mounted your file system in accounting mode (with the <code class="literal">quota=account</code> option specified), the quotas are not enforced.
+				</p><p>
+					To configure the quota for a user, as root in a shell prompt, execute the command:
+				</p><pre class="literallayout"># <code class="literal">edquota username</code></pre><p>
+					Perform this step for each user who needs a quota. For example, if a quota is enabled for the <code class="literal">/home</code> partition (<code class="literal">/dev/VolGroup00/LogVol02</code> in the example below) and the command <code class="literal">edquota testuser</code> is executed, the following is shown in the editor configured as the default for the system:
+				</p><pre class="literallayout">Disk quotas for user testuser (uid 501):
+Filesystem                blocks     soft     hard    inodes   soft   hard
+/dev/VolGroup00/LogVol02  440436        0        0</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						The text editor defined by the <code class="literal">EDITOR</code> environment variable is used by <code class="literal">edquota</code>. To change the editor, set the <code class="literal">EDITOR</code> environment variable in your <code class="literal">~/.bash_profile</code> file to the full path of the editor of your choice.
+					</p></div><p>
+					The first column is the name of the file system that has a quota enabled for it. The second column shows how many blocks the user is currently using. The next two columns are used to set soft and hard block limits for the user on the file system.
+				</p><p>
+					The soft block limit defines the maximum amount of disk space that can be used.
+				</p><p>
+					The hard block limit is the absolute maximum amount of disk space that a user or group can use. Once this limit is reached, no further disk space can be used.
+				</p><p>
+					The GFS2 file system does not maintain quotas for inodes, so these columns do not apply to GFS2 file systems and will be blank.
+				</p><p>
+					If any of the values are set to 0, that limit is not set. In the text editor, change the limits. For example:
+				</p><pre class="literallayout">Disk quotas for user testuser (uid 501):
+Filesystem                blocks     soft     hard    inodes   soft   hard
+/dev/VolGroup00/LogVol02  440436   500000   550000</pre><p>
+					To verify that the quota for the user has been set, use the following command:
+				</p><pre class="literallayout"># <code class="literal">quota testuser</code></pre><p>
+					You can also set quotas from the command line with the <code class="literal">setquota</code> command. For information on the <code class="literal">setquota</code> command, see the <code class="literal">setquota</code>(8) man page.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="assigning_quotas_per_group"/>Assigning quotas per group</h2></div></div></div><p>
+					Quotas can also be assigned on a per-group basis. Note that if you have mounted your file system in accounting mode (with the <code class="literal">account=on</code> option specified), the quotas are not enforced.
+				</p><p>
+					To set a group quota for the <code class="literal">devel</code> group (the group must exist prior to setting the group quota), use the following command:
+				</p><pre class="literallayout"># <code class="literal">edquota -g devel</code></pre><p>
+					This command displays the existing quota for the group in the text editor:
+				</p><pre class="literallayout">Disk quotas for group devel (gid 505):
+Filesystem                blocks    soft     hard    inodes   soft   hard
+/dev/VolGroup00/LogVol02  440400       0        0</pre><p>
+					The GFS2 file system does not maintain quotas for inodes, so these columns do not apply to GFS2 file systems and will be blank. Modify the limits, then save the file.
+				</p><p>
+					To verify that the group quota has been set, use the following command:
+				</p><pre class="literallayout">$ <code class="literal">quota -g devel</code></pre></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_managing-gfs2-disk-quotas-gfs2-disk-quota-administration"/>Managing GFS2 disk Quotas</h1></div></div></div><p>
+				If quotas are implemented, they need some maintenance, mostly in the form of watching to see if the quotas are exceeded and making sure the quotas are accurate.
+			</p><p>
+				If users repeatedly exceed their quotas or consistently reach their soft limits, a system administrator has a few choices to make depending on what type of users they are and how much disk space impacts their work. The administrator can either help the user determine how to use less disk space or increase the user’s disk quota.
+			</p><p>
+				You can create a disk usage report by running the <code class="literal">repquota</code> utility. For example, the command <code class="literal">repquota /home</code> produces this output:
+			</p><pre class="literallayout"><span class="strong"><strong>*</strong></span> Report for user quotas on device /dev/mapper/VolGroup00-LogVol02
+Block grace time: 7days; Inode grace time: 7days
+			Block limits			File limits
+User		used	soft	hard	grace	used	soft	hard	grace
+----------------------------------------------------------------------
+root      --      36       0       0              4     0     0
+kristin   --     540       0       0            125     0     0
+testuser  --  440400  500000  550000          37418     0     0</pre><p>
+				To view the disk usage report for all (option <code class="literal">-a</code>) quota-enabled file systems, use the command:
+			</p><pre class="literallayout"># <code class="literal">repquota -a</code></pre><p>
+				The <code class="literal">--</code> displayed after each user is a quick way to determine whether the block limits have been exceeded. If the block soft limit is exceeded, a <code class="literal">+</code> appears in place of the first <code class="literal">-</code> in the output. The second <code class="literal">-</code> indicates the inode limit, but GFS2 file systems do not support inode limits so that character will remain as <code class="literal">-</code>. GFS2 file systems do not support a grace period, so the <code class="literal">grace</code> column will remain blank.
+			</p><p>
+				Note that the <code class="literal">repquota</code> command is not supported over NFS, irrespective of the underlying file system.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_keeping-gfs2-quotas-accurate-with-quotacheck-gfs2-disk-quota-administration"/>Keeping GFS2 disk quotas accurate with the quotacheck command</h1></div></div></div><p>
+				If you enable quotas on your file system after a period of time when you have been running with quotas disabled, you should run the <code class="literal">quotacheck</code> command to create, check, and repair quota files. Additionally, you may want to run the <code class="literal">quotacheck</code> command if you think your quota files may not be accurate, as may occur when a file system is not unmounted cleanly after a system crash.
+			</p><p>
+				For more information about the <code class="literal">quotacheck</code> command, see the <code class="literal">quotacheck</code> man page.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Run <code class="literal">quotacheck</code> when the file system is relatively idle on all nodes because disk activity may affect the computed quota values.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_synchronizing-gfs2-quotas-gfs2-disk-quota-administration"/>Synchronizing quotas with the quotasync Command</h1></div></div></div><p>
+				GFS2 stores all quota information in its own internal file on disk. A GFS2 node does not update this quota file for every file system write; rather, by default it updates the quota file once every 60 seconds. This is necessary to avoid contention among nodes writing to the quota file, which would cause a slowdown in performance.
+			</p><p>
+				As a user or group approaches their quota limit, GFS2 dynamically reduces the time between its quota-file updates to prevent the limit from being exceeded. The normal time period between quota synchronizations is a tunable parameter, <code class="literal">quota_quantum</code>. You can change this from its default value of 60 seconds using the <code class="literal">quota_quantum=</code> mount option. <a class="link" href="assembly_creating-mounting-gfs2-configuring-gfs2-file-systems.html#tb-table-gfs2-mount" title="Table 3.2. GFS2-Specific Mount Options">Table 25.2. GFS2-Specific Mount Options</a>. The <code class="literal">quota_quantum</code> parameter must be set on each node and each time the file system is mounted. Changes to the <code class="literal">quota_quantum</code> parameter are not persistent across unmounts. You can update the <code class="literal">quota_quantum</code> value with the <code class="literal">mount -o remount</code>.
+			</p><p>
+				You can use the <code class="literal">quotasync</code> command to synchronize the quota information from a node to the on-disk quota file between the automatic updates performed by GFS2. Usage <span class="strong"><strong><span class="application">Synchronizing Quota Information</span></strong></span>
+			</p><pre class="literallayout"># `quotasync [-ug -a|<span class="emphasis"><em>mountpoint</em></span>..a`].</pre><div class="variablelist"><dl class="variablelist"><dt><span class="term"><code class="literal">u</code></span></dt><dd>
+							Sync the user quota files.
+						</dd><dt><span class="term"><code class="literal">g</code></span></dt><dd>
+							Sync the group quota files
+						</dd><dt><span class="term"><code class="literal">a</code></span></dt><dd>
+							Sync all file systems that are currently quota-enabled and support sync. When -a is absent, a file system mountpoint should be specified.
+						</dd><dt><span class="term"><code class="literal">mountpoint</code></span></dt><dd>
+							Specifies the GFS2 file system to which the actions apply.
+						</dd></dl></div><p>
+				You can tune the time between synchronizations by specifying a <code class="literal">quota-quantum</code> mount option.
+			</p><pre class="literallayout"># <code class="literal">mount -o quota_quantum=<span class="emphasis"><em>secs</em></span>,remount <span class="emphasis"><em>BlockDevice</em></span> <span class="emphasis"><em>MountPoint</em></span></code></pre><div class="variablelist"><dl class="variablelist"><dt><span class="term"><code class="literal">MountPoint</code></span></dt><dd>
+							Specifies the GFS2 file system to which the actions apply.
+						</dd><dt><span class="term"><code class="literal">secs</code></span></dt><dd>
+							Specifies the new time period between regular quota-file synchronizations by GFS2. Smaller values may increase contention and slow down performance.
+						</dd></dl></div><p>
+				The following example synchronizes all the cached dirty quotas from the node it is run on to the on-disk quota file for the file system <code class="literal">/mnt/mygfs2</code>.
+			</p><pre class="literallayout"># <code class="literal">quotasync -ug /mnt/mygfs2</code></pre><p>
+				This following example changes the default time period between regular quota-file updates to one hour (3600 seconds) for file system <code class="literal">/mnt/mygfs2</code> when remounting that file system on logical volume <code class="literal">/dev/volgroup/logical_volume</code>.
+			</p><pre class="literallayout"># <code class="literal">mount -o quota_quantum=3600,remount /dev/volgroup/logical_volume /mnt/mygfs2</code></pre></div></div></body></html>

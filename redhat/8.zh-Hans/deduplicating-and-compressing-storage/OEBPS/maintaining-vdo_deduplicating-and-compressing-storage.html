@@ -1,0 +1,481 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 2. Maintaining VDO</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="maintaining-vdo_deduplicating-and-compressing-storage"/>Chapter 2. Maintaining VDO</h1></div></div></div><p>
+			After deploying a VDO volume, you can perform certain tasks to maintain or optimize it. Some of the following tasks are required for the correct functioning of VDO volumes.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="prerequisites-maintaining-vdo"/>Prerequisites</h1></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						VDO is installed and deployed. See <a class="xref" href="deploying-vdo_deduplicating-and-compressing-storage.html" title="Chapter 1. Deploying VDO">Chapter 1, <em>Deploying VDO</em></a>.
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="managing-free-space-on-vdo-volumes_maintaining-vdo"/>Managing free space on VDO volumes</h1></div></div></div><p>
+				VDO is a thinly provisioned block storage target. Because of that, you must actively monitor and manage space usage on VDO volumes.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="thin-provisioning-in-vdo_managing-free-space-on-vdo-volumes"/>Thin provisioning in VDO</h2></div></div></div><p>
+					VDO is a thinly provisioned block storage target. The amount of physical space that a VDO volume uses might differ from the size of the volume that is presented to users of the storage.
+				</p><p>
+					You can make use of this disparity to save on storage costs. Take care to avoid unexpectedly running out of storage space, if the data written does not achieve the expected rate of optimization.
+				</p><p>
+					Whenever the number of logical blocks (virtual storage) exceeds the number of physical blocks (actual storage), it becomes possible for file systems and applications to unexpectedly run out of space. For that reason, storage systems using VDO must provide you with a way of monitoring the size of the free pool on the VDO volume.
+				</p><p>
+					You can determine the size of this free pool by using the <code class="literal">vdostats</code> utility. The default output of this utility lists information for all running VDO volumes in a format similar to the Linux <code class="literal">df</code> utility. For example:
+				</p><pre class="screen">Device              1K-blocks   Used        Available   Use%
+/dev/mapper/my-vdo  211812352   105906176   105906176     50%</pre><p>
+					When the physical storage capacity of a VDO volume is almost full, VDO reports a warning in the system log, similar to the following:
+				</p><pre class="screen">Oct  2 17:13:39 system lvm[13863]: Monitoring VDO pool my-vdo.
+Oct  2 17:27:39 system lvm[13863]: WARNING: VDO pool my-vdo is now 80.69% full.
+Oct  2 17:28:19 system lvm[13863]: WARNING: VDO pool my-vdo is now 85.25% full.
+Oct  2 17:29:39 system lvm[13863]: WARNING: VDO pool my-vdo is now 90.64% full.
+Oct  2 17:30:29 system lvm[13863]: WARNING: VDO pool my-vdo is now 96.07% full.</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						These warning messages appear only when the <code class="literal">lvm2-monitor</code> service is running. It is enabled by default.
+					</p></div><p>
+					If the size of free pool drops below a certain level, you can take action by:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							Deleting data. This reclaims space whenever the deleted data is not duplicated. Deleting data frees the space only after discards are issued.
+						</li><li class="listitem">
+							Adding physical storage
+						</li><li class="listitem">
+							Deleting LUNs on top of VDO
+						</li></ul></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						Monitor physical space on your VDO volumes to prevent out-of-space situations. Running out of physical blocks might result in losing recently written, unacknowledged data on the VDO volume.
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="proc_monitoring-vdo_managing-free-space-on-vdo-volumes"/>Monitoring VDO</h2></div></div></div><p>
+					This procedure describes how to obtain usage and efficiency information from a VDO volume.
+				</p><h4><a id="prerequisites_4"/>Prerequisites</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							Install the VDO software. See <a class="xref" href="deploying-vdo_deduplicating-and-compressing-storage.html#proc_installing-vdo-deploying-vdo" title="Installing VDO">the section called “Installing VDO”</a>.
+						</li></ul></div><h4><a id="procedure_6"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							Use the <code class="literal">vdostats</code> utility to get information about a VDO volume:
+						</p><pre class="screen"># vdostats --human-readable
+
+Device                   1K-blocks    Used     Available    Use%    Space saving%
+/dev/mapper/node1osd1    926.5G       21.0G    905.5G       2%      73%
+/dev/mapper/node1osd2    926.5G       28.2G    898.3G       3%      64%</pre></li></ul></div><h4><a id="additional_resources_6"/>Additional resources</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">vdostats(8)</code> man page.
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="reclaiming-space-for-vdo-on-file-systems_managing-free-space-on-vdo-volumes"/>Reclaiming space for VDO on file systems</h2></div></div></div><p>
+					This procedure reclaims storage space on a VDO volume that hosts a file system.
+				</p><p>
+					VDO cannot reclaim space unless file systems communicate that blocks are free using the <code class="literal">DISCARD</code>, <code class="literal">TRIM</code>, or <code class="literal">UNMAP</code> commands.
+				</p><h4><a id="procedure_7"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							If the file system on your VDO volume supports discard operations, enable them. See <a class="xref" href="discarding-unused-blocks_deduplicating-and-compressing-storage.html" title="Chapter 3. Discarding unused blocks">Chapter 3, <em>Discarding unused blocks</em></a>.
+						</li><li class="listitem">
+							For file systems that do not use <code class="literal">DISCARD</code>, <code class="literal">TRIM</code>, or <code class="literal">UNMAP</code>, you can manually reclaim free space. Store a file consisting of binary zeros and then delete that file.
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="reclaiming-space-for-vdo-without-a-file-system_managing-free-space-on-vdo-volumes"/>Reclaiming space for VDO without a file system</h2></div></div></div><p>
+					This procedure reclaims storage space on a VDO volume that is used as a block storage target without a file system.
+				</p><h4><a id="procedure_8"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							Use the <code class="literal">blkdiscard</code> utility.
+						</p><p class="simpara">
+							For example, a single VDO volume can be carved up into multiple subvolumes by deploying LVM on top of it. Before deprovisioning a logical volume, use the <code class="literal">blkdiscard</code> utility to free the space previously used by that logical volume.
+						</p><p class="simpara">
+							LVM supports the <code class="literal">REQ_DISCARD</code> command and forwards the requests to VDO at the appropriate logical block addresses in order to free the space. If you use other volume managers, they also need to support <code class="literal">REQ_DISCARD</code>, or equivalently, <code class="literal">UNMAP</code> for SCSI devices or <code class="literal">TRIM</code> for ATA devices.
+						</p></li></ul></div><h4><a id="additional_resources_7"/>Additional resources</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">blkdiscard(8)</code> man page
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="reclaiming-space-for-vdo-on-fibre-channel-or-ethernet-network_managing-free-space-on-vdo-volumes"/>Reclaiming space for VDO on Fibre Channel or Ethernet network</h2></div></div></div><p>
+					This procedure reclaims storage space on VDO volumes (or portions of volumes) that are provisioned to hosts on a Fibre Channel storage fabric or an Ethernet network using SCSI target frameworks such as LIO or SCST.
+				</p><h4><a id="procedure_9"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							SCSI initiators can use the <code class="literal">UNMAP</code> command to free space on thinly provisioned storage targets, but the SCSI target framework needs to be configured to advertise support for this command. This is typically done by enabling thin provisioning on these volumes.
+						</p><p class="simpara">
+							Verify support for <code class="literal">UNMAP</code> on Linux-based SCSI initiators by running the following command:
+						</p><pre class="screen"># sg_vpd --page=0xb0 /dev/<span class="emphasis"><em><span class="replaceable">device</span></em></span></pre><p class="simpara">
+							In the output, verify that the <span class="emphasis"><em>Maximum unmap LBA count</em></span> value is greater than zero.
+						</p></li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="starting-or-stopping-vdo-volumes_maintaining-vdo"/>Starting or stopping VDO volumes</h1></div></div></div><p>
+				You can start or stop a given VDO volume, or all VDO volumes, and their associated UDS indexes.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="started-and-activated-vdo-volumes_starting-or-stopping-vdo-volumes"/>Started and activated VDO volumes</h2></div></div></div><p>
+					During the system boot, the <code class="literal">vdo</code> <code class="literal">systemd</code> unit automatically <span class="emphasis"><em>starts</em></span> all VDO devices that are configured as <span class="emphasis"><em>activated</em></span>.
+				</p><p>
+					The <code class="literal">vdo</code> <code class="literal">systemd</code> unit is installed and enabled by default when the <code class="literal">vdo</code> package is installed. This unit automatically runs the <code class="literal">vdo start --all</code> command at system startup to bring up all activated VDO volumes.
+				</p><p>
+					You can also create a VDO volume that does not start automatically by adding the <code class="literal">--activate=disabled</code> option to the <code class="literal">vdo create</code> command.
+				</p><p>
+					Some systems might place LVM volumes both above VDO volumes and below them. On these systems, it is necessary to start services in the right order:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							The lower layer of LVM must start first. In most systems, starting this layer is configured automatically when the LVM package is installed.
+						</li><li class="listitem">
+							The <code class="literal">vdo</code> <code class="literal">systemd</code> unit must start then.
+						</li><li class="listitem">
+							Finally, additional scripts must run in order to start LVM volumes or other services on top of the running VDO volumes.
+						</li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="starting-a-vdo-volume_starting-or-stopping-vdo-volumes"/>Starting a VDO volume</h2></div></div></div><p>
+					This procedure starts a given VDO volume or all VDO volumes on your system.
+				</p><h4><a id="procedure_10"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							To start a given VDO volume, use:
+						</p><pre class="screen"># vdo start --name=<span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span></pre></li><li class="listitem"><p class="simpara">
+							To start all VDO volumes, use:
+						</p><pre class="screen"># vdo start --all</pre></li></ul></div><h4><a id="additional_resources_8"/>Additional resources</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">vdo(8)</code> man page
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="stopping-a-vdo-volume_starting-or-stopping-vdo-volumes"/>Stopping a VDO volume</h2></div></div></div><p>
+					This procedure stops a given VDO volume or all VDO volumes on your system.
+				</p><h4><a id="procedure_11"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							To stop a given VDO volume, use:
+						</p><pre class="screen"># vdo stop --name=<span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span></pre></li><li class="listitem"><p class="simpara">
+							To stop all VDO volumes, use:
+						</p><pre class="screen"># vdo stop --all</pre></li></ul></div><h4><a id="additional_resources_9"/>Additional resources</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">vdo(8)</code> man page
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="related-information-starting-or-stopping-vdo-volumes"/>Related information</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							If restarted after an unclean shutdown, VDO performs a rebuild to verify the consistency of its metadata and repairs it if necessary. See <a class="xref" href="maintaining-vdo_deduplicating-and-compressing-storage.html#recovering-a-vdo-volume-after-an-unclean-shutdown_maintaining-vdo" title="Recovering a VDO volume after an unclean shutdown">the section called “Recovering a VDO volume after an unclean shutdown”</a> for more information on the rebuild process.
+						</li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="automatically-starting-vdo-volumes-at-system-boot_maintaining-vdo"/>Automatically starting VDO volumes at system boot</h1></div></div></div><p>
+				You can configure VDO volumes so that they start automatically at system boot. You can also disable the automatic start.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="started-and-activated-vdo-volumes_automatically-starting-vdo-volumes-at-system-boot"/>Started and activated VDO volumes</h2></div></div></div><p>
+					During the system boot, the <code class="literal">vdo</code> <code class="literal">systemd</code> unit automatically <span class="emphasis"><em>starts</em></span> all VDO devices that are configured as <span class="emphasis"><em>activated</em></span>.
+				</p><p>
+					The <code class="literal">vdo</code> <code class="literal">systemd</code> unit is installed and enabled by default when the <code class="literal">vdo</code> package is installed. This unit automatically runs the <code class="literal">vdo start --all</code> command at system startup to bring up all activated VDO volumes.
+				</p><p>
+					You can also create a VDO volume that does not start automatically by adding the <code class="literal">--activate=disabled</code> option to the <code class="literal">vdo create</code> command.
+				</p><p>
+					Some systems might place LVM volumes both above VDO volumes and below them. On these systems, it is necessary to start services in the right order:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							The lower layer of LVM must start first. In most systems, starting this layer is configured automatically when the LVM package is installed.
+						</li><li class="listitem">
+							The <code class="literal">vdo</code> <code class="literal">systemd</code> unit must start then.
+						</li><li class="listitem">
+							Finally, additional scripts must run in order to start LVM volumes or other services on top of the running VDO volumes.
+						</li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="activating-a-vdo-volume_automatically-starting-vdo-volumes-at-system-boot"/>Activating a VDO volume</h2></div></div></div><p>
+					This procedure activates a VDO volume to enable it to start automatically.
+				</p><h4><a id="procedure_12"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							To activate a specific volume:
+						</p><pre class="screen"># vdo activate --name=<span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span></pre></li><li class="listitem"><p class="simpara">
+							To activate all volumes:
+						</p><pre class="screen"># vdo activate --all</pre></li></ul></div><h4><a id="additional_resources_10"/>Additional resources</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">vdo(8)</code> man page
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="deactivating-a-vdo-volume_automatically-starting-vdo-volumes-at-system-boot"/>Deactivating a VDO volume</h2></div></div></div><p>
+					This procedure deactivates a VDO volume to prevent it from starting automatically.
+				</p><h4><a id="procedure_13"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							To deactivate a specific volume:
+						</p><pre class="screen"># vdo deactivate --name=<span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span></pre></li><li class="listitem"><p class="simpara">
+							To deactivate all volumes:
+						</p><pre class="screen"># vdo deactivate --all</pre></li></ul></div><h4><a id="additional_resources_11"/>Additional resources</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The <code class="literal">vdo(8)</code> man page
+						</li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="selecting-a-vdo-write-mode_maintaining-vdo"/>Selecting a VDO write mode</h1></div></div></div><p>
+				You can configure write mode for a VDO volume, based on what the underlying block device requires. By default, VDO selects write mode automatically.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="vdo-write-modes_selecting-a-vdo-write-mode"/>VDO write modes</h2></div></div></div><p>
+					VDO supports the following write modes:
+				</p><div class="variablelist"><dl class="variablelist"><dt><span class="term"><code class="literal">sync</code></span></dt><dd><p class="simpara">
+								When VDO is in <code class="literal">sync</code> mode, the layers above it assume that a write command writes data to persistent storage. As a result, it is not necessary for the file system or application, for example, to issue FLUSH or force unit access (FUA) requests to cause the data to become persistent at critical points.
+							</p><p class="simpara">
+								VDO must be set to <code class="literal">sync</code> mode only when the underlying storage guarantees that data is written to persistent storage when the write command completes. That is, the storage must either have no volatile write cache, or have a write through cache.
+							</p></dd><dt><span class="term"><code class="literal">async</code></span></dt><dd><p class="simpara">
+								When VDO is in <code class="literal">async</code> mode, VDO does not guarantee that the data is written to persistent storage when a write command is acknowledged. The file system or application must issue FLUSH or FUA requests to ensure data persistence at critical points in each transaction.
+							</p><p class="simpara">
+								VDO must be set to <code class="literal">async</code> mode if the underlying storage does not guarantee that data is written to persistent storage when the write command completes; that is, when the storage has a volatile write back cache.
+							</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+									When VDO is running in <code class="literal">async</code> mode, it is not compliant with Atomicity, Consistency, Isolation, Durability (ACID). When there is an application or a file system that assumes ACID compliance on top of the VDO volume, <code class="literal">async</code> mode might cause unexpected data loss.
+								</p></div></dd><dt><span class="term"><code class="literal">auto</code></span></dt><dd>
+								The <code class="literal">auto</code> mode automatically selects <code class="literal">sync</code> or <code class="literal">async</code> based on the characteristics of each device. This is the default option.
+							</dd></dl></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="the-internal-processing-of-vdo-write-modes_selecting-a-vdo-write-mode"/>The internal processing of VDO write modes</h2></div></div></div><p>
+					This section provides details on how the <code class="literal">sync</code> and <code class="literal">async</code> VDO write modes operate.
+				</p><p>
+					If the <code class="literal">kvdo</code> module is operating in synchronous mode:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							It temporarily writes the data in the request to the allocated block and then acknowledges the request.
+						</li><li class="listitem">
+							Once the acknowledgment is complete, an attempt is made to deduplicate the block by computing a MurmurHash-3 signature of the block data, which is sent to the VDO index.
+						</li><li class="listitem">
+							If the VDO index contains an entry for a block with the same signature, <code class="literal">kvdo</code> reads the indicated block and does a byte-by-byte comparison of the two blocks to verify that they are identical.
+						</li><li class="listitem">
+							If they are indeed identical, then <code class="literal">kvdo</code> updates its block map so that the logical block points to the corresponding physical block and releases the allocated physical block.
+						</li><li class="listitem">
+							If the VDO index did not contain an entry for the signature of the block being written, or the indicated block does not actually contain the same data, <code class="literal">kvdo</code> updates its block map to make the temporary physical block permanent.
+						</li></ol></div><p>
+					If <code class="literal">kvdo</code> is operating in asynchronous mode:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							Instead of writing the data, it will immediately acknowledge the request.
+						</li><li class="listitem">
+							It will then attempt to deduplicate the block in same manner as described above.
+						</li><li class="listitem">
+							If the block turns out to be a duplicate, <code class="literal">kvdo</code> updates its block map and releases the allocated block. Otherwise, it writes the data in the request to the allocated block and updates the block map to make the physical block permanent.
+						</li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="checking-the-write-mode-on-a-vdo-volume_selecting-a-vdo-write-mode"/>Checking the write mode on a VDO volume</h2></div></div></div><p>
+					This procedure lists the active write mode on a selected VDO volume.
+				</p><h4><a id="procedure_14"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							Use the following command to see the write mode used by a VDO volume:
+						</p><pre class="screen"># vdo status --name=<span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span></pre><p class="simpara">
+							The output lists:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									The <span class="emphasis"><em>configured write policy</em></span>, which is the option selected from <code class="literal">sync</code>, <code class="literal">async</code>, or <code class="literal">auto</code>
+								</li><li class="listitem">
+									The <span class="emphasis"><em>write policy</em></span>, which is the particular write mode that VDO applied, that is either <code class="literal">sync</code> or <code class="literal">async</code>
+								</li></ul></div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="checking-for-a-volatile-cache_selecting-a-vdo-write-mode"/>Checking for a volatile cache</h2></div></div></div><p>
+					This procedure determines if a block device has a volatile cache or not. You can use the information to choose between the <code class="literal">sync</code> and <code class="literal">async</code> VDO write modes.
+				</p><h4><a id="procedure_15"/>Procedure</h4><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Use either of the following methods to determine if a device has a writeback cache:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+									Read the <code class="literal">/sys/block/<span class="emphasis"><em><span class="replaceable">block-device</span></em></span>/device/scsi_disk/<span class="emphasis"><em><span class="replaceable">identifier</span></em></span>/cache_type</code> <code class="literal">sysfs</code> file. For example:
+								</p><pre class="screen">$ cat '/sys/block/sda/device/scsi_disk/7:0:0:0/cache_type'
+
+write back</pre><pre class="screen">$ cat '/sys/block/sdb/device/scsi_disk/1:2:0:0/cache_type'
+
+None</pre></li><li class="listitem"><p class="simpara">
+									Alternatively, you can find whether the above mentioned devices have a write cache or not in the kernel boot log:
+								</p><pre class="screen">sd 7:0:0:0: [sda] Write cache: enabled, read cache: enabled, doesn't support DPO or FUA
+sd 1:2:0:0: [sdb] Write cache: disabled, read cache: disabled, supports DPO and FUA</pre></li></ul></div></li><li class="listitem"><p class="simpara">
+							In the previous examples:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									Device <code class="literal">sda</code> indicates that it <span class="emphasis"><em>has</em></span> a writeback cache. Use <code class="literal">async</code> mode for it.
+								</li><li class="listitem">
+									Device <code class="literal">sdb</code> indicates that it <span class="emphasis"><em>does not have</em></span> a writeback cache. Use <code class="literal">sync</code> mode for it.
+								</li></ul></div><p class="simpara">
+							You should configure VDO to use the <code class="literal">sync</code> write mode if the <code class="literal">cache_type</code> value is <code class="literal">None</code> or <code class="literal">write through</code>.
+						</p></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="setting-a-vdo-write-mode_selecting-a-vdo-write-mode"/>Setting a VDO write mode</h2></div></div></div><p>
+					This procedure sets a write mode for a VDO volume, either for an existing one or when creating a new volume.
+				</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						Using an incorrect write mode might result in data loss after a power failure, a system crash, or any unexpected loss of contact with the disk.
+					</p></div><h4><a id="prerequisites_5"/>Prerequisites</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							Determine which write mode is correct for your device. See <a class="xref" href="maintaining-vdo_deduplicating-and-compressing-storage.html#checking-for-a-volatile-cache_selecting-a-vdo-write-mode" title="Checking for a volatile cache">the section called “Checking for a volatile cache”</a>.
+						</li></ul></div><h4><a id="procedure_16"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							You can set a write mode either on an existing VDO volume or when creating a new volume:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+									To modify an existing VDO volume, use:
+								</p><pre class="screen"># vdo changeWritePolicy --writePolicy=<span class="emphasis"><em><span class="replaceable">sync|async|auto</span></em></span> \
+                        --name=<span class="emphasis"><em><span class="replaceable">vdo-name</span></em></span></pre></li><li class="listitem">
+									To specify a write mode when creating a VDO volume, add the <code class="literal">--writePolicy=<span class="emphasis"><em><span class="replaceable">sync|async|auto</span></em></span></code> option to the <code class="literal">vdo create</code> command.
+								</li></ul></div></li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="recovering-a-vdo-volume-after-an-unclean-shutdown_maintaining-vdo"/>Recovering a VDO volume after an unclean shutdown</h1></div></div></div><p>
+				You can recover a VDO volume after an unclean shutdown to enable it to continue operating. The task is mostly automated. Additionally, you can clean up after a VDO volume was unsuccessfully created because of a failure in the process.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="vdo-write-modes_recovering-a-vdo-volume-after-an-unclean-shutdown"/>VDO write modes</h2></div></div></div><p>
+					VDO supports the following write modes:
+				</p><div class="variablelist"><dl class="variablelist"><dt><span class="term"><code class="literal">sync</code></span></dt><dd><p class="simpara">
+								When VDO is in <code class="literal">sync</code> mode, the layers above it assume that a write command writes data to persistent storage. As a result, it is not necessary for the file system or application, for example, to issue FLUSH or force unit access (FUA) requests to cause the data to become persistent at critical points.
+							</p><p class="simpara">
+								VDO must be set to <code class="literal">sync</code> mode only when the underlying storage guarantees that data is written to persistent storage when the write command completes. That is, the storage must either have no volatile write cache, or have a write through cache.
+							</p></dd><dt><span class="term"><code class="literal">async</code></span></dt><dd><p class="simpara">
+								When VDO is in <code class="literal">async</code> mode, VDO does not guarantee that the data is written to persistent storage when a write command is acknowledged. The file system or application must issue FLUSH or FUA requests to ensure data persistence at critical points in each transaction.
+							</p><p class="simpara">
+								VDO must be set to <code class="literal">async</code> mode if the underlying storage does not guarantee that data is written to persistent storage when the write command completes; that is, when the storage has a volatile write back cache.
+							</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+									When VDO is running in <code class="literal">async</code> mode, it is not compliant with Atomicity, Consistency, Isolation, Durability (ACID). When there is an application or a file system that assumes ACID compliance on top of the VDO volume, <code class="literal">async</code> mode might cause unexpected data loss.
+								</p></div></dd><dt><span class="term"><code class="literal">auto</code></span></dt><dd>
+								The <code class="literal">auto</code> mode automatically selects <code class="literal">sync</code> or <code class="literal">async</code> based on the characteristics of each device. This is the default option.
+							</dd></dl></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="vdo-volume-recovery_recovering-a-vdo-volume-after-an-unclean-shutdown"/>VDO volume recovery</h2></div></div></div><p>
+					When a VDO volume restarts after an unclean shutdown, VDO performs the following actions:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							Verifies the consistency of the metadata on the volume.
+						</li><li class="listitem">
+							Rebuilds a portion of the metadata to repair it if necessary.
+						</li></ul></div><p>
+					Rebuilds are automatic and do not require user intervention.
+				</p><p>
+					VDO might rebuild different writes depending on the active write mode:
+				</p><div class="variablelist"><dl class="variablelist"><dt><span class="term"><code class="literal">sync</code></span></dt><dd>
+								If VDO was running on synchronous storage and write policy was set to <code class="literal">sync</code>, all data written to the volume are fully recovered.
+							</dd><dt><span class="term"><code class="literal">async</code></span></dt><dd>
+								If the write policy was <code class="literal">async</code>, some writes might not be recovered if they were not made durable. This is done by sending VDO a <code class="literal">FLUSH</code> command or a write I/O tagged with the FUA (force unit access) flag. You can accomplish this from user mode by invoking a data integrity operation like <code class="literal">fsync</code>, <code class="literal">fdatasync</code>, <code class="literal">sync</code>, or <code class="literal">umount</code>.
+							</dd></dl></div><p>
+					In either mode, some writes that were either unacknowledged or not followed by a flush might also be rebuilt.
+				</p><h4><a id="online_recovery"/>Online recovery</h4><p>
+					Usually, VDO can do most of the work of rebuilding an unclean VDO volume after the VDO volume comes back online. VDO performs the rebuild while the volume is servicing read and write requests.
+				</p><p>
+					The online recovery causes temporary restrictions:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							Initially, the amount of space available for write requests on the volume might be limited. As more of the metadata is recovered, more free space becomes available.
+						</li><li class="listitem">
+							Data written while the VDO volume is recovering might fail to deduplicate against data written before the crash if that data is in a portion of the volume that has not yet been recovered. VDO can compress data while recovering the volume. You can still read or overwrite compressed blocks.
+						</li><li class="listitem">
+							During an online recovery, certain statistics are unavailable: for example, <span class="emphasis"><em>blocks in use</em></span> and <span class="emphasis"><em>blocks free</em></span>. These statistics become available when the rebuild is complete.
+						</li></ul></div><h4><a id="forced_rebuild"/>Forced rebuild</h4><p>
+					If VDO cannot recover a VDO volume successfully, it places the volume in a read-only mode that persists across volume restarts.
+				</p><p>
+					Once a volume is in read-only mode, there is no guarantee that data has not been lost or corrupted. In such cases, Red Hat recommends copying the data out of the read-only volume and possibly restoring the volume from backup.
+				</p><p>
+					If the risk of data corruption is acceptable, it is possible to force an offline rebuild of the VDO volume metadata so the volume can be brought back online and made available. The integrity of the rebuilt data cannot be guaranteed.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="recovering-a-vdo-volume-online_recovering-a-vdo-volume-after-an-unclean-shutdown"/>Recovering a VDO volume online</h2></div></div></div><p>
+					This procedure performs an online recovery on a VDO volume to recover metadata after an unclean shutdown.
+				</p><h4><a id="procedure_17"/>Procedure</h4><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							If the VDO volume is not already started, start it:
+						</p><pre class="screen"># vdo start --name=<span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span></pre><p class="simpara">
+							No additional steps are necessary. The recovery runs in the background.
+						</p></li><li class="listitem">
+							If you rely on volume statistics like <span class="emphasis"><em>blocks in use</em></span> and <span class="emphasis"><em>blocks free</em></span>, wait until they are available.
+						</li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="forcing-an-offline-rebuild-of-a-vdo-volume-metadata_recovering-a-vdo-volume-after-an-unclean-shutdown"/>Forcing an offline rebuild of a VDO volume metadata</h2></div></div></div><p>
+					This procedure performs a forced offline rebuild of a VDO volume metadata to recover after an unclean shutdown.
+				</p><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+						This procedure might cause data loss on the volume.
+					</p></div><h4><a id="prerequisites_6"/>Prerequisites</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The VDO volume is started.
+						</li></ul></div><h4><a id="procedure_18"/>Procedure</h4><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Check if the volume is in read-only mode. See the <span class="emphasis"><em>operating mode</em></span> attribute in the command output:
+						</p><pre class="screen"># vdo status --name=<span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span></pre><p class="simpara">
+							If the volume is not in read-only mode, it is not necessary to force an offline rebuild. Perform an online recovery as described in <a class="xref" href="maintaining-vdo_deduplicating-and-compressing-storage.html#recovering-a-vdo-volume-online_recovering-a-vdo-volume-after-an-unclean-shutdown" title="Recovering a VDO volume online">the section called “Recovering a VDO volume online”</a>.
+						</p></li><li class="listitem"><p class="simpara">
+							Stop the volume if it is running:
+						</p><pre class="screen"># vdo stop --name=<span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span></pre></li><li class="listitem"><p class="simpara">
+							Restart the volume with the <code class="literal">--forceRebuild</code> option:
+						</p><pre class="screen"># vdo start --name=<span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span> --forceRebuild</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="removing-an-unsuccessfully-created-vdo-volume_recovering-a-vdo-volume-after-an-unclean-shutdown"/>Removing an unsuccessfully created VDO volume</h2></div></div></div><p>
+					This procedure cleans up a VDO volume in an intermediate state. A volume is left in an intermediate state if a failure occurs when creating the volume. This might happen when, for example:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The system crashes
+						</li><li class="listitem">
+							Power fails
+						</li><li class="listitem">
+							The administrator interrupts a running <code class="literal">vdo create</code> command
+						</li></ul></div><h4><a id="procedure_19"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							To clean up, remove the unsuccessfully created volume with the <code class="literal">--force</code> option:
+						</p><pre class="screen"># vdo remove --force --name=<span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span></pre><p class="simpara">
+							The <code class="literal">--force</code> option is required because the administrator might have caused a conflict by changing the system configuration since the volume was unsuccessfully created.
+						</p><p class="simpara">
+							Without the <code class="literal">--force</code> option, the <code class="literal">vdo remove</code> command fails with the following message:
+						</p><pre class="screen">[...]
+A previous operation failed.
+Recovery from the failure either failed or was interrupted.
+Add '--force' to 'remove' to perform the following cleanup.
+Steps to clean up VDO <span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span>:
+umount -f /dev/mapper/<span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span>
+udevadm settle
+dmsetup remove <span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span>
+vdo: ERROR - VDO volume <span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span> previous operation (create) is incomplete</pre></li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="optimizing-the-uds-index_maintaining-vdo"/>Optimizing the UDS index</h1></div></div></div><p>
+				You can configure certain settings of the UDS index to optimize it on your system.
+			</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+					You cannot change the properties of the UDS index <span class="emphasis"><em>after</em></span> creating the VDO volume.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="the-uds-index_optimizing-the-uds-index"/>The UDS index</h2></div></div></div><p>
+					VDO uses a high-performance deduplication index called UDS to detect duplicate blocks of data as they are being stored.
+				</p><p>
+					The UDS index provides the foundation of the VDO product. For each new piece of data, it quickly determines if that piece is identical to any previously stored piece of data. If the index finds match, the storage system can then internally reference the existing item to avoid storing the same information more than once.
+				</p><p>
+					The UDS index runs inside the kernel as the <code class="literal">uds</code> kernel module.
+				</p><p>
+					The <span class="emphasis"><em>deduplication window</em></span> is the number of previously written blocks that the index remembers. The size of the deduplication window is configurable. For a given window size, the index requires a specific amount of RAM and a specific amount of disk space. The size of the window is usually determined by specifying the size of the index memory using the <code class="literal">--indexMem=size</code> option. VDO then determines the amount of disk space to use automatically.
+				</p><p>
+					The UDS index consists of two parts:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							A compact representation is used in memory that contains at most one entry per unique block.
+						</li><li class="listitem">
+							An on-disk component that records the associated block names presented to the index as they occur, in order.
+						</li></ul></div><p>
+					UDS uses an average of 4 bytes per entry in memory, including cache.
+				</p><p>
+					The on-disk component maintains a bounded history of data passed to UDS. UDS provides deduplication advice for data that falls within this deduplication window, containing the names of the most recently seen blocks. The deduplication window allows UDS to index data as efficiently as possible while limiting the amount of memory required to index large data repositories. Despite the bounded nature of the deduplication window, most datasets which have high levels of deduplication also exhibit a high degree of temporal locality — in other words, most deduplication occurs among sets of blocks that were written at about the same time. Furthermore, in general, data being written is more likely to duplicate data that was recently written than data that was written a long time ago. Therefore, for a given workload over a given time interval, deduplication rates will often be the same whether UDS indexes only the most recent data or all the data.
+				</p><p>
+					Because duplicate data tends to exhibit temporal locality, it is rarely necessary to index every block in the storage system. Were this not so, the cost of index memory would outstrip the savings of reduced storage costs from deduplication. Index size requirements are more closely related to the rate of data ingestion. For example, consider a storage system with 100 TB of total capacity but with an ingestion rate of 1 TB per week. With a deduplication window of 4 TB, UDS can detect most redundancy among the data written within the last month.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="recommended-uds-index-configuration_optimizing-the-uds-index"/>Recommended UDS index configuration</h2></div></div></div><p>
+					This section describes the recommended options to use with the UDS index, based on your intended use case.
+				</p><p>
+					In general, Red Hat recommends using a <span class="strong"><strong>sparse</strong></span> UDS index for all production use cases. This is an extremely efficient indexing data structure, requiring approximately one-tenth of a byte of DRAM per block in its deduplication window. On disk, it requires approximately 72 bytes of disk space per block. The minimum configuration of this index uses 256 MB of DRAM and approximately 25 GB of space on disk.
+				</p><p>
+					To use this configuration, specify the <code class="literal">--sparseIndex=enabled --indexMem=0.25</code> options to the <code class="literal">vdo create</code> command. This configuration results in a deduplication window of 2.5 TB (meaning it will remember a history of 2.5 TB). For most use cases, a deduplication window of 2.5 TB is appropriate for deduplicating storage pools that are up to 10 TB in size.
+				</p><p>
+					The default configuration of the index, however, is to use a <span class="strong"><strong>dense</strong></span> index. This index is considerably less efficient (by a factor of 10) in DRAM, but it has much lower (also by a factor of 10) minimum required disk space, making it more convenient for evaluation in constrained environments.
+				</p><p>
+					In general, a deduplication window that is one quarter of the physical size of a VDO volume is a recommended configuration. However, this is not an actual requirement. Even small deduplication windows (compared to the amount of physical storage) can find significant amounts of duplicate data in many use cases. Larger windows may also be used, but it in most cases, there will be little additional benefit to doing so.
+				</p><h4><a id="additional_resources_12"/>Additional resources</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							Speak with your Red Hat Technical Account Manager representative for additional guidelines on tuning this important system parameter.
+						</li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="enabling-or-disabling-deduplication-in-vdo_maintaining-vdo"/>Enabling or disabling deduplication in VDO</h1></div></div></div><p>
+				In some instances, you might want to temporarily disable deduplication of data being written to a VDO volume while still retaining the ability to read to and write from the volume. Disabling deduplication prevents subsequent writes from being deduplicated, but the data that was already deduplicated remains so.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="deduplication-in-vdo_enabling-or-disabling-deduplication-in-vdo"/>Deduplication in VDO</h2></div></div></div><p>
+					Deduplication is a technique for reducing the consumption of storage resources by eliminating multiple copies of duplicate blocks.
+				</p><p>
+					Instead of writing the same data more than once, VDO detects each duplicate block and records it as a reference to the original block. VDO maintains a mapping from logical block addresses, which are used by the storage layer above VDO, to physical block addresses, which are used by the storage layer under VDO.
+				</p><p>
+					After deduplication, multiple logical block addresses can be mapped to the same physical block address. These are called shared blocks. Block sharing is invisible to users of the storage, who read and write blocks as they would if VDO were not present.
+				</p><p>
+					When a shared block is overwritten, VDO allocates a new physical block for storing the new block data to ensure that other logical block addresses that are mapped to the shared physical block are not modified.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="enabling-deduplication-on-a-vdo-volume_enabling-or-disabling-deduplication-in-vdo"/>Enabling deduplication on a VDO volume</h2></div></div></div><p>
+					This procedure restarts the associated UDS index and informs the VDO volume that deduplication is active again.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						Deduplication is enabled by default.
+					</p></div><h4><a id="procedure_20"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							To restart deduplication on a VDO volume, use the following command:
+						</p><pre class="screen"># vdo enableDeduplication <span class="emphasis"><em><span class="replaceable">--name=my-vdo</span></em></span></pre></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="disabling-deduplication-on-a-vdo-volume_enabling-or-disabling-deduplication-in-vdo"/>Disabling deduplication on a VDO volume</h2></div></div></div><p>
+					This procedure stops the associated UDS index and informs the VDO volume that deduplication is no longer active.
+				</p><h4><a id="procedure_21"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							To stop deduplication on a VDO volume, use the following command:
+						</p><pre class="screen"># vdo disableDeduplication <span class="emphasis"><em><span class="replaceable">--name=my-vdo</span></em></span></pre></li><li class="listitem">
+							You can also disable deduplication when creating a new VDO volume by adding the <code class="literal">--deduplication=disabled</code> option to the <code class="literal">vdo create</code> command.
+						</li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="enabling-or-disabling-compression-in-vdo_maintaining-vdo"/>Enabling or disabling compression in VDO</h1></div></div></div><p>
+				VDO provides data compression. You can disable it to maximize performance or to speed processing of data that is unlikely to compress, or re-enable it to increase space savings.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="compression-in-vdo_enabling-or-disabling-compression-in-vdo"/>Compression in VDO</h2></div></div></div><p>
+					In addition to block-level deduplication, VDO also provides inline block-level compression using the HIOPS Compression™ technology.
+				</p><p>
+					VDO volume compression is on by default.
+				</p><p>
+					While deduplication is the optimal solution for virtual machine environments and backup applications, compression works very well with structured and unstructured file formats that do not typically exhibit block-level redundancy, such as log files and databases.
+				</p><p>
+					Compression operates on blocks that have not been identified as duplicates. When VDO sees unique data for the first time, it compresses the data. Subsequent copies of data that have already been stored are deduplicated without requiring an additional compression step.
+				</p><p>
+					The compression feature is based on a parallelized packaging algorithm that enables it to handle many compression operations at once. After first storing the block and responding to the requestor, a best-fit packing algorithm finds multiple blocks that, when compressed, can fit into a single physical block. After it is determined that a particular physical block is unlikely to hold additional compressed blocks, it is written to storage and the uncompressed blocks are freed and reused.
+				</p><p>
+					By performing the compression and packaging operations after having already responded to the requestor, using compression imposes a minimal latency penalty.
+				</p></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="enabling-compression-on-a-vdo-volume_enabling-or-disabling-compression-in-vdo"/>Enabling compression on a VDO volume</h2></div></div></div><p>
+					This procedure enables compression on a VDO volume to increase space savings.
+				</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						Compression is enabled by default.
+					</p></div><h4><a id="procedure_22"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							To start it again, use the following command:
+						</p><pre class="screen"># vdo enableCompression --name=<span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span></pre></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="disabling-compression-on-a-vdo-volume_enabling-or-disabling-compression-in-vdo"/>Disabling compression on a VDO volume</h2></div></div></div><p>
+					This procedure stops compression on a VDO volume to maximize performance or to speed processing of data that is unlikely to compress.
+				</p><h4><a id="procedure_23"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							To stop compression on an existing VDO volume, use the following command:
+						</p><pre class="screen"># vdo disableCompression --name=<span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span></pre></li><li class="listitem">
+							Alternatively, you can disable compression by adding the <code class="literal">--compression=disabled</code> option to the <code class="literal">vdo create</code> command when creating a new volume.
+						</li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="increasing-the-size-of-a-vdo-volume_maintaining-vdo"/>Increasing the size of a VDO volume</h1></div></div></div><p>
+				You can increase the physical size of a VDO volume to utilize more underlying storage capacity, or the logical size to provide more capacity on the volume.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="thin-provisioning-in-vdo_increasing-the-size-of-a-vdo-volume"/>Thin provisioning in VDO</h2></div></div></div><p>
+					VDO is a thinly provisioned block storage target. The amount of physical space that a VDO volume uses might differ from the size of the volume that is presented to users of the storage.
+				</p><p>
+					You can make use of this disparity to save on storage costs. Take care to avoid unexpectedly running out of storage space, if the data written does not achieve the expected rate of optimization.
+				</p><p>
+					Whenever the number of logical blocks (virtual storage) exceeds the number of physical blocks (actual storage), it becomes possible for file systems and applications to unexpectedly run out of space. For that reason, storage systems using VDO must provide you with a way of monitoring the size of the free pool on the VDO volume.
+				</p><p>
+					You can determine the size of this free pool by using the <code class="literal">vdostats</code> utility. The default output of this utility lists information for all running VDO volumes in a format similar to the Linux <code class="literal">df</code> utility. For example:
+				</p><pre class="screen">Device              1K-blocks   Used        Available   Use%
+/dev/mapper/my-vdo  211812352   105906176   105906176     50%</pre><p>
+					When the physical storage capacity of a VDO volume is almost full, VDO reports a warning in the system log, similar to the following:
+				</p><pre class="screen">Oct  2 17:13:39 system lvm[13863]: Monitoring VDO pool my-vdo.
+Oct  2 17:27:39 system lvm[13863]: WARNING: VDO pool my-vdo is now 80.69% full.
+Oct  2 17:28:19 system lvm[13863]: WARNING: VDO pool my-vdo is now 85.25% full.
+Oct  2 17:29:39 system lvm[13863]: WARNING: VDO pool my-vdo is now 90.64% full.
+Oct  2 17:30:29 system lvm[13863]: WARNING: VDO pool my-vdo is now 96.07% full.</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+						These warning messages appear only when the <code class="literal">lvm2-monitor</code> service is running. It is enabled by default.
+					</p></div><p>
+					If the size of free pool drops below a certain level, you can take action by:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							Deleting data. This reclaims space whenever the deleted data is not duplicated. Deleting data frees the space only after discards are issued.
+						</li><li class="listitem">
+							Adding physical storage
+						</li><li class="listitem">
+							Deleting LUNs on top of VDO
+						</li></ul></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+						Monitor physical space on your VDO volumes to prevent out-of-space situations. Running out of physical blocks might result in losing recently written, unacknowledged data on the VDO volume.
+					</p></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="increasing-the-logical-size-of-a-vdo-volume_increasing-the-size-of-a-vdo-volume"/>Increasing the logical size of a VDO volume</h2></div></div></div><p>
+					This procedure increases the logical size of a given VDO volume. It enables you to initially create VDO volumes that have a logical size small enough to be safe from running out of space. After some period of time, you can evaluate the actual rate of data reduction, and if sufficient, you can grow the logical size of the VDO volume to take advantage of the space savings.
+				</p><p>
+					It is not possible to decrease the logical size of a VDO volume.
+				</p><h4><a id="procedure_24"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							To grow the logical size, use:
+						</p><pre class="screen"># vdo growLogical --name=<span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span> \
+                  --vdoLogicalSize=<span class="emphasis"><em><span class="replaceable">new-logical-size</span></em></span></pre><p class="simpara">
+							When the logical size increases, VDO informs any devices or file systems on top of the volume of the new size.
+						</p></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="increasing-the-physical-size-of-a-vdo-volume_increasing-the-size-of-a-vdo-volume"/>Increasing the physical size of a VDO volume</h2></div></div></div><p>
+					This procedure increases the amount of physical storage available to a VDO volume.
+				</p><p>
+					It is not possible to shrink a VDO volume in this way.
+				</p><h4><a id="prerequisites_7"/>Prerequisites</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							The underlying block device has a larger capacity than the current physical size of the VDO volume.
+						</p><p class="simpara">
+							If it does not, you can attempt to increase the size of the device. The exact procedure depends on the type of the device. For example, to resize an MBR or GPT partition, see the <a class="link" href="https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/managing_storage_devices/assembly_getting-started-with-partitions_managing-storage-devices#assembly_resizing-a-partition_assembly_getting-started-with-partitions">Resizing a partition</a> section in the <span class="emphasis"><em>Managing storage devices</em></span> guide.
+						</p></li></ul></div><h4><a id="procedure_25"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							Add the new physical storage space to the VDO volume:
+						</p><pre class="screen"># vdo growPhysical --name=<span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span></pre></li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="removing-vdo-volumes_maintaining-vdo"/>Removing VDO volumes</h1></div></div></div><p>
+				You can remove an existing VDO volume on your system.
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="removing-a-working-vdo-volume_removing-vdo-volumes"/>Removing a working VDO volume</h2></div></div></div><p>
+					This procedure removes a VDO volume and its associated UDS index.
+				</p><h4><a id="procedure_26"/>Procedure</h4><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							Unmount the file systems and stop the applications that are using the storage on the VDO volume.
+						</li><li class="listitem"><p class="simpara">
+							To remove the VDO volume from your system, use:
+						</p><pre class="screen"># vdo remove --name=<span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span></pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="removing-an-unsuccessfully-created-vdo-volume_removing-vdo-volumes"/>Removing an unsuccessfully created VDO volume</h2></div></div></div><p>
+					This procedure cleans up a VDO volume in an intermediate state. A volume is left in an intermediate state if a failure occurs when creating the volume. This might happen when, for example:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							The system crashes
+						</li><li class="listitem">
+							Power fails
+						</li><li class="listitem">
+							The administrator interrupts a running <code class="literal">vdo create</code> command
+						</li></ul></div><h4><a id="procedure_27"/>Procedure</h4><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							To clean up, remove the unsuccessfully created volume with the <code class="literal">--force</code> option:
+						</p><pre class="screen"># vdo remove --force --name=<span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span></pre><p class="simpara">
+							The <code class="literal">--force</code> option is required because the administrator might have caused a conflict by changing the system configuration since the volume was unsuccessfully created.
+						</p><p class="simpara">
+							Without the <code class="literal">--force</code> option, the <code class="literal">vdo remove</code> command fails with the following message:
+						</p><pre class="screen">[...]
+A previous operation failed.
+Recovery from the failure either failed or was interrupted.
+Add '--force' to 'remove' to perform the following cleanup.
+Steps to clean up VDO <span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span>:
+umount -f /dev/mapper/<span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span>
+udevadm settle
+dmsetup remove <span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span>
+vdo: ERROR - VDO volume <span class="emphasis"><em><span class="replaceable">my-vdo</span></em></span> previous operation (create) is incomplete</pre></li></ul></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="related-information-maintaining-vdo"/>Related information</h1></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						You can use the <span class="strong"><strong>Ansible</strong></span> tool to automate VDO deployment and administration. For details, see:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								Ansible documentation: <a class="link" href="https://docs.ansible.com/">https://docs.ansible.com/</a>
+							</li><li class="listitem">
+								VDO Ansible module documentation: <a class="link" href="https://docs.ansible.com/ansible/latest/modules/vdo_module.html">https://docs.ansible.com/ansible/latest/modules/vdo_module.html</a>
+							</li></ul></div></li></ul></div></div></div></body></html>

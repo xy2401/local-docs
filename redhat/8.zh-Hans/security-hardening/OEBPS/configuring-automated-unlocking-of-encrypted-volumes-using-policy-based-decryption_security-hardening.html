@@ -1,0 +1,365 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 9. Configuring automated unlocking of encrypted volumes using policy-based decryption</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption_security-hardening"/>Chapter 9. Configuring automated unlocking of encrypted volumes using policy-based decryption</h1></div></div></div><p>
+			The Policy-Based Decryption (PBD) is a collection of technologies that enable unlocking encrypted root and secondary volumes of hard drives on physical and virtual machines. PBD uses a variety of unlocking methods, such as user passwords, a Trusted Platform Module (TPM) device, a PKCS#11 device connected to a system, for example, a smart card, or a special network server.
+		</p><p>
+			PBD allows combining different unlocking methods into a policy, which makes it possible to unlock the same volume in different ways. The current implementation of the PBD in Red Hat Enterprise Linux consists of the Clevis framework and plug-ins called <span class="emphasis"><em>pins</em></span>. Each pin provides a separate unlocking capability. Currently, the following pins are available:
+		</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+					<code class="literal">tang</code> - allows volumes to be unlocked using a network server
+				</li><li class="listitem">
+					<code class="literal">tpm2</code> - allows volumes to be unlocked using a TPM2 policy
+				</li></ul></div><p>
+			The Network Bound Disc Encryption (NBDE) is a subcategory of PBD that allows binding encrypted volumes to a special network server. The current implementation of the NBDE includes a Clevis pin for Tang server and the Tang server itself.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="network-bound-disk-encryption_configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption"/>Network-bound disk encryption</h1></div></div></div><p>
+				In Red Hat Enterprise Linux, NBDE is implemented through the following components and technologies:
+			</p><div class="figure"><a id="fig-NBDE-Clevis-Tang"/><p class="title"><strong>Figure 9.1. NBDE scheme when using a LUKS1-encrypted volume. The luksmeta package is not used for LUKS2 volumes.</strong></p><div class="figure-contents"><div class="mediaobject"><img src="images/RHEL_Security-Guide_453350_0717_ECE_NBDE.png" alt="RHEL Security Guide 453350 0717 ECE NBDE"/></div></div></div><p>
+				<span class="emphasis"><em>Tang</em></span> is a server for binding data to network presence. It makes a system containing your data available when the system is bound to a certain secure network. Tang is stateless and does not require TLS or authentication. Unlike escrow-based solutions, where the server stores all encryption keys and has knowledge of every key ever used, Tang never interacts with any client keys, so it never gains any identifying information from the client.
+			</p><p>
+				<span class="emphasis"><em>Clevis</em></span> is a pluggable framework for automated decryption. In NBDE, Clevis provides automated unlocking of LUKS volumes. The <span class="strong"><strong><span class="package">clevis</span></strong></span> package provides the client side of the feature.
+			</p><p>
+				A <span class="emphasis"><em>Clevis pin</em></span> is a plug-in into the Clevis framework. One of such pins is a plug-in that implements interactions with the NBDE server — Tang.
+			</p><p>
+				Clevis and Tang are generic client and server components that provide network-bound encryption. In Red Hat Enterprise Linux, they are used in conjunction with LUKS to encrypt and decrypt root and non-root storage volumes to accomplish Network-Bound Disk Encryption.
+			</p><p>
+				Both client- and server-side components use the <span class="emphasis"><em>José</em></span> library to perform encryption and decryption operations.
+			</p><p>
+				When you begin provisioning NBDE, the Clevis pin for Tang server gets a list of the Tang server’s advertised asymmetric keys. Alternatively, since the keys are asymmetric, a list of Tang’s public keys can be distributed out of band so that clients can operate without access to the Tang server. This mode is called <span class="emphasis"><em>offline provisioning</em></span>.
+			</p><p>
+				The Clevis pin for Tang uses one of the public keys to generate a unique, cryptographically-strong encryption key. Once the data is encrypted using this key, the key is discarded. The Clevis client should store the state produced by this provisioning operation in a convenient location. This process of encrypting data is the <span class="emphasis"><em>provisioning step</em></span>.
+			</p><p>
+				Since the LUKS version 2 (LUKS2) is the default format in Red Hat Enterprise Linux 8, the provisioning state for NBDE is stored as a token in a LUKS2 header. The leveraging of provisioning state for NBDE by the <span class="strong"><strong><span class="package">luksmeta</span></strong></span> package is used only for volumes encrypted with LUKS1. The Clevis pin for Tang supports both LUKS1 and LUKS2 without specification need.
+			</p><p>
+				When the client is ready to access its data, it loads the metadata produced in the provisioning step and it responds to recover the encryption key. This process is the <span class="emphasis"><em>recovery step</em></span>.
+			</p><p>
+				In NBDE, Clevis binds a LUKS volume using a pin so that it can be automatically unlocked. After successful completion of the binding process, the disk can be unlocked using the provided Dracut unlocker.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="installing-an-encryption-client-clevis_configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption"/>Installing an encryption client - Clevis</h1></div></div></div><p>
+				To install the Clevis pluggable framework and its pins on a machine (client) with an encrypted volume, enter the following command as <code class="literal">root</code>:
+			</p><pre class="screen"># yum install clevis</pre><p>
+				To decrypt data, use the <code class="literal">clevis decrypt</code> command and provide a cipher text in the JSON Web Encryption (JWE) format, for example:
+			</p><pre class="screen">$ <code class="literal">clevis decrypt &lt; <span class="emphasis"><em>secret.jwe</em></span></code></pre><h3><a id="additional_resources_16"/>Additional resources</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						For a quick reference, see the built-in CLI help:
+					</p><pre class="screen">$ <code class="literal">clevis</code>
+Usage: clevis COMMAND [OPTIONS]
+
+  clevis decrypt      Decrypts using the policy defined at encryption time
+  clevis encrypt sss  Encrypts using a Shamir's Secret Sharing policy
+  clevis encrypt tang Encrypts using a Tang binding server policy
+  clevis encrypt tpm2 Encrypts using a TPM2.0 chip binding policy
+
+$ <code class="literal">clevis decrypt</code>
+Usage: clevis decrypt &lt; JWE &gt; PLAINTEXT
+
+Decrypts using the policy defined at encryption time
+
+$ <code class="literal">clevis encrypt tang</code>
+Usage: clevis encrypt tang CONFIG &lt; PLAINTEXT &gt; JWE
+
+Encrypts using a Tang binding server policy
+
+This command uses the following configuration properties:
+
+  url: &lt;string&gt;   The base URL of the Tang server (REQUIRED)
+
+  thp: &lt;string&gt;   The thumbprint of a trusted signing key
+
+  adv: &lt;string&gt;   A filename containing a trusted advertisement
+  adv: &lt;object&gt;   A trusted advertisement (raw JSON)
+
+Obtaining the thumbprint of a trusted signing key is easy. If you
+have access to the Tang server's database directory, simply do:
+
+    $ jose jwk thp -i $DBDIR/$SIG.jwk
+
+Alternatively, if you have certainty that your network connection
+is not compromised (not likely), you can download the advertisement
+yourself using:
+
+    $ curl -f $URL/adv &gt; adv.jws</pre></li><li class="listitem">
+						For more information , see the <code class="literal">clevis(1)</code> man page.
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="deploying-a-tang-server-with-selinux-in-enforcing-mode_configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption"/>Deploying a Tang server with SELinux in enforcing mode</h1></div></div></div><p>
+				RHEL 8 introduces the <code class="literal">tangd_port_t</code> SELinux type, and a Tang server can be deployed as a confined service in SELinux enforcing mode.
+			</p><h3><a id="prerequisites_10"/>Prerequisites</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						The <code class="literal">policycoreutils-python-utils</code> package and its dependencies are installed.
+					</li></ul></div><h3><a id="procedure_12"/>Procedure</h3><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						To install the <code class="literal">tang</code> package and its dependencies, enter the following command as <code class="literal">root</code>:
+					</p><pre class="screen"># yum install tang</pre></li><li class="listitem"><p class="simpara">
+						Pick an unoccupied port, for example, <span class="emphasis"><em>7500/tcp</em></span>, and allow the <code class="literal">tangd</code> service to bind to that port:
+					</p><pre class="screen"># semanage port -a -t tangd_port_t -p tcp <span class="emphasis"><em>7500</em></span></pre><p class="simpara">
+						Note that a port can be used only by one service at a time, and thus an attempt to use an already occupied port implies the <code class="literal">ValueError: Port already defined</code> error message.
+					</p></li><li class="listitem"><p class="simpara">
+						Open the port in the firewall:
+					</p><pre class="screen"># firewall-cmd --add-port=<span class="emphasis"><em>7500</em></span>/tcp
+# firewall-cmd --runtime-to-permanent</pre></li><li class="listitem"><p class="simpara">
+						Enable the <code class="literal">tangd</code> service:
+					</p><pre class="screen"># systemctl enable tangd.socket</pre></li><li class="listitem"><p class="simpara">
+						Change the default port for the Tang server from 80 to the previously picked number:
+					</p><pre class="screen">#  cat /etc/systemd/system/multi-user.target.wants/tangd.socket
+[Unit]
+Description=Tang Server socket
+Requires=tangd-update.path
+Requires=tangd-keygen.service
+
+[Socket]
+ListenStream=<span class="emphasis"><em>7500</em></span>
+Accept=true
+
+[Install]
+WantedBy=multi-user.target</pre></li><li class="listitem"><p class="simpara">
+						Reload the changed configuration and start the <code class="literal">tangd</code> service:
+					</p><pre class="screen"># systemctl daemon-reload
+# systemctl start tangd.socket</pre><p class="simpara">
+						Because <code class="literal">tangd</code> uses the <code class="literal">systemd</code> socket activation mechanism, the server starts as soon as the first connection comes in. A new set of cryptographic keys is automatically generated at the first start. To perform cryptographic operations such as manual key generation, use the <code class="literal">jose</code> utility.
+					</p></li></ol></div><h3><a id="additional_resources_17"/>Additional resources</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<code class="literal">semanage(8)</code> man page
+					</li><li class="listitem">
+						<code class="literal">firewall-cmd(1)</code> man page
+					</li><li class="listitem">
+						<code class="literal">systemd.unit(5)</code> and <code class="literal">systemd.socket(5)</code> man pages
+					</li><li class="listitem">
+						<code class="literal">jose(1)</code> man page
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="rotating-tang-keys_configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption"/>Rotating Tang keys</h1></div></div></div><p>
+				It is important to periodically rotate your keys. The precise interval at which you should rotate them depends upon your application, key sizes, and institutional policy. For some common recommendations, see the <a class="link" href="https://www.keylength.com">Cryptographic Key Length Recommendation</a> page.
+			</p><h3><a id="procedure_13"/>Procedure</h3><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						To rotate keys, start with the generation of new keys in the key database directory, typically <code class="literal">/var/db/tang</code>. For example, you can create new signature and exchange keys with the following commands:
+					</p><pre class="screen"># DB=/var/db/tang
+# jose jwk gen -i '{"alg":"ES512"}' -o $DB/new_sig.jwk
+# jose jwk gen -i '{"alg":"ECMR"}' -o $DB/new_exc.jwk</pre></li><li class="listitem"><p class="simpara">
+						Rename the old keys to have a leading <code class="literal">.</code> to hide them from advertisement. Note that the file names in the following example differs from real and unique file names in the key database directory.
+					</p><pre class="screen"># mv $DB/old_sig.jwk $DB/.old_sig.jwk
+# mv $DB/old_exc.jwk $DB/.old_exc.jwk</pre><p class="simpara">
+						Tang immediately picks up all changes. No restart is required.
+					</p></li><li class="listitem">
+						At this point, new client bindings pick up the new keys and old clients can continue to utilize the old keys. When you are sure that all old clients use the new keys, you can remove the old keys.
+					</li></ol></div><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+					Be aware that removing the old keys while clients are still using them can result in data loss.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="deploying-a-clevis-encryption-client_configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption"/>Deploying an encryption client for an NBDE system with Tang</h1></div></div></div><p>
+				The following procedure contains steps to configure automated unlocking of an encrypted volume with a Tang network server.
+			</p><h3><a id="prerequisites_11"/>Prerequisites</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						The Clevis framework is installed.
+					</li><li class="listitem">
+						A Tang server is available.
+					</li></ul></div><h3><a id="procedure_14"/>Procedure</h3><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						To bind a Clevis encryption client to a Tang server, use the <code class="literal">clevis encrypt tang</code> sub-command:
+					</p><pre class="screen">$ clevis encrypt tang '{"url":"<span class="emphasis"><em><a class="link" href="http://tang.srv:port">http://tang.srv:port</a></em></span>"}' &lt; <span class="emphasis"><em>input-plain.txt</em></span> &gt; <span class="emphasis"><em>secret.jwe</em></span>
+The advertisement contains the following signing keys:
+
+_OsIk0T-E2l6qjfdDiwVmidoZjA
+
+Do you wish to trust these keys? [ynYN] y</pre><p class="simpara">
+						Change the <span class="emphasis"><em>http://tang.srv:port</em></span> URL in the previous example to match the URL of the server where <code class="literal">tang</code> is installed. The <span class="emphasis"><em>secret.jwe</em></span> output file contains your encrypted cipher text in the JSON Web Encryption format. This cipher text is read from the <span class="emphasis"><em>input-plain.txt</em></span> input file.
+					</p></li><li class="listitem"><p class="simpara">
+						To decrypt data, use the <code class="literal">clevis decrypt</code> command and provide the cipher text (JWE):
+					</p><pre class="screen">$ clevis decrypt &lt; <span class="emphasis"><em>secret.jwe</em></span> &gt; <span class="emphasis"><em>output-plain.txt</em></span></pre></li></ol></div><h3><a id="additional_resources_18"/>Additional resources</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						For a quick reference, see the <code class="literal">clevis-encrypt-tang(1)</code> man page or use the built-in CLI help:
+					</p><pre class="screen">$ clevis
+Usage: clevis COMMAND [OPTIONS]
+
+  clevis decrypt      Decrypts using the policy defined at encryption time
+  clevis encrypt sss  Encrypts using a Shamir's Secret Sharing policy
+  clevis encrypt tang Encrypts using a Tang binding server policy
+  clevis encrypt tpm2 Encrypts using a TPM2.0 chip binding policy
+
+$ clevis decrypt
+Usage: clevis decrypt &lt; JWE &gt; PLAINTEXT
+
+Decrypts using the policy defined at encryption time
+
+$ clevis encrypt tang
+Usage: clevis encrypt tang CONFIG &lt; PLAINTEXT &gt; JWE
+
+Encrypts using a Tang binding server policy
+
+This command uses the following configuration properties:
+
+  url: &lt;string&gt;   The base URL of the Tang server (REQUIRED)
+
+  thp: &lt;string&gt;   The thumbprint of a trusted signing key
+
+  adv: &lt;string&gt;   A filename containing a trusted advertisement
+  adv: &lt;object&gt;   A trusted advertisement (raw JSON)
+
+Obtaining the thumbprint of a trusted signing key is easy. If you
+have access to the Tang server's database directory, simply do:
+
+    $ jose jwk thp -i $DBDIR/$SIG.jwk
+
+Alternatively, if you have certainty that your network connection
+is not compromised (not likely), you can download the advertisement
+yourself using:
+
+    $ curl -f $URL/adv &gt; adv.jws</pre></li><li class="listitem"><p class="simpara">
+						For more information, see the following man pages:
+					</p><div class="informalexample"><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								<code class="literal">clevis(1)</code>
+							</li><li class="listitem">
+								<code class="literal">clevis-luks-unlockers(7)</code>
+							</li></ul></div></div></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="deploying-an-encryption-client-with-a-tpm-2-0-policy_configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption"/>Deploying an encryption client with a TPM 2.0 policy</h1></div></div></div><p>
+				The following procedure contains steps to configure automated unlocking of an encrypted volume with a Trusted Platform Module 2.0 (TPM 2.0) policy.
+			</p><h3><a id="prerequisites_12"/>Prerequisites</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						The Clevis framework is installed. See <a class="xref" href="configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption_security-hardening.html#installing-an-encryption-client-clevis_configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption" title="Installing an encryption client - Clevis">the section called “Installing an encryption client - Clevis”</a>
+					</li><li class="listitem">
+						A system with the 64-bit Intel or 64-bit AMD architecture
+					</li></ul></div><h3><a id="procedure_15"/>Procedure</h3><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						To deploy a client that encrypts using a TPM 2.0 chip, use the <code class="literal">clevis encrypt tpm2</code> sub-command with the only argument in form of the JSON configuration object:
+					</p><pre class="screen">$ <code class="literal">clevis encrypt tpm2 '{}' &lt; <span class="emphasis"><em>input-plain.txt</em></span> &gt; <span class="emphasis"><em>secret.jwe</em></span></code></pre><p class="simpara">
+						To choose a different hierarchy, hash, and key algorithms, specify configuration properties, for example:
+					</p><pre class="screen">$ <code class="literal">clevis encrypt tpm2 '{"hash":"sha1","key":"rsa"}' &lt; <span class="emphasis"><em>input-plain.txt</em></span> &gt; <span class="emphasis"><em>secret.jwe</em></span></code></pre></li><li class="listitem"><p class="simpara">
+						To decrypt the data, provide the ciphertext in the JSON Web Encryption (JWE) format:
+					</p><pre class="screen">$ <code class="literal">clevis decrypt &lt; <span class="emphasis"><em>secret.jwe</em></span> &gt; <span class="emphasis"><em>output-plain.txt</em></span></code></pre></li></ol></div><p>
+				The pin also supports sealing data to a Platform Configuration Registers (PCR) state. That way, the data can only be unsealed if the PCRs hashes values match the policy used when sealing.
+			</p><p>
+				For example, to seal the data to the PCR with index 0 and 1 for the SHA-1 bank:
+			</p><pre class="screen">$ clevis encrypt tpm2 '{"pcr_bank":"sha1","pcr_ids":"0,1"}' &lt; <span class="emphasis"><em>input-plain.txt</em></span> &gt; <span class="emphasis"><em>secret.jwe</em></span></pre><h3><a id="additional_resources_19"/>Additional resources</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						For more information and the list of possible configuration properties, see the <code class="literal">clevis-encrypt-tpm2(1)</code> man page.
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring-manual-enrollment-of-root-volumes-using-clevis_configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption"/>Configuring manual enrollment of LUKS-encrypted root volumes</h1></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						To automatically unlock an existing LUKS-encrypted root volume, install the <span class="strong"><strong><span class="package">clevis-luks</span></strong></span> subpackage:
+					</p><pre class="screen"># yum install clevis-luks</pre></li><li class="listitem"><p class="simpara">
+						Identify the LUKS-encrypted volume for PBD. In the following example, the block device is referred as <span class="emphasis"><em>/dev/sda2</em></span>:
+					</p><pre class="screen"># lsblk
+NAME                                          MAJ:MIN RM   SIZE RO TYPE  MOUNTPOINT
+sda                                             8:0    0    12G  0 disk
+├─sda1                                          8:1    0     1G  0 part  /boot
+└─sda2                                          8:2    0    11G  0 part
+  └─luks-40e20552-2ade-4954-9d56-565aa7994fb6 253:0    0    11G  0 crypt
+    ├─rhel-root                               253:0    0   9.8G  0 lvm   /
+    └─rhel-swap                               253:1    0   1.2G  0 lvm   [SWAP]</pre></li><li class="listitem"><p class="simpara">
+						Bind the volume to a Tang server using the <code class="literal">clevis luks bind</code> command:
+					</p><pre class="screen"># clevis luks bind -d /dev/sda2 tang '{"url":"http://tang.srv"}'
+The advertisement contains the following signing keys:
+
+_OsIk0T-E2l6qjfdDiwVmidoZjA
+
+Do you wish to trust these keys? [ynYN] y
+You are about to initialize a LUKS device for metadata storage.
+Attempting to initialize it may result in data loss if data was
+already written into the LUKS header gap in a different format.
+A backup is advised before initialization is performed.
+
+Do you wish to initialize /dev/sda2? [yn] y
+Enter existing LUKS password:</pre><p class="simpara">
+						This command performs four steps:
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+								Creates a new key with the same entropy as the LUKS master key.
+							</li><li class="listitem">
+								Encrypts the new key with Clevis.
+							</li><li class="listitem">
+								Stores the Clevis JWE object in the LUKS2 header token or uses LUKSMeta if the non-default LUKS1 header is used.
+							</li><li class="listitem"><p class="simpara">
+								Enables the new key for use with LUKS.
+							</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+									The binding procedure assumes that there is at least one free LUKS password slot. The <code class="literal">clevis luks bind</code> command takes one of the slots.
+								</p></div></li></ol></div></li><li class="listitem">
+						The volume can now be unlocked with your existing password as well as with the Clevis policy.
+					</li><li class="listitem"><p class="simpara">
+						To verify that the Clevis JWE object is successfully placed in a LUKS2 header token, use the <code class="literal">cryptsetup luksDump</code> command:
+					</p><pre class="screen"># cryptsetup luksDump /dev/sda2
+Tokens:
+  0: clevis
+    Keyslot:  1</pre><p class="simpara">
+						In the case of a LUKS1 header, use the <code class="literal">luksmeta show</code> command:
+					</p><pre class="screen"># luksmeta show -d /dev/sda2
+0   active empty
+1   active cb6e8904-81ff-40da-a84a-07ab9ab5715e
+2 inactive empty
+3 inactive empty
+4 inactive empty
+5 inactive empty
+6 inactive empty
+7 inactive empty</pre></li><li class="listitem"><p class="simpara">
+						To enable the early boot system to process the disk binding, enter the following commands on an already installed system:
+					</p><pre class="screen"># yum install clevis-dracut
+# dracut -fv --regenerate-all</pre></li></ol></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+					To use NBDE for clients with static IP configuration (without DHCP), pass your network configuration to the dracut tool manually, for example:
+				</p><pre class="screen"># dracut -fv --regenerate-all --kernel-cmdline "ip=192.0.2.10::192.0.2.1:255.255.255.0::ens3:none:192.0.2.45"</pre><p>
+					Alternatively, create a .conf file in the <code class="literal">/etc/dracut.conf.d/</code> directory with the static network information. For example:
+				</p><pre class="screen"># cat /etc/dracut.conf.d/static_ip.conf
+kernel_cmdline="ip=192.0.2.10::192.0.2.1:255.255.255.0::ens3:none:192.0.2.45"</pre><p>
+					Regenerate the initial RAM disk image:
+				</p><pre class="screen"># dracut -fv --regenerate-all</pre><p>
+					See the <code class="literal">dracut.cmdline(7)</code> man page for more information.
+				</p></div><h3><a id="additional_resources_20"/>Additional resources</h3><p>
+				For more information, see the following man page:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<code class="literal">clevis-luks-bind(1)</code>
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring-automated-enrollment-of-luks-encrypted-root-volumes-using-kickstart_configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption"/>Configuring automated enrollment of LUKS-encrypted root volumes using Kickstart</h1></div></div></div><p>
+				Clevis can integrate with Kickstart to provide a fully automated enrollment process.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Instruct Kickstart to partition the disk such that the root partition has enabled LUKS encryption with a temporary password. The password is temporary for the enrollment process.
+					</p><pre class="screen">part /boot --fstype="xfs" --ondisk=vda --size=256
+part / --fstype="xfs" --ondisk=vda --grow --encrypted --passphrase=temppass</pre></li><li class="listitem"><p class="simpara">
+						Install the related Clevis packages by listing them in the <code class="literal">%packages</code> section:
+					</p><pre class="screen">%packages
+clevis-dracut
+%end</pre></li><li class="listitem"><p class="simpara">
+						Call <code class="literal">clevis luks bind</code> to perform binding in the <code class="literal">%post</code> section. Afterward, remove the temporary password:
+					</p><pre class="screen">%post
+clevis luks bind -f -k- -d /dev/vda2 \
+tang '{"url":"http://tang.srv","thp":"_OsIk0T-E2l6qjfdDiwVmidoZjA"}' \ &lt;&lt;&lt; "temppass"
+cryptsetup luksRemoveKey /dev/vda2 - &lt;&lt;&lt; "temppass"
+%end</pre><p class="simpara">
+						In the above example, note that we specify the thumbprint that we trust on the Tang server as part of our binding configuration, enabling binding to be completely non-interactive.
+					</p><p class="simpara">
+						You can use an analogous procedure when using a TPM 2.0 policy instead of a Tang server.
+					</p></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring-automated-unlocking-of-a-luks-encrypted-removable-storage-device_configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption"/>Configuring automated unlocking of a LUKS-encrypted removable storage device</h1></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						To automatically unlock a LUKS-encrypted removable storage device, such as a USB drive, install the <span class="strong"><strong><span class="package">clevis-udisks2</span></strong></span> package:
+					</p><pre class="screen"># yum install clevis-udisks2</pre></li><li class="listitem"><p class="simpara">
+						Reboot the system, and then perform the binding step using the <code class="literal">clevis luks bind</code> command as described in <a class="link" href="configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption_security-hardening.html#configuring-manual-enrollment-of-root-volumes-using-clevis_configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption" title="Configuring manual enrollment of LUKS-encrypted root volumes">Configuring manual enrollment of LUKS-encrypted root volumes</a>, for example:
+					</p><pre class="screen"># clevis luks bind -d /dev/sdb1 tang '{"url":"http://tang.srv"}'</pre></li><li class="listitem"><p class="simpara">
+						The LUKS-encrypted removable device can be now unlocked automatically in your GNOME desktop session. The device bound to a Clevis policy can be also unlocked by the <code class="literal">clevis luks unlock</code> command:
+					</p><pre class="screen"># clevis luks unlock -d /dev/sdb1</pre></li></ol></div><p>
+				You can use an analogous procedure when using a TPM 2.0 policy instead of a Tang server.
+			</p><h3><a id="additional_resources_21"/>Additional resources</h3><p>
+				For more information, see the following man page:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<code class="literal">clevis-luks-unlockers(7)</code>
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring-automated-unlocking-of-luks-encrypted-non-root-volumes-at-boot-time_configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption"/>Configuring automated unlocking of LUKS-encrypted non-root volumes at boot time</h1></div></div></div><p>
+				To use NBDE to also unlock LUKS-encrypted non-root volumes, perform the following steps:
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Install the clevis-systemd package:
+					</p><pre class="screen"># yum install clevis-systemd</pre></li><li class="listitem"><p class="simpara">
+						Enable the Clevis unlocker service:
+					</p><pre class="screen"># systemctl enable clevis-luks-askpass.path
+Created symlink from /etc/systemd/system/remote-fs.target.wants/clevis-luks-askpass.path to /usr/lib/systemd/system/clevis-luks-askpass.path.</pre></li><li class="listitem">
+						Perform the binding step using the <code class="literal">clevis luks bind</code> command as described in <a class="link" href="configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption_security-hardening.html#configuring-manual-enrollment-of-root-volumes-using-clevis_configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption" title="Configuring manual enrollment of LUKS-encrypted root volumes">Configuring manual enrollment of LUKS-encrypted root volumes</a>.
+					</li><li class="listitem">
+						To set up the encrypted block device during system boot, add the corresponding line with the <code class="literal">_netdev</code> option to the <code class="literal">/etc/crypttab</code> configuration file. See the <code class="literal">crypttab(5)</code> man page for more information.
+					</li><li class="listitem">
+						Add the volume to the list of accessible filesystems in the <code class="literal">/etc/fstab</code> file. Use the <code class="literal">_netdev</code> option in this configuration file, too. See the <code class="literal">fstab(5)</code> man page for more information.
+					</li></ol></div><h3><a id="additional_resources_22"/>Additional resources</h3><p>
+				For more information, see the following man page:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<code class="literal">clevis-luks-unlockers(7)</code>
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="deployment-of-virtual-machines-in-a-nbde-network_configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption"/>Deployment of virtual machines in a NBDE network</h1></div></div></div><p>
+				The <code class="literal">clevis luks bind</code> command does not change the LUKS master key. This implies that if you create a LUKS-encrypted image for use in a virtual machine or cloud environment, all the instances that run this image will share a master key. This is extremely insecure and should be avoided at all times.
+			</p><p>
+				This is not a limitation of Clevis but a design principle of LUKS. If you wish to have encrypted root volumes in a cloud, you need to make sure that you perform the installation process (usually using Kickstart) for each instance of Red Hat Enterprise Linux in a cloud as well. The images cannot be shared without also sharing a LUKS master key.
+			</p><p>
+				If you intend to deploy automated unlocking in a virtualized environment, Red Hat strongly recommends that you use systems such as lorax or virt-install together with a Kickstart file (see <a class="link" href="configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption_security-hardening.html#configuring-automated-enrollment-of-luks-encrypted-root-volumes-using-kickstart_configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption" title="Configuring automated enrollment of LUKS-encrypted root volumes using Kickstart">Configuring automated enrollment of LUKS-encrypted root volumes using Kickstart</a>) or another automated provisioning tool to ensure that each encrypted VM has a unique master key.
+			</p><p>
+				Note that automated unlocking with a TPM 2.0 policy is not supported in a virtual machine.
+			</p><h3><a id="additional_resources_23"/>Additional resources</h3><p>
+				For more information, see the following man page:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<code class="literal">clevis-luks-bind(1)</code>
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="building-automatically-enrollable-vm-images-for-cloud-environments_configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption"/>Building automatically-enrollable VM images for cloud environments using NBDE</h1></div></div></div><p>
+				Deploying automatically-enrollable encrypted images in a cloud environment can provide a unique set of challenges. Like other virtualization environments, it is recommended to reduce the number of instances started from a single image to avoid sharing the LUKS master key.
+			</p><p>
+				Therefore, the best practice is to create customized images that are not shared in any public repository and that provide a base for the deployment of a limited amount of instances. The exact number of instances to create should be defined by deployment’s security policies and based on the risk tolerance associated with the LUKS master key attack vector.
+			</p><p>
+				To build LUKS-enabled automated deployments, systems such as Lorax or virt-install together with a Kickstart file should be used to ensure master key uniqueness during the image building process.
+			</p><p>
+				Cloud environments enable two Tang server deployment options which we consider here. First, the Tang server can be deployed within the cloud environment itself. Second, the Tang server can be deployed outside of the cloud on independent infrastructure with a VPN link between the two infrastructures.
+			</p><p>
+				Deploying Tang natively in the cloud does allow for easy deployment. However, given that it shares infrastructure with the data persistence layer of ciphertext of other systems, it may be possible for both the Tang server’s private key and the Clevis metadata to be stored on the same physical disk. Access to this physical disk permits a full compromise of the ciphertext data.
+			</p><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+					For this reason, Red Hat strongly recommends maintaining a physical separation between the location where the data is stored and the system where Tang is running. This separation between the cloud and the Tang server ensures that the Tang server’s private key cannot be accidentally combined with the Clevis metadata. It also provides local control of the Tang server if the cloud infrastructure is at risk.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="related-information-configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption"/>Related information</h1></div></div></div><p>
+				For more information, see the following man pages:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<code class="literal">tang(8)</code>
+					</li><li class="listitem">
+						<code class="literal">clevis(1)</code>
+					</li><li class="listitem">
+						<code class="literal">jose(1)</code>
+					</li><li class="listitem">
+						<code class="literal">clevis-luks-unlockers(1)</code>
+					</li></ul></div></div></div></body></html>

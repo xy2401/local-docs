@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 9. Creating and managing thinly-provisioned logical volumes (thin volumes)</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_thinly-provisioned-logical-volumes_configuring-and-managing-logical-volumes"/>Chapter 9. Creating and managing thinly-provisioned logical volumes (thin volumes)</h1></div></div></div><p>
+			Logical volumes can be thinly provisioned. This allows you to create logical volumes that are larger than the available extents.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="con_thin-volumes_thinly-provisioned-logical-volumes"/>Thinly-provisioned logical volumes (thin volumes)</h1></div></div></div><p>
+				Logical volumes can be thinly provisioned. This allows you to create logical volumes that are larger than the available extents. Using thin provisioning, you can manage a storage pool of free space, known as a thin pool, which can be allocated to an arbitrary number of devices when needed by applications. You can then create devices that can be bound to the thin pool for later allocation when an application actually writes to the logical volume. The thin pool can be expanded dynamically when needed for cost-effective allocation of storage space.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Thin volumes are not supported across the nodes in a cluster. The thin pool and all its thin volumes must be exclusively activated on only one cluster node.
+				</p></div><p>
+				By using thin provisioning, a storage administrator can overcommit the physical storage, often avoiding the need to purchase additional storage. For example, if ten users each request a 100GB file system for their application, the storage administrator can create what appears to be a 100GB file system for each user but which is backed by less actual storage that is used only when needed. When using thin provisioning, it is important that the storage administrator monitor the storage pool and add more capacity if it starts to become full.
+			</p><p>
+				To make sure that all available space can be used, LVM supports data discard. This allows for re-use of the space that was formerly used by a discarded file or other block range.
+			</p><p>
+				Thin volumes provide support for a new implementation of copy-on-write (COW) snapshot logical volumes, which allow many virtual devices to share the same data in the thin pool.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="creating_thinly_provisioned_logical_volumes"/>Creating thinly-provisioned logical volumes</h1></div></div></div><p>
+				This procedure provides an overview of the basic commands you use to create and grow thinly-provisioned logical volumes. For detailed information on LVM thin provisioning as well as information on using the LVM commands and utilities with thinly-provisioned logical volumes, see the <code class="literal">lvmthin</code>(7) man page.
+			</p><p>
+				To create a thin volume, perform the following tasks:
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						Create a volume group with the <code class="literal">vgcreate</code> command.
+					</li><li class="listitem">
+						Create a thin pool with the <code class="literal">lvcreate</code> command.
+					</li><li class="listitem">
+						Create a thin volume in the thin pool with the <code class="literal">lvcreate</code> command.
+					</li></ol></div><p>
+				You can use the <code class="literal">-T</code> (or <code class="literal">--thin</code>) option of the <code class="literal">lvcreate</code> command to create either a thin pool or a thin volume. You can also use <code class="literal">-T</code> option of the <code class="literal">lvcreate</code> command to create both a thin pool and a thin volume in that pool at the same time with a single command.
+			</p><p>
+				The following command uses the <code class="literal">-T</code> option of the <code class="literal">lvcreate</code> command to create a thin pool named <code class="literal">mythinpool</code> in the volume group <code class="literal">vg001</code> and that is 100M in size. Note that since you are creating a pool of physical space, you must specify the size of the pool. The <code class="literal">-T</code> option of the <code class="literal">lvcreate</code> command does not take an argument; it deduces what type of device is to be created from the other options the command specifies.
+			</p><pre class="literallayout"># <code class="literal">lvcreate -L 100M -T vg001/mythinpool</code>
+  Thin pool volume with chunk size 64.00 KiB can address at most 15.81 TiB of data.
+  Logical volume "mythinpool" created.
+# <code class="literal">lvs</code>
+  LV         VG    Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  mythinpool vg001 twi-a-tz-- 100.00m             0.00   10.84</pre><p>
+				The following command uses the <code class="literal">-T</code> option of the <code class="literal">lvcreate</code> command to create a thin volume named <code class="literal">thinvolume</code> in the thin pool <code class="literal">vg001/mythinpool</code>. Note that in this case you are specifying virtual size, and that you are specifying a virtual size for the volume that is greater than the pool that contains it.
+			</p><pre class="literallayout"># <code class="literal">lvcreate -V 1G -T vg001/mythinpool -n thinvolume</code>
+  WARNING: Sum of all thin volume sizes (1.00 GiB) exceeds the size of thin pool vg001/mythinpool (100.00 MiB).
+  WARNING: You have not turned on protection against thin pools running out of space.
+  WARNING: Set activation/thin_pool_autoextend_threshold below 100 to trigger automatic extension of thin pools before they get full.
+  Logical volume "thinvolume" created.
+# <code class="literal">lvs</code>
+  LV          VG       Attr     LSize   Pool       Origin Data%  Move Log Copy%  Convert
+  mythinpool  vg001    twi-a-tz 100.00m                     0.00
+  thinvolume  vg001    Vwi-a-tz   1.00g mythinpool          0.00</pre><p>
+				The following command uses the <code class="literal">-T</code> option of the <code class="literal">lvcreate</code> command to create a thin pool and a thin volume in that pool by specifying both a size and a virtual size argument for the <code class="literal">lvcreate</code> command. This command creates a thin pool named <code class="literal">mythinpool</code> in the volume group <code class="literal">vg001</code> and it also creates a thin volume named <code class="literal">thinvolume</code> in that pool.
+			</p><pre class="literallayout"># <code class="literal">lvcreate -L 100M -T vg001/mythinpool -V 1G -n thinvolume</code>
+  Thin pool volume with chunk size 64.00 KiB can address at most 15.81 TiB of data.
+  WARNING: Sum of all thin volume sizes (1.00 GiB) exceeds the size of thin pool vg001/mythinpool (100.00 MiB).
+  WARNING: You have not turned on protection against thin pools running out of space.
+  WARNING: Set activation/thin_pool_autoextend_threshold below 100 to trigger automatic extension of thin pools before they get full.
+  Logical volume "thinvolume" created.
+# <code class="literal">lvs</code>
+  LV         VG    Attr       LSize   Pool       Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  mythinpool vg001 twi-aotz-- 100.00m                   0.00   10.94
+  thinvolume vg001 Vwi-a-tz--   1.00g mythinpool        0.00</pre><p>
+				You can also create a thin pool by specifying the <code class="literal">--thinpool</code> parameter of the <code class="literal">lvcreate</code> command. Unlike the <code class="literal">-T</code> option, the <code class="literal">--thinpool</code> parameter requires an argument, which is the name of the thin pool logical volume that you are creating. The following example specifies the <code class="literal">--thinpool</code> parameter of the <code class="literal">lvcreate</code> command to create a thin pool named <code class="literal">mythinpool</code> in the volume group <code class="literal">vg001</code> and that is 100M in size:
+			</p><pre class="literallayout"># <code class="literal">lvcreate -L 100M --thinpool mythinpool vg001</code>
+  Thin pool volume with chunk size 64.00 KiB can address at most 15.81 TiB of data.
+  Logical volume "mythinpool" created.
+# <code class="literal">lvs</code>
+  LV         VG    Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  mythinpool vg001 twi-a-tz-- 100.00m             0.00   10.84</pre><p>
+				Striping is supported for pool creation. The following command creates a 100M thin pool named <code class="literal">pool</code> in volume group <code class="literal">vg001</code> with two 64 kB stripes and a chunk size of 256 kB. It also creates a 1T thin volume, <code class="literal">vg00/thin_lv</code>.
+			</p><pre class="literallayout"># <code class="literal">lvcreate -i 2 -I 64 -c 256 -L 100M -T vg00/pool -V 1T --name thin_lv</code></pre><p>
+				You can extend the size of a thin volume with the <code class="literal">lvextend</code> command. You cannot, however, reduce the size of a thin pool.
+			</p><p>
+				The following command resizes an existing thin pool that is 100M in size by extending it another 100M.
+			</p><pre class="literallayout"># <code class="literal">lvextend -L+100M vg001/mythinpool</code>
+  Extending logical volume mythinpool to 200.00 MiB
+  Logical volume mythinpool successfully resized
+# <code class="literal">lvs</code>
+  LV           VG       Attr     LSize   Pool     Origin Data%  Move Log Copy%  Convert
+  mythinpool   vg001    twi-a-tz 200.00m                   0.00
+  thinvolume   vg001    Vwi-a-tz   1.00g mythinpool          0.00</pre><p>
+				As with other types of logical volumes, you can rename the volume with the <code class="literal">lvrename</code>, you can remove the volume with the <code class="literal">lvremove</code>, and you can display information about the volume with the <code class="literal">lvs</code> and <code class="literal">lvdisplay</code> commands.
+			</p><p>
+				By default, the <code class="literal">lvcreate</code> command sets the size of the thin pool’s metadata logical volume according to the formula (Pool_LV_size / Pool_LV_chunk_size * 64). If you will have large numbers of snapshots or if you have have small chunk sizes for your thin pool and thus expect significant growth of the size of the thin pool at a later time, you may need to increase the default value of the thin pool’s metadata volume with the <code class="literal">--poolmetadatasize</code> parameter of the <code class="literal">lvcreate</code> command. The supported value for the thin pool’s metadata logical volume is in the range between 2MiB and 16GiB.
+			</p><p>
+				You can use the <code class="literal">--thinpool</code> parameter of the <code class="literal">lvconvert</code> command to convert an existing logical volume to a thin pool volume. When you convert an existing logical volume to a thin pool volume, you must use the <code class="literal">--poolmetadata</code> parameter in conjunction with the <code class="literal">--thinpool</code> parameter of the <code class="literal">lvconvert</code> to convert an existing logical volume to the thin pool volume’s metadata volume.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Converting a logical volume to a thin pool volume or a thin pool metadata volume destroys the content of the logical volume, since in this case the <code class="literal">lvconvert</code> does not preserve the content of the devices but instead overwrites the content.
+				</p></div><p>
+				The following example converts the existing logical volume <code class="literal">lv1</code> in volume group <code class="literal">vg001</code> to a thin pool volume and converts the existing logical volume <code class="literal">lv2</code> in volume group <code class="literal">vg001</code> to the metadata volume for that thin pool volume.
+			</p><pre class="literallayout"># <code class="literal">lvconvert --thinpool vg001/lv1 --poolmetadata vg001/lv2</code>
+  Converted vg001/lv1 to thin pool.</pre></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="con_thin-snapshot-volumes_thinly-provisioned-logical-volumes"/>Thinly-provisioned snapshot volumes</h1></div></div></div><p>
+				Red Hat Enterprise Linux provides support for thinly-provisioned snapshot volumes. Thin snapshot volumes allow many virtual devices to be stored on the same data volume. This simplifies administration and allows for the sharing of data between snapshot volumes.
+			</p><p>
+				As for all LVM snapshot volumes, as well as all thin volumes, thin snapshot volumes are not supported across the nodes in a cluster. The snapshot volume must be exclusively activated on only one cluster node.
+			</p><p>
+				Thin snapshot volumes provide the following benefits:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						A thin snapshot volume can reduce disk usage when there are multiple snapshots of the same origin volume.
+					</li><li class="listitem">
+						If there are multiple snapshots of the same origin, then a write to the origin will cause one COW operation to preserve the data. Increasing the number of snapshots of the origin should yield no major slowdown.
+					</li><li class="listitem">
+						Thin snapshot volumes can be used as a logical volume origin for another snapshot. This allows for an arbitrary depth of recursive snapshots (snapshots of snapshots of snapshots…​).
+					</li><li class="listitem">
+						A snapshot of a thin logical volume also creates a thin logical volume. This consumes no data space until a COW operation is required, or until the snapshot itself is written.
+					</li><li class="listitem">
+						A thin snapshot volume does not need to be activated with its origin, so a user may have only the origin active while there are many inactive snapshot volumes of the origin.
+					</li><li class="listitem">
+						When you delete the origin of a thinly-provisioned snapshot volume, each snapshot of that origin volume becomes an independent thinly-provisioned volume. This means that instead of merging a snapshot with its origin volume, you may choose to delete the origin volume and then create a new thinly-provisioned snapshot using that independent volume as the origin volume for the new snapshot.
+					</li></ul></div><p>
+				Although there are many advantages to using thin snapshot volumes, there are some use cases for which the older LVM snapshot volume feature may be more appropriate to your needs:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						You cannot change the chunk size of a thin pool. If the thin pool has a large chunk size (for example, 1MB) and you require a short-living snapshot for which a chunk size that large is not efficient, you may elect to use the older snapshot feature.
+					</li><li class="listitem">
+						You cannot limit the size of a thin snapshot volume; the snapshot will use all of the space in the thin pool, if necessary. This may not be appropriate for your needs.
+					</li></ul></div><p>
+				In general, you should consider the specific requirements of your site when deciding which snapshot format to use.
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="creating_thinly_provisioned_snapshot_volumes"/>Creating thinly-provisioned snapshot volumes</h1></div></div></div><p>
+				Red Hat Enterprise Linux provides support for thinly-provisioned snapshot volumes.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					This section provides an overview of the basic commands you use to create and grow thinly-provisioned snapshot volumes. For detailed information on LVM thin provisioning as well as information on using the LVM commands and utilities with thinly-provisioned logical volumes, see the <code class="literal">lvmthin</code>(7) man page.
+				</p></div><div class="important" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Important</h3><p>
+					When creating a thin snapshot volume, you do not specify the size of the volume. If you specify a size parameter, the snapshot that will be created will not be a thin snapshot volume and will not use the thin pool for storing data. For example, the command <code class="literal">lvcreate -s vg/thinvolume -L10M</code> will not create a thin snapshot, even though the origin volume is a thin volume.
+				</p></div><p>
+				Thin snapshots can be created for thinly-provisioned origin volumes, or for origin volumes that are not thinly-provisioned.
+			</p><p>
+				You can specify a name for the snapshot volume with the <code class="literal">--name</code> option of the <code class="literal">lvcreate</code> command. The following command creates a thinly-provisioned snapshot volume of the thinly-provisioned logical volume <code class="literal">vg001/thinvolume</code> that is named <code class="literal">mysnapshot1</code>.
+			</p><pre class="literallayout"># <code class="literal">lvcreate -s --name mysnapshot1 vg001/thinvolume</code>
+  Logical volume "mysnapshot1" created
+# <code class="literal">lvs</code>
+  LV          VG       Attr     LSize   Pool       Origin     Data%  Move Log Copy%  Convert
+  mysnapshot1 vg001    Vwi-a-tz   1.00g mythinpool thinvolume   0.00
+  mythinpool  vg001    twi-a-tz 100.00m                         0.00
+  thinvolume  vg001    Vwi-a-tz   1.00g mythinpool              0.00</pre><p>
+				A thin snapshot volume has the same characteristics as any other thin volume. You can independently activate the volume, extend the volume, rename the volume, remove the volume, and even snapshot the volume.
+			</p><p>
+				By default, a snapshot volume is skipped during normal activation commands. For information on controlling the activation of a logical volume, see <a class="link" href="assembly_lvm-activation-configuring-and-managing-logical-volumes.html" title="Chapter 11. Logical volume activation">Logical volume activation</a>.
+			</p><p>
+				You can also create a thinly-provisioned snapshot of a non-thinly-provisioned logical volume. Since the non-thinly-provisioned logical volume is not contained within a thin pool, it is referred to as an <span class="emphasis"><em>external origin</em></span>. External origin volumes can be used and shared by many thinly-provisioned snapshot volumes, even from different thin pools. The external origin must be inactive and read-only at the time the thinly-provisioned snapshot is created.
+			</p><p>
+				To create a thinly-provisioned snapshot of an external origin, you must specify the <code class="literal">--thinpool</code> option. The following command creates a thin snapshot volume of the read-only inactive volume <code class="literal">origin_volume</code>. The thin snapshot volume is named <code class="literal">mythinsnap</code>. The logical volume <code class="literal">origin_volume</code> then becomes the thin external origin for the thin snapshot volume <code class="literal">mythinsnap</code> in volume group <code class="literal">vg001</code> that will use the existing thin pool <code class="literal">vg001/pool</code>. Because the origin volume must be in the same volume group as the snapshot volume, you do not need to specify the volume group when specifying the origin logical volume.
+			</p><pre class="literallayout"># <code class="literal">lvcreate -s --thinpool vg001/pool origin_volume --name mythinsnap</code></pre><p>
+				You can create a second thinly-provisioned snapshot volume of the first snapshot volume, as in the following command.
+			</p><pre class="literallayout"># <code class="literal">lvcreate -s vg001/mythinsnap --name my2ndthinsnap</code></pre><p>
+				You can display a list of all ancestors and descendants of a thin snapshot logical volume by specifying the <code class="literal">lv_ancestors</code> and <code class="literal">lv_descendants</code> reporting fields of the <code class="literal">lvs</code> command.
+			</p><p>
+				In the following example:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<code class="literal">stack1</code> is an origin volume in volume group <code class="literal">vg001</code>.
+					</li><li class="listitem">
+						<code class="literal">stack2</code> is a snapshot of <code class="literal">stack1</code>
+					</li><li class="listitem">
+						<code class="literal">stack3</code> is a snapshot of <code class="literal">stack2</code>
+					</li><li class="listitem">
+						<code class="literal">stack4</code> is a snapshot of <code class="literal">stack3</code>
+					</li></ul></div><p>
+				Additionally:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<code class="literal">stack5</code> is also a snapshot of <code class="literal">stack2</code>
+					</li><li class="listitem">
+						<code class="literal">stack6</code> is a snapshot of <code class="literal">stack5</code>
+					</li></ul></div><pre class="literallayout">$ <code class="literal">lvs -o name,lv_ancestors,lv_descendants vg001</code>
+  LV      Ancestors              Descendants
+  stack1                         stack2,stack3,stack4,stack5,stack6
+  stack2  stack1                 stack3,stack4,stack5,stack6
+  stack3  stack2,stack1          stack4
+  stack4  stack3,stack2,stack1
+  stack5  stack2,stack1          stack6
+  stack6  stack5,stack2,stack1
+  pool</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					The <code class="literal">lv_ancestors</code> and <code class="literal">lv_descendants</code> fields display existing dependencies but do not track removed entries which can break a dependency chain if the entry was removed from the middle of the chain. For example, if you remove the logical volume <code class="literal">stack3</code> from this sample configuration, the display is as follows.
+				</p><pre class="literallayout">$ <code class="literal">lvs -o name,lv_ancestors,lv_descendants vg001</code>
+  LV      Ancestors              Descendants
+  stack1                         stack2,stack5,stack6
+  stack2  stack1                 stack5,stack6
+  stack4
+  stack5  stack2,stack1          stack6
+  stack6  stack5,stack2,stack1
+  pool</pre><p>
+					You can configure your system to track and display logical volumes that have been removed, and you can display the full dependency chain that includes those volumes by specifying the <code class="literal">lv_ancestors_full</code> and <code class="literal">lv_descendants_full</code> fields.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="tracking_and_displaying_thin_snapshot_volumes_that_have_been_removed"/>Tracking and displaying thin snapshot volumes that have been removed</h1></div></div></div><p>
+				You can configure your system to track thin snapshot and thin logical volumes that have been removed by enabling the <code class="literal">record_lvs_history</code> metadata option in the <code class="literal">lvm.conf</code> configuration file. This allows you to display a full thin snapshot dependency chain that includes logical volumes that have been removed from the original dependency chain and have become <span class="emphasis"><em>historical</em></span> logical volumes.
+			</p><p>
+				You can configure your system to retain historical volumes for a defined period of time by specifying the retention time, in seconds, with the <code class="literal">lvs_history_retention_time</code> metadata option in the <code class="literal">lvm.conf</code> configuration file.
+			</p><p>
+				A historical logical volume retains a simplified representation of the logical volume that has been removed, including the following reporting fields for the volume:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<code class="literal">lv_time_removed</code>: the removal time of the logical volume
+					</li><li class="listitem">
+						<code class="literal">lv_time</code>: the creation time of the logical volume
+					</li><li class="listitem">
+						<code class="literal">lv_name</code>: the name of the logical volume
+					</li><li class="listitem">
+						<code class="literal">lv_uuid</code>: the UUID of the logical volume
+					</li><li class="listitem">
+						<code class="literal">vg_name</code>: the volume group that contains the logical volume.
+					</li></ul></div><p>
+				When a volume is removed, the historical logical volume name acquires a hypen as a prefix. For example, when you remove the logical volume <code class="literal">lvol1</code>, the name of the historical volume is <code class="literal">-lvol1</code>. A historical logical volume cannot be reactivated.
+			</p><p>
+				Even when the <code class="literal">record_lvs_history</code> metadata option enabled, you can prevent the retention of historical logical volumes on an individual basis when you remove a logical volume by specifying the <code class="literal">--nohistory</code> option of the <code class="literal">lvremove</code> command.
+			</p><p>
+				To include historical logical volumes in volume display, you specify the <code class="literal">-H|--history</code> option of an LVM display command. You can display a full thin snapshot dependency chain that includes historical volumes by specifying the <code class="literal">lv_full_ancestors</code> and <code class="literal">lv_full_descendants</code> reporting fields along with the <code class="literal">-H</code> option.
+			</p><p>
+				The following series of commands provides examples of how you can display and manage historical logical volumes.
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						Ensure that historical logical volumes are retained by setting <code class="literal">record_lvs_history=1</code> in the <code class="literal">lvm.conf</code> file. This metadata option is not enabled by default.
+					</li><li class="listitem"><p class="simpara">
+						Enter the following command to display a thin provisioned snapshot chain.
+					</p><p class="simpara">
+						In this example:
+					</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+								<code class="literal">lvol1</code> is an origin volume, the first volume in the chain.
+							</li><li class="listitem">
+								<code class="literal">lvol2</code> is a snapshot of <code class="literal">lvol1</code>.
+							</li><li class="listitem">
+								<code class="literal">lvol3</code> is a snapshot of <code class="literal">lvol2</code>.
+							</li><li class="listitem">
+								<code class="literal">lvol4</code> is a snapshot of <code class="literal">lvol3</code>.
+							</li><li class="listitem"><p class="simpara">
+								<code class="literal">lvol5</code> is also a snapshot of <code class="literal">lvol3</code>.
+							</p><p class="simpara">
+								Note that even though the example <code class="literal">lvs</code> display command includes the <code class="literal">-H</code> option, no thin snapshot volume has yet been removed and there are no historical logical volumes to display.
+							</p><pre class="literallayout"># <code class="literal">lvs -H -o name,full_ancestors,full_descendants</code>
+  LV    FAncestors        FDescendants
+  lvol1                   lvol2,lvol3,lvol4,lvol5
+  lvol2 lvol1             lvol3,lvol4,lvol5
+  lvol3 lvol2,lvol1       lvol4,lvol5
+  lvol4 lvol3,lvol2,lvol1
+  lvol5 lvol3,lvol2,lvol1
+  pool</pre></li></ul></div></li><li class="listitem"><p class="simpara">
+						Remove logical volume <code class="literal">lvol3</code> from the snapshot chain, then run the following <code class="literal">lvs</code> command again to see how historical logical volumes are displayed, along with their ancestors and descendants.
+					</p><pre class="literallayout"># <code class="literal">lvremove -f vg/lvol3</code>
+  Logical volume "lvol3" successfully removed
+# <code class="literal">lvs -H -o name,full_ancestors,full_descendants</code>
+  LV     FAncestors         FDescendants
+  lvol1                     lvol2,-lvol3,lvol4,lvol5
+  lvol2  lvol1              -lvol3,lvol4,lvol5
+  -lvol3 lvol2,lvol1        lvol4,lvol5
+  lvol4  -lvol3,lvol2,lvol1
+  lvol5  -lvol3,lvol2,lvol1
+  pool</pre></li><li class="listitem"><p class="simpara">
+						You can use the <code class="literal">lv_time_removed</code> reporting field to display the time a historical volume was removed.
+					</p><pre class="literallayout"># <code class="literal">lvs -H -o name,full_ancestors,full_descendants,time_removed</code>
+  LV     FAncestors         FDescendants              RTime
+  lvol1                     lvol2,-lvol3,lvol4,lvol5
+  lvol2  lvol1              -lvol3,lvol4,lvol5
+  -lvol3 lvol2,lvol1        lvol4,lvol5               2016-03-14 14:14:32 +0100
+  lvol4  -lvol3,lvol2,lvol1
+  lvol5  -lvol3,lvol2,lvol1
+  pool</pre></li><li class="listitem"><p class="simpara">
+						You can reference historical logical volumes individually in a display command by specifying the <span class="emphasis"><em>vgname/lvname</em></span> format, as in the following example. Note that the fifth bit in the <code class="literal">lv_attr</code> field is set to <code class="literal">h</code> to indicate the volume is a historical volume.
+					</p><pre class="literallayout"># <code class="literal">lvs -H vg/-lvol3</code>
+  LV     VG   Attr       LSize
+  -lvol3 vg   ----h-----    0</pre></li><li class="listitem"><p class="simpara">
+						LVM does not keep historical logical volumes if the volume has no live descendant. This means that if you remove a logical volume at the end of a snapshot chain, the logical volume is not retained as a historical logical volume.
+					</p><pre class="literallayout"># <code class="literal">lvremove -f vg/lvol5</code>
+  Automatically removing historical logical volume vg/-lvol5.
+  Logical volume "lvol5" successfully removed
+# <code class="literal">lvs -H -o name,full_ancestors,full_descendants</code>
+  LV     FAncestors         FDescendants
+  lvol1                     lvol2,-lvol3,lvol4
+  lvol2  lvol1              -lvol3,lvol4
+  -lvol3 lvol2,lvol1        lvol4
+  lvol4  -lvol3,lvol2,lvol1
+  pool</pre></li><li class="listitem"><p class="simpara">
+						Run the following commands to remove the volume <code class="literal">lvol1</code> and <code class="literal">lvol2</code> and to see how the <code class="literal">lvs</code> command displays the volumes once they have been removed.
+					</p><pre class="literallayout"># <code class="literal">lvremove -f vg/lvol1 vg/lvol2</code>
+  Logical volume "lvol1" successfully removed
+  Logical volume "lvol2" successfully removed
+# <code class="literal">lvs -H -o name,full_ancestors,full_descendants</code>
+  LV     FAncestors           FDescendants
+  -lvol1                      -lvol2,-lvol3,lvol4
+  -lvol2 -lvol1               -lvol3,lvol4
+  -lvol3 -lvol2,-lvol1        lvol4
+  lvol4  -lvol3,-lvol2,-lvol1
+  pool</pre></li><li class="listitem"><p class="simpara">
+						To remove a historical logical volume completely, you can run the <code class="literal">lvremove</code> command again, specifying the name of the historical volume that now includes the hyphen, as in the following example.
+					</p><pre class="literallayout"># <code class="literal">lvremove -f vg/-lvol3</code>
+Historical logical volume "lvol3" successfully removed
+# <code class="literal">lvs -H -o name,full_ancestors,full_descendants</code>
+  LV     FAncestors    FDescendants
+  -lvol1               -lvol2,lvol4
+  -lvol2 -lvol1        lvol4
+  lvol4  -lvol2,-lvol1
+  pool</pre></li><li class="listitem"><p class="simpara">
+						A historical logical volumes is retained as long as there is a chain that includes live volumes in its descendants. This means that removing a historical logical volume also removes all of the logical volumes in the chain if no existing descendant is linked to them, as shown in the following example.
+					</p><pre class="literallayout"># <code class="literal">lvremove -f vg/lvol4</code>
+  Automatically removing historical logical volume vg/-lvol1.
+  Automatically removing historical logical volume vg/-lvol2.
+  Automatically removing historical logical volume vg/-lvol4.
+  Logical volume "lvol4" successfully removed</pre></li></ol></div></div></div></body></html>

@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 10. Configuring authentication with a certificate stored on the desktop of an IdM client</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="dc-web-ui-auth"/>Chapter 10. Configuring authentication with a certificate stored on the desktop of an IdM client</h1></div></div></div><p>
+			By configuring Identity Management (IdM), IdM system administrators can enable users to authenticate to the IdM web UI and command-line interface (CLI) using a certificate that a Certificate Authority (CA) has issued to the users.
+		</p><p>
+			The web browser can run on a system that is not part of the IdM domain.
+		</p><p>
+			This user story provides instructions on how to effectively configure and test logging into Identity Management web UI and CLI with a certificate stored on the desktop of an IdM client. In following this user story,
+		</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+					you can skip <a class="xref" href="dc-web-ui-auth.html#requesting-and-exporting-a-user-certificate_dc-web-ui-auth" title="Requesting a new user certificate and exporting it to the client">the section called “Requesting a new user certificate and exporting it to the client”</a> if the user you want to authenticate using a certificate already has a certificate;
+				</li><li class="listitem">
+					you can skip <a class="xref" href="dc-web-ui-auth.html#making-sure-cert-and-user-are-linked-idm" title="Making sure the certificate and user are linked together">the section called “Making sure the certificate and user are linked together”</a> if the user’s certificate has been issued by the IdM CA.
+				</li></ul></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+				Only Identity Management users can log into the web UI using a certificate. Active Directory users can log in with their user name and password.
+			</p></div><p>
+			<a id="cert-idm-users-auth-preparing-the-server_dc-web-ui-auth"/>
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring_the_identity_management_server_for_certificate_authentication_in_the_web_ui"/>Configuring the Identity Management Server for Certificate Authentication in the Web UI</h1></div></div></div><p>
+				As an Identity Management (IdM) administrator, you can allow users to use certificates to authenticate to your IdM environment.
+			</p><h3><a id="procedure_25"/>Procedure</h3><p>
+				As the Identity Management administrator:
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						On an Identity Management server, obtain administrator privileges and create a shell script to configure the server.
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Run the <code class="literal">ipa-advise config-server-for-smart-card-auth</code> command, and save its output to a file, for example <code class="literal">server_certificate_script.sh</code>:
+							</p><pre class="literallayout"># kinit admin
+# ipa-advise config-server-for-smart-card-auth &gt; <code class="literal">server_certificate_script.sh</code></pre></li><li class="listitem"><p class="simpara">
+								Add execute permissions to the file using the <code class="literal">chmod</code> utility:
+							</p><pre class="literallayout"># chmod +x <code class="literal">server_certificate_script.sh</code></pre></li></ol></div></li><li class="listitem"><p class="simpara">
+						On all the servers in the Identity Management domain, run the <code class="literal">server_certificate_script.sh</code> script
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								with the path of the IdM Certificate Authority certificate, <code class="literal">/etc/ipa/ca.crt</code>, as input if the IdM CA is the only certificate authority that has issued the certificates of the users you want to enable certificate authentication for:
+							</p><pre class="literallayout"># <code class="literal">./server_certificate_script.sh</code> <code class="literal">/etc/ipa/ca.crt</code></pre></li><li class="listitem"><p class="simpara">
+								with the paths leading to the relevant CA certificates as input if different external CAs signed the certificates of the users who you want to enable certificate authentication for:
+							</p><pre class="literallayout"># <code class="literal">./server_certificate_script.sh</code> <code class="literal">/tmp/ca1.pem</code> <code class="literal">/tmp/ca2.pem</code></pre></li></ol></div></li></ol></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					Do not forget to run the script on each new replica that you add to the system in the future if you want to have certificate authentication for users enabled in the whole topology.
+				</p></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="requesting-and-exporting-a-user-certificate_dc-web-ui-auth"/>Requesting a new user certificate and exporting it to the client</h1></div></div></div><p>
+				As an Identity Management (IdM) administrator, you can create certificates for users in your IdM environment and export them to the IdM clients on which you want to enable certificate authentication for users.
+			</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					You can skip this section if the user you want to authenticate using a certificate already has a certificate.
+				</p></div><h3><a id="procedure_26"/>Procedure</h3><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Optionally, create a new directory, for example <code class="literal">~/certdb/</code>, and make it a temporary certificate database. When asked, create an NSS Certificate DB password to encrypt the keys to the certificate to be generated in a subsequent step:
+					</p><pre class="literallayout"># mkdir <code class="literal">~/certdb/</code>
+# certutil -N -d <code class="literal">~/certdb/</code>
+Enter a password which will be used to encrypt your keys.
+The password should be at least 8 characters long,
+and should contain at least one non-alphabetic character.
+
+Enter new password:
+Re-enter password:</pre></li><li class="listitem"><p class="simpara">
+						Create the certificate signing request (CSR) and redirect the output to a file. For example, to create a CSR with the name <code class="literal">certificate_request.csr</code> for a <code class="literal">4096</code> bit certificate for the <code class="literal">idm_user</code> user in the <code class="literal">IDM.EXAMPLE.COM</code> realm, setting the nickname of the certificate private keys to <code class="literal">idm_user</code> for easy findability, and setting the subject to <code class="literal">CN=idm_user,O=IDM.EXAMPLE.COM</code>:
+					</p><pre class="literallayout"># certutil -R -d <code class="literal">~/certdb/</code> -a -g <code class="literal">4096</code> -n <code class="literal">idm_user</code> -s "CN=<code class="literal">idm_user</code>,O=IDM.EXAMPLE.COM" &gt; <code class="literal">certificate_request.csr</code></pre></li><li class="listitem"><p class="simpara">
+						When prompted, enter the same password that you entered when using <code class="literal">certutil</code> to create the temporary database. Then continue typing randlomly until told to stop:
+					</p><pre class="literallayout">Enter Password or Pin for "NSS Certificate DB":
+
+A random seed must be generated that will be used in the
+creation of your key.  One of the easiest ways to create a
+random seed is to use the timing of keystrokes on a keyboard.
+
+To begin, type keys on the keyboard until this progress meter
+is full.  DO NOT USE THE AUTOREPEAT FUNCTION ON YOUR KEYBOARD!
+
+
+Continue typing until the progress meter is full:</pre></li><li class="listitem"><p class="simpara">
+						Submit the certificate request file to the server. Specify the Kerberos principal to associate with the newly-issued certificate, the output file to store the certificate, and optionally the certificate profile. For example, to obtain a certificate of the <code class="literal">IECUserRoles</code> profile, a profile with added user roles extension, for the <code class="literal">idm_user</code>@<code class="literal">IDM.EXAMPLE.COM</code> principal, and save it in the <code class="literal">~/idm_user.pem</code> file:
+					</p><pre class="literallayout"># ipa cert-request <code class="literal">certificate_request.csr</code> --principal=<code class="literal">idm_user</code>@<code class="literal">IDM.EXAMPLE.COM</code> --profile-id=<code class="literal">IECUserRoles</code> --certificate-out=<code class="literal">~/idm_user.pem</code></pre></li><li class="listitem"><p class="simpara">
+						Add the certificate to the NSS database. Use the <code class="literal">-n</code> option to set the same nickname that you used when creating the CSR previously so that the certificate matches the private key in the NSS database. The <code class="literal">-t</code> option sets the trust level. For details, see the certutil(1) man page. The <code class="literal">-i</code> option specifies the input certificate file. For example, to add to the NSS database a certificate with the <code class="literal">idm_user</code> nickname that is stored in the <code class="literal">~/idm_user.pem</code> file in the <code class="literal">~/certdb/</code> database:
+					</p><pre class="literallayout"># certutil -A -d <code class="literal">~/certdb/</code> -n <code class="literal">idm_user</code> -t "P,," -i <code class="literal">~/idm_user.pem</code></pre></li><li class="listitem"><p class="simpara">
+						Verify that the key in the NSS database does not show <code class="literal">(orphan)</code> as its nickname. For example, to verify that the certificate stored in the <code class="literal">~/certdb/</code> database is not orphaned:
+					</p><pre class="literallayout"># certutil -K -d <code class="literal">~/certdb/</code>
+&lt; 0&gt; rsa      5ad14d41463b87a095b1896cf0068ccc467df395   <span class="strong"><strong>NSS Certificate DB:[replaceable]<code class="literal">idm_user</code></strong></span></pre></li><li class="listitem"><p class="simpara">
+						Use the <code class="literal">pk12util</code> command to export the certificate from the NSS database to the PKCS12 format. For example, to export the certificate with the <code class="literal">idm_user</code> nickname from the <code class="literal">/root/certdb</code> NSS database into the <code class="literal">~/idm_user.p12</code> file:
+					</p><pre class="literallayout"># pk12util -d <code class="literal">~/certdb</code> -o <code class="literal">~/idm_user.p12</code> -n <code class="literal">idm_user</code>
+Enter Password or Pin for "NSS Certificate DB":
+Enter password for PKCS12 file:
+Re-enter password:
+pk12util: PKCS12 EXPORT SUCCESSFUL</pre></li><li class="listitem"><p class="simpara">
+						Transfer the certificate to the host on which you want the certificate authentication for <code class="literal">idm_user</code> to be enabled:
+					</p><pre class="literallayout"># scp <code class="literal">~/idm_user.p12</code> <code class="literal">idm_user@client.idm.example.com:/home/idm_user/</code></pre></li><li class="listitem"><p class="simpara">
+						On the host to which the certificate has been transferred, make the directory in which the .pkcs12 file is stored inaccessible to the 'other' group for security reasons:
+					</p><pre class="literallayout"># chmod o-rwx <code class="literal">/home/idm_user/</code></pre></li><li class="listitem"><p class="simpara">
+						For security reasons, remove the temporary NSS database and the .pkcs12 file from the server:
+					</p><pre class="literallayout"># rm <code class="literal">~/certdb/</code>
+# rm <code class="literal">~/idm_user.p12</code></pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="making-sure-cert-and-user-are-linked-idm"/>Making sure the certificate and user are linked together</h1></div></div></div><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+					You can skip this section if the user’s certificate has been issued by the IdM CA.
+				</p></div><p>
+				For certificate authentication to work, you need to make sure that the certificate is linked to the user that will use it to authenticate to Identity Management (IdM).
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						If the certificate is provided by a Certificate Authority that is not part of your Identity Management environment, link the user and the certificate following the procedure described in <a class="link" href="conf-certmap-idm.html#adding_certificate_mapping_data_to_a_user_entry_in_idm" title="Adding certificate mapping data to a user entry in IdM">Linking User Accounts to Certificates</a>.
+					</li><li class="listitem">
+						If the certificate is provided by Identity Management CA, the certificate is already automatically added in the user entry and you do not have to link the certificate to the user account. For details on creating a new certificate in IdM, see <a class="xref" href="dc-web-ui-auth.html#requesting-and-exporting-a-user-certificate_dc-web-ui-auth" title="Requesting a new user certificate and exporting it to the client">the section called “Requesting a new user certificate and exporting it to the client”</a>.
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="configuring-browser-for-cert-auth_dc-web-ui-auth"/>Configuring a browser to enable certificate authentication</h1></div></div></div><p>
+				For certificate authentication to work in your Identity Management web UI, you need to import the user and Certificate Authority (CA) certificates into the Mozilla Firefox or Google Chrome browser running on the host on which you want to enable certificate authentication. The host itself does not have to be part of the IdM domain.
+			</p><p>
+				Identity Management supports the following browsers for connecting to the web UI:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						Mozilla Firefox 38 and later
+					</li><li class="listitem">
+						Google Chrome 46 and later
+					</li></ul></div><p>
+				The following procedure shows how to configure the Mozilla Firefox 57.0.1 browser.
+			</p><h3><a id="procedure_27"/>Procedure</h3><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+						Open Firefox, then navigate to <code class="literal">Preferences</code> → <code class="literal">Privacy &amp; Security</code>.
+					</p><p class="simpara">
+						<a id="fig.privacy-security_dc-web-ui-auth"/> .Privacy and Security section in Preferences
+					</p><div class="informalfigure"><div class="mediaobject"><img src="images/privacy_and_security.png" alt="privacy and security"/></div></div></li><li class="listitem"><p class="simpara">
+						Click <span class="guibutton">View Certificates</span>.
+					</p><p class="simpara">
+						<a id="fig.view-certificates_dc-web-ui-auth"/> .View Certificates in Privacy and Security
+					</p><div class="informalfigure"><div class="mediaobject"><img src="images/view_certificates.png" alt="view certificates"/></div></div></li><li class="listitem">
+						In the <code class="literal">Your Certificates</code> tab, click <span class="guibutton">Import</span>. Locate and open the certificate of the user in the PKCS12 format, then click <span class="guibutton">OK</span> and <span class="guibutton">OK</span>.
+					</li><li class="listitem"><p class="simpara">
+						Make sure that the Identity Management Certificate Authority is recognized by Firefox as a trusted authority:
+					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+								Save the IdM CA certificate locally:
+							</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+										Navigate to the IdM web UI by writing the name of your IdM server in the Firefox address bar. Click <code class="literal">Advanced</code> on the Insecure Connection warning page.
+									</p><p class="simpara">
+										<a id="fig.connection-not-secure-idm_dc-web-ui-auth"/> .Insecure Connection
+									</p><div class="informalfigure"><div class="mediaobject"><img src="images/connection-not-secure-idm.png" alt="connection not secure idm"/></div></div></li><li class="listitem"><p class="simpara">
+										<code class="literal">Add Exception</code>. Click <code class="literal">View</code>.
+									</p><p class="simpara">
+										<a id="fig.view-ca-certificate-idm_dc-web-ui-auth"/> .View the Details of a Certificate
+									</p><div class="informalfigure"><div class="mediaobject"><img src="images/view-ca-certificate-idm.png" alt="view ca certificate idm"/></div></div></li><li class="listitem"><p class="simpara">
+										In the <code class="literal">Details</code> tab, highlight the <code class="literal">Certificate Authority</code> fields.
+									</p><p class="simpara">
+										<a id="fig.exporting-ca-cert-idm_dc-web-ui-auth"/> .Exporting the CA Certificate
+									</p><div class="informalfigure"><div class="mediaobject"><img src="images/exporting-ca-cert-idm.png" alt="exporting ca cert idm"/></div></div></li><li class="listitem">
+										Click <span class="guibutton">Export</span>. Save the CA certificate, for example as the <code class="literal">CertificateAuthority.crt</code> file, then click <span class="guibutton">Close</span>, and <span class="guibutton">Cancel</span>.
+									</li></ul></div></li><li class="listitem"><p class="simpara">
+								Import the IdM CA certificate to Firefox as a trusted certificate authority certificate:
+							</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+										Open Firefox, navigate to Preferences and click <span class="guibutton">Privacy &amp; Security</span>.
+									</p><p class="simpara">
+										<a id="fig.privacy-security-2_dc-web-ui-auth"/> .Privacy and Security section in Preferences
+									</p><div class="informalfigure"><div class="mediaobject"><img src="images/privacy_and_security.png" alt="privacy and security"/></div></div></li><li class="listitem"><p class="simpara">
+										Click <span class="guibutton">View Certificates</span>.
+									</p><p class="simpara">
+										<a id="fig.view-certificates-2_dc-web-ui-auth"/> .View Certificates in Privacy and Security
+									</p><div class="informalfigure"><div class="mediaobject"><img src="images/view_certificates.png" alt="view certificates"/></div></div></li><li class="listitem">
+										In the <code class="literal">Authorities</code> tab, click <span class="guibutton">Import</span>. Locate and open the CA certificate that you saved in the previous step in the <code class="literal">CertificateAuthority.crt</code> file. Trust the certificate to identify websites, then click <span class="guibutton">OK</span> and <span class="guibutton">OK</span>.
+									</li></ul></div></li></ol></div></li><li class="listitem">
+						Continue to <a class="link" href="dc-web-ui-auth.html#cert-idm-users-auth-procedure_dc-web-ui-auth">Authenticating to the Identity Management Web UI with a Certificate as an Identity Management User</a>.
+					</li></ol></div><p>
+				<a id="cert-idm-users-auth-procedure_dc-web-ui-auth"/>
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="authenticating_to_the_identity_management_web_ui_with_a_certificate_as_an_identity_management_user"/>Authenticating to the Identity Management Web UI with a Certificate as an Identity Management User</h1></div></div></div><p>
+				This procedure describes authenticating as a user to the Identity Management (IdM) web UI using a certificate stored on the desktop of an Identity Management client.
+			</p><h3><a id="procedure_28"/>Procedure</h3><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						In the browser, navigate to the Identity Management web UI at, for example, <code class="literal">https:</code>//<code class="literal">server.idm.example.com/ipa/ui</code>.
+					</li><li class="listitem"><p class="simpara">
+						Click <span class="guibutton">Login Using Certificate</span>.
+					</p><p class="simpara">
+						<a id="fig.cert-login_dc-web-ui-auth"/> .<span class="guibutton">Login Using Certificate</span> in the Identity Management web UI
+					</p><div class="informalfigure"><div class="mediaobject"><img src="images/smart_card_login.png" alt="smart card login"/></div></div></li><li class="listitem">
+						The user’s certificate should already be selected. Uncheck <span class="guibutton">Remember this decision</span>, then click <span class="guibutton">OK</span>.
+					</li></ol></div><p>
+				You are now authenticated as the user who corresponds to the certificate.
+			</p><h3><a id="additional_resources_5"/>Additional Resources</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						For information about authenticating to the IdM web UI using a certificate stored on a smart card, see <a class="xref" href="configuring-idm-for-smart-card-auth_cert-intro.html" title="Chapter 9. Configuring Identity Management for smart card authentication">Chapter 9, <em>Configuring Identity Management for smart card authentication</em></a>.
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="authenticating-idm-cli-user-certificate_dc-web-ui-auth"/>Configuring an IdM client to enable authenticating to the CLI using a certificate</h1></div></div></div><p>
+				To make certificate authentication work for an IdM user in the Command Line Interface (CLI) of your IdM client, import the IdM user’s certificate and the private key to the IdM client. For details on creating and transferring the user certificate, see <a class="xref" href="dc-web-ui-auth.html#requesting-and-exporting-a-user-certificate_dc-web-ui-auth" title="Requesting a new user certificate and exporting it to the client">the section called “Requesting a new user certificate and exporting it to the client”</a>.
+			</p><h3><a id="procedure_29"/>Procedure</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						Log into the IdM client and have the .p12 file containing the user’s certificate and the private key ready. To obtain and cache the Kerberos ticket granting ticket (TGT), run the <code class="literal">kinit</code> command with the user’s principal, using the <code class="literal">-X</code> option with the <code class="literal">X509_username:/path/to/file.p12</code> attribute to specify where to find the user’s X509 identity information. For example, to obtain the TGT for <code class="literal">idm_user</code> using the user’s identity information stored in the <code class="literal">~/idm_user.p12</code> file:
+					</p><pre class="literallayout">$ <span class="strong"><strong>kinit -X X509_idm_user='PKCS12:~/idm_user.p12' idm_user</strong></span></pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							The command also supports the .pem file format: <span class="strong"><strong>kinit -X X509_username='FILE:/path/to/cert.pem,/path/to/key' user_principal</strong></span>
+						</p></div></li></ul></div></div></div></body></html>

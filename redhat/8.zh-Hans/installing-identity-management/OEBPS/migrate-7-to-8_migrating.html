@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 17. Migrating Identity Management from RHEL 7 to 8</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="migrate-7-to-8_migrating"/>Chapter 17. Migrating Identity Management from RHEL 7 to 8</h1></div></div></div><p>
+				This procedure describes how to migrate all Identity Management data and configuration from a Red Hat Enterprise Linux (RHEL) 7 server to a RHEL 8 server. The migration procedure includes:
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						Installing an Identity Management server on the RHEL 8 system. For details, see <a class="xref" href="migrate-7-to-8_migrating.html#install-replica_migrate-7-to-8" title="Installing the RHEL 8 Replica">the section called “Installing the RHEL 8 Replica”</a>.
+					</li><li class="listitem">
+						Making the RHEL 8 server the CA renewal master. For details, see <a class="xref" href="migrate-7-to-8_migrating.html#move-ca-renewal-master-to-8_migrate-7-to-8" title="Moving the CA renewal master to RHEL 8">the section called “Moving the CA renewal master to RHEL 8”</a>.
+					</li><li class="listitem">
+						Stopping the generation of the certificate revocation list (CRL) on the RHEL 7 server and redirecting CRL requests to RHEL 8. For details, see <a class="xref" href="migrate-7-to-8_migrating.html#stop-CRL-generation-7-redirect-to-8_migrate-7-to-8" title="Stopping CRL generation on RHEL 7 and redirecting CRL requests to RHEL 8">the section called “Stopping CRL generation on RHEL 7 and redirecting CRL requests to RHEL 8”</a>.
+					</li><li class="listitem">
+						Starting the generation of the certificate revocation list (CRL) on the RHEL 8 server. For details, see <a class="xref" href="migrate-7-to-8_migrating.html#start-CRL-generation-on-8_migrate-7-to-8" title="Starting CRL generation on RHEL 8">the section called “Starting CRL generation on RHEL 8”</a>.
+					</li><li class="listitem">
+						Stopping and decommissioning the original RHEL 7 CA master. For details, see <a class="xref" href="migrate-7-to-8_migrating.html#stop-decommission-server_migrate-7-to-8" title="Stopping and decommissioning the RHEL 7 server">the section called “Stopping and decommissioning the RHEL 7 server”</a>.
+					</li></ol></div><p>
+				In the following procedures:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<code class="literal">rhel8.example.com</code> is the RHEL 8 system that will become the new CA master.
+					</li><li class="listitem"><p class="simpara">
+						<code class="literal">rhel7.example.com</code> is the original RHEL 7 CA master.
+					</p><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							To identify which Red Hat Enterprise Linux 7 server is the master CA server, run this command on any IdM server:
+						</p><pre class="literallayout">[root@rhel7 ~]# ipa config-show | grep "CA renewal master"
+IPA CA renewal master: rhel7.example.com</pre></div></li></ul></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="migrating-7-8-prereqs_migrate-7-to-8"/>Prerequisites for Migrating Identity Management from RHEL 7 to 8</h1></div></div></div><p>
+					On <code class="literal">rhel7.example.com</code>:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							Upgrade the system to the latest RHEL 7 version.
+						</li><li class="listitem"><p class="simpara">
+							Update the <span class="strong"><strong><span class="package">ipa-</span></strong></span>* packages to their latest version:
+						</p><pre class="literallayout">[root@rhel7 ~]# yum update ipa-*</pre><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
+								When upgrading multiple Identity Management servers, wait at least 10 minutes between each upgrade.
+							</p><p>
+								When two or more servers are upgraded simultaneously or with only short intervals between the upgrades, there is not enough time to replicate the post-upgrade data changes throughout the topology, which can result in conflicting replication events.
+							</p></div></li></ol></div><p>
+					On <code class="literal">rhel8.example.com</code>:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+							Make sure the <code class="literal">rhel8.example.com</code> system meets the requirements listed in <a class="xref" href="preparing-the-system-for-ipa-server-installation_installing-identity-management.html" title="Chapter 1. Preparing the system for Identity Management server installation">Chapter 1, <em>Preparing the system for Identity Management server installation</em></a>.
+						</li><li class="listitem">
+							Make sure that the replica is part of the domain for which the IdM DNS server is authoritative.
+						</li><li class="listitem"><p class="simpara">
+							Update the <span class="strong"><strong><span class="package">ipa-</span></strong></span>* packages to their latest version:
+						</p><pre class="literallayout">[root@rhel8 ~]# yum update ipa-*</pre></li></ol></div><h3><a id="related_information"/>Related Information</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+							For details on using the <code class="literal">yum</code> utility, see the <code class="literal">yum(8)</code> manual pages.
+						</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="install-replica_migrate-7-to-8"/>Installing the RHEL 8 Replica</h1></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							List which server roles are present in your RHEL 7 environment:
+						</p><pre class="literallayout">[root@rhel7 ~]# <span class="strong"><strong>ipa server-role-find --status enabled</strong></span>
+----------------------
+4 server roles matched
+----------------------
+  Server name: rhel7.example.com
+  Role name: CA server
+  Role status: enabled
+
+  Server name: replica7.example.com
+  Role name: DNS server
+  Role status: enabled
+
+  Server name: rhel7.example.com
+  Role name: DNS server
+  Role status: enabled
+
+  Server name: rhel7.example.com
+  Role name: NTP server
+  Role status: enabled
+[... output truncated ...]</pre></li><li class="listitem"><p class="simpara">
+							Install the IdM server on <code class="literal">rhel8.example.com</code> as a replica of the IdM RHEL 7 server, including all the server roles present on your <code class="literal">rhel7.example.com</code>. To install all the roles from the example above, use these options with the <code class="literal">ipa-replica-install</code> command:
+						</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+									<code class="literal">--setup-ca</code> to set up the Certificate System component
+								</li><li class="listitem"><p class="simpara">
+									<code class="literal">--setup-dns</code> and <code class="literal">--forwarder</code> to configure an integrated DNS server and set a forwarder to take care of DNS queries that go outside the IdM domain
+								</p><p class="simpara">
+									To set up an IdM server with the ip address of 192.0.2.1 which uses a forwarder with the ip address of 192.0.2.20:
+								</p><pre class="literallayout">[root@rhel8 ~]# <span class="strong"><strong>ipa-replica-install --setup-ca --ip-address 192.0.2.1 --setup-dns --forwarder 192.0.2.20</strong></span></pre></li></ul></div><p class="simpara">
+							You do not need to specify the RHEL 7 IdM server because if DNS is working correctly, <code class="literal">rhel8.example.com</code> will find it using DNS autodiscovery.
+						</p></li><li class="listitem"><p class="simpara">
+							After the installation completes, verify that the Identity Management services are running on <code class="literal">rhel8.example.com</code>:
+						</p><pre class="literallayout">[root@rhel8 ~]# <span class="strong"><strong>ipactl status</strong></span>
+Directory Service: RUNNING
+[... output truncated ...]
+ipa: INFO: The ipactl command was successful</pre></li><li class="listitem"><p class="simpara">
+							Verify that <code class="literal">rhel7.example.com</code> and <code class="literal">rhel8.example.com</code> CAs are both configured as master servers:
+						</p><pre class="literallayout">[root@rhel8 ~]$ <code class="literal">kinit admin</code>
+[root@rhel8 ~]$ <code class="literal">ipa-csreplica-manage list</code>
+rhel7.example.com: master
+rhel8.example.com: master</pre></li><li class="listitem"><p class="simpara">
+							Optionally, to display details about the replication agreement between <code class="literal">rhel7.example.com</code> and <code class="literal">rhel8.example.com</code>:
+						</p><pre class="literallayout">[root@rhel8 ~]# <span class="strong"><strong>ipa-csreplica-manage list --verbose rhel8.example.com</strong></span>
+Directory Manager password:
+
+rhel7.example.com
+last init status: None
+last init ended: 1970-01-01 00:00:00+00:00
+last update status: Error (0) Replica acquired successfully: Incremental update succeeded
+last update ended: 2019-02-13 13:55:13+00:00</pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="move-ca-renewal-master-to-8_migrate-7-to-8"/>Moving the CA renewal master to RHEL 8</h1></div></div></div><p>
+					On <code class="literal">rhel8.example.com</code>, configure <code class="literal">rhel8.example.com</code> as the new CA renewal master:
+				</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+							Configure <code class="literal">rhel8.example.com</code> to handle CA subsystem certificate renewal:
+						</p><pre class="literallayout">[root@rhel8 ~]# <span class="strong"><strong>ipa config-mod --ca-renewal-master-server rhel8.example.com</strong></span>
+  ...
+  IPA masters: rhel7.example.com, rhel8.example.com
+  IPA CA servers: rhel7.example.com, rhel8.example.com
+  IPA NTP servers: rhel7.example.com, rhel8.example.com
+  IPA CA renewal master: rhel8.example.com</pre><p class="simpara">
+							The output confirms that the update was successful.
+						</p></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="stop-CRL-generation-7-redirect-to-8_migrate-7-to-8"/>Stopping CRL generation on RHEL 7 and redirecting CRL requests to RHEL 8</h1></div></div></div><p>
+					Stop the generation of the Certificate Revocation List (CRL) on the <code class="literal">rhel7.example.com</code> CA master and configure Apache on <code class="literal">rhel7.example.com</code> to redirect CRL requests to the new master, <code class="literal">rhel8.example.com</code>:
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Stop the CA service.
+						</p><pre class="literallayout">[root@rhel7 ~]# <span class="strong"><strong>systemctl stop pki-tomcatd@pki-tomcat.service</strong></span></pre></li><li class="listitem"><p class="simpara">
+							Disable CRL generation on <code class="literal">rhel7.example.com</code>. Edit the <code class="literal">/etc/pki/pki-tomcat/ca/CS.cfg</code> file, setting the values of the <code class="literal">ca.crl.MasterCRL.enableCRLCache</code> and <code class="literal">ca.crl.MasterCRL.enableCRLUpdates</code> parameters to <code class="literal">false</code>.
+						</p><pre class="literallayout">ca.crl.MasterCRL.enableCRLCache=false
+ca.crl.MasterCRL.enableCRLUpdates=false</pre></li><li class="listitem"><p class="simpara">
+							Start the CA service.
+						</p><pre class="literallayout">[root@rhel7 ~]# <span class="strong"><strong>systemctl start pki-tomcatd@pki-tomcat.service</strong></span></pre></li><li class="listitem"><p class="simpara">
+							Configure Apache to redirect CRL requests to the new master. Open the <code class="literal">/etc/httpd/conf.d/ipa-pki-proxy.conf</code> file and uncomment the <code class="literal">RewriteRule</code> argument, replacing the server host name with the <code class="literal">rhel8.example.com</code> host name in the server URL:
+						</p><pre class="literallayout"># Only enable this on servers that are not generating a CRL
+RewriteRule ^/ipa/crl/MasterCRL.bin https://rhel8.example.com/ca/ee/ca/getCRL?op=getCRL&amp;crlIssuingPoint=MasterCRL [L,R=301,NC]</pre></li><li class="listitem"><p class="simpara">
+							Restart Apache.
+						</p><pre class="literallayout">[root@rhel7 ~]# <span class="strong"><strong>systemctl restart httpd.service</strong></span></pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="start-CRL-generation-on-8_migrate-7-to-8"/>Starting CRL generation on RHEL 8</h1></div></div></div><p>
+					Configure <code class="literal">rhel8.example.com</code> to generate certificate revocation lists (CRLs):
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Stop the CA service:
+						</p><pre class="literallayout">[root@rhel8 ~]# <span class="strong"><strong>systemctl stop pki-tomcatd@pki-tomcat.service</strong></span></pre></li><li class="listitem"><p class="simpara">
+							Enable CRL generation on the server. Edit the <code class="literal">/etc/pki/pki-tomcat/ca/CS.cfg</code> file, setting the values of the <code class="literal">ca.crl.MasterCRL.enableCRLCache</code> and <code class="literal">ca.crl.MasterCRL.enableCRLUpdates</code> parameters to <code class="literal">true</code>:
+						</p><pre class="literallayout">ca.crl.MasterCRL.enableCRLCache=true
+ca.crl.MasterCRL.enableCRLUpdates=true</pre></li><li class="listitem"><p class="simpara">
+							Start the CA service:
+						</p><pre class="literallayout">[root@rhel8 ~]# <span class="strong"><strong>systemctl start pki-tomcatd@pki-tomcat.service</strong></span></pre></li><li class="listitem"><p class="simpara">
+							Configure Apache to disable redirecting CRL requests. Open the <code class="literal">/etc/httpd/conf.d/ipa-pki-proxy.conf</code> file and comment out the <code class="literal">RewriteRule</code> argument:
+						</p><pre class="literallayout"># Only enable this on servers that are not generating a CRL
+#RewriteRule ^/ipa/crl/MasterCRL.bin https://rhel7.example.com/ca/ee/ca/getCRL?op=getCRL&amp;crlIssuingPoint=MasterCRL [L,R=301,NC]</pre><p class="simpara">
+							Before, all CRL requests were routed to the previous CA master. Now, this server will respond to CRL requests.
+						</p></li><li class="listitem"><p class="simpara">
+							Restart Apache:
+						</p><pre class="literallayout">[root@rhel8 ~]# <span class="strong"><strong>systemctl restart httpd.service</strong></span></pre></li></ol></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="stop-decommission-server_migrate-7-to-8"/>Stopping and decommissioning the RHEL 7 server</h1></div></div></div><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+							Make sure that all, even the latest data is correctly migrated from <code class="literal">rhel7.example.com</code> to <code class="literal">rhel8.example.com</code>. For example:
+						</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
+									Add a new user on <code class="literal">rhel7.example.com</code>:
+								</p><pre class="literallayout">[root@rhel7 ~]# <span class="strong"><strong>ipa user-add <span class="emphasis"><em>random_user</em></span></strong></span>
+First name: random
+Last name: user</pre></li><li class="listitem"><p class="simpara">
+									Check that the user has been replicated to <code class="literal">rhel8.example.com</code>:
+								</p><pre class="literallayout">[root@rhel8 ~]# <span class="strong"><strong>ipa user-find <span class="emphasis"><em>random_user</em></span></strong></span>
+--------------
+1 user matched
+--------------
+  User login: random_user
+  First name: random
+  Last name: user</pre></li></ol></div></li><li class="listitem"><p class="simpara">
+							Stop all service on <code class="literal">rhel7.example.com</code> to force domain discovery to the new <code class="literal">rhel8.example.com</code> server.
+						</p><pre class="literallayout">[root@rhel7 ~]# <span class="strong"><strong>ipactl stop</strong></span>
+Stopping CA Service
+Stopping pki-ca:                                           [  OK  ]
+Stopping HTTP Service
+Stopping httpd:                                            [  OK  ]
+Stopping MEMCACHE Service
+Stopping ipa_memcached:                                    [  OK  ]
+Stopping DNS Service
+Stopping named: .                                          [  OK  ]
+Stopping KPASSWD Service
+Stopping Kerberos 5 Admin Server:                          [  OK  ]
+Stopping KDC Service
+Stopping Kerberos 5 KDC:                                   [  OK  ]
+Stopping Directory Service
+Shutting down dirsrv:
+    EXAMPLE-COM...                                         [  OK  ]
+    PKI-IPA...                                             [  OK  ]</pre><p class="simpara">
+							After this, the <code class="literal">ipa</code> utility will contact the new server through a remote procedure call (RPC).
+						</p></li><li class="listitem">
+							Remove the RHEL 7 server from the topology by executing the removal commands on the RHEL 8 server. For details, see <a class="xref" href="uninstalling-an-ipa-server_installing-identity-management.html" title="Chapter 6. Uninstalling an Identity Management server">Chapter 6, <em>Uninstalling an Identity Management server</em></a>.
+						</li></ol></div></div></div></body></html>

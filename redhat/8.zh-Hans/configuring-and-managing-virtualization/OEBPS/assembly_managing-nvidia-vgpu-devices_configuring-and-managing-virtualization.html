@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 8. Managing NVIDIA vGPU devices</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_managing-nvidia-vgpu-devices_configuring-and-managing-virtualization"/>Chapter 8. Managing NVIDIA vGPU devices</h1></div></div></div><p>
+			The vGPU feature makes it possible to divide a physical NVIDIA GPU device into multiple virtual devices referred to as <code class="literal">mediated devices</code>. These mediated devices can then be assigned to multiple virtual machines (VMs) as virtual GPUs. As a result, these VMs share the performance of a single physical GPU.
+		</p><p>
+			Note, however, that assigning a physical GPU to VMs, with or without using mediated devices, makes it impossible for the host to use the GPU.
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_setting-up-nvidia-vgpu-devices_assembly_managing-nvidia-vgpu-devices"/>Setting up NVIDIA vGPU devices</h1></div></div></div><p>
+				To set up the NVIDIA vGPU feature, you need to obtain NVIDIA vGPU drivers for your GPU device, then create mediated devices, and assign them to the intended virtual machines. For detailed instructions, see below:
+			</p><h3><a id="prerequisites_47"/>Prerequisites</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						Creating mediated vGPU devices is only possible on a limited set of NVIDIA GPUs. For an up-to-date list of these devices, see <a class="link" href="https://docs.nvidia.com/grid/latest/grid-vgpu-release-notes-red-hat-el-kvm/index.html#validated-platforms">the NVIDIA GPU Software Documentation</a>.
+					</p><p class="simpara">
+						If you do not know which GPU your host is using, install the <span class="emphasis"><em>lshw</em></span> package and use the <code class="literal">lshw -C display</code> command. The following example shows the system is using an NVIDIA Tesla P4 GPU, compatible with vGPU.
+					</p><pre class="literallayout"># <span class="strong"><strong>lshw -C display</strong></span>
+
+*-display
+       description: 3D controller
+       product: GP104GL [Tesla P4]
+       vendor: NVIDIA Corporation
+       physical id: 0
+       bus info: pci@0000:01:00.0
+       version: a1
+       width: 64 bits
+       clock: 33MHz
+       capabilities: pm msi pciexpress cap_list
+       configuration: driver=vfio-pci latency=0
+       resources: irq:16 memory:f6000000-f6ffffff memory:e0000000-efffffff memory:f0000000-f1ffffff</pre></li></ul></div><h3><a id="procedure_58"/>Procedure</h3><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
+						Obtain the NVIDIA vGPU drivers and install them on your system. For instructions, see <a class="link" href="https://docs.nvidia.com/grid/latest/grid-software-quick-start-guide/index.html#getting-your-nvidia-grid-software">the NVIDIA documentation</a>.
+					</li><li class="listitem"><p class="simpara">
+						If the NVIDIA software installer did not create the <span class="strong"><strong>/etc/modprobe.d/nvidia-installer-disable-nouveau.conf</strong></span> file, create a <code class="literal">conf</code> file of any name in the <span class="strong"><strong>/etc/modprobe.d/</strong></span>. Then, add the following lines in the file:
+					</p><pre class="literallayout">blacklist nouveau
+options nouveau modeset=0</pre></li><li class="listitem"><p class="simpara">
+						Regenerate the initial ramdisk for the current kernel, then reboot.
+					</p><pre class="literallayout"># <span class="strong"><strong>dracut --force</strong></span>
+# <span class="strong"><strong>reboot</strong></span></pre><p class="simpara">
+						If you need to use a prior supported kernel version with mediated devices, regenerate the initial ramdisk for all installed kernel versions.
+					</p><pre class="literallayout"># <span class="strong"><strong>dracut --regenerate-all --force</strong></span>
+# <span class="strong"><strong>reboot</strong></span></pre></li><li class="listitem"><p class="simpara">
+						Check that the <code class="literal">nvidia_vgpu_vfio</code> module has been loaded by the kernel and that the <code class="literal">nvidia-vgpu-mgr.service</code> service is running.
+					</p><pre class="literallayout"># <span class="strong"><strong>lsmod | grep nvidia_vgpu_vfio</strong></span>
+nvidia_vgpu_vfio 45011 0
+nvidia 14333621 10 nvidia_vgpu_vfio
+mdev 20414 2 vfio_mdev,nvidia_vgpu_vfio
+vfio 32695 3 vfio_mdev,nvidia_vgpu_vfio,vfio_iommu_type1
+# <span class="strong"><strong>systemctl status nvidia-vgpu-mgr.service</strong></span>
+nvidia-vgpu-mgr.service - NVIDIA vGPU Manager Daemon
+   Loaded: loaded (/usr/lib/systemd/system/nvidia-vgpu-mgr.service; enabled; vendor preset: disabled)
+   Active: active (running) since Fri 2018-03-16 10:17:36 CET; 5h 8min ago
+ Main PID: 1553 (nvidia-vgpu-mgr)
+ [...]</pre></li><li class="listitem"><p class="simpara">
+						Write a device UUID to the <span class="strong"><strong>/sys/class/mdev_bus/<code class="literal">pci_dev</code>/mdev_supported_types/<code class="literal">type-id</code>/create</strong></span> file, where <code class="literal">pci_dev</code> is the PCI address of the host GPU, and <code class="literal">type-id</code> is an ID of the host GPU type.
+					</p><p class="simpara">
+						The following example shows how to create a mediated device of the <code class="literal">nvidia-63</code> vGPU type on an NVIDIA Tesla P4 card:
+					</p><pre class="literallayout"># <span class="strong"><strong>uuidgen</strong></span>
+30820a6f-b1a5-4503-91ca-0c10ba58692a
+# <span class="strong"><strong>echo "30820a6f-b1a5-4503-91ca-0c10ba58692a" &gt; /sys/class/mdev_bus/0000:01:00.0/mdev_supported_types/nvidia-63/create</strong></span></pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
+							For <code class="literal">type-id</code> values for specific GPU devices, see the <a class="link" href="https://docs.nvidia.com/grid/latest/grid-vgpu-user-guide/index.html#virtual-gpu-types-grid">Virtual GPU software documentation</a>. Note that only Q-series NVIDIA vGPUs, such as GRID P4-2Q, are supported as mediated device GPU types on Linux VMs.
+						</p></div></li><li class="listitem"><p class="simpara">
+						Add the following lines to the <span class="strong"><strong>&lt;devices/&gt;</strong></span> sections in the XML configurations of guests that you want to share the vGPU resources. Use the UUID value generated by the <span class="strong"><strong>uuidgen</strong></span> command in the previous step. Each UUID can only be assigned to one guest at a time.
+					</p><pre class="programlisting">&lt;hostdev mode='subsystem' type='mdev' managed='no' model='vfio-pci'&gt;
+  &lt;source&gt;
+    &lt;address uuid='30820a6f-b1a5-4503-91ca-0c10ba58692a'/&gt;
+  &lt;/source&gt;
+&lt;/hostdev&gt;</pre></li></ol></div><h3><a id="additional_resources_33"/>Additional resources</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						For the vGPU mediated devices to work properly on the assigned guests, NVIDIA vGPU guest software licensing needs to be set up for the guests. For further information and instructions, see <a class="link" href="https://docs.nvidia.com/grid/latest/index.html#virtual-gpu-licensing">the NVIDIA virtual GPU software documentation</a>.
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_removing-nvidia-vgpu-devices_assembly_managing-nvidia-vgpu-devices"/>Removing NVIDIA vGPU devices</h1></div></div></div><p>
+				To change the configuration of <a class="link" href="assembly_managing-nvidia-vgpu-devices_configuring-and-managing-virtualization.html#proc_setting-up-nvidia-vgpu-devices_assembly_managing-nvidia-vgpu-devices" title="Setting up NVIDIA vGPU devices">assigned vGPU mediated devices</a>, the existing devices have to be removed from the assigned guests. For instructions to do so, see below:
+			</p><h3><a id="procedure_59"/>Procedure</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						To remove a mediated vGPU device, use the following command when the device is inactive, and replace <code class="literal">uuid</code> with the UUID of the device, for example <code class="literal">30820a6f-b1a5-4503-91ca-0c10ba58692a</code>:
+					</p><pre class="literallayout"># <span class="strong"><strong>echo 1 &gt; /sys/bus/mdev/devices/<code class="literal">uuid</code>/remove</strong></span></pre><p class="simpara">
+						Note that attempting to remove a vGPU device that is currently in use by a VM triggers the following error:
+					</p><pre class="literallayout">echo: write error: Device or resource busy</pre></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_obtaining-nvidia-vgpu-information-about-your-system_assembly_managing-nvidia-vgpu-devices"/>Obtaining NVIDIA vGPU information about your system</h1></div></div></div><p>
+				To evaluate the capabilities of the vGPU features available to you, you can obtain additional information about mediated devices on your system, such as how many mediated devices of a given type can be created.
+			</p><h3><a id="procedure_60"/>Procedure</h3><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
+						Use the <span class="strong"><strong>virsh nodedev-list --cap mdev_types</strong></span> and <span class="strong"><strong>virsh nodedev-dumpxml</strong></span> commands.
+					</p><p class="simpara">
+						For example, the following displays available vGPU types if you are using a physical Tesla P4 card:
+					</p><pre class="literallayout"><span class="strong"><strong>$ virsh nodedev-list --cap mdev_types</strong></span>
+pci_0000_01_00_0
+<span class="strong"><strong>$ virsh nodedev-dumpxml pci_0000_01_00_0</strong></span>
+&lt;...&gt;
+  &lt;capability type='mdev_types'&gt;
+    &lt;type id='nvidia-70'&gt;
+      &lt;name&gt;GRID P4-8A&lt;/name&gt;
+      &lt;deviceAPI&gt;vfio-pci&lt;/deviceAPI&gt;
+      &lt;availableInstances&gt;1&lt;/availableInstances&gt;
+    &lt;/type&gt;
+    &lt;type id='nvidia-69'&gt;
+      &lt;name&gt;GRID P4-4A&lt;/name&gt;
+      &lt;deviceAPI&gt;vfio-pci&lt;/deviceAPI&gt;
+      &lt;availableInstances&gt;2&lt;/availableInstances&gt;
+    &lt;/type&gt;
+    &lt;type id='nvidia-67'&gt;
+      &lt;name&gt;GRID P4-1A&lt;/name&gt;
+      &lt;deviceAPI&gt;vfio-pci&lt;/deviceAPI&gt;
+      &lt;availableInstances&gt;8&lt;/availableInstances&gt;
+    &lt;/type&gt;
+    &lt;type id='nvidia-65'&gt;
+      &lt;name&gt;GRID P4-4Q&lt;/name&gt;
+      &lt;deviceAPI&gt;vfio-pci&lt;/deviceAPI&gt;
+      &lt;availableInstances&gt;2&lt;/availableInstances&gt;
+    &lt;/type&gt;
+    &lt;type id='nvidia-63'&gt;
+      &lt;name&gt;GRID P4-1Q&lt;/name&gt;
+      &lt;deviceAPI&gt;vfio-pci&lt;/deviceAPI&gt;
+      &lt;availableInstances&gt;8&lt;/availableInstances&gt;
+    &lt;/type&gt;
+    &lt;type id='nvidia-71'&gt;
+      &lt;name&gt;GRID P4-1B&lt;/name&gt;
+      &lt;deviceAPI&gt;vfio-pci&lt;/deviceAPI&gt;
+      &lt;availableInstances&gt;8&lt;/availableInstances&gt;
+    &lt;/type&gt;
+    &lt;type id='nvidia-68'&gt;
+      &lt;name&gt;GRID P4-2A&lt;/name&gt;
+      &lt;deviceAPI&gt;vfio-pci&lt;/deviceAPI&gt;
+      &lt;availableInstances&gt;4&lt;/availableInstances&gt;
+    &lt;/type&gt;
+    &lt;type id='nvidia-66'&gt;
+      &lt;name&gt;GRID P4-8Q&lt;/name&gt;
+      &lt;deviceAPI&gt;vfio-pci&lt;/deviceAPI&gt;
+      &lt;availableInstances&gt;1&lt;/availableInstances&gt;
+    &lt;/type&gt;
+    &lt;type id='nvidia-64'&gt;
+      &lt;name&gt;GRID P4-2Q&lt;/name&gt;
+      &lt;deviceAPI&gt;vfio-pci&lt;/deviceAPI&gt;
+      &lt;availableInstances&gt;4&lt;/availableInstances&gt;
+    &lt;/type&gt;
+  &lt;/capability&gt;
+&lt;/...&gt;</pre></li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ref_remote-desktop-streaming-services-for-nvidia-vgpu_assembly_managing-nvidia-vgpu-devices"/>Remote desktop streaming services for NVIDIA vGPU</h1></div></div></div><p>
+				The following remote desktop streaming services have been successfully tested for use with the NVIDIA vGPU feature in RHEL 8 hosts:
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						<span class="strong"><strong>HP-RGS</strong></span> - Note that it is currently not possible to use HP-RGS with RHEL 8 VMs.
+					</li><li class="listitem">
+						<span class="strong"><strong>Mechdyne TGX</strong></span> - Note that it is currently not possible to use Mechdyne TGX with Windows Server 2016 VMs.
+					</li><li class="listitem">
+						<span class="strong"><strong>NICE DCV</strong></span> - When using this streaming service, Red Hat recommends using fixed resolution settings, as using dynamic resolution in some cases results in a black screen. In addition, it is currently not possible to use NICE DCV with RHEL 8 VMs.
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="related-information-assembly_managing-nvidia-vgpu-devices"/>Related information</h1></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
+						For further information on using NVIDA vGPU on RHEL with KVM, see <a class="link" href="https://docs.nvidia.com/grid/latest/grid-vgpu-release-notes-red-hat-el-kvm/index.html#validated-platforms">the NVIDIA GPU Software Documentation</a>.
+					</li></ul></div></div></div></body></html>
