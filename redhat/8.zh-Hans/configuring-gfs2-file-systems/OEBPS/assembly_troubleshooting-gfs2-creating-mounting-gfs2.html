@@ -1,90 +1,33 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 7. Diagnosing and correcting problems with GFS2 file systems</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_troubleshooting-gfs2-creating-mounting-gfs2"/>Chapter 7. Diagnosing and correcting problems with GFS2 file systems</h1></div></div></div><p>
-			This section provides information about some common GFS2 issues and how to address them.
-		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ref_gfs2-filesystem-unavailable-troubleshooting-gfs2"/>GFS2 filesystem unavailable to a node (the GFS2 withdraw function)</h1></div></div></div><p>
-				The GFS2 <span class="emphasis"><em>withdraw</em></span> function is a data integrity feature of the GFS2 file system that prevents potential file system damage due to faulty hardware or kernel software. If the GFS2 kernel module detects an inconsistency while using a GFS2 file system on any given cluster node, it withdraws from the file system, leaving it unavailable to that node until it is unmounted and remounted (or the machine detecting the problem is rebooted). All other mounted GFS2 file systems remain fully functional on that node. (The GFS2 withdraw function is less severe than a kernel panic, which causes the node to be fenced.)
-			</p><p>
-				The main categories of inconsistency that can cause a GFS2 withdraw are as follows:
-			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
-						Inode consistency error
-					</li><li class="listitem">
-						Resource group consistency error
-					</li><li class="listitem">
-						Journal consistency error
-					</li><li class="listitem">
-						Magic number metadata consistency error
-					</li><li class="listitem">
-						Metadata type consistency error
-					</li></ul></div><p>
-				An example of an inconsistency that would cause a GFS2 withdraw is an incorrect block count for a file’s inode. When GFS2 deletes a file, it systematically removes all the data and metadata blocks referenced by that file. When done, it checks the inode’s block count. If the block count is not 1 (meaning all that is left is the disk inode itself), that indicates a file system inconsistency, since the inode’s block count did not match the actual blocks used for the file.
-			</p><p>
-				In many cases, the problem may have been caused by faulty hardware (faulty memory, motherboard, HBA, disk drives, cables, and so forth). It may also have been caused by a kernel bug (another kernel module accidentally overwriting GFS2’s memory), or actual file system damage (caused by a GFS2 bug).
-			</p><p>
-				In most cases, the best way to recover from a withdrawn GFS2 file system is to reboot or fence the node. The withdrawn GFS2 file system will give you an opportunity to relocate services to another node in the cluster. After services are relocated you can reboot the node or force a fence with this command.
-			</p><pre class="literallayout"># <code class="literal">pcs stonith fence <span class="emphasis"><em>node</em></span></code></pre><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
-					Do not try to unmount and remount the file system manually with the <code class="literal">umount</code> and <code class="literal">mount</code> commands. You must use the <code class="literal">pcs</code> command, otherwise Pacemaker will detect the file system service has disappeared and fence the node.
-				</p></div><p>
-				The consistency problem that caused the withdraw may make stopping the file system service impossible as it may cause the system to hang.
-			</p><p>
-				If the problem persists after a remount, you should stop the file system service to unmount the file system from all nodes in the cluster, then perform a file system check with the fsck.gfs2 command before restarting the service with the following procedure.
-			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
-						Reboot the affected node.
-					</li><li class="listitem"><p class="simpara">
-						Disable the non-clone file system service in Pacemaker to unmount the file system from every node in the cluster.
-					</p><pre class="literallayout"># <code class="literal">pcs resource disable --wait=100 mydata_fs</code></pre></li><li class="listitem"><p class="simpara">
-						From one node of the cluster, run the <code class="literal">fsck.gfs2</code> command on the file system device to check for and repair any file system damage.
-					</p><pre class="literallayout"># <code class="literal">fsck.gfs2 -y /dev/vg_mydata/mydata &gt; /tmp/fsck.out</code></pre></li><li class="listitem"><p class="simpara">
-						Remount the GFS2 file system from all nodes by re-enabling the file system service:
-					</p><pre class="literallayout"># <code class="literal">pcs resource enable --wait=100 mydata_fs</code></pre></li></ol></div><p>
-				You can override the GFS2 withdraw function by mounting the file system with the <code class="literal">-o errors=panic</code> option specified in the file system service.
-			</p><pre class="literallayout"># <code class="literal">pcs resource update mydata_fs “options=noatime,errors=panic”</code></pre><p>
-				When this option is specified, any errors that would normally cause the system to withdraw force a kernel panic instead. This stops the node’s communications, which causes the node to be fenced. This is especially useful for clusters that are left unattended for long periods of time without monitoring or intervention.
-			</p><p>
-				Internally, the GFS2 withdraw function works by disconnecting the locking protocol to ensure that all further file system operations result in I/O errors. As a result, when the withdraw occurs, it is normal to see a number of I/O errors from the device mapper device reported in the system logs.
-			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ref_gfs2-filesystem-hangs-one-node-troubleshooting-gfs2"/>GFS2 file system hangs and requires reboot of one node</h1></div></div></div><p>
-				If your GFS2 file system hangs and does not return commands run against it, but rebooting one specific node returns the system to normal, this may be indicative of a locking problem or bug. Should this occur, gather GFS2 data during one of these occurences and open a support ticket with Red Hat Support, as described in <a class="link" href="assembly_troubleshooting-gfs2-creating-mounting-gfs2.html#proc_gathering-gfs2-data-troubleshooting-gfs2" title="Gathering GFS2 data for troubleshooting">Gathering GFS2 data for troubleshooting</a>.
-			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ref_gfs2-filesystem-hangs-all-nodes-troubleshooting-gfs2"/>GFS2 file system hangs and requires reboot of all nodes</h1></div></div></div><p>
-				If your GFS2 file system hangs and does not return commands run against it, requiring that you reboot all nodes in the cluster before using it, check for the following issues.
-			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
-						You may have had a failed fence. GFS2 file systems will freeze to ensure data integrity in the event of a failed fence. Check the messages logs to see if there are any failed fences at the time of the hang. Ensure that fencing is configured correctly.
-					</li><li class="listitem"><p class="simpara">
-						The GFS2 file system may have withdrawn. Check through the messages logs for the word <code class="literal">withdraw</code> and check for any messages and call traces from GFS2 indicating that the file system has been withdrawn. A withdraw is indicative of file system corruption, a storage failure, or a bug. At the earliest time when it is convenient to unmount the file system, you should perform the following procedure:
-					</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
-								Reboot the node on which the withdraw occurred.
-							</p><pre class="literallayout"># <code class="literal">/sbin/reboot</code></pre></li><li class="listitem"><p class="simpara">
-								Stop the file system resource to unmount the GFS2 file system on all nodes.
-							</p><pre class="literallayout"># <code class="literal">pcs resource disable --wait=100 mydata_fs</code></pre></li><li class="listitem"><p class="simpara">
-								Capture the metadata with the <code class="literal">gfs2_edit savemeta…​</code> command. You should ensure that there is sufficient space for the file, which in some cases may be large. In this example, the metadata is saved to a file in the <code class="literal">/root</code> directory.
-							</p><pre class="literallayout"># <code class="literal">gfs2_edit savemeta /dev/vg_mydata/mydata /root/gfs2metadata.gz</code></pre></li><li class="listitem"><p class="simpara">
-								Update the <code class="literal">gfs2-utils</code> package.
-							</p><pre class="literallayout"># <code class="literal">sudo yum update gfs2-utils</code></pre></li><li class="listitem"><p class="simpara">
-								On one node, run the <code class="literal">fsck.gfs2</code> command on the file system to ensure file system integrity and repair any damage.
-							</p><pre class="literallayout"># <code class="literal">fsck.gfs2 -y /dev/vg_mydata/mydata &gt; /tmp/fsck.out</code></pre></li><li class="listitem"><p class="simpara">
-								After the <code class="literal">fsck.gfs2</code> command has completed, re-enable the file system resource to return it to service:
-							</p><pre class="literallayout"># <code class="literal">pcs resource enable --wait=100 mydata_fs</code></pre></li><li class="listitem"><p class="simpara">
-								Open a support ticket with Red Hat Support. Inform them you experienced a GFS2 withdraw and provide logs and the debugging information generated by the <code class="literal">sosreports</code> and <code class="literal">gfs2_edit savemeta</code> commands.
-							</p><p class="simpara">
-								In some instances of a GFS2 withdraw, commands can hang that are trying to access the file system or its block device. In these cases a hard reboot is required to reboot the cluster.
-							</p><p class="simpara">
-								For information on the GFS2 withdraw function, see <a class="link" href="assembly_troubleshooting-gfs2-creating-mounting-gfs2.html#ref_gfs2-filesystem-unavailable-troubleshooting-gfs2" title="GFS2 filesystem unavailable to a node (the GFS2 withdraw function)">GFS2 filesystem unavailable to a node (the GFS2 withdraw function)</a>.
-							</p></li></ol></div></li><li class="listitem">
-						This error may be indicative of a locking problem or bug. Gather data during one of these occurrences and open a support ticket with Red Hat Support, as described in <a class="link" href="assembly_troubleshooting-gfs2-creating-mounting-gfs2.html#proc_gathering-gfs2-data-troubleshooting-gfs2" title="Gathering GFS2 data for troubleshooting">Gathering GFS2 data for troubleshooting</a>.
-					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ref_gfs2-nomount-new-cluster-node-troubleshooting-gfs2"/>GFS2 file system does not mount on newly added cluster node</h1></div></div></div><p>
-				If you add a new node to a cluster and find that you cannot mount your GFS2 file system on that node, you may have fewer journals on the GFS2 file system than nodes attempting to access the GFS2 file system. You must have one journal per GFS2 host you intend to mount the file system on (with the exception of GFS2 file systems mounted with the <code class="literal">spectator</code> mount option set, since these do not require a journal). You can add journals to a GFS2 file system with the <code class="literal">gfs2_jadd</code> command. <a class="link" href="assembly_creating-mounting-gfs2-configuring-gfs2-file-systems.html#proc_adding-gfs2-journal-creating-mounting-gfs2" title="Adding journals to a GFS2 file system">Adding journals to a GFS2 file system</a>.
-			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ref_gfs2-used-space-empty-filesystem-troubleshooting-gfs2"/>Space indicated as used in empty file system</h1></div></div></div><p>
-				If you have an empty GFS2 file system, the <code class="literal">df</code> command will show that there is space being taken up. This is because GFS2 file system journals consume space (number of journals * journal size) on disk. If you created a GFS2 file system with a large number of journals or specified a large journal size then you will be see (number of journals * journal size) as already in use when you execute the <code class="literal">df</code> command. Even if you did not specify a large number of journals or large journals, small GFS2 file systems (in the 1GB or less range) will show a large amount of space as being in use with the default GFS2 journal size.
-			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_gathering-gfs2-data-troubleshooting-gfs2"/>Gathering GFS2 data for troubleshooting</h1></div></div></div><p>
-				If your GFS2 file system hangs and does not return commands run against it and you find that you need to open a ticket with Red Hat Support, you should first gather the following data:
-			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">
-						The GFS2 lock dump for the file system on each node:
-					</p><pre class="literallayout">cat /sys/kernel/debug/gfs2/<span class="emphasis"><em>fsname</em></span>/glocks &gt;glocks.<span class="emphasis"><em>fsname</em></span>.<span class="emphasis"><em>nodename</em></span></pre></li><li class="listitem"><p class="simpara">
-						The DLM lock dump for the file system on each node: You can get this information with the <code class="literal">dlm_tool</code>:
-					</p><pre class="literallayout">dlm_tool lockdebug -sv <span class="emphasis"><em>lsname</em></span>.</pre><p class="simpara">
-						In this command, <span class="emphasis"><em>lsname</em></span> is the lockspace name used by DLM for the file system in question. You can find this value in the output from the <code class="literal">group_tool</code> command.
-					</p></li><li class="listitem">
-						The output from the <code class="literal">sysrq -t</code> command.
-					</li><li class="listitem">
-						The contents of the <code class="literal">/var/log/messages</code> file.
-					</li></ul></div><p>
-				Once you have gathered that data, you can open a ticket with Red Hat Support and provide the data you have collected.
+﻿<html  xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 9. 诊断和纠正GFS2文件系统的问题</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"></head><body ><div class="chapter"><div class="titlepage"><div><div><h1 class="title">Chapter 9. 诊断和纠正GFS2文件系统的问题</h1></div></div></div><p>本节提供有关一些常见GFS2问题以及如何解决这些问题的信息。
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ref_gfs2-filesystem-unavailable-troubleshooting-gfs2"></a> GFS2文件系统对节点不可用（GFS2撤销功能）</h1></div></div></div><p>GFS2 <span class="emphasis"><em>撤销</em></span>功能是GFS2文件系统的数据完整性功能，可防止由于故障硬件或内核软件而导致的潜在文件系统损坏。如果GFS2内核模块在任何给定群集节点上使用GFS2文件系统时检测到不一致，则它将退出文件系统，使其无法访问该节点，直到卸载并重新安装（或检测到问题的计算机重新启动）。所有其他已安装的GFS2文件系统在该节点上保持完全正常运行。（GFS2撤销功能不如内核恐慌严重，导致节点被隔离。）
+			</p><p>可能导致GFS2退出的主要不一致类别如下：</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Inode一致性错误</li><li class="listitem">资源组一致性错误</li><li class="listitem">期刊一致性错误</li><li class="listitem">幻数号元数据一致性错误</li><li class="listitem">元数据类型一致性错误</li></ul></div><p>导致GFS2撤销的不一致的一个示例是文件的inode的块计数不正确。当GFS2删除文件时，它会系统地删除该文件引用的所有数据和元数据块。完成后，它会检查inode的块计数。如果块计数不为1（意味着剩下的全部是磁盘inode本身），则表示文件系统不一致，因为inode的块计数与用于该文件的实际块不匹配。
+			</p><p>在许多情况下，问题可能是由故障硬件（故障内存，主板，HBA，磁盘驱动器，电缆等）引起的。它也可能是由内核错误（另一个内核模块意外覆盖GFS2的内存）或实际文件系统损坏（由GFS2错误引起）引起的。
+			</p><p>在大多数情况下，从撤销的GFS2文件系统中恢复的最佳方法是重新启动或阻止节点。撤销的GFS2文件系统将使您有机会将服务重定位到群集中的另一个节点。重新定位服务后，您可以重新启动节点或使用此命令强制执行fence。
+			</p><pre class="literallayout"># <code class="literal">pcs stonith fence <span class="emphasis"><em>node</em></span></code></pre><div class="warning" style="margin-left:0.5in;margin-right:0.5in"><h3 class="title">警告</h3><p>请勿尝试使用<code class="literal">umount</code>和<code class="literal">mount</code>命令手动卸载和重新装入文件系统。您必须使用<code class="literal">pcs</code>命令，否则Pacemaker将检测到文件系统服务已消失并阻塞节点。
+				</p></div><p>导致撤销的一致性问题可能导致停止文件系统服务，因为它可能导致系统挂起。
+			</p><p>如果重新装入后问题仍然存在，则应停止文件系统服务以从群集中的所有节点卸载文件系统，然后使用fsck.gfs2命令执行文件系统检查，然后使用以下过程重新启动服务。
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">重新启动受影响的节点。
+					</li><li class="listitem"><p class="simpara">禁用Pacemaker中的非克隆文件系统服务，以从群集中的每个节点卸载文件系统。
+					</p><pre class="literallayout"># <code class="literal">pcs resource disable --wait=100 mydata_fs</code></pre></li><li class="listitem"><p class="simpara">从群集的一个节点，在文件系统设备上运行<code class="literal">fsck.gfs2</code>命令，以检查并修复任何文件系统损坏。
+					</p><pre class="literallayout"># <code class="literal">fsck.gfs2 -y /dev/vg_mydata/mydata &gt; /tmp/fsck.out</code></pre></li><li class="listitem"><p class="simpara">通过重新启用文件系统服务从所有节点重新安装GFS2文件系统：</p><pre class="literallayout"># <code class="literal">pcs resource enable --wait=100 mydata_fs</code></pre></li></ol></div><p>您可以通过使用文件系统服务中指定的<code class="literal">-o errors=panic</code>选项挂载文件系统来覆盖GFS2撤销功能。
+			</p><pre class="literallayout"># <code class="literal">pcs resource update mydata_fs “options=noatime,errors=panic”</code></pre><p>指定此选项时，通常会导致系统撤消的任何错误都会强制导致内核崩溃。这会停止节点的通信，从而导致节点被隔离。这对于在没有监视或干预的情况下长时间无人看管的群集尤其有用。
+			</p><p>在内部，GFS2撤销功能通过断开锁定协议来工作，以确保所有进一步的文件系统操作都会导致I / O错误。因此，当撤销发生时，通常会在系统日志中看到设备映射器设备发生的许多I / O错误。
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ref_gfs2-filesystem-hangs-one-node-troubleshooting-gfs2"></a> GFS2文件系统挂起并需要重新引导一个节点</h1></div></div></div><p>如果您的GFS2文件系统挂起并且没有返回针对它运行的命令，但重新启动一个特定节点会使系统恢复正常，这可能表示存在锁定问题或错误。如果发生这种情况，请在其中一个发生期间收集GFS2数据，并打开支持Red Hat支持的票证，如<a class="link" href="assembly_troubleshooting-gfs2-creating-mounting-gfs2.html#proc_gathering-gfs2-data-troubleshooting-gfs2" title="收集GFS2数据以进行故障排除">收集GFS2数据以进行故障排除中所述</a> 。
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ref_gfs2-filesystem-hangs-all-nodes-troubleshooting-gfs2"></a> GFS2文件系统挂起并需要重新启动所有节点</h1></div></div></div><p>如果您的GFS2文件系统挂起并且未返回针对它运行的命令，则要求您在使用之前重新启动集群中的所有节点，请检查以下问题。
+			</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">你可能有一个失败的围栏。GFS2文件系统将冻结，以确保在出现栅栏失败时数据完整性。检查消息日志以查看挂起时是否存在任何失败的防护。确保正确配置防护。
+					</li><li class="listitem"><p class="simpara">GFS2文件系统可能已撤消。检查消息日志中的单词<code class="literal">withdraw</code>并检查来自GFS2的任何消息和呼叫跟踪，指示文件系统已被撤销。撤销表示文件系统损坏，存储故障或错误。在方便卸载文件系统的最早时间，您应该执行以下过程：</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">重新启动发生撤销的节点。
+							</p><pre class="literallayout"># <code class="literal">/sbin/reboot</code></pre></li><li class="listitem"><p class="simpara">停止文件系统资源以在所有节点上卸载GFS2文件系统。
+							</p><pre class="literallayout"># <code class="literal">pcs resource disable --wait=100 mydata_fs</code></pre></li><li class="listitem"><p class="simpara">捕获与元数据<code class="literal">gfs2_edit savemeta…​</code>命令。您应该确保文件有足够的空间，在某些情况下可能很大。在此示例中，元数据将保存到<code class="literal">/root</code>目录中的文件中。
+							</p><pre class="literallayout"># <code class="literal">gfs2_edit savemeta /dev/vg_mydata/mydata /root/gfs2metadata.gz</code></pre></li><li class="listitem"><p class="simpara">更新<code class="literal">gfs2-utils</code>包。
+							</p><pre class="literallayout"># <code class="literal">sudo yum update gfs2-utils</code></pre></li><li class="listitem"><p class="simpara">在一个节点上，在文件系统上运行<code class="literal">fsck.gfs2</code>命令以确保文件系统完整性并修复任何损坏。
+							</p><pre class="literallayout"># <code class="literal">fsck.gfs2 -y /dev/vg_mydata/mydata &gt; /tmp/fsck.out</code></pre></li><li class="listitem"><p class="simpara"><code class="literal">fsck.gfs2</code>命令完成后，重新启用文件系统资源以将其恢复为服务：</p><pre class="literallayout"># <code class="literal">pcs resource enable --wait=100 mydata_fs</code></pre></li><li class="listitem"><p class="simpara">使用Red Hat Support打开支持服务单。通知他们您遇到了GFS2撤销并提供了<code class="literal">sosreports</code>和<code class="literal">gfs2_edit savemeta</code>命令生成的日志和调试信息。
+							</p><p class="simpara">在某些GFS2撤销的情况下，命令可能会挂起，试图访问文件系统或其块设备。在这些情况下，需要硬重启才能重新启动群集。
+							</p><p class="simpara">有关GFS2撤销功能的信息，请参阅<a class="link" href="assembly_troubleshooting-gfs2-creating-mounting-gfs2.html#ref_gfs2-filesystem-unavailable-troubleshooting-gfs2" title="GFS2文件系统对节点不可用（GFS2撤销功能）">节点不可用的GFS2文件系统（GFS2撤销功能）</a> 。
+							</p></li></ol></div></li><li class="listitem">此错误可能表示锁定问题或错误。在其中一次发生期间收集数据并使用Red Hat Support打开支持服务单，如<a class="link" href="assembly_troubleshooting-gfs2-creating-mounting-gfs2.html#proc_gathering-gfs2-data-troubleshooting-gfs2" title="收集GFS2数据以进行故障排除">收集GFS2数据以进行故障排除中所述</a> 。
+					</li></ul></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ref_gfs2-nomount-new-cluster-node-troubleshooting-gfs2"></a> GFS2文件系统未在新添加的群集节点上装入</h1></div></div></div><p>如果向集群添加新节点并发现无法在该节点上安装GFS2文件系统，则GFS2文件系统上的日志可能比尝试访问GFS2文件系统的节点少。您必须为每个要安装文件系统的GFS2主机安装一个日志（除了使用<code class="literal">spectator</code>安装选项集安装的GFS2文件系统，因为这些不需要日志）。您可以使用<code class="literal">gfs2_jadd</code>命令将日志添加到GFS2文件系统。<a class="link" href="assembly_creating-mounting-gfs2-configuring-gfs2-file-systems.html#proc_adding-gfs2-journal-creating-mounting-gfs2" title="将日志添加到GFS2文件系统">将日志添加到GFS2文件系统</a> 。
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ref_gfs2-used-space-empty-filesystem-troubleshooting-gfs2"></a>空文件系统中使用的空格</h1></div></div></div><p>如果您有一个空的GFS2文件系统，则<code class="literal">df</code>命令将显示正在占用空间。这是因为GFS2文件系统日志在磁盘上占用空间（日志数量*日志大小）。如果您创建了具有大量日志的GFS2文件系统或指定了较大的日志大小，那么当您执行<code class="literal">df</code>命令时，您将看到（日志的数量*日志大小）已经在使用中。即使您没有指定大量期刊或大型期刊，小型GFS2文件系统（1GB或更小范围内）也会显示大量空间，因为正在使用默认的GFS2期刊大小。
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_gathering-gfs2-data-troubleshooting-gfs2"></a>收集GFS2数据以进行故障排除</h1></div></div></div><p>如果您的GFS2文件系统挂起并且没有返回针对它运行的命令，并且您发现需要打开具有Red Hat支持的票证，则应首先收集以下数据：</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><p class="simpara">每个节点上的文件系统的GFS2锁转储：</p><pre class="literallayout">cat /sys/kernel/debug/gfs2/<span class="emphasis"><em>fsname</em></span>/glocks &gt;glocks.<span class="emphasis"><em>fsname</em></span>.<span class="emphasis"><em>nodename</em></span></pre></li><li class="listitem"><p class="simpara">每个节点上的文件系统的DLM锁转储：您可以使用<code class="literal">dlm_tool</code>获取此信息：</p><pre class="literallayout">dlm_tool lockdebug -sv <span class="emphasis"><em>lsname</em></span>.</pre><p class="simpara">在此命令中， <span class="emphasis"><em>lsname</em></span>是DLM用于相关文件系统的锁定空间名称。您可以在<code class="literal">group_tool</code>命令的输出中找到此值。
+					</p></li><li class="listitem"><code class="literal">sysrq -t</code>命令的输出。
+					</li><li class="listitem"><code class="literal">/var/log/messages</code>文件的内容。
+					</li></ul></div><p>收集完该数据后，您可以打开Red Hat支持的故障单并提供您收集的数据。
 			</p></div></div></body></html>

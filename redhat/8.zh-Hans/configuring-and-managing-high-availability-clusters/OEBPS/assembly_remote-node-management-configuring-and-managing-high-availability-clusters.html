@@ -1,179 +1,104 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 24. Integrating non-corosync nodes into a cluster: the pacemaker_remote service</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"/><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"/></head><body><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_remote-node-management-configuring-and-managing-high-availability-clusters"/>Chapter 24. Integrating non-corosync nodes into a cluster: the pacemaker_remote service</h1></div></div></div><p>
-			The <code class="literal">pacemaker_remote</code> service allows nodes not running <code class="literal">corosync</code> to integrate into the cluster and have the cluster manage their resources just as if they were real cluster nodes.
-		</p><p>
-			Among the capabilities that the <code class="literal">pacemaker_remote</code> service provides are the following:
+﻿<html  xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 9. 将非corosync节点集成到集群中：pacemaker_remote服务</title><link rel="stylesheet" type="text/css" href="Common_Content/css/epub.css"><meta name="generator" content="DocBook XSL-NS Stylesheets V1.78.1"></head><body ><div class="chapter"><div class="titlepage"><div><div><h1 class="title">Chapter 9. 将非corosync节点集成到集群中：pacemaker_remote服务</h1></div></div></div><p><code class="literal">pacemaker_remote</code>服务允许未运行<code class="literal">corosync</code>节点集成到集群中，并让集群管理其资源，就像它们是真正的集群节点一样。
+		</p><p><code class="literal">pacemaker_remote</code>服务提供的功能包括：</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><code class="literal">pacemaker_remote</code>服务允许您扩展超出<code class="literal">corosync</code> 16节点限制。
+				</li><li class="listitem"><code class="literal">pacemaker_remote</code>服务允许您将虚拟环境作为群集资源进行管理，并将虚拟环境中的各个服务作为群集资源进行管理。
+				</li></ul></div><p>以下术语用于描述<code class="literal">pacemaker_remote</code>服务。
 		</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
-					The <code class="literal">pacemaker_remote</code> service allows you to scale beyond the <code class="literal">corosync</code> 16-node limit.
+					<span class="emphasis"><em>群集节点</em></span> - 运行高可用性服务的节点（ <code class="literal">pacemaker</code>和<code class="literal">corosync</code> ）。
 				</li><li class="listitem">
-					The <code class="literal">pacemaker_remote</code> service allows you to manage a virtual environment as a cluster resource and also to manage individual services within the virtual environment as cluster resources.
-				</li></ul></div><p>
-			The following terms are used to describe the <code class="literal">pacemaker_remote</code> service.
-		</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
-					<span class="emphasis"><em>cluster node</em></span> — A node running the High Availability services (<code class="literal">pacemaker</code> and <code class="literal">corosync</code>).
+					<span class="emphasis"><em>远程节点</em></span> - 运行<code class="literal">pacemaker_remote</code>的节点，可远程集成到集群中，而无需<code class="literal">corosync</code>集群成员资格。远程节点配置为使用<code class="literal">ocf:pacemaker:remote</code>资源代理的群集资源。
 				</li><li class="listitem">
-					<span class="emphasis"><em>remote node</em></span> — A node running <code class="literal">pacemaker_remote</code> to remotely integrate into the cluster without requiring <code class="literal">corosync</code> cluster membership. A remote node is configured as a cluster resource that uses the <code class="literal">ocf:pacemaker:remote</code> resource agent.
+					<span class="emphasis"><em>guest节点</em></span> - 运行<code class="literal">pacemaker_remote</code>服务的虚拟客户机节点。虚拟客户资源由集群管理;它既由集群启动，又作为远程节点集成到集群中。
 				</li><li class="listitem">
-					<span class="emphasis"><em>guest node</em></span> — A virtual guest node running the <code class="literal">pacemaker_remote</code> service. The virtual guest resource is managed by the cluster; it is both started by the cluster and integrated into the cluster as a remote node.
-				</li><li class="listitem">
-					<span class="emphasis"><em>pacemaker_remote</em></span> — A service daemon capable of performing remote application management within remote nodes and KVM guest nodes in a Pacemaker cluster environment. This service is an enhanced version of Pacemaker’s local executor daemon (<code class="literal">pacemaker-execd</code>) that is capable of managing resources remotely on a node not running corosync.
-				</li></ul></div><p>
-			A Pacemaker cluster running the <code class="literal">pacemaker_remote</code> service has the following characteristics.
-		</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
-					Remote nodes and guest nodes run the <code class="literal">pacemaker_remote</code> service (with very little configuration required on the virtual machine side).
-				</li><li class="listitem">
-					The cluster stack (<code class="literal">pacemaker</code> and <code class="literal">corosync</code>), running on the cluster nodes, connects to the <code class="literal">pacemaker_remote</code> service on the remote nodes, allowing them to integrate into the cluster.
-				</li><li class="listitem">
-					The cluster stack (<code class="literal">pacemaker</code> and <code class="literal">corosync</code>), running on the cluster nodes, launches the guest nodes and immediately connects to the <code class="literal">pacemaker_remote</code> service on the guest nodes, allowing them to integrate into the cluster.
-				</li></ul></div><p>
-			The key difference between the cluster nodes and the remote and guest nodes that the cluster nodes manage is that the remote and guest nodes are not running the cluster stack. This means the remote and guest nodes have the following limitations:
-		</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">
-					they do not take place in quorum
-				</li><li class="listitem">
-					they do not execute fencing device actions
-				</li><li class="listitem">
-					they are not eligible to be the cluster’s Designated Controller (DC)
-				</li><li class="listitem">
-					they do not themselves run the full range of <code class="literal">pcs</code> commands
-				</li></ul></div><p>
-			On the other hand, remote nodes and guest nodes are not bound to the scalability limits associated with the cluster stack.
-		</p><p>
-			Other than these noted limitations, the remote and guest nodes behave just like cluster nodes in respect to resource management, and the remote and guest nodes can themselves be fenced. The cluster is fully capable of managing and monitoring resources on each remote and guest node: You can build constraints against them, put them in standby, or perform any other action you perform on cluster nodes with the <code class="literal">pcs</code> commands. Remote and guest nodes appear in cluster status output just as cluster nodes do.
-		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ref_host-and-guest-authentication-of-remote-nodes-remote-node-management"/>Host and guest authentication of pacemaker_remote nodes</h1></div></div></div><p>
-				The connection between cluster nodes and pacemaker_remote is secured using Transport Layer Security (TLS) with pre-shared key (PSK) encryption and authentication over TCP (using port 3121 by default). This means both the cluster node and the node running <code class="literal">pacemaker_remote</code> must share the same private key. By default this key must be placed at <code class="literal">/etc/pacemaker/authkey</code> on both cluster nodes and remote nodes.
-			</p><p>
-				The <code class="literal">pcs cluster node add-guest</code> command sets up the <code class="literal">authkey</code> for guest nodes and the <code class="literal">pcs cluster node add-remote</code> command sets up the <code class="literal">authkey</code> for remote nodes.
-			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_configuring-kvm-guest-nodes-remote-node-management"/>Configuring KVM guest nodes</h1></div></div></div><p>
-				A Pacemaker guest node is a virtual guest node running the <code class="literal">pacemaker_remote</code> service. The virtual guest node is managed by the cluster.
-			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="ref_guest-node-resource-options-configuring-kvm-guest-nodes"/>Guest node resource options</h2></div></div></div><p>
-					When configuring a virtual machine to act as a guest node, you create a <code class="literal">VirtualDomain</code> resource, which manages the virtual machine. For descriptions of the options you can set for a <code class="literal">VirtualDomain</code> resource, see <a class="xref" href="assembly_configuring-virtual-domain-as-a-resource-configuring-and-managing-high-availability-clusters.html#tb-virtdomain-options-HAAR" title="Table 21.1. Resource Options for Virtual Domain Resources">Table 21.1, “Resource Options for Virtual Domain Resources”</a>.
-				</p><p>
-					In addition to the <code class="literal">VirtualDomain</code> resource options, metadata options define the resource as a guest node and define the connection parameters. You set these resource options with the <code class="literal">pcs cluster node add-guest</code> command. <a class="xref" href="assembly_remote-node-management-configuring-and-managing-high-availability-clusters.html#tb-remoteklm-options-HAAR" title="Table 24.1. Metadata Options for Configuring KVM Resources as Remote Nodes">Table 24.1, “Metadata Options for Configuring KVM Resources as Remote Nodes”</a> describes these metadata options.
-				</p><div class="table"><a id="tb-remoteklm-options-HAAR"/><p class="title"><strong>Table 24.1. Metadata Options for Configuring KVM Resources as Remote Nodes</strong></p><div class="table-contents"><table summary="Metadata Options for Configuring KVM Resources as Remote Nodes" border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Field</th><th style="text-align: left" valign="top">Default</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
-									<code class="literal">remote-node</code>
+					<span class="emphasis"><em>pacemaker_remote</em></span> - 一种服务守护程序，能够在Pacemaker集群环境中的远程节点和KVM来宾节点中执行远程应用程序管理。此服务是Pacemaker的本地执行程序守护程序（ <code class="literal">pacemaker-execd</code> ）的增强版本，它能够在未运行corosync的节点上远程管理资源。
+				</li></ul></div><p>运行<code class="literal">pacemaker_remote</code>服务的Pacemaker群集具有以下特征。
+		</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">远程节点和来宾节点运行<code class="literal">pacemaker_remote</code>服务（虚拟机端需要的配置非常少）。
+				</li><li class="listitem">在群集节点上运行的群集堆栈（ <code class="literal">pacemaker</code>和<code class="literal">corosync</code> ）连接到远程节点上的<code class="literal">pacemaker_remote</code>服务，允许它们集成到群集中。
+				</li><li class="listitem">在群集节点上运行的群集堆栈（ <code class="literal">pacemaker</code>和<code class="literal">corosync</code> ）会启动来宾节点并立即连接到来宾节点上的<code class="literal">pacemaker_remote</code>服务，从而允许它们集成到群集中。
+				</li></ul></div><p>群集节点与群集节点管理的远程节点和来宾节点之间的主要区别在于远程节点和来宾节点未运行群集堆栈。这意味着远程节点和来宾节点具有以下限制：</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">它们不会在法定人数中发生</li><li class="listitem">他们不执行fencing设备操作</li><li class="listitem">他们没有资格成为集群的指定控制器（DC）</li><li class="listitem">他们自己不会运行全系列的<code class="literal">pcs</code>命令</li></ul></div><p>另一方面，远程节点和来宾节点未绑定到与群集堆栈关联的可伸缩性限制。
+		</p><p>除了这些指出的限制之外，远程和来宾节点在资源管理方面的行为与集群节点类似，远程节点和来宾节点本身可以进行隔离。群集完全能够管理和监视每个远程和来宾节点上的资源：您可以构建对它们的约束，将它们置于待机状态，或使用<code class="literal">pcs</code>命令执行您在群集节点上执行的任何其他操作。远程和来宾节点就像群集节点一样出现在群集状态输出中。
+		</p><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="ref_host-and-guest-authentication-of-remote-nodes-remote-node-management"></a> pacemaker_remote节点的主机和来宾身份验证</h1></div></div></div><p>群集节点和pacemaker_remote之间的连接使用传输层安全性（TLS）进行保护，传输层安全性（TLS）具有预共享密钥（PSK）加密和TCP身份验证（默认情况下使用端口3121）。这意味着群集节点和运行<code class="literal">pacemaker_remote</code>的节点必须共享相同的私钥。默认情况下，此密钥必须放在群集节点和远程节点上的<code class="literal">/etc/pacemaker/authkey</code>中。
+			</p><p><code class="literal">pcs cluster node add-guest</code>命令为guest <code class="literal">authkey</code>节点设置<code class="literal">authkey</code> ， <code class="literal">pcs cluster node add-remote</code>命令为远程节点设置<code class="literal">authkey</code> 。
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_configuring-kvm-guest-nodes-remote-node-management"></a>配置KVM来宾节点</h1></div></div></div><p>Pacemaker访客节点是运行<code class="literal">pacemaker_remote</code>服务的虚拟客户节点。虚拟客户机节点由集群管理。
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="ref_guest-node-resource-options-configuring-kvm-guest-nodes"></a>来宾节点资源选项</h2></div></div></div><p>配置虚拟机以充当来宾节点时，您将创建管理虚拟机的<code class="literal">VirtualDomain</code>资源。有关可以为<code class="literal">VirtualDomain</code>资源设置的选项的说明，请<a class="xref" href="assembly_configuring-virtual-domain-as-a-resource-configuring-and-managing-high-availability-clusters.html#tb-virtdomain-options-HAAR" title="表21.1。虚拟域资源的资源选项">参见表21.1“虚拟域资源的资源选项”</a> 。
+				</p><p>除<code class="literal">VirtualDomain</code>资源选项外，元数据选项还将资源定义为来宾节点并定义连接参数。您可以使用<code class="literal">pcs cluster node add-guest</code>命令设置这些资源选项。<a class="xref" href="assembly_remote-node-management-configuring-and-managing-high-availability-clusters.html#tb-remoteklm-options-HAAR" title="Table 24.1. Metadata Options for Configuring KVM Resources as Remote Nodes">表24.1“将KVM资源配置为远程节点的</a>元数据选项<a class="xref" href="assembly_remote-node-management-configuring-and-managing-high-availability-clusters.html#tb-remoteklm-options-HAAR" title="表24.1。用于将KVM资源配置为远程节点的元数据选项">”</a>描述了这些元数据选项。
+				</p><div class="table"><a id="tb-remoteklm-options-HAAR"></a><p class="title"><strong>表24.1。用于将KVM资源配置为远程节点的元数据选项</strong></p><div class="table-contents"><table border="1" summary="Metadata Options for Configuring KVM Resources as Remote Nodes"><colgroup><col class="col_1"><col class="col_2"><col class="col_3"></colgroup><thead><tr><th valign="top" style="text-align:left">领域</th><th valign="top" style="text-align:left">默认</th><th valign="top" style="text-align:left">描述</th></tr></thead><tbody><tr><td valign="top" style="text-align:left"> <p>
+									<code class="literal">远程节点</code>
 								</p>
-								 </td><td style="text-align: left" valign="top"> <p>
-									&lt;none&gt;
+								 </td><td valign="top" style="text-align:left"> <p>&lt;无&gt;</p>
+								 </td><td valign="top" style="text-align:left"> <p>此资源定义的来宾节点的名称。这两者都将资源作为来宾节点启用，并定义用于标识来宾节点的唯一名称。<span class="emphasis"><em>警告</em></span> ：此值不能与任何资源或节点ID重叠。
 								</p>
-								 </td><td style="text-align: left" valign="top"> <p>
-									The name of the guest node this resource defines. This both enables the resource as a guest node and defines the unique name used to identify the guest node. <span class="emphasis"><em>WARNING</em></span>: This value cannot overlap with any resource or node IDs.
+								 </td></tr><tr><td valign="top" style="text-align:left"> <p>
+									<code class="literal">远程端口</code>
 								</p>
-								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
-									<code class="literal">remote-port</code>
+								 </td><td valign="top" style="text-align:left"> <p>3121</p>
+								 </td><td valign="top" style="text-align:left"> <p>配置用于与<code class="literal">pacemaker_remote</code>的guest虚拟机连接的自定义端口
 								</p>
-								 </td><td style="text-align: left" valign="top"> <p>
-									3121
+								 </td></tr><tr><td valign="top" style="text-align:left"> <p>
+									<code class="literal">远程地址</code>
 								</p>
-								 </td><td style="text-align: left" valign="top"> <p>
-									Configures a custom port to use for the guest connection to <code class="literal">pacemaker_remote</code>
+								 </td><td valign="top" style="text-align:left"> <p><code class="literal">pcs host auth</code>命令中提供的地址</p>
+								 </td><td valign="top" style="text-align:left"> <p>要连接的IP地址或主机名</p>
+								 </td></tr><tr><td valign="top" style="text-align:left"> <p>
+									<code class="literal">远程连接超时</code>
 								</p>
-								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
-									<code class="literal">remote-addr</code>
-								</p>
-								 </td><td style="text-align: left" valign="top"> <p>
-									The address provided in the <code class="literal">pcs host auth</code> command
-								</p>
-								 </td><td style="text-align: left" valign="top"> <p>
-									The IP address or host name to connect to
-								</p>
-								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
-									<code class="literal">remote-connect-timeout</code>
-								</p>
-								 </td><td style="text-align: left" valign="top"> <p>
-									60s
-								</p>
-								 </td><td style="text-align: left" valign="top"> <p>
-									Amount of time before a pending guest connection will time out
-								</p>
-								 </td></tr></tbody></table></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="proc_integrating-vm-as-guest-node-configuring-kvm-guest-nodes"/>Integrating a virtual machine as a guest node</h2></div></div></div><p>
-					The following procedure is a high-level summary overview of the steps to perform to have Pacemaker launch a virtual machine and to integrate that machine as a guest node, using <code class="literal">libvirt</code> and KVM virtual guests.
-				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
-							Configure the <code class="literal">VirtualDomain</code> resources.
-						</li><li class="listitem"><p class="simpara">
-							Enter the following commands on every virtual machine to install <code class="literal">pacemaker_remote</code> packages, start the <code class="literal">pcsd</code> service and enable it to run on startup, and allow TCP port 3121 through the firewall.
+								 </td><td valign="top" style="text-align:left"> <p>60年代</p>
+								 </td><td valign="top" style="text-align:left"> <p>挂起的访客连接超时之前的时间量</p>
+								 </td></tr></tbody></table></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="proc_integrating-vm-as-guest-node-configuring-kvm-guest-nodes"></a>将虚拟机集成为来宾节点</h2></div></div></div><p>以下过程是使用<code class="literal">libvirt</code>和KVM虚拟客户机执行以使Pacemaker启动虚拟机并将该计算机集成为来宾节点的步骤的高级摘要概述。
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">配置<code class="literal">VirtualDomain</code>资源。
+						</li><li class="listitem"><p class="simpara">在每个虚拟机上输入以下命令以安装<code class="literal">pacemaker_remote</code>软件包，启动<code class="literal">pcsd</code>服务并使其在启动时运行，并允许TCP端口3121通过防火墙。
 						</p><pre class="literallayout"># <code class="literal">yum install pacemaker-remote resource-agents pcs</code>
 # <code class="literal">systemctl start pcsd.service</code>
 # <code class="literal">systemctl enable pcsd.service</code>
 # <code class="literal">firewall-cmd --add-port 3121/tcp --permanent</code>
 # <code class="literal">firewall-cmd --add-port 2224/tcp --permanent</code>
-# <code class="literal">firewall-cmd --reload</code></pre></li><li class="listitem">
-							Give each virtual machine a static network address and unique host name, which should be known to all nodes. For information on setting a static IP address for the guest virtual machine, see the <span class="emphasis"><em><span class="citetitle">Virtualization Deployment and Administration Guide</span></em></span>.
-						</li><li class="listitem"><p class="simpara">
-							If you have not already done so, authenticate <code class="literal">pcs</code> to the node you will be integrating as a quest node.
-						</p><pre class="literallayout"># <code class="literal">pcs host auth <span class="emphasis"><em>nodename</em></span></code></pre></li><li class="listitem"><p class="simpara">
-							Use the following command to convert an existing <code class="literal">VirtualDomain</code> resource into a guest node. This command must be run on a cluster node and not on the guest node which is being added. In addition to converting the resource, this command copies the <code class="literal">/etc/pacemaker/authkey</code> to the guest node and starts and enables the <code class="literal">pacemaker_remote</code> daemon on the guest node. The node name for the guest node, which you can define arbitrarily, can differ from the host name for the node.
-						</p><pre class="literallayout"># <code class="literal">pcs cluster node add-guest <span class="emphasis"><em>nodename</em></span> <span class="emphasis"><em>resource_id</em></span></code> [<code class="literal"><span class="emphasis"><em>options</em></span></code>]</pre></li><li class="listitem"><p class="simpara">
-							After creating the <code class="literal">VirtualDomain</code> resource, you can treat the guest node just as you would treat any other node in the cluster. For example, you can create a resource and place a resource constraint on the resource to run on the guest node as in the following commands, which are run from a cluster node. You can include guest nodes in groups, which allows you to group a storage device, file system, and VM.
-						</p><pre class="literallayout"># <code class="literal">pcs resource create webserver apache configfile=/etc/httpd/conf/httpd.conf op monitor interval=30s</code>
-# <code class="literal">pcs constraint location webserver prefers</code> <code class="literal"><span class="emphasis"><em>nodename</em></span></code></pre></li></ol></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_configuring-remote-nodes-remote-node-management"/>Configuring Pacemaker remote nodes</h1></div></div></div><p>
-				A remote node is defined as a cluster resource with <code class="literal">ocf:pacemaker:remote</code> as the resource agent. You create this resource with the <code class="literal">pcs cluster node add-remote</code> command.
-			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="ref_remote-node-resource-options-configuring-remote-nodes"/>Remote node resource options</h2></div></div></div><p>
-					<a class="xref" href="assembly_remote-node-management-configuring-and-managing-high-availability-clusters.html#tb-remotenode-options-HAAR" title="Table 24.2. Resource Options for Remote Nodes">Table 24.2, “Resource Options for Remote Nodes”</a> describes the resource options you can configure for a <code class="literal">remote</code> resource.
-				</p><div class="table"><a id="tb-remotenode-options-HAAR"/><p class="title"><strong>Table 24.2. Resource Options for Remote Nodes</strong></p><div class="table-contents"><table summary="Resource Options for Remote Nodes" border="1"><colgroup><col class="col_1"/><col class="col_2"/><col class="col_3"/></colgroup><thead><tr><th style="text-align: left" valign="top">Field</th><th style="text-align: left" valign="top">Default</th><th style="text-align: left" valign="top">Description</th></tr></thead><tbody><tr><td style="text-align: left" valign="top"> <p>
+# <code class="literal">firewall-cmd --reload</code></pre></li><li class="listitem">为每个虚拟机提供一个静态网络地址和唯一主机名，所有节点都应该知道该名称。有关为来宾虚拟机设置静态IP地址的信息，请参阅“ <span class="emphasis"><em><span class="citetitle">虚拟化部署和管理指南”</span></em></span> 。
+						</li><li class="listitem"><p class="simpara">如果您还没有这样做，请将<code class="literal">pcs</code>验证到您将作为任务节点集成的节点。
+						</p><pre class="literallayout"># <code class="literal">pcs host auth <span class="emphasis"><em>nodename</em></span></code></pre></li><li class="listitem"><p class="simpara">使用以下命令将现有<code class="literal">VirtualDomain</code>资源转换为来宾节点。此命令必须在群集节点上运行，而不是在要添加的来宾节点上运行。除了转换资源之外，此命令还会将<code class="literal">/etc/pacemaker/authkey</code>复制到guest <code class="literal">/etc/pacemaker/authkey</code>节点，并在guest <code class="literal">/etc/pacemaker/authkey</code>节点上启动并启用<code class="literal">pacemaker_remote</code>守护程序。可以任意定义的来宾节点的节点名称可以与节点的主机名不同。
+						</p><pre class="literallayout"># <code class="literal">pcs cluster node add-guest <span class="emphasis"><em>nodename</em></span> <span class="emphasis"><em>resource_id</em></span></code> [<code class="literal"><span class="emphasis"><em>options</em></span></code>]</pre></li><li class="listitem"><p class="simpara">创建<code class="literal">VirtualDomain</code>资源后，您可以像处理群集中的任何其他节点一样处理来宾节点。例如，您可以创建资源并在资源上放置资源约束以在来宾节点上运行，如以下命令（从群集节点运行）。您可以在组中包含访客节点，这允许您对存储设备，文件系统和VM进行分组。</p><pre class="literallayout"># <code class="literal">pcs resource create webserver apache configfile=/etc/httpd/conf/httpd.conf op monitor interval=30s</code>
+# <code class="literal">pcs constraint location webserver prefers</code> <code class="literal"><span class="emphasis"><em>nodename</em></span></code></pre></li></ol></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="assembly_configuring-remote-nodes-remote-node-management"></a>配置Pacemaker远程节点</h1></div></div></div><p>远程节点定义为具有<code class="literal">ocf:pacemaker:remote</code>作为资源代理的群集资源。使用<code class="literal">pcs cluster node add-remote</code>命令创建此资源。
+			</p><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="ref_remote-node-resource-options-configuring-remote-nodes"></a>远程节点资源选项</h2></div></div></div><p>
+					<a class="xref" href="assembly_remote-node-management-configuring-and-managing-high-availability-clusters.html#tb-remotenode-options-HAAR" title="Table 24.2. Resource Options for Remote Nodes">表24.2“远程节点</a>的资源选项<a class="xref" href="assembly_remote-node-management-configuring-and-managing-high-availability-clusters.html#tb-remotenode-options-HAAR" title="表24.2。远程节点的资源选项">”</a>介绍了可以为<code class="literal">remote</code>资源配置的资源选项。
+				</p><div class="table"><a id="tb-remotenode-options-HAAR"></a><p class="title"><strong>表24.2。远程节点的资源选项</strong></p><div class="table-contents"><table border="1" summary="Resource Options for Remote Nodes"><colgroup><col class="col_1"><col class="col_2"><col class="col_3"></colgroup><thead><tr><th valign="top" style="text-align:left">领域</th><th valign="top" style="text-align:left">默认</th><th valign="top" style="text-align:left">描述</th></tr></thead><tbody><tr><td valign="top" style="text-align:left"> <p>
 									<code class="literal">reconnect_interval</code>
 								</p>
-								 </td><td style="text-align: left" valign="top"> <p>
-									0
+								 </td><td valign="top" style="text-align:left"> <p>0</p>
+								 </td><td valign="top" style="text-align:left"> <p>在切断与远程节点的活动连接后尝试重新连接到远程节点之前等待的时间（以秒为单位）。这种等待反复出现。如果在等待期后重新连接失败，则在观察等待时间后将进行新的重新连接尝试。当使用此选项时，Pacemaker将在每个等待间隔后继续尝试伸出并无限期地连接到远程节点。
 								</p>
-								 </td><td style="text-align: left" valign="top"> <p>
-									Time in seconds to wait before attempting to reconnect to a remote node after an active connection to the remote node has been severed. This wait is recurring. If reconnect fails after the wait period, a new reconnect attempt will be made after observing the wait time. When this option is in use, Pacemaker will keep attempting to reach out and connect to the remote node indefinitely after each wait interval.
+								 </td></tr><tr><td valign="top" style="text-align:left"> <p>
+									<code class="literal">服务器</code>
 								</p>
-								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
-									<code class="literal">server</code>
+								 </td><td valign="top" style="text-align:left"> <p>使用<code class="literal">pcs host auth</code>命令指定的地址</p>
+								 </td><td valign="top" style="text-align:left"> <p>要连接的服务器。这可以是IP地址或主机名。
 								</p>
-								 </td><td style="text-align: left" valign="top"> <p>
-									Address specified with <code class="literal">pcs host auth</code> command
+								 </td></tr><tr><td valign="top" style="text-align:left"> <p>
+									<code class="literal">港口</code>
 								</p>
-								 </td><td style="text-align: left" valign="top"> <p>
-									Server to connect to. This can be an IP address or host name.
+								 </td><td valign="top" style="text-align:left"> </td><td valign="top" style="text-align:left"> <p>要连接的TCP端口。
 								</p>
-								 </td></tr><tr><td style="text-align: left" valign="top"> <p>
-									<code class="literal">port</code>
-								</p>
-								 </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> <p>
-									TCP port to connect to.
-								</p>
-								 </td></tr></tbody></table></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="proc-integrating-remote-nodes-configuring-remote-nodes"/>Remote node configuration overview</h2></div></div></div><p>
-					This section provides a high-level summary overview of the steps to perform to configure a Pacemaker Remote node and to integrate that node into an existing Pacemaker cluster environment.
-				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">
-							On the node that you will be configuring as a remote node, allow cluster-related services through the local firewall.
+								 </td></tr></tbody></table></div></div></div><div class="section"><div class="titlepage"><div><div><h2 class="title"><a id="proc-integrating-remote-nodes-configuring-remote-nodes"></a>远程节点配置概述</h2></div></div></div><p>本节提供了配置Pacemaker远程节点以及将该节点集成到现有Pacemaker集群环境中的步骤的高级摘要概述。
+				</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem"><p class="simpara">在要配置为远程节点的节点上，通过本地防火墙允许与群集相关的服务。
 						</p><pre class="literallayout"># <code class="literal">firewall-cmd --permanent --add-service=high-availability</code>
 success
 # <code class="literal">firewall-cmd --reload</code>
-success</pre><div class="note" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Note</h3><p>
-								If you are using <code class="literal">iptables</code> directly, or some other firewall solution besides <code class="literal">firewalld</code>, simply open the following ports: TCP ports 2224 and 3121.
-							</p></div></li><li class="listitem"><p class="simpara">
-							Install the <code class="literal">pacemaker_remote</code> daemon on the remote node.
-						</p><pre class="literallayout"># <code class="literal">yum install -y pacemaker-remote resource-agents pcs</code></pre></li><li class="listitem"><p class="simpara">
-							Start and enable <code class="literal">pcsd</code> on the remote node.
+success</pre><div class="note" style="margin-left:0.5in;margin-right:0.5in"><h3 class="title">注意</h3><p>如果您直接使用<code class="literal">iptables</code> ，或者除<code class="literal">firewalld</code>之外的其他防火墙解决方案，只需打开以下端口：TCP端口2224和3121。
+							</p></div></li><li class="listitem"><p class="simpara">在远程节点上安装<code class="literal">pacemaker_remote</code>守护程序。
+						</p><pre class="literallayout"># <code class="literal">yum install -y pacemaker-remote resource-agents pcs</code></pre></li><li class="listitem"><p class="simpara">在远程节点上启动并启用<code class="literal">pcsd</code> 。
 						</p><pre class="literallayout"># <code class="literal">systemctl start pcsd.service</code>
-# <code class="literal">systemctl enable pcsd.service</code></pre></li><li class="listitem"><p class="simpara">
-							If you have not already done so, authenticate <code class="literal">pcs</code> to the node you will be adding as a remote node.
-						</p><pre class="literallayout"># <code class="literal">pcs host auth remote1</code></pre></li><li class="listitem"><p class="simpara">
-							Add the remote node resource to the cluster with the following command. This command also syncs all relevant configuration files to the new node, starts the node, and configures it to start <code class="literal">pacemaker_remote</code> on boot. This command must be run on a cluster node and not on the remote node which is being added.
-						</p><pre class="literallayout"># <code class="literal">pcs cluster node add-remote remote1</code></pre></li><li class="listitem"><p class="simpara">
-							After adding the <code class="literal">remote</code> resource to the cluster, you can treat the remote node just as you would treat any other node in the cluster. For example, you can create a resource and place a resource constraint on the resource to run on the remote node as in the following commands, which are run from a cluster node.
+# <code class="literal">systemctl enable pcsd.service</code></pre></li><li class="listitem"><p class="simpara">如果尚未执行此操作，请将<code class="literal">pcs</code>验证到要添加为远程节点的节点。
+						</p><pre class="literallayout"># <code class="literal">pcs host auth remote1</code></pre></li><li class="listitem"><p class="simpara">使用以下命令将远程节点资源添加到集群。此命令还会将所有相关配置文件同步到新节点，启动节点并将其配置为在引导时启动<code class="literal">pacemaker_remote</code> 。必须在群集节点上运行此命令，而不是在正在添加的远程节点上运行。
+						</p><pre class="literallayout"># <code class="literal">pcs cluster node add-remote remote1</code></pre></li><li class="listitem"><p class="simpara">将<code class="literal">remote</code>资源添加到群集后，您可以像处理群集中的任何其他节点一样处理远程节点。例如，您可以创建资源并在资源上放置资源约束以在远程节点上运行，如以下命令（从群集节点运行）。
 						</p><pre class="literallayout"># <code class="literal">pcs resource create webserver apache configfile=/etc/httpd/conf/httpd.conf op monitor interval=30s</code>
-# <code class="literal">pcs constraint location webserver prefers remote1</code></pre><div class="warning" style="margin-left: 0.5in; margin-right: 0.5in;"><h3 class="title">Warning</h3><p>
-								Never involve a remote node connection resource in a resource group, colocation constraint, or order constraint.
-							</p></div></li><li class="listitem">
-							Configure fencing resources for the remote node. Remote nodes are fenced the same way as cluster nodes. Configure fencing resources for use with remote nodes the same as you would with cluster nodes. Note, however, that remote nodes can never initiate a fencing action. Only cluster nodes are capable of actually executing a fencing operation against another node.
-						</li></ol></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_changing-default-port-location-remote-node-management"/>Changing the default port location</h1></div></div></div><p>
-				If you need to change the default port location for either Pacemaker or <code class="literal">pacemaker_remote</code>, you can set the <code class="literal">PCMK_remote_port</code> environment variable that affects both of these daemons. This environment variable can be enabled by placing it in the <code class="literal">/etc/sysconfig/pacemaker</code> file as follows.
+# <code class="literal">pcs constraint location webserver prefers remote1</code></pre><div class="warning" style="margin-left:0.5in;margin-right:0.5in"><h3 class="title">警告</h3><p>永远不要在资源组，共置约束或订单约束中涉及远程节点连接资源。
+							</p></div></li><li class="listitem">为远程节点配置防护资源。远程节点的隔离方式与集群节点相同。配置与远程节点一起使用的防护资源与使用集群节点时相同。但请注意，远程节点永远不能启动防护操作。只有群集节点能够实际执行针对另一个节点的防护操作。
+						</li></ol></div></div></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_changing-default-port-location-remote-node-management"></a>更改默认端口位置</h1></div></div></div><p>如果需要更改Pacemaker或<code class="literal">pacemaker_remote</code>的默认端口位置，可以设置影响这两个守护进程的<code class="literal">PCMK_remote_port</code>环境变量。可以通过将此环境变量放在<code class="literal">/etc/sysconfig/pacemaker</code>文件中来启用此环境变量，如下所示。
 			</p><pre class="literallayout"><span class="marked">==</span>==# Pacemaker Remote
 ...
 #
 # Specify a custom port for Pacemaker Remote connections
-PCMK_remote_port=3121</pre><p>
-				When changing the default port used by a particular guest node or remote node, the <code class="literal">PCMK_remote_port</code> variable must be set in that node’s <code class="literal">/etc/sysconfig/pacemaker</code> file, and the cluster resource creating the guest node or remote node connection must also be configured with the same port number (using the <code class="literal">remote-port</code> metadata option for guest nodes, or the <code class="literal">port</code> option for remote nodes).
-			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_upgrading-systems-with-pacemaker-remote-remote-node-management"/>Upgrading systems with pacemaker_remote nodes</h1></div></div></div><p>
-				If the <code class="literal">pacemaker_remote</code> service is stopped on an active Pacemaker Remote node, the cluster will gracefully migrate resources off the node before stopping the node. This allows you to perform software upgrades and other routine maintenance procedures without removing the node from the cluster. Once <code class="literal">pacemaker_remote</code> is shut down, however, the cluster will immediately try to reconnect. If <code class="literal">pacemaker_remote</code> is not restarted within the resource’s monitor timeout, the cluster will consider the monitor operation as failed.
-			</p><p>
-				If you wish to avoid monitor failures when the <code class="literal">pacemaker_remote</code> service is stopped on an active Pacemaker Remote node, you can use the following procedure to take the node out of the cluster before performing any system administration that might stop <code class="literal">pacemaker_remote</code>
-			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">
-						Stop the node’s connection resource with the <code class="literal">pcs resource disable <span class="emphasis"><em>resourcename</em></span></code>, which will move all services off the node. For guest nodes, this will also stop the VM, so the VM must be started outside the cluster (for example, using <code class="literal">virsh</code>) to perform any maintenance.
-					</li><li class="listitem">
-						Perform the required maintenance.
-					</li><li class="listitem">
-						When ready to return the node to the cluster, re-enable the resource with the <code class="literal">pcs resource enable</code>.
+PCMK_remote_port=3121</pre><p>更改特定来宾节点或远程节点使用的默认端口时，必须在该节点的<code class="literal">/etc/sysconfig/pacemaker</code>文件中设置<code class="literal">PCMK_remote_port</code>变量，并且<code class="literal">PCMK_remote_port</code>必须使用创建来宾节点或远程节点连接的群集资源进行配置。相同的端口号（使用guest虚拟机节点的<code class="literal">remote-port</code>元数据选项或远程节点的<code class="literal">port</code>选项）。
+			</p></div><div class="section"><div class="titlepage"><div><div><h1 class="title"><a id="proc_upgrading-systems-with-pacemaker-remote-remote-node-management"></a>使用pacemaker_remote节点升级系统</h1></div></div></div><p>如果在活动的Pacemaker Remote节点上停止<code class="literal">pacemaker_remote</code>服务，则群集将在停止节点之前正常地从节点迁移资源。这允许您执行软件升级和其他例行维护过程，而无需从群集中删除节点。但是，一旦<code class="literal">pacemaker_remote</code>关闭，群集将立即尝试重新连接。如果未在资源的监视器超时内重新启动<code class="literal">pacemaker_remote</code> ，则群集将认为监视器操作失败。
+			</p><p>如果您希望在活动的Pacemaker Remote节点上停止<code class="literal">pacemaker_remote</code>服务时避免监视器故障，则可以使用以下过程将节点从群集中取出，然后再执行可能会停止<code class="literal">pacemaker_remote</code>任何系统管理
+			</p><div class="orderedlist"><ol class="orderedlist"><li class="listitem">使用<code class="literal">pcs resource disable <span class="emphasis"><em>resourcename</em></span></code>停止节点的连接资源，这会将所有服务移出节点。对于访客节点，这也将停止VM，因此必须在群集外部启动VM（例如，使用<code class="literal">virsh</code> ）以执行任何维护。
+					</li><li class="listitem">执行所需的维护。
+					</li><li class="listitem">准备好将节点返回到群集时，请使用<code class="literal">pcs resource enable</code>重新启用<code class="literal">pcs resource enable</code> 。
 					</li></ol></div></div></div></body></html>
