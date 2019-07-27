@@ -19,8 +19,9 @@ code
  , [日本語](epub.html?path=code/progit/ja/)
 
 
-redhat 7
+redhat 8
 [Product Documentation for Red Hat Enterprise Linux 8](DETAIL.md#red_hat_enterprise_linux8)
+[简体中文 机翻](DETAIL.md#red_hat_enterprise_linux8_zh)
 
 apache  
 `Apache Tomcat Documentation Index`

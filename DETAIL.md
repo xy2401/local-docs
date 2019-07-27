@@ -839,6 +839,7 @@ oracle
 # red_hat_enterprise_linux8
 
 [Product Documentation for Red Hat Enterprise Linux 8 - Red Hat Customer Portal](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/)
+
 - Release Notes
 - [8.0 Release Notes](epub.html?path=redhat/8/80-release-notes/OEBPS/)    
   Release Notes for Red Hat Enterprise Linux 8.0
@@ -914,3 +915,69 @@ oracle
 
 
   
+
+# red_hat_enterprise_linux8_zh
+
+[红帽企业Linux 8的产品文档 - 红帽客户门户](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/)
+
+- 发行说明
+ -  [8.0发行说明](epub.html?path=redhat/8.zh-Hans/80-release-notes/OEBPS/)
+  红帽企业版Linux 8.0发行说明
+ -  [包清单](epub.html?path=redhat/8.zh-Hans/package-manifest/OEBPS/)
+  Red Hat Enterprise Linux 8.0的软件包列表
+ - 规划
+ -  [采用RHEL 8的注意事项](epub.html?path=redhat/8.zh-Hans/considerations-in-adopting-rhel-8/OEBPS/)
+  自Red Hat Enterprise Linux 7以来红帽企业Linux 8的变化概述
+ - 安装
+ -  [升级到RHEL 8](epub.html?path=redhat/8.zh-Hans/upgrading-to-rhel-8/OEBPS/)
+  有关就地升级到Red Hat Enterprise Linux 8的说明
+ -  [执行标准RHEL安装](epub.html?path=redhat/8.zh-Hans/performing-a-standard-rhel-installation/OEBPS/)
+  使用图形用户界面安装Red Hat Enterprise Linux 8
+ -  [编写自定义的RHEL系统映像](epub.html?path=redhat/8.zh-Hans/composing-a-customized-rhel-system-image/OEBPS/)
+  在Red Hat Enterprise Linux 8上使用Image Builder创建自定义系统映像
+ -  [执行高级RHEL安装](epub.html?path=redhat/8.zh-Hans/performing-an-advanced-rhel-installation/OEBPS/)
+  使用Kickstart安装Red Hat Enterprise Linux 8
+ -  [安装，管理和删除用户空间组件](epub.html?path=redhat/8.zh-Hans/installing-managing-and-removing-user-space-components/OEBPS/)
+  Red Hat Enterprise Linux 8中的AppStream和BaseOS简介
+ - 系统管理
+  部署，管理和调优
+ -  [配置基本系统设置](epub.html?path=redhat/8.zh-Hans/configuring-basic-system-settings/OEBPS/)
+ -  [使用Web控制台管理系统](epub.html?path=redhat/8.zh-Hans/managing-systems-using-the-web-console/OEBPS/)
+   使用Web控制台管理Red Hat Enterprise Linux 8系统的指南
+ -  [部署不同类型的服务器](epub.html?path=redhat/8.zh-Hans/deploying-different-types-of-servers/OEBPS/)
+ -  [配置和管理网络](epub.html?path=redhat/8.zh-Hans/configuring-and-managing-networking/OEBPS/)
+ -  [管理，监控和更新内核](epub.html?path=redhat/8.zh-Hans/managing-monitoring-and-updating-the-kernel/OEBPS/)
+   在Red Hat Enterprise Linux 8上管理Linux内核的指南
+ -  [从桌面管理RHEL系统](epub.html?path=redhat/8.zh-Hans/managing-rhel-systems-from-your-desktop/OEBPS/)
+   从桌面管理Red Hat Enterprise Linux 8的指南
+ -  [在Red Hat Enterprise Linux主机上使用authselect](epub.html?path=redhat/8.zh-Hans/using-authselect-on-a-red-hat-enterprise-linux-host/OEBPS/)
+ -  [录制会话](epub.html?path=redhat/8.zh-Hans/recording-sessions/OEBPS/)
+  使用Red Hat Enterprise Linux 8中的会话录制解决方案
+ -  [监控和管理系统状态和性能](epub.html?path=redhat/8.zh-Hans/monitoring-and-managing-system-status-and-performance/OEBPS/)
+  优化系统吞吐量，延迟和功耗
+ - 安全
+ -  [管理和监控安全更新](epub.html?path=redhat/8.zh-Hans/managing-and-monitoring-security-updates/OEBPS/)
+  管理和监控Red Hat Enterprise Linux 8中的安全更新的指南
+ -  [安全加固](epub.html?path=redhat/8.zh-Hans/security-hardening/OEBPS/)
+ -  [使用SELinux](epub.html?path=redhat/8.zh-Hans/using-selinux/OEBPS/)
+  安全增强型Linux（SELinux）的基本和高级配置
+ -  [保护网络](epub.html?path=redhat/8.zh-Hans/securing-networks/OEBPS/)
+  配置安全网络和网络通信
+ - 身份管理
+  身份管理和政策
+ -  [规划身份管理](epub.html?path=redhat/8.zh-Hans/planning-identity-management/OEBPS/)
+ -  [安装身份管理](epub.html?path=redhat/8.zh-Hans/installing-identity-management/OEBPS/)
+ -  [配置和管理身份管理](epub.html?path=redhat/8.zh-Hans/configuring-and-managing-identity-management/OEBPS/)
+  在Red Hat Enterprise Linux 8中配置，管理和维护Identity Management
+ - 存储和集群
+ -  [管理文件系统](epub.html?path=redhat/8.zh-Hans/managing-file-systems/OEBPS/)
+  在Red Hat Enterprise Linux 8中创建，修改和管理文件系统
+ -  [管理存储设备](epub.html?path=redhat/8.zh-Hans/managing-storage-devices/OEBPS/)
+ -  [配置和管理逻辑卷](epub.html?path=redhat/8.zh-Hans/configuring-and-managing-logical-volumes/OEBPS/)
+  LVM逻辑卷的配置和管理指南
+ -  [配置设备映射多路径](epub.html?path=redhat/8.zh-Hans/configuring-device-mapper-multipath/OEBPS/)
+  使用Device Mapper Multipat
+
+
+
+# EOF
