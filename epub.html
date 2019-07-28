@@ -15,6 +15,7 @@
             width: 20%;
             height: 98vh;
             overflow-y: scroll;
+            padding-bottom: 10em;
         }
 
         iframe {
@@ -32,12 +33,34 @@
         nav ul {
             padding-left: 1em;
         }
+
+        #fDiv {
+            position: fixed;
+            bottom: 0;
+            right: 81%;
+            padding: 0.5em;
+            margin: 0.5em;
+            background: rgba(192, 192, 192, 0.3);
+
+        }
+
+        #fDiv div {
+            margin: 0.5em auto;
+            font-size: large;
+            cursor: pointer;
+        }
+
+        .unicode {
+            font-size: xx-large;
+        }
     </style>
 
     <script>
 
-        let windowsUrl;//当前路径url
-        let baseUrl;//获取当前地址父路径
+        let windowsUrl = new URL(window.location.href);;//当前路径url
+        //获取当前地址父路径 /code/local/local-docs
+        let basePath = location.pathname.substring(0, location.pathname.lastIndexOf("/"));
+        let context = window.origin + basePath + "/";// "http://localhost/code/local/local-docs"
 
         //[使用 EPUB 制作数字图书](https://www.ibm.com/developerworks/cn/xml/tutorials/x-epubtut/index.html)
         let path;//epub文件夹路径 
@@ -45,11 +68,10 @@
 
         const domParser = new DOMParser();//文档解析器
 
+        let navA = [];//当前导航栏所有超链接
+
         const load = async () => {
 
-            //读取当前url
-            windowsUrl = new URL(window.location.href);
-            baseUrl = location.pathname.substring(0, location.pathname.lastIndexOf("/"));
             path = windowsUrl.searchParams.get("path") || "jboss/red_hat_jboss/7.2/getting_started_guide";//默认路径 测试用
             path += path.endsWith("/") ? "" : "/";//如果没有 斜杠结尾 补全斜杠
 
@@ -87,10 +109,21 @@
                 tocNcx = domParser.parseFromString(tocNcx, "application/xml");
                 document.getElementById("toc").innerHTML = navPoint2Html(tocNcx.querySelectorAll("navMap>navPoint"));
             }
+            navA = [...document.querySelectorAll("nav a")];
 
-            if (window.location.hash) {
+            console.log("window.location.hash" + window.location.hash);
+            if (window.location.hash && window.location.hash.length > 0) {
                 document.getElementById('contentF').src = window.location.hash.substring(1);
             }
+
+
+
+            // let hash = window.location.hash;
+            // if (hash) {
+            //     let contentF = document.getElementById('contentF');
+            //     console.log("load to contentF:" + context + hash.substring(1));
+            //     contentF.contentWindow.document.location.href = context + hash.substring(1);
+            // }
         }
         window.onload = load;//初始化
 
@@ -105,9 +138,9 @@
         //navPoint 节点转换为html
         function navPoint2Html(navPoints) {
             let navPointHTML = "";
-            navPoints.forEach((navPoint) => {
+            navPoints.forEach((navPoint) => {// onclick="window.location.hash = this.getAttribute('href');
                 navPointHTML += "<li>";
-                navPointHTML += `<a  target="contentF"  onclick="window.location.hash = this.getAttribute('href');" 
+                navPointHTML += `<a  target="contentF" " 
                                      href="${path}${navPoint.querySelector(":scope>content").getAttribute("src")}">
                                   ${navPoint.querySelector(":scope>navLabel>text").textContent}
                                 </a>`;
@@ -121,7 +154,56 @@
             return navPointHTML;
         }
 
+        //iframe 内容变化或者更新时
+        function contentFChange() {
+            let contentF = document.getElementById('contentF');
+            let contentHref = contentF.contentWindow.document.location.href;
+            //一开始会默认进入  about:blank
+            if (contentHref != 'about:blank') {
+                document.title = contentF.contentWindow.document.title;
+                contentF.contentWindow.onhashchange = contentFChange;
+                console.log("contentF change:" + contentF.contentWindow.document.location.href);
+                window.location.hash = contentF.contentWindow.document.location.href.replace(context, "");
 
+                updateBookmark();
+            }
+        }
+
+        //更新书签所在位置
+        function updateBookmark() {
+            let cHref = window.location.hash.substr(1);//当前链接
+            let cIndex = navA.findIndex(a => a.getAttribute('href')
+                && a.getAttribute('href').endsWith(cHref));//href有值 并且有当前地址的后缀 并且 当前 a为空 或者 当前不是此
+            if (navA[cIndex]) {
+                //在可视窗口的上面或者下面时候滚动
+                if (navA[cIndex].getBoundingClientRect().top < 0
+                    || navA[cIndex].getBoundingClientRect().bottom > document.documentElement.clientHeight) {
+                    navA[cIndex].scrollIntoView();
+                }
+                //书签紧跟菜单标签
+                bookmark.style.top = navA[cIndex].getBoundingClientRect().top + "px";
+            }
+        }
+
+        function goPage(offset) {
+            let contentF = document.getElementById('contentF');
+            if (window.location.hash && window.location.hash.length > 0) {
+                let cHref = window.location.hash.substr(1);//当前链接
+                let cIndex = navA.findIndex(a => a.getAttribute('href')
+                    && a.getAttribute('href').endsWith(cHref));
+                cIndex = cIndex + offset;
+                if (cIndex < 0) {
+                    cIndex = 0;//最小是头
+                    console.log("超过最小 设置为0");
+                } else if (cIndex >= navA.length) {
+                    cIndex = navA.length - 1;//最大是尾
+                    console.log("超过最末设置为最末");
+                }
+
+                contentF.src = navA[cIndex].getAttribute('href');
+            }
+
+        }
 
     </script>
 
@@ -131,26 +213,30 @@
 
     <!-- 导航栏 -->
     <nav id="navigation">
-
         <h1>metadata</h1>
-
         <details>
             <summary id="metadataS"></summary>
             <p id="metadataP"></p>
         </details>
-
         <h1> Table of contents </h1>
-
         <ul id="toc">
-
         </ul>
-
-
-
     </nav>
+    <!-- 書簽 -->
+    <span id="bookmark" style="position: fixed;">🔖</span>
+    <!-- 功能区域 -->
+    <div id="fDiv">
+
+        <div onclick="displayToc()" title="折叠/展开目录">目录叠<span class="unicode">⬷</span> </div>
+        <!-- onclick="tocfragmentTFlag && window.open(`${tocfragmentTURL}${window.location.hash}`);" -->
+        <div onclick="goBook()" title="打开 EN/中文"> 中英文<span class="unicode">⇄</span></div>
+        <div onclick="goPage(-1)" title="跳转上一页">上一页 <span class="unicode">⎗</span></div>
+        <div onclick="goPage(1)" title="跳转下一页">下一页 <span class="unicode">⎘</span></div>
+
+    </div>
+
     <!--内容页-->
-    <iframe frameborder=0 id="contentF" name="contentF" src=""
-        onload="document.title = this.contentWindow.document.title">
+    <iframe frameborder=0 id="contentF" name="contentF" onload="contentFChange()">
 
     </iframe>
 
