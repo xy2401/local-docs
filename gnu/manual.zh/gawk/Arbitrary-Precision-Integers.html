@@ -1,0 +1,186 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!-- 
+Copyright (C) 1989, 1991, 1992, 1993, 1996-2005, 2007, 2009-2019 
+
+Free Software Foundation, Inc.
+
+
+
+This is Edition 5.0 of GAWK: Effective AWK Programming: A User's Guide for GNU Awk,
+for the 5.0.0 (or later) version of the GNU
+implementation of AWK.
+
+Permission is granted to copy, distribute and/or modify this document
+under the terms of the GNU Free Documentation License, Version 1.3 or
+any later version published by the Free Software Foundation; with the
+Invariant Sections being "GNU General Public License", with the
+Front-Cover Texts being "A GNU Manual", and with the Back-Cover Texts
+as in (a) below.
+A copy of the license is included in the section entitled
+"GNU Free Documentation License".
+
+a. The FSF's Back-Cover Text is: "You have the freedom to
+copy and modify this GNU manual." -->
+<!-- Created by GNU Texinfo 6.5, http://www.gnu.org/software/texinfo/ -->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Arbitrary Precision Integers (The GNU Awk User&rsquo;s Guide)</title>
+
+<meta name="description" content="Arbitrary Precision Integers (The GNU Awk User&rsquo;s Guide)">
+<meta name="keywords" content="Arbitrary Precision Integers (The GNU Awk User&rsquo;s Guide)">
+<meta name="resource-type" content="document">
+<meta name="distribution" content="global">
+<meta name="Generator" content="makeinfo">
+<link href="index.html#Top" rel="start" title="Top">
+<link href="Index.html#Index" rel="index" title="Index">
+<link href="index.html#SEC_Contents" rel="contents" title="Table of Contents">
+<link href="Arbitrary-Precision-Arithmetic.html#Arbitrary-Precision-Arithmetic" rel="up" title="Arbitrary Precision Arithmetic">
+<link href="Checking-for-MPFR.html#Checking-for-MPFR" rel="next" title="Checking for MPFR">
+<link href="Setting-the-rounding-mode.html#Setting-the-rounding-mode" rel="prev" title="Setting the rounding mode">
+<style type="text/css">
+<!--
+a.summary-letter {text-decoration: none}
+blockquote.indentedblock {margin-right: 0em}
+blockquote.smallindentedblock {margin-right: 0em; font-size: smaller}
+blockquote.smallquotation {font-size: smaller}
+div.display {margin-left: 3.2em}
+div.example {margin-left: 3.2em}
+div.lisp {margin-left: 3.2em}
+div.smalldisplay {margin-left: 3.2em}
+div.smallexample {margin-left: 3.2em}
+div.smalllisp {margin-left: 3.2em}
+kbd {font-style: oblique}
+pre.display {font-family: inherit}
+pre.format {font-family: inherit}
+pre.menu-comment {font-family: serif}
+pre.menu-preformatted {font-family: serif}
+pre.smalldisplay {font-family: inherit; font-size: smaller}
+pre.smallexample {font-size: smaller}
+pre.smallformat {font-family: inherit; font-size: smaller}
+pre.smalllisp {font-size: smaller}
+span.nolinebreak {white-space: nowrap}
+span.roman {font-family: initial; font-weight: normal}
+span.sansserif {font-family: sans-serif; font-weight: normal}
+ul.no-bullet {list-style: none}
+-->
+</style>
+<link rel="stylesheet" type="text/css" href="/software/gnulib/manual.css">
+
+
+</head>
+
+<body lang="en">
+<a name="Arbitrary-Precision-Integers"></a>
+<div class="header">
+<p>
+Next: <a href="Checking-for-MPFR.html#Checking-for-MPFR" accesskey="n" rel="next">Checking for MPFR</a>, Previous: <a href="FP-Math-Caution.html#FP-Math-Caution" accesskey="p" rel="prev">FP Math Caution</a>, Up: <a href="Arbitrary-Precision-Arithmetic.html#Arbitrary-Precision-Arithmetic" accesskey="u" rel="up">Arbitrary Precision Arithmetic</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Index.html#Index" title="Index" rel="index">Index</a>]</p>
+</div>
+<hr>
+<a name="Arbitrary_002dPrecision-Integer-Arithmetic-with-gawk"></a>
+<h3 class="section">16.5 Arbitrary-Precision Integer Arithmetic with <code>gawk</code></h3>
+<a name="index-integers_002c-arbitrary-precision"></a>
+<a name="index-arbitrary-precision-integers"></a>
+
+<p>When given the <samp>-M</samp> option,
+<code>gawk</code> performs all integer arithmetic using GMP arbitrary-precision
+integers.  Any number that looks like an integer in a source
+or data file is stored as an arbitrary-precision integer.  The size
+of the integer is limited only by the available memory.  For example,
+the following computes
+5<sup>4<sup>3<sup>2</sup></sup></sup>,
+the result of which is beyond the
+limits of ordinary hardware double-precision floating-point values:
+</p>
+<div class="example">
+<pre class="example">$ <kbd>gawk -M 'BEGIN {</kbd>
+&gt;   <kbd>x = 5^4^3^2</kbd>
+&gt;   <kbd>print &quot;number of digits =&quot;, length(x)</kbd>
+&gt;   <kbd>print substr(x, 1, 20), &quot;...&quot;, substr(x, length(x) - 19, 20)</kbd>
+&gt; <kbd>}'</kbd>
+-| number of digits = 183231
+-| 62060698786608744707 ... 92256259918212890625
+</pre></div>
+
+<p>If instead you were to compute the same value using arbitrary-precision
+floating-point values, the precision needed for correct output (using
+the formula
+&lsquo;<samp>prec = 3.322 * dps</samp>&rsquo;)
+would be 3.322 x 183231,
+or 608693.
+</p>
+<p>The result from an arithmetic operation with an integer and a floating-point value
+is a floating-point value with a precision equal to the working precision.
+The following program calculates the eighth term in
+Sylvester&rsquo;s sequence<a name="DOCF101" href="#FOOT101"><sup>101</sup></a>
+using a recurrence:
+</p>
+<div class="example">
+<pre class="example">$ <kbd>gawk -M 'BEGIN {</kbd>
+&gt;   <kbd>s = 2.0</kbd>
+&gt;   <kbd>for (i = 1; i &lt;= 7; i++)</kbd>
+&gt;       <kbd>s = s * (s - 1) + 1</kbd>
+&gt;   <kbd>print s</kbd>
+&gt; <kbd>}'</kbd>
+-| 113423713055421845118910464
+</pre></div>
+
+<p>The output differs from the actual number, 113,423,713,055,421,844,361,000,443,
+because the default precision of 53 bits is not enough to represent the
+floating-point results exactly. You can either increase the precision
+(100 bits is enough in this case), or replace the floating-point constant
+&lsquo;<samp>2.0</samp>&rsquo; with an integer, to perform all computations using integer
+arithmetic to get the correct output.
+</p>
+<p>Sometimes <code>gawk</code> must implicitly convert an arbitrary-precision
+integer into an arbitrary-precision floating-point value.  This is
+primarily because the MPFR library does not always provide the relevant
+interface to process arbitrary-precision integers or mixed-mode numbers
+as needed by an operation or function.  In such a case, the precision is
+set to the minimum value necessary for exact conversion, and the working
+precision is not used for this purpose.  If this is not what you need or
+want, you can employ a subterfuge and convert the integer to floating
+point first, like this:
+</p>
+<div class="example">
+<pre class="example">gawk -M 'BEGIN { n = 13; print (n + 0.0) % 2.0 }'
+</pre></div>
+
+<p>You can avoid this issue altogether by specifying the number as a floating-point value
+to begin with:
+</p>
+<div class="example">
+<pre class="example">gawk -M 'BEGIN { n = 13.0; print n % 2.0 }'
+</pre></div>
+
+<p>Note that for this particular example, it is likely best
+to just use the following:
+</p>
+<div class="example">
+<pre class="example">gawk -M 'BEGIN { n = 13; print n % 2 }'
+</pre></div>
+
+<p>When dividing two arbitrary precision integers with either
+&lsquo;<samp>/</samp>&rsquo; or &lsquo;<samp>%</samp>&rsquo;, the result is typically an arbitrary
+precision floating point value (unless the denominator evenly
+divides into the numerator).
+</p>
+<div class="footnote">
+<hr>
+<h4 class="footnotes-heading">Footnotes</h4>
+
+<h3><a name="FOOT101" href="#DOCF101">(101)</a></h3>
+<p>Weisstein, Eric W.
+<cite>Sylvester&rsquo;s Sequence</cite>. From MathWorld&mdash;A Wolfram Web Resource
+(<a href="http://mathworld.wolfram.com/SylvestersSequence.html">http://mathworld.wolfram.com/SylvestersSequence.html</a>).<!-- /@w --></p>
+</div>
+<hr>
+<div class="header">
+<p>
+Next: <a href="Checking-for-MPFR.html#Checking-for-MPFR" accesskey="n" rel="next">Checking for MPFR</a>, Previous: <a href="FP-Math-Caution.html#FP-Math-Caution" accesskey="p" rel="prev">FP Math Caution</a>, Up: <a href="Arbitrary-Precision-Arithmetic.html#Arbitrary-Precision-Arithmetic" accesskey="u" rel="up">Arbitrary Precision Arithmetic</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Index.html#Index" title="Index" rel="index">Index</a>]</p>
+</div>
+
+
+
+</body>
+</html>

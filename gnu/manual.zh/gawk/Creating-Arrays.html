@@ -1,0 +1,240 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!-- 
+Copyright (C) 1989, 1991, 1992, 1993, 1996-2005, 2007, 2009-2019 
+
+Free Software Foundation, Inc.
+
+
+
+This is Edition 5.0 of GAWK: Effective AWK Programming: A User's Guide for GNU Awk,
+for the 5.0.0 (or later) version of the GNU
+implementation of AWK.
+
+Permission is granted to copy, distribute and/or modify this document
+under the terms of the GNU Free Documentation License, Version 1.3 or
+any later version published by the Free Software Foundation; with the
+Invariant Sections being "GNU General Public License", with the
+Front-Cover Texts being "A GNU Manual", and with the Back-Cover Texts
+as in (a) below.
+A copy of the license is included in the section entitled
+"GNU Free Documentation License".
+
+a. The FSF's Back-Cover Text is: "You have the freedom to
+copy and modify this GNU manual." -->
+<!-- Created by GNU Texinfo 6.5, http://www.gnu.org/software/texinfo/ -->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Creating Arrays (The GNU Awk User&rsquo;s Guide)</title>
+
+<meta name="description" content="Creating Arrays (The GNU Awk User&rsquo;s Guide)">
+<meta name="keywords" content="Creating Arrays (The GNU Awk User&rsquo;s Guide)">
+<meta name="resource-type" content="document">
+<meta name="distribution" content="global">
+<meta name="Generator" content="makeinfo">
+<link href="index.html#Top" rel="start" title="Top">
+<link href="Index.html#Index" rel="index" title="Index">
+<link href="index.html#SEC_Contents" rel="contents" title="Table of Contents">
+<link href="Array-Manipulation.html#Array-Manipulation" rel="up" title="Array Manipulation">
+<link href="Redirection-API.html#Redirection-API" rel="next" title="Redirection API">
+<link href="Flattening-Arrays.html#Flattening-Arrays" rel="prev" title="Flattening Arrays">
+<style type="text/css">
+<!--
+a.summary-letter {text-decoration: none}
+blockquote.indentedblock {margin-right: 0em}
+blockquote.smallindentedblock {margin-right: 0em; font-size: smaller}
+blockquote.smallquotation {font-size: smaller}
+div.display {margin-left: 3.2em}
+div.example {margin-left: 3.2em}
+div.lisp {margin-left: 3.2em}
+div.smalldisplay {margin-left: 3.2em}
+div.smallexample {margin-left: 3.2em}
+div.smalllisp {margin-left: 3.2em}
+kbd {font-style: oblique}
+pre.display {font-family: inherit}
+pre.format {font-family: inherit}
+pre.menu-comment {font-family: serif}
+pre.menu-preformatted {font-family: serif}
+pre.smalldisplay {font-family: inherit; font-size: smaller}
+pre.smallexample {font-size: smaller}
+pre.smallformat {font-family: inherit; font-size: smaller}
+pre.smalllisp {font-size: smaller}
+span.nolinebreak {white-space: nowrap}
+span.roman {font-family: initial; font-weight: normal}
+span.sansserif {font-family: sans-serif; font-weight: normal}
+ul.no-bullet {list-style: none}
+-->
+</style>
+<link rel="stylesheet" type="text/css" href="/software/gnulib/manual.css">
+
+
+</head>
+
+<body lang="en">
+<a name="Creating-Arrays"></a>
+<div class="header">
+<p>
+Previous: <a href="Flattening-Arrays.html#Flattening-Arrays" accesskey="p" rel="prev">Flattening Arrays</a>, Up: <a href="Array-Manipulation.html#Array-Manipulation" accesskey="u" rel="up">Array Manipulation</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Index.html#Index" title="Index" rel="index">Index</a>]</p>
+</div>
+<hr>
+<a name="How-To-Create-and-Populate-Arrays"></a>
+<h4 class="subsubsection">17.4.11.4 How To Create and Populate Arrays</h4>
+
+<p>Besides working with arrays created by <code>awk</code> code, you can
+create arrays and populate them as you see fit, and then <code>awk</code>
+code can access them and manipulate them.
+</p>
+<p>There are two important points about creating arrays from extension code:
+</p>
+<ul>
+<li> You must install a new array into <code>gawk</code>&rsquo;s symbol
+table immediately upon creating it.  Once you have done so,
+you can then populate the array.
+
+
+<p>Similarly, if installing a new array as a subarray of an existing array,
+you must add the new array to its parent before adding any elements to it.
+</p>
+<p>Thus, the correct way to build an array is to work &ldquo;top down.&rdquo;  Create
+the array, and immediately install it in <code>gawk</code>&rsquo;s symbol table
+using <code>sym_update()</code>, or install it as an element in a previously
+existing array using <code>set_array_element()</code>.  We show example code shortly.
+</p>
+</li><li> Due to <code>gawk</code> internals, after using <code>sym_update()</code> to install an array
+into <code>gawk</code>, you have to retrieve the array cookie from the value
+passed in to <code>sym_update()</code> before doing anything else with it, like so:
+
+<div class="example">
+<pre class="example">awk_value_t val;
+awk_array_t new_array;
+
+new_array = create_array();
+val.val_type = AWK_ARRAY;
+val.array_cookie = new_array;
+
+/* install array in the symbol table */
+sym_update(&quot;array&quot;, &amp; val);
+
+new_array = val.array_cookie;    /* YOU MUST DO THIS */
+</pre></div>
+
+<p>If installing an array as a subarray, you must also retrieve the value
+of the array cookie after the call to <code>set_element()</code>.
+</p></li></ul>
+
+<p>The following C code is a simple test extension to create an array
+with two regular elements and with a subarray. The leading <code>#include</code>
+directives and boilerplate variable declarations
+(see section <a href="Extension-API-Boilerplate.html#Extension-API-Boilerplate">Boilerplate Code</a>)
+are omitted for brevity.
+The first step is to create a new array and then install it
+in the symbol table:
+</p>
+<div class="example">
+<pre class="example">/* create_new_array --- create a named array */
+
+static void
+create_new_array()
+{
+    awk_array_t a_cookie;
+    awk_array_t subarray;
+    awk_value_t index, value;
+
+    a_cookie = create_array();
+    value.val_type = AWK_ARRAY;
+    value.array_cookie = a_cookie;
+
+    if (! sym_update(&quot;new_array&quot;, &amp; value))
+        printf(&quot;create_new_array: sym_update(\&quot;new_array\&quot;) failed!\n&quot;);
+    a_cookie = value.array_cookie;
+</pre></div>
+
+<p>Note how <code>a_cookie</code> is reset from the <code>array_cookie</code> field in
+the <code>value</code> structure.
+</p>
+<p>The second step is to install two regular values into <code>new_array</code>:
+</p>
+<div class="example">
+<pre class="example">    (void) make_const_string(&quot;hello&quot;, 5, &amp; index);
+    (void) make_const_string(&quot;world&quot;, 5, &amp; value);
+    if (! set_array_element(a_cookie, &amp; index, &amp; value)) {
+        printf(&quot;fill_in_array: set_array_element failed\n&quot;);
+        return;
+    }
+
+    (void) make_const_string(&quot;answer&quot;, 6, &amp; index);
+    (void) make_number(42.0, &amp; value);
+    if (! set_array_element(a_cookie, &amp; index, &amp; value)) {
+        printf(&quot;fill_in_array: set_array_element failed\n&quot;);
+        return;
+    }
+</pre></div>
+
+<p>The third step is to create the subarray and install it:
+</p>
+<div class="example">
+<pre class="example">    (void) make_const_string(&quot;subarray&quot;, 8, &amp; index);
+    subarray = create_array();
+    value.val_type = AWK_ARRAY;
+    value.array_cookie = subarray;
+    if (! set_array_element(a_cookie, &amp; index, &amp; value)) {
+        printf(&quot;fill_in_array: set_array_element failed\n&quot;);
+        return;
+    }
+    subarray = value.array_cookie;
+</pre></div>
+
+<p>The final step is to populate the subarray with its own element:
+</p>
+<div class="example">
+<pre class="example">    (void) make_const_string(&quot;foo&quot;, 3, &amp; index);
+    (void) make_const_string(&quot;bar&quot;, 3, &amp; value);
+    if (! set_array_element(subarray, &amp; index, &amp; value)) {
+        printf(&quot;fill_in_array: set_array_element failed\n&quot;);
+        return;
+    }
+}
+</pre></div>
+
+<p>Here is a sample script that loads the extension
+and then dumps the array:
+</p>
+<div class="example">
+<pre class="example">@load &quot;subarray&quot;
+
+function dumparray(name, array,     i)
+{
+    for (i in array)
+        if (isarray(array[i]))
+            dumparray(name &quot;[\&quot;&quot; i &quot;\&quot;]&quot;, array[i])
+        else
+            printf(&quot;%s[\&quot;%s\&quot;] = %s\n&quot;, name, i, array[i])
+}
+
+BEGIN {
+    dumparray(&quot;new_array&quot;, new_array);
+}
+</pre></div>
+
+<p>Here is the result of running the script:
+</p>
+<div class="example">
+<pre class="example">$ <kbd>AWKLIBPATH=$PWD gawk -f subarray.awk</kbd>
+-| new_array[&quot;subarray&quot;][&quot;foo&quot;] = bar
+-| new_array[&quot;hello&quot;] = world
+-| new_array[&quot;answer&quot;] = 42
+</pre></div>
+
+<p>(See section <a href="Finding-Extensions.html#Finding-Extensions">How <code>gawk</code> Finds Extensions</a> for more information on the
+<code>AWKLIBPATH</code> environment variable.)
+</p>
+<hr>
+<div class="header">
+<p>
+Previous: <a href="Flattening-Arrays.html#Flattening-Arrays" accesskey="p" rel="prev">Flattening Arrays</a>, Up: <a href="Array-Manipulation.html#Array-Manipulation" accesskey="u" rel="up">Array Manipulation</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Index.html#Index" title="Index" rel="index">Index</a>]</p>
+</div>
+
+
+
+</body>
+</html>

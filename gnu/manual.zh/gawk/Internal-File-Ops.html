@@ -1,0 +1,473 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!-- 
+Copyright (C) 1989, 1991, 1992, 1993, 1996-2005, 2007, 2009-2019 
+
+Free Software Foundation, Inc.
+
+
+
+This is Edition 5.0 of GAWK: Effective AWK Programming: A User's Guide for GNU Awk,
+for the 5.0.0 (or later) version of the GNU
+implementation of AWK.
+
+Permission is granted to copy, distribute and/or modify this document
+under the terms of the GNU Free Documentation License, Version 1.3 or
+any later version published by the Free Software Foundation; with the
+Invariant Sections being "GNU General Public License", with the
+Front-Cover Texts being "A GNU Manual", and with the Back-Cover Texts
+as in (a) below.
+A copy of the license is included in the section entitled
+"GNU Free Documentation License".
+
+a. The FSF's Back-Cover Text is: "You have the freedom to
+copy and modify this GNU manual." -->
+<!-- Created by GNU Texinfo 6.5, http://www.gnu.org/software/texinfo/ -->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Internal File Ops (The GNU Awk User&rsquo;s Guide)</title>
+
+<meta name="description" content="Internal File Ops (The GNU Awk User&rsquo;s Guide)">
+<meta name="keywords" content="Internal File Ops (The GNU Awk User&rsquo;s Guide)">
+<meta name="resource-type" content="document">
+<meta name="distribution" content="global">
+<meta name="Generator" content="makeinfo">
+<link href="index.html#Top" rel="start" title="Top">
+<link href="Index.html#Index" rel="index" title="Index">
+<link href="index.html#SEC_Contents" rel="contents" title="Table of Contents">
+<link href="Extension-Example.html#Extension-Example" rel="up" title="Extension Example">
+<link href="Using-Internal-File-Ops.html#Using-Internal-File-Ops" rel="next" title="Using Internal File Ops">
+<link href="Internal-File-Description.html#Internal-File-Description" rel="prev" title="Internal File Description">
+<style type="text/css">
+<!--
+a.summary-letter {text-decoration: none}
+blockquote.indentedblock {margin-right: 0em}
+blockquote.smallindentedblock {margin-right: 0em; font-size: smaller}
+blockquote.smallquotation {font-size: smaller}
+div.display {margin-left: 3.2em}
+div.example {margin-left: 3.2em}
+div.lisp {margin-left: 3.2em}
+div.smalldisplay {margin-left: 3.2em}
+div.smallexample {margin-left: 3.2em}
+div.smalllisp {margin-left: 3.2em}
+kbd {font-style: oblique}
+pre.display {font-family: inherit}
+pre.format {font-family: inherit}
+pre.menu-comment {font-family: serif}
+pre.menu-preformatted {font-family: serif}
+pre.smalldisplay {font-family: inherit; font-size: smaller}
+pre.smallexample {font-size: smaller}
+pre.smallformat {font-family: inherit; font-size: smaller}
+pre.smalllisp {font-size: smaller}
+span.nolinebreak {white-space: nowrap}
+span.roman {font-family: initial; font-weight: normal}
+span.sansserif {font-family: sans-serif; font-weight: normal}
+ul.no-bullet {list-style: none}
+-->
+</style>
+<link rel="stylesheet" type="text/css" href="/software/gnulib/manual.css">
+
+
+</head>
+
+<body lang="en">
+<a name="Internal-File-Ops"></a>
+<div class="header">
+<p>
+Next: <a href="Using-Internal-File-Ops.html#Using-Internal-File-Ops" accesskey="n" rel="next">Using Internal File Ops</a>, Previous: <a href="Internal-File-Description.html#Internal-File-Description" accesskey="p" rel="prev">Internal File Description</a>, Up: <a href="Extension-Example.html#Extension-Example" accesskey="u" rel="up">Extension Example</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Index.html#Index" title="Index" rel="index">Index</a>]</p>
+</div>
+<hr>
+<a name="C-Code-for-chdir_0028_0029-and-stat_0028_0029"></a>
+<h4 class="subsection">17.6.2 C Code for <code>chdir()</code> and <code>stat()</code></h4>
+
+<p>Here is the C code for these extensions.<a name="DOCF111" href="#FOOT111"><sup>111</sup></a>
+</p>
+<p>The file includes a number of standard header files, and then includes
+the <samp>gawkapi.h</samp> header file, which provides the API definitions.
+Those are followed by the necessary variable declarations
+to make use of the API macros and boilerplate code
+(see section <a href="Extension-API-Boilerplate.html#Extension-API-Boilerplate">Boilerplate Code</a>):
+</p>
+<div class="example">
+<pre class="example">#ifdef HAVE_CONFIG_H
+#include &lt;config.h&gt;
+#endif
+
+#include &lt;stdio.h&gt;
+#include &lt;assert.h&gt;
+#include &lt;errno.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+#include &lt;unistd.h&gt;
+
+#include &lt;sys/types.h&gt;
+#include &lt;sys/stat.h&gt;
+
+#include &quot;gawkapi.h&quot;
+
+#include &quot;gettext.h&quot;
+#define _(msgid)  gettext(msgid)
+#define N_(msgid) msgid
+
+#include &quot;gawkfts.h&quot;
+#include &quot;stack.h&quot;
+
+static const gawk_api_t *api;    /* for convenience macros to work */
+static awk_ext_id_t ext_id;
+static awk_bool_t init_filefuncs(void);
+static awk_bool_t (*init_func)(void) = init_filefuncs;
+static const char *ext_version = &quot;filefuncs extension: version 1.0&quot;;
+
+int plugin_is_GPL_compatible;
+</pre></div>
+
+<a name="index-programming-conventions_002c-gawk-extensions"></a>
+<p>By convention, for an <code>awk</code> function <code>foo()</code>, the C function
+that implements it is called <code>do_foo()</code>.  The function should have
+two arguments. The first is an <code>int</code>, usually called <code>nargs</code>,
+that represents the number of actual arguments for the function.
+The second is a pointer to an <code>awk_value_t</code> structure, usually named
+<code>result</code>:
+</p>
+<div class="example">
+<pre class="example">/*  do_chdir --- provide dynamically loaded chdir() function for gawk */
+
+static awk_value_t *
+do_chdir(int nargs, awk_value_t *result, struct awk_ext_func *unused)
+</pre><pre class="example">{
+    awk_value_t newdir;
+    int ret = -1;
+
+    assert(result != NULL);
+</pre></div>
+
+<p>The <code>newdir</code>
+variable represents the new directory to change to, which is retrieved
+with <code>get_argument()</code>.  Note that the first argument is
+numbered zero.
+</p>
+<p>If the argument is retrieved successfully, the function calls the
+<code>chdir()</code> system call. Otherwise, if the <code>chdir()</code> fails,
+it updates <code>ERRNO</code>:
+</p>
+<div class="example">
+<pre class="example">    if (get_argument(0, AWK_STRING, &amp; newdir)) {
+        ret = chdir(newdir.str_value.str);
+        if (ret &lt; 0)
+            update_ERRNO_int(errno);
+    }
+</pre></div>
+
+<p>Finally, the function returns the return value to the <code>awk</code> level:
+</p>
+<div class="example">
+<pre class="example">    return make_number(ret, result);
+}
+</pre></div>
+
+<p>The <code>stat()</code> extension is more involved.  First comes a function
+that turns a numeric mode into a printable representation
+(e.g., octal <code>0644</code> becomes &lsquo;<samp>-rw-r--r--</samp>&rsquo;). This is omitted here for brevity:
+</p>
+<div class="example">
+<pre class="example">/* format_mode --- turn a stat mode field into something readable */
+
+static char *
+format_mode(unsigned long fmode)
+{
+    &hellip;
+}
+</pre></div>
+
+<p>Next comes a function for reading symbolic links, which is also
+omitted here for brevity:
+</p>
+<div class="example">
+<pre class="example">/* read_symlink --- read a symbolic link into an allocated buffer.
+   &hellip; */
+
+static char *
+read_symlink(const char *fname, size_t bufsize, ssize_t *linksize)
+{
+    &hellip;
+}
+</pre></div>
+
+<p>Two helper functions simplify entering values in the
+array that will contain the result of the <code>stat()</code>:
+</p>
+<div class="example">
+<pre class="example">/* array_set --- set an array element */
+
+static void
+array_set(awk_array_t array, const char *sub, awk_value_t *value)
+{
+    awk_value_t index;
+
+    set_array_element(array,
+                      make_const_string(sub, strlen(sub), &amp; index),
+                      value);
+
+}
+
+/* array_set_numeric --- set an array element with a number */
+
+static void
+array_set_numeric(awk_array_t array, const char *sub, double num)
+{
+    awk_value_t tmp;
+
+    array_set(array, sub, make_number(num, &amp; tmp));
+}
+</pre></div>
+
+<p>The following function does most of the work to fill in
+the <code>awk_array_t</code> result array with values obtained
+from a valid <code>struct stat</code>. This work is done in a separate function
+to support the <code>stat()</code> function for <code>gawk</code> and also
+to support the <code>fts()</code> extension, which is included in
+the same file but whose code is not shown here
+(see section <a href="Extension-Sample-File-Functions.html#Extension-Sample-File-Functions">File-Related Functions</a>).
+</p>
+<p>The first part of the function is variable declarations,
+including a table to map file types to strings:
+</p>
+<div class="example">
+<pre class="example">/* fill_stat_array --- do the work to fill an array with stat info */
+
+static int
+fill_stat_array(const char *name, awk_array_t array, struct stat *sbuf)
+{
+    char *pmode;    /* printable mode */
+    const char *type = &quot;unknown&quot;;
+    awk_value_t tmp;
+    static struct ftype_map {
+        unsigned int mask;
+        const char *type;
+    } ftype_map[] = {
+        { S_IFREG, &quot;file&quot; },
+        { S_IFBLK, &quot;blockdev&quot; },
+        { S_IFCHR, &quot;chardev&quot; },
+        { S_IFDIR, &quot;directory&quot; },
+#ifdef S_IFSOCK
+        { S_IFSOCK, &quot;socket&quot; },
+#endif
+#ifdef S_IFIFO
+        { S_IFIFO, &quot;fifo&quot; },
+#endif
+#ifdef S_IFLNK
+        { S_IFLNK, &quot;symlink&quot; },
+#endif
+#ifdef S_IFDOOR /* Solaris weirdness */
+        { S_IFDOOR, &quot;door&quot; },
+#endif
+    };
+    int j, k;
+</pre></div>
+
+<p>The destination array is cleared, and then code fills in
+various elements based on values in the <code>struct stat</code>:
+</p>
+<div class="example">
+<pre class="example">    /* empty out the array */
+    clear_array(array);
+
+    /* fill in the array */
+    array_set(array, &quot;name&quot;, make_const_string(name, strlen(name),
+                                               &amp; tmp));
+    array_set_numeric(array, &quot;dev&quot;, sbuf-&gt;st_dev);
+    array_set_numeric(array, &quot;ino&quot;, sbuf-&gt;st_ino);
+    array_set_numeric(array, &quot;mode&quot;, sbuf-&gt;st_mode);
+    array_set_numeric(array, &quot;nlink&quot;, sbuf-&gt;st_nlink);
+    array_set_numeric(array, &quot;uid&quot;, sbuf-&gt;st_uid);
+    array_set_numeric(array, &quot;gid&quot;, sbuf-&gt;st_gid);
+    array_set_numeric(array, &quot;size&quot;, sbuf-&gt;st_size);
+    array_set_numeric(array, &quot;blocks&quot;, sbuf-&gt;st_blocks);
+    array_set_numeric(array, &quot;atime&quot;, sbuf-&gt;st_atime);
+    array_set_numeric(array, &quot;mtime&quot;, sbuf-&gt;st_mtime);
+    array_set_numeric(array, &quot;ctime&quot;, sbuf-&gt;st_ctime);
+
+    /* for block and character devices, add rdev,
+       major and minor numbers */
+    if (S_ISBLK(sbuf-&gt;st_mode) || S_ISCHR(sbuf-&gt;st_mode)) {
+        array_set_numeric(array, &quot;rdev&quot;, sbuf-&gt;st_rdev);
+        array_set_numeric(array, &quot;major&quot;, major(sbuf-&gt;st_rdev));
+        array_set_numeric(array, &quot;minor&quot;, minor(sbuf-&gt;st_rdev));
+    }
+</pre></div>
+
+<p>The latter part of the function makes selective additions
+to the destination array, depending upon the availability of
+certain members and/or the type of the file. It then returns zero,
+for success:
+</p>
+<div class="example">
+<pre class="example">#ifdef HAVE_STRUCT_STAT_ST_BLKSIZE
+    array_set_numeric(array, &quot;blksize&quot;, sbuf-&gt;st_blksize);
+#endif
+</pre><pre class="example">
+
+    pmode = format_mode(sbuf-&gt;st_mode);
+    array_set(array, &quot;pmode&quot;, make_const_string(pmode, strlen(pmode),
+                                                &amp; tmp));
+
+    /* for symbolic links, add a linkval field */
+    if (S_ISLNK(sbuf-&gt;st_mode)) {
+        char *buf;
+        ssize_t linksize;
+
+        if ((buf = read_symlink(name, sbuf-&gt;st_size,
+                    &amp; linksize)) != NULL)
+            array_set(array, &quot;linkval&quot;,
+                      make_malloced_string(buf, linksize, &amp; tmp));
+        else
+            warning(ext_id, _(&quot;stat: unable to read symbolic link `%s'&quot;),
+                    name);
+    }
+
+    /* add a type field */
+    type = &quot;unknown&quot;;   /* shouldn't happen */
+    for (j = 0, k = sizeof(ftype_map)/sizeof(ftype_map[0]); j &lt; k; j++) {
+        if ((sbuf-&gt;st_mode &amp; S_IFMT) == ftype_map[j].mask) {
+            type = ftype_map[j].type;
+            break;
+        }
+    }
+
+    array_set(array, &quot;type&quot;, make_const_string(type, strlen(type), &amp; tmp));
+
+    return 0;
+}
+</pre></div>
+
+<p>The third argument to <code>stat()</code> was not discussed previously. This
+argument is optional. If present, it causes <code>do_stat()</code> to use
+the <code>stat()</code> system call instead of the <code>lstat()</code> system
+call.  This is done by using a function pointer: <code>statfunc</code>.
+<code>statfunc</code> is initialized to point to <code>lstat()</code> (instead
+of <code>stat()</code>) to get the file information, in case the file is a
+symbolic link. However, if the third argument is included, <code>statfunc</code>
+is set to point to <code>stat()</code>, instead.
+</p>
+<p>Here is the <code>do_stat()</code> function, which starts with
+variable declarations and argument checking:
+</p>
+<div class="example">
+<pre class="example">/* do_stat --- provide a stat() function for gawk */
+
+static awk_value_t *
+do_stat(int nargs, awk_value_t *result, struct awk_ext_func *unused)
+{
+    awk_value_t file_param, array_param;
+    char *name;
+    awk_array_t array;
+    int ret;
+    struct stat sbuf;
+    /* default is lstat() */
+    int (*statfunc)(const char *path, struct stat *sbuf) = lstat;
+
+    assert(result != NULL);
+</pre></div>
+
+<p>Then comes the actual work. First, the function gets the arguments.
+Next, it gets the information for the file.  If the called function
+(<code>lstat()</code> or <code>stat()</code>) returns an error, the code sets
+<code>ERRNO</code> and returns:
+</p>
+<div class="example">
+<pre class="example">    /* file is first arg, array to hold results is second */
+    if (   ! get_argument(0, AWK_STRING, &amp; file_param)
+        || ! get_argument(1, AWK_ARRAY, &amp; array_param)) {
+        warning(ext_id, _(&quot;stat: bad parameters&quot;));
+        return make_number(-1, result);
+    }
+
+    if (nargs == 3) {
+        statfunc = stat;
+    }
+
+    name = file_param.str_value.str;
+    array = array_param.array_cookie;
+
+    /* always empty out the array */
+    clear_array(array);
+
+    /* stat the file; if error, set ERRNO and return */
+    ret = statfunc(name, &amp; sbuf);
+</pre><pre class="example">    if (ret &lt; 0) {
+        update_ERRNO_int(errno);
+        return make_number(ret, result);
+    }
+</pre></div>
+
+<p>The tedious work is done by <code>fill_stat_array()</code>, shown
+earlier.  When done, the function returns the result from <code>fill_stat_array()</code>:
+</p>
+<div class="example">
+<pre class="example">    ret = fill_stat_array(name, array, &amp; sbuf);
+
+    return make_number(ret, result);
+}
+</pre></div>
+
+<p>Finally, it&rsquo;s necessary to provide the &ldquo;glue&rdquo; that loads the
+new function(s) into <code>gawk</code>.
+</p>
+<p>The <code>filefuncs</code> extension also provides an <code>fts()</code>
+function, which we omit here
+(see section <a href="Extension-Sample-File-Functions.html#Extension-Sample-File-Functions">File-Related Functions</a>).
+For its sake, there is an initialization
+function:
+</p>
+<div class="example">
+<pre class="example">/* init_filefuncs --- initialization routine */
+
+static awk_bool_t
+init_filefuncs(void)
+{
+    &hellip;
+}
+</pre></div>
+
+<p>We are almost done. We need an array of <code>awk_ext_func_t</code>
+structures for loading each function into <code>gawk</code>:
+</p>
+<div class="example">
+<pre class="example">static awk_ext_func_t func_table[] = {
+    { &quot;chdir&quot;, do_chdir, 1, 1, awk_false, NULL },
+    { &quot;stat&quot;,  do_stat, 3, 2, awk_false, NULL },
+    &hellip;
+};
+</pre></div>
+
+<p>Each extension must have a routine named <code>dl_load()</code> to load
+everything that needs to be loaded.  It is simplest to use the
+<code>dl_load_func()</code> macro in <code>gawkapi.h</code>:
+</p>
+<div class="example">
+<pre class="example">/* define the dl_load() function using the boilerplate macro */
+
+dl_load_func(func_table, filefuncs, &quot;&quot;)
+</pre></div>
+
+<p>And that&rsquo;s it!
+</p>
+<div class="footnote">
+<hr>
+<h4 class="footnotes-heading">Footnotes</h4>
+
+<h3><a name="FOOT111" href="#DOCF111">(111)</a></h3>
+<p>This version is
+edited slightly for presentation.  See <samp>extension/filefuncs.c</samp>
+in the <code>gawk</code> distribution for the complete version.</p>
+</div>
+<hr>
+<div class="header">
+<p>
+Next: <a href="Using-Internal-File-Ops.html#Using-Internal-File-Ops" accesskey="n" rel="next">Using Internal File Ops</a>, Previous: <a href="Internal-File-Description.html#Internal-File-Description" accesskey="p" rel="prev">Internal File Description</a>, Up: <a href="Extension-Example.html#Extension-Example" accesskey="u" rel="up">Extension Example</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Index.html#Index" title="Index" rel="index">Index</a>]</p>
+</div>
+
+
+
+</body>
+</html>
