@@ -1,0 +1,513 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!-- 
+Copyright (C) 1989, 1991, 1992, 1993, 1996-2005, 2007, 2009-2019 
+
+Free Software Foundation, Inc.
+
+
+
+This is Edition 5.0 of GAWK: Effective AWK Programming: A User's Guide for GNU Awk,
+for the 5.0.0 (or later) version of the GNU
+implementation of AWK.
+
+Permission is granted to copy, distribute and/or modify this document
+under the terms of the GNU Free Documentation License, Version 1.3 or
+any later version published by the Free Software Foundation; with the
+Invariant Sections being "GNU General Public License", with the
+Front-Cover Texts being "A GNU Manual", and with the Back-Cover Texts
+as in (a) below.
+A copy of the license is included in the section entitled
+"GNU Free Documentation License".
+
+a. The FSF's Back-Cover Text is: "You have the freedom to
+copy and modify this GNU manual." -->
+<!-- Created by GNU Texinfo 6.5, http://www.gnu.org/software/texinfo/ -->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Igawk Program (The GNU Awk User&rsquo;s Guide)</title>
+
+<meta name="description" content="Igawk Program (The GNU Awk User&rsquo;s Guide)">
+<meta name="keywords" content="Igawk Program (The GNU Awk User&rsquo;s Guide)">
+<meta name="resource-type" content="document">
+<meta name="distribution" content="global">
+<meta name="Generator" content="makeinfo">
+<link href="index.html#Top" rel="start" title="Top">
+<link href="Index.html#Index" rel="index" title="Index">
+<link href="index.html#SEC_Contents" rel="contents" title="Table of Contents">
+<link href="Miscellaneous-Programs.html#Miscellaneous-Programs" rel="up" title="Miscellaneous Programs">
+<link href="Anagram-Program.html#Anagram-Program" rel="next" title="Anagram Program">
+<link href="Simple-Sed.html#Simple-Sed" rel="prev" title="Simple Sed">
+<style type="text/css">
+<!--
+a.summary-letter {text-decoration: none}
+blockquote.indentedblock {margin-right: 0em}
+blockquote.smallindentedblock {margin-right: 0em; font-size: smaller}
+blockquote.smallquotation {font-size: smaller}
+div.display {margin-left: 3.2em}
+div.example {margin-left: 3.2em}
+div.lisp {margin-left: 3.2em}
+div.smalldisplay {margin-left: 3.2em}
+div.smallexample {margin-left: 3.2em}
+div.smalllisp {margin-left: 3.2em}
+kbd {font-style: oblique}
+pre.display {font-family: inherit}
+pre.format {font-family: inherit}
+pre.menu-comment {font-family: serif}
+pre.menu-preformatted {font-family: serif}
+pre.smalldisplay {font-family: inherit; font-size: smaller}
+pre.smallexample {font-size: smaller}
+pre.smallformat {font-family: inherit; font-size: smaller}
+pre.smalllisp {font-size: smaller}
+span.nolinebreak {white-space: nowrap}
+span.roman {font-family: initial; font-weight: normal}
+span.sansserif {font-family: sans-serif; font-weight: normal}
+ul.no-bullet {list-style: none}
+-->
+</style>
+<link rel="stylesheet" type="text/css" href="/software/gnulib/manual.css">
+
+
+</head>
+
+<body lang="en">
+<a name="Igawk-Program"></a>
+<div class="header">
+<p>
+Next: <a href="Anagram-Program.html#Anagram-Program" accesskey="n" rel="next">Anagram Program</a>, Previous: <a href="Simple-Sed.html#Simple-Sed" accesskey="p" rel="prev">Simple Sed</a>, Up: <a href="Miscellaneous-Programs.html#Miscellaneous-Programs" accesskey="u" rel="up">Miscellaneous Programs</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Index.html#Index" title="Index" rel="index">Index</a>]</p>
+</div>
+<hr>
+<a name="An-Easy-Way-to-Use-Library-Functions"></a>
+<h4 class="subsection">11.3.9 An Easy Way to Use Library Functions</h4>
+
+<a name="index-libraries-of-awk-functions_002c-example-program-for-using"></a>
+<a name="index-functions_002c-library_002c-example-program-for-using"></a>
+<p>In <a href="Include-Files.html#Include-Files">Including Other Files into Your Program</a>, we saw how <code>gawk</code> provides a built-in
+file-inclusion capability.  However, this is a <code>gawk</code> extension.
+This section provides the motivation for making file inclusion
+available for standard <code>awk</code>, and shows how to do it using a
+combination of shell and <code>awk</code> programming.
+</p>
+<p>Using library functions in <code>awk</code> can be very beneficial. It
+encourages code reuse and the writing of general functions. Programs are
+smaller and therefore clearer.
+However, using library functions is only easy when writing <code>awk</code>
+programs; it is painful when running them, requiring multiple <samp>-f</samp>
+options.  If <code>gawk</code> is unavailable, then so too is the <code>AWKPATH</code>
+environment variable and the ability to put <code>awk</code> functions into a
+library directory (see section <a href="Options.html#Options">Command-Line Options</a>).
+It would be nice to be able to write programs in the following manner:
+</p>
+<div class="example">
+<pre class="example"># library functions
+@include getopt.awk
+@include join.awk
+&hellip;
+
+# main program
+BEGIN {
+    while ((c = getopt(ARGC, ARGV, &quot;a:b:cde&quot;)) != -1)
+        &hellip;
+    &hellip;
+}
+</pre></div>
+
+<p>The following program, <samp>igawk.sh</samp>, provides this service.
+It simulates <code>gawk</code>&rsquo;s searching of the <code>AWKPATH</code> variable
+and also allows <em>nested</em> includes (i.e., a file that is included
+with <code>@include</code> can contain further <code>@include</code> statements).
+<code>igawk</code> makes an effort to only include files once, so that nested
+includes don&rsquo;t accidentally include a library function twice.
+</p>
+<p><code>igawk</code> should behave just like <code>gawk</code> externally.  This
+means it should accept all of <code>gawk</code>&rsquo;s command-line arguments,
+including the ability to have multiple source files specified via
+<samp>-f</samp> and the ability to mix command-line and library source files.
+</p>
+<p>The program is written using the POSIX Shell (<code>sh</code>) command
+language.<a name="DOCF80" href="#FOOT80"><sup>80</sup></a> It works as follows:
+</p>
+<ol>
+<li> Loop through the arguments, saving anything that doesn&rsquo;t represent
+<code>awk</code> source code for later, when the expanded program is run.
+
+</li><li> For any arguments that do represent <code>awk</code> text, put the arguments into
+a shell variable that will be expanded.  There are two cases:
+
+<ol type="a" start="1">
+<li> Literal text, provided with <samp>-e</samp> or <samp>--source</samp>.  This
+text is just appended directly.
+
+</li><li> Source file names, provided with <samp>-f</samp>.  We use a neat trick and
+append &lsquo;<samp>@include <var>filename</var></samp>&rsquo; to the shell variable&rsquo;s contents.
+Because the file-inclusion program works the way <code>gawk</code> does, this
+gets the text of the file included in the program at the correct point.
+</li></ol>
+
+</li><li> Run an <code>awk</code> program (naturally) over the shell variable&rsquo;s contents to expand
+<code>@include</code> statements.  The expanded program is placed in a second
+shell variable.
+
+</li><li> Run the expanded program with <code>gawk</code> and any other original command-line
+arguments that the user supplied (such as the data file names).
+</li></ol>
+
+<p>This program uses shell variables extensively: for storing command-line arguments and
+the text of the <code>awk</code> program that will expand the user&rsquo;s program, for the
+user&rsquo;s original program, and for the expanded program.  Doing so removes some
+potential problems that might arise were we to use temporary files instead,
+at the cost of making the script somewhat more complicated.
+</p>
+<p>The initial part of the program turns on shell tracing if the first
+argument is &lsquo;<samp>debug</samp>&rsquo;.
+</p>
+<p>The next part loops through all the command-line arguments.
+There are several cases of interest:
+</p>
+<dl compact="compact">
+<dt><samp>--</samp></dt>
+<dd><p>This ends the arguments to <code>igawk</code>.  Anything else should be passed on
+to the user&rsquo;s <code>awk</code> program without being evaluated.
+</p>
+</dd>
+<dt><samp>-W</samp></dt>
+<dd><p>This indicates that the next option is specific to <code>gawk</code>.  To make
+argument processing easier, the <samp>-W</samp> is appended to the front of the
+remaining arguments and the loop continues.  (This is an <code>sh</code>
+programming trick.  Don&rsquo;t worry about it if you are not familiar with
+<code>sh</code>.)
+</p>
+</dd>
+<dt><samp>-v</samp>, <samp>-F</samp></dt>
+<dd><p>These are saved and passed on to <code>gawk</code>.
+</p>
+</dd>
+<dt><samp>-f</samp>, <samp>--file</samp>, <samp>--file=</samp>, <samp>-Wfile=</samp></dt>
+<dd><p>The file name is appended to the shell variable <code>program</code> with an
+<code>@include</code> statement.
+The <code>expr</code> utility is used to remove the leading option part of the
+argument (e.g., &lsquo;<samp>--file=</samp>&rsquo;).
+(Typical <code>sh</code> usage would be to use the <code>echo</code> and <code>sed</code>
+utilities to do this work.  Unfortunately, some versions of <code>echo</code> evaluate
+escape sequences in their arguments, possibly mangling the program text.
+Using <code>expr</code> avoids this problem.)
+</p>
+</dd>
+<dt><samp>--source</samp>, <samp>--source=</samp>, <samp>-Wsource=</samp></dt>
+<dd><p>The source text is appended to <code>program</code>.
+</p>
+</dd>
+<dt><samp>--version</samp>, <samp>-Wversion</samp></dt>
+<dd><p><code>igawk</code> prints its version number, runs &lsquo;<samp>gawk --version</samp>&rsquo;
+to get the <code>gawk</code> version information, and then exits.
+</p></dd>
+</dl>
+
+<p>If none of the <samp>-f</samp>, <samp>--file</samp>, <samp>-Wfile</samp>, <samp>--source</samp>,
+or <samp>-Wsource</samp> arguments are supplied, then the first nonoption argument
+should be the <code>awk</code> program.  If there are no command-line
+arguments left, <code>igawk</code> prints an error message and exits.
+Otherwise, the first argument is appended to <code>program</code>.
+In any case, after the arguments have been processed,
+the shell variable
+<code>program</code> contains the complete text of the original <code>awk</code>
+program.
+</p>
+<p>The program is as follows:
+</p>
+<a name="index-igawk_002esh-program"></a>
+<div class="example">
+<pre class="example">#! /bin/sh
+# igawk --- like gawk but do @include processing
+
+if [ &quot;$1&quot; = debug ]
+then
+    set -x
+    shift
+fi
+
+# A literal newline, so that program text is formatted correctly
+n='
+'
+
+# Initialize variables to empty
+program=
+opts=
+
+while [ $# -ne 0 ] # loop over arguments
+do
+    case $1 in
+    --)     shift
+            break ;;
+
+    -W)     shift
+            # The ${x?'message here'} construct prints a
+            # diagnostic if $x is the null string
+            set -- -W&quot;${@?'missing operand'}&quot;
+            continue ;;
+
+    -[vF])  opts=&quot;$opts $1 '${2?'missing operand'}'&quot;
+            shift ;;
+
+    -[vF]*) opts=&quot;$opts '$1'&quot; ;;
+
+    -f)     program=&quot;$program$n@include ${2?'missing operand'}&quot;
+            shift ;;
+
+    -f*)    f=$(expr &quot;$1&quot; : '-f\(.*\)')
+            program=&quot;$program$n@include $f&quot; ;;
+
+    -[W-]file=*)
+            f=$(expr &quot;$1&quot; : '-.file=\(.*\)')
+            program=&quot;$program$n@include $f&quot; ;;
+
+    -[W-]file)
+            program=&quot;$program$n@include ${2?'missing operand'}&quot;
+            shift ;;
+
+    -[W-]source=*)
+            t=$(expr &quot;$1&quot; : '-.source=\(.*\)')
+            program=&quot;$program$n$t&quot; ;;
+
+    -[W-]source)
+            program=&quot;$program$n${2?'missing operand'}&quot;
+            shift ;;
+
+    -[W-]version)
+            echo igawk: version 3.0 1&gt;&amp;2
+            gawk --version
+            exit 0 ;;
+
+    -[W-]*) opts=&quot;$opts '$1'&quot; ;;
+
+    *)      break ;;
+    esac
+    shift
+done
+
+if [ -z &quot;$program&quot; ]
+then
+     program=${1?'missing program'}
+     shift
+fi
+
+# At this point, `program' has the program.
+</pre></div>
+
+<p>The <code>awk</code> program to process <code>@include</code> directives
+is stored in the shell variable <code>expand_prog</code>.  Doing this keeps
+the shell script readable.  The <code>awk</code> program
+reads through the user&rsquo;s program, one line at a time, using <code>getline</code>
+(see section <a href="Getline.html#Getline">Explicit Input with <code>getline</code></a>).  The input
+file names and <code>@include</code> statements are managed using a stack.
+As each <code>@include</code> is encountered, the current file name is
+&ldquo;pushed&rdquo; onto the stack and the file named in the <code>@include</code>
+directive becomes the current file name.  As each file is finished,
+the stack is &ldquo;popped,&rdquo; and the previous input file becomes the current
+input file again.  The process is started by making the original file
+the first one on the stack.
+</p>
+<p>The <code>pathto()</code> function does the work of finding the full path to
+a file.  It simulates <code>gawk</code>&rsquo;s behavior when searching the
+<code>AWKPATH</code> environment variable
+(see section <a href="AWKPATH-Variable.html#AWKPATH-Variable">The <code>AWKPATH</code> Environment Variable</a>).
+If a file name has a &lsquo;<samp>/</samp>&rsquo; in it, no path search is done.
+Similarly, if the file name is <code>&quot;-&quot;</code>, then that string is
+used as-is.  Otherwise,
+the file name is concatenated with the name of each directory in
+the path, and an attempt is made to open the generated file name.
+The only way to test if a file can be read in <code>awk</code> is to go
+ahead and try to read it with <code>getline</code>; this is what <code>pathto()</code>
+does.<a name="DOCF81" href="#FOOT81"><sup>81</sup></a>
+If the file can be read, it is closed and the file name
+is returned:
+</p>
+
+<div class="example">
+<pre class="example">expand_prog='
+
+function pathto(file,    i, t, junk)
+{
+    if (index(file, &quot;/&quot;) != 0)
+        return file
+
+    if (file == &quot;-&quot;)
+        return file
+
+    for (i = 1; i &lt;= ndirs; i++) {
+        t = (pathlist[i] &quot;/&quot; file)
+</pre><pre class="example">        if ((getline junk &lt; t) &gt; 0) {
+            # found it
+            close(t)
+            return t
+        }
+</pre><pre class="example">    }
+    return &quot;&quot;
+}
+</pre></div>
+
+<p>The main program is contained inside one <code>BEGIN</code> rule.  The first thing it
+does is set up the <code>pathlist</code> array that <code>pathto()</code> uses.  After
+splitting the path on &lsquo;<samp>:</samp>&rsquo;, null elements are replaced with <code>&quot;.&quot;</code>,
+which represents the current directory:
+</p>
+<div class="example">
+<pre class="example">BEGIN {
+    path = ENVIRON[&quot;AWKPATH&quot;]
+    ndirs = split(path, pathlist, &quot;:&quot;)
+    for (i = 1; i &lt;= ndirs; i++) {
+        if (pathlist[i] == &quot;&quot;)
+            pathlist[i] = &quot;.&quot;
+    }
+</pre></div>
+
+<p>The stack is initialized with <code>ARGV[1]</code>, which will be <code>&quot;/dev/stdin&quot;</code>.
+The main loop comes next.  Input lines are read in succession. Lines that
+do not start with <code>@include</code> are printed verbatim.
+If the line does start with <code>@include</code>, the file name is in <code>$2</code>.
+<code>pathto()</code> is called to generate the full path.  If it cannot, then the program
+prints an error message and continues.
+</p>
+<p>The next thing to check is if the file is included already.  The
+<code>processed</code> array is indexed by the full file name of each included
+file and it tracks this information for us.  If the file is
+seen again, a warning message is printed. Otherwise, the new file name is
+pushed onto the stack and processing continues.
+</p>
+<p>Finally, when <code>getline</code> encounters the end of the input file, the file
+is closed and the stack is popped.  When <code>stackptr</code> is less than zero,
+the program is done:
+</p>
+<div class="example">
+<pre class="example">    stackptr = 0
+    input[stackptr] = ARGV[1] # ARGV[1] is first file
+
+    for (; stackptr &gt;= 0; stackptr--) {
+        while ((getline &lt; input[stackptr]) &gt; 0) {
+            if (tolower($1) != &quot;@include&quot;) {
+                print
+                continue
+            }
+            fpath = pathto($2)
+            if (fpath == &quot;&quot;) {
+                printf(&quot;igawk: %s:%d: cannot find %s\n&quot;,
+                    input[stackptr], FNR, $2) &gt; &quot;/dev/stderr&quot;
+                continue
+            }
+            if (! (fpath in processed)) {
+                processed[fpath] = input[stackptr]
+                input[++stackptr] = fpath  # push onto stack
+            } else
+                print $2, &quot;included in&quot;, input[stackptr],
+                    &quot;already included in&quot;,
+                    processed[fpath] &gt; &quot;/dev/stderr&quot;
+        }
+        close(input[stackptr])
+    }
+}'  # close quote ends `expand_prog' variable
+
+processed_program=$(gawk -- &quot;$expand_prog&quot; /dev/stdin &lt;&lt; EOF
+$program
+EOF
+)
+</pre></div>
+
+<p>The shell construct &lsquo;<samp><var>command</var> &lt;&lt; <var>marker</var></samp>&rsquo; is called
+a <em>here document</em>.  Everything in the shell script up to the
+<var>marker</var> is fed to <var>command</var> as input.  The shell processes
+the contents of the here document for variable and command substitution
+(and possibly other things as well, depending upon the shell).
+</p>
+<p>The shell construct &lsquo;<samp>$(&hellip;)</samp>&rsquo; is called <em>command substitution</em>.
+The output of the command inside the parentheses is substituted
+into the command line.
+Because the result is used in a variable assignment,
+it is saved as a single string, even if the results contain whitespace.
+</p>
+<p>The expanded program is saved in the variable <code>processed_program</code>.
+It&rsquo;s done in these steps:
+</p>
+<ol>
+<li> Run <code>gawk</code> with the <code>@include</code>-processing program (the
+value of the <code>expand_prog</code> shell variable) reading standard input.
+
+</li><li> Standard input is the contents of the user&rsquo;s program,
+from the shell variable <code>program</code>.
+Feed its contents to <code>gawk</code> via a here document.
+
+</li><li> Save the results of this processing in the shell variable
+<code>processed_program</code> by using command substitution.
+</li></ol>
+
+<p>The last step is to call <code>gawk</code> with the expanded program,
+along with the original
+options and command-line arguments that the user supplied:
+</p>
+<div class="example">
+<pre class="example">eval gawk $opts -- '&quot;$processed_program&quot;' '&quot;$@&quot;'
+</pre></div>
+
+<p>The <code>eval</code> command is a shell construct that reruns the shell&rsquo;s parsing
+process.  This keeps things properly quoted.
+</p>
+<p>This version of <code>igawk</code> represents the fifth version of this program.
+There are four key simplifications that make the program work better:
+</p>
+<ul>
+<li> Using <code>@include</code> even for the files named with <samp>-f</samp> makes building
+the initial collected <code>awk</code> program much simpler; all the
+<code>@include</code> processing can be done once.
+
+</li><li> Not trying to save the line read with <code>getline</code>
+in the <code>pathto()</code> function when testing for the
+file&rsquo;s accessibility for use with the main program simplifies things
+considerably.
+
+</li><li> Using a <code>getline</code> loop in the <code>BEGIN</code> rule does it all in one
+place.  It is not necessary to call out to a separate loop for processing
+nested <code>@include</code> statements.
+
+</li><li> Instead of saving the expanded program in a temporary file, putting it in a shell variable
+avoids some potential security problems.
+This has the disadvantage that the script relies upon more features
+of the <code>sh</code> language, making it harder to follow for those who
+aren&rsquo;t familiar with <code>sh</code>.
+</li></ul>
+
+<p>Also, this program illustrates that it is often worthwhile to combine
+<code>sh</code> and <code>awk</code> programming together.  You can usually
+accomplish quite a lot, without having to resort to low-level programming
+in C or C++, and it is frequently easier to do certain kinds of string
+and argument manipulation using the shell than it is in <code>awk</code>.
+</p>
+<p>Finally, <code>igawk</code> shows that it is not always necessary to add new
+features to a program; they can often be layered on top.<a name="DOCF82" href="#FOOT82"><sup>82</sup></a>
+</p>
+
+<div class="footnote">
+<hr>
+<h4 class="footnotes-heading">Footnotes</h4>
+
+<h3><a name="FOOT80" href="#DOCF80">(80)</a></h3>
+<p>Fully explaining the <code>sh</code> language is beyond
+the scope of this book. We provide some minimal explanations, but see
+a good shell programming book if you wish to understand things in more
+depth.</p>
+<h3><a name="FOOT81" href="#DOCF81">(81)</a></h3>
+<p>On some very old versions of <code>awk</code>, the test
+&lsquo;<samp>getline junk &lt; t</samp>&rsquo; can loop forever if the file exists but is empty.</p>
+<h3><a name="FOOT82" href="#DOCF82">(82)</a></h3>
+<p><code>gawk</code>
+does <code>@include</code> processing itself in order to support the use
+of <code>awk</code> programs as Web CGI scripts.</p>
+</div>
+<hr>
+<div class="header">
+<p>
+Next: <a href="Anagram-Program.html#Anagram-Program" accesskey="n" rel="next">Anagram Program</a>, Previous: <a href="Simple-Sed.html#Simple-Sed" accesskey="p" rel="prev">Simple Sed</a>, Up: <a href="Miscellaneous-Programs.html#Miscellaneous-Programs" accesskey="u" rel="up">Miscellaneous Programs</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Index.html#Index" title="Index" rel="index">Index</a>]</p>
+</div>
+
+
+
+</body>
+</html>

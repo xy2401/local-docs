@@ -1,0 +1,199 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!-- 
+Copyright (C) 1989, 1991, 1992, 1993, 1996-2005, 2007, 2009-2019 
+
+Free Software Foundation, Inc.
+
+
+
+This is Edition 5.0 of GAWK: Effective AWK Programming: A User's Guide for GNU Awk,
+for the 5.0.0 (or later) version of the GNU
+implementation of AWK.
+
+Permission is granted to copy, distribute and/or modify this document
+under the terms of the GNU Free Documentation License, Version 1.3 or
+any later version published by the Free Software Foundation; with the
+Invariant Sections being "GNU General Public License", with the
+Front-Cover Texts being "A GNU Manual", and with the Back-Cover Texts
+as in (a) below.
+A copy of the license is included in the section entitled
+"GNU Free Documentation License".
+
+a. The FSF's Back-Cover Text is: "You have the freedom to
+copy and modify this GNU manual." -->
+<!-- Created by GNU Texinfo 6.5, http://www.gnu.org/software/texinfo/ -->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>POSIX Floating Point Problems (The GNU Awk User&rsquo;s Guide)</title>
+
+<meta name="description" content="POSIX Floating Point Problems (The GNU Awk User&rsquo;s Guide)">
+<meta name="keywords" content="POSIX Floating Point Problems (The GNU Awk User&rsquo;s Guide)">
+<meta name="resource-type" content="document">
+<meta name="distribution" content="global">
+<meta name="Generator" content="makeinfo">
+<link href="index.html#Top" rel="start" title="Top">
+<link href="Index.html#Index" rel="index" title="Index">
+<link href="index.html#SEC_Contents" rel="contents" title="Table of Contents">
+<link href="Arbitrary-Precision-Arithmetic.html#Arbitrary-Precision-Arithmetic" rel="up" title="Arbitrary Precision Arithmetic">
+<link href="Floating-point-summary.html#Floating-point-summary" rel="next" title="Floating point summary">
+<link href="Checking-for-MPFR.html#Checking-for-MPFR" rel="prev" title="Checking for MPFR">
+<style type="text/css">
+<!--
+a.summary-letter {text-decoration: none}
+blockquote.indentedblock {margin-right: 0em}
+blockquote.smallindentedblock {margin-right: 0em; font-size: smaller}
+blockquote.smallquotation {font-size: smaller}
+div.display {margin-left: 3.2em}
+div.example {margin-left: 3.2em}
+div.lisp {margin-left: 3.2em}
+div.smalldisplay {margin-left: 3.2em}
+div.smallexample {margin-left: 3.2em}
+div.smalllisp {margin-left: 3.2em}
+kbd {font-style: oblique}
+pre.display {font-family: inherit}
+pre.format {font-family: inherit}
+pre.menu-comment {font-family: serif}
+pre.menu-preformatted {font-family: serif}
+pre.smalldisplay {font-family: inherit; font-size: smaller}
+pre.smallexample {font-size: smaller}
+pre.smallformat {font-family: inherit; font-size: smaller}
+pre.smalllisp {font-size: smaller}
+span.nolinebreak {white-space: nowrap}
+span.roman {font-family: initial; font-weight: normal}
+span.sansserif {font-family: sans-serif; font-weight: normal}
+ul.no-bullet {list-style: none}
+-->
+</style>
+<link rel="stylesheet" type="text/css" href="/software/gnulib/manual.css">
+
+
+</head>
+
+<body lang="en">
+<a name="POSIX-Floating-Point-Problems"></a>
+<div class="header">
+<p>
+Next: <a href="Floating-point-summary.html#Floating-point-summary" accesskey="n" rel="next">Floating point summary</a>, Previous: <a href="Checking-for-MPFR.html#Checking-for-MPFR" accesskey="p" rel="prev">Checking for MPFR</a>, Up: <a href="Arbitrary-Precision-Arithmetic.html#Arbitrary-Precision-Arithmetic" accesskey="u" rel="up">Arbitrary Precision Arithmetic</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Index.html#Index" title="Index" rel="index">Index</a>]</p>
+</div>
+<hr>
+<a name="Standards-Versus-Existing-Practice"></a>
+<h3 class="section">16.7 Standards Versus Existing Practice</h3>
+
+<p>Historically, <code>awk</code> has converted any nonnumeric-looking string
+to the numeric value zero, when required.  Furthermore, the original
+definition of the language and the original POSIX standards specified that
+<code>awk</code> only understands decimal numbers (base 10), and not octal
+(base 8) or hexadecimal numbers (base 16).
+</p>
+<p>Changes in the language of the
+2001 and 2004 POSIX standards can be interpreted to imply that <code>awk</code>
+should support additional features.  These features are:
+</p>
+<ul>
+<li> Interpretation of floating-point data values specified in hexadecimal
+notation (e.g., <code>0xDEADBEEF</code>). (Note: data values, <em>not</em>
+source code constants.)
+
+</li><li> Support for the special IEEE 754 floating-point values &ldquo;not a number&rdquo;
+(NaN), positive infinity (&ldquo;inf&rdquo;), and negative infinity (&ldquo;-inf&rdquo;).
+In particular, the format for these values is as specified by the ISO 1999
+C standard, which ignores case and can allow implementation-dependent additional
+characters after the &lsquo;<samp>nan</samp>&rsquo; and allow either &lsquo;<samp>inf</samp>&rsquo; or &lsquo;<samp>infinity</samp>&rsquo;.
+</li></ul>
+
+<p>The first problem is that both of these are clear changes to historical
+practice:
+</p>
+<ul>
+<li> The <code>gawk</code> maintainer feels that supporting hexadecimal
+floating-point values, in particular, is ugly, and was never intended by the
+original designers to be part of the language.
+
+</li><li> Allowing completely alphabetic strings to have valid numeric
+values is also a very severe departure from historical practice.
+</li></ul>
+
+<p>The second problem is that the <code>gawk</code> maintainer feels that this
+interpretation of the standard, which required a certain amount of
+&ldquo;language lawyering&rdquo; to arrive at in the first place, was not even
+intended by the standard developers.  In other words, &ldquo;We see how you
+got where you are, but we don&rsquo;t think that that&rsquo;s where you want to be.&rdquo;
+</p>
+<p>Recognizing these issues, but attempting to provide compatibility
+with the earlier versions of the standard,
+the 2008 POSIX standard added explicit wording to allow, but not require,
+that <code>awk</code> support hexadecimal floating-point values and
+special values for &ldquo;not a number&rdquo; and infinity.
+</p>
+<p>Although the <code>gawk</code> maintainer continues to feel that
+providing those features is inadvisable,
+nevertheless, on systems that support IEEE floating point, it seems
+reasonable to provide <em>some</em> way to support NaN and infinity values.
+The solution implemented in <code>gawk</code> is as follows:
+</p>
+<ul>
+<li> With the <samp>--posix</samp> command-line option, <code>gawk</code> becomes
+&ldquo;hands off.&rdquo; String values are passed directly to the system library&rsquo;s
+<code>strtod()</code> function, and if it successfully returns a numeric value,
+that is what&rsquo;s used.<a name="DOCF102" href="#FOOT102"><sup>102</sup></a>
+By definition, the results are not portable across
+different systems.  They are also a little surprising:
+
+<div class="example">
+<pre class="example">$ <kbd>echo nanny | gawk --posix '{ print $1 + 0 }'</kbd>
+-| nan
+$ <kbd>echo 0xDeadBeef | gawk --posix '{ print $1 + 0 }'</kbd>
+-| 3735928559
+</pre></div>
+
+</li><li> Without <samp>--posix</samp>, <code>gawk</code> interprets the four string values
+&lsquo;<samp>+inf</samp>&rsquo;,
+&lsquo;<samp>-inf</samp>&rsquo;,
+&lsquo;<samp>+nan</samp>&rsquo;,
+and
+&lsquo;<samp>-nan</samp>&rsquo;
+specially, producing the corresponding special numeric values.
+The leading sign acts a signal to <code>gawk</code> (and the user)
+that the value is really numeric.  Hexadecimal floating point is
+not supported (unless you also use <samp>--non-decimal-data</samp>,
+which is <em>not</em> recommended). For example:
+
+<div class="example">
+<pre class="example">$ <kbd>echo nanny | gawk '{ print $1 + 0 }'</kbd>
+-| 0
+$ <kbd>echo +nan | gawk '{ print $1 + 0 }'</kbd>
+-| +nan
+$ <kbd>echo 0xDeadBeef | gawk '{ print $1 + 0 }'</kbd>
+-| 0
+</pre></div>
+
+<p><code>gawk</code> ignores case in the four special values.
+Thus, &lsquo;<samp>+nan</samp>&rsquo; and &lsquo;<samp>+NaN</samp>&rsquo; are the same.
+</p></li></ul>
+
+<p>Besides handling input, <code>gawk</code> also needs to print &ldquo;correct&rdquo; values on
+output when a value is either NaN or infinity. Starting with version
+4.2.2, for such values <code>gawk</code> prints one of the four strings
+just described: &lsquo;<samp>+inf</samp>&rsquo;, &lsquo;<samp>-inf</samp>&rsquo;, &lsquo;<samp>+nan</samp>&rsquo;, or &lsquo;<samp>-nan</samp>&rsquo;.
+Similarly, in POSIX mode, <code>gawk</code> prints the result of
+the system&rsquo;s C <code>printf()</code> function using the <code>%g</code> format string
+for the value, whatever that may be.
+</p>
+<div class="footnote">
+<hr>
+<h4 class="footnotes-heading">Footnotes</h4>
+
+<h3><a name="FOOT102" href="#DOCF102">(102)</a></h3>
+<p>You asked for it, you got it.</p>
+</div>
+<hr>
+<div class="header">
+<p>
+Next: <a href="Floating-point-summary.html#Floating-point-summary" accesskey="n" rel="next">Floating point summary</a>, Previous: <a href="Checking-for-MPFR.html#Checking-for-MPFR" accesskey="p" rel="prev">Checking for MPFR</a>, Up: <a href="Arbitrary-Precision-Arithmetic.html#Arbitrary-Precision-Arithmetic" accesskey="u" rel="up">Arbitrary Precision Arithmetic</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Index.html#Index" title="Index" rel="index">Index</a>]</p>
+</div>
+
+
+
+</body>
+</html>

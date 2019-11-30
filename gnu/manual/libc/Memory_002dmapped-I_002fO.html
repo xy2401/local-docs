@@ -1,0 +1,689 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!-- This file documents the GNU C Library.
+
+This is
+The GNU C Library Reference Manual, for version
+2.30.
+
+Copyright (C) 1993-2019 Free Software Foundation, Inc.
+
+Permission is granted to copy, distribute and/or modify this document
+under the terms of the GNU Free Documentation License, Version
+1.3 or any later version published by the Free
+Software Foundation; with the Invariant Sections being "Free Software
+Needs Free Documentation" and "GNU Lesser General Public License",
+the Front-Cover texts being "A GNU Manual", and with the Back-Cover
+Texts as in (a) below.  A copy of the license is included in the
+section entitled "GNU Free Documentation License".
+
+(a) The FSF's Back-Cover Text is: "You have the freedom to
+copy and modify this GNU manual.  Buying copies from the FSF
+supports it in developing GNU and promoting software freedom." -->
+<!-- Created by GNU Texinfo 6.6, http://www.gnu.org/software/texinfo/ -->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Memory-mapped I/O (The GNU C Library)</title>
+
+<meta name="description" content="Memory-mapped I/O (The GNU C Library)">
+<meta name="keywords" content="Memory-mapped I/O (The GNU C Library)">
+<meta name="resource-type" content="document">
+<meta name="distribution" content="global">
+<meta name="Generator" content="makeinfo">
+<link href="index.html#Top" rel="start" title="Top">
+<link href="Concept-Index.html#Concept-Index" rel="index" title="Concept Index">
+<link href="index.html#SEC_Contents" rel="contents" title="Table of Contents">
+<link href="Low_002dLevel-I_002fO.html#Low_002dLevel-I_002fO" rel="up" title="Low-Level I/O">
+<link href="Waiting-for-I_002fO.html#Waiting-for-I_002fO" rel="next" title="Waiting for I/O">
+<link href="Copying-File-Data.html#Copying-File-Data" rel="prev" title="Copying File Data">
+<style type="text/css">
+<!--
+a.summary-letter {text-decoration: none}
+blockquote.indentedblock {margin-right: 0em}
+div.display {margin-left: 3.2em}
+div.example {margin-left: 3.2em}
+div.lisp {margin-left: 3.2em}
+kbd {font-style: oblique}
+pre.display {font-family: inherit}
+pre.format {font-family: inherit}
+pre.menu-comment {font-family: serif}
+pre.menu-preformatted {font-family: serif}
+span.nolinebreak {white-space: nowrap}
+span.roman {font-family: initial; font-weight: normal}
+span.sansserif {font-family: sans-serif; font-weight: normal}
+ul.no-bullet {list-style: none}
+-->
+</style>
+
+
+</head>
+
+<body lang="en">
+<span id="Memory_002dmapped-I_002fO"></span><div class="header">
+<p>
+Next: <a href="Waiting-for-I_002fO.html#Waiting-for-I_002fO" accesskey="n" rel="next">Waiting for I/O</a>, Previous: <a href="Copying-File-Data.html#Copying-File-Data" accesskey="p" rel="prev">Copying File Data</a>, Up: <a href="Low_002dLevel-I_002fO.html#Low_002dLevel-I_002fO" accesskey="u" rel="up">Low-Level I/O</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Concept-Index.html#Concept-Index" title="Index" rel="index">Index</a>]</p>
+</div>
+<hr>
+<span id="Memory_002dmapped-I_002fO-1"></span><h3 class="section">13.8 Memory-mapped I/O</h3>
+
+<p>On modern operating systems, it is possible to <em>mmap</em> (pronounced
+&ldquo;em-map&rdquo;) a file to a region of memory.  When this is done, the file can
+be accessed just like an array in the program.
+</p>
+<p>This is more efficient than <code>read</code> or <code>write</code>, as only the regions
+of the file that a program actually accesses are loaded.  Accesses to
+not-yet-loaded parts of the mmapped region are handled in the same way as
+swapped out pages.
+</p>
+<p>Since mmapped pages can be stored back to their file when physical
+memory is low, it is possible to mmap files orders of magnitude larger
+than both the physical memory <em>and</em> swap space.  The only limit is
+address space.  The theoretical limit is 4GB on a 32-bit machine -
+however, the actual limit will be smaller since some areas will be
+reserved for other purposes.  If the LFS interface is used the file size
+on 32-bit systems is not limited to 2GB (offsets are signed which
+reduces the addressable area of 4GB by half); the full 64-bit are
+available.
+</p>
+<p>Memory mapping only works on entire pages of memory.  Thus, addresses
+for mapping must be page-aligned, and length values will be rounded up.
+To determine the default size of a page the machine uses one should use:
+</p>
+<span id="index-_005fSC_005fPAGESIZE"></span>
+<div class="example">
+<pre class="example">size_t page_size = (size_t) sysconf (_SC_PAGESIZE);
+</pre></div>
+
+<p>On some systems, mappings can use larger page sizes
+for certain files, and applications can request larger page sizes for
+anonymous mappings as well (see the <code>MAP_HUGETLB</code> flag below).
+</p>
+<p>The following functions are declared in <samp>sys/mman.h</samp>:
+</p>
+<dl>
+<dt id="index-mmap">Function: <em>void *</em> <strong>mmap</strong> <em>(void *<var>address</var>, size_t <var>length</var>, int <var>protect</var>, int <var>flags</var>, int <var>filedes</var>, off_t <var>offset</var>)</em></dt>
+<dd>
+<p>Preliminary:
+| MT-Safe 
+| AS-Safe 
+| AC-Safe 
+| See <a href="POSIX-Safety-Concepts.html#POSIX-Safety-Concepts">POSIX Safety Concepts</a>.
+</p>
+
+
+<p>The <code>mmap</code> function creates a new mapping, connected to bytes
+(<var>offset</var>) to (<var>offset</var> + <var>length</var> - 1) in the file open on
+<var>filedes</var>.  A new reference for the file specified by <var>filedes</var>
+is created, which is not removed by closing the file.
+</p>
+<p><var>address</var> gives a preferred starting address for the mapping.
+<code>NULL</code> expresses no preference.  Any previous mapping at that
+address is automatically removed.  The address you give may still be
+changed, unless you use the <code>MAP_FIXED</code> flag.
+</p>
+<p><var>protect</var> contains flags that control what kind of access is
+permitted.  They include <code>PROT_READ</code>, <code>PROT_WRITE</code>, and
+<code>PROT_EXEC</code>.  The special flag <code>PROT_NONE</code> reserves a region
+of address space for future use.  The <code>mprotect</code> function can be
+used to change the protection flags.  See <a href="Memory-Protection.html#Memory-Protection">Memory Protection</a>.
+</p>
+<p><var>flags</var> contains flags that control the nature of the map.
+One of <code>MAP_SHARED</code> or <code>MAP_PRIVATE</code> must be specified.
+</p>
+<p>They include:
+</p>
+<dl compact="compact">
+<dt><code>MAP_PRIVATE</code>
+<span id="index-MAP_005fPRIVATE"></span>
+</dt>
+<dd><p>This specifies that writes to the region should never be written back
+to the attached file.  Instead, a copy is made for the process, and the
+region will be swapped normally if memory runs low.  No other process will
+see the changes.
+</p>
+<p>Since private mappings effectively revert to ordinary memory
+when written to, you must have enough virtual memory for a copy of
+the entire mmapped region if you use this mode with <code>PROT_WRITE</code>.
+</p>
+</dd>
+<dt><code>MAP_SHARED</code>
+<span id="index-MAP_005fSHARED"></span>
+</dt>
+<dd><p>This specifies that writes to the region will be written back to the
+file.  Changes made will be shared immediately with other processes
+mmaping the same file.
+</p>
+<p>Note that actual writing may take place at any time.  You need to use
+<code>msync</code>, described below, if it is important that other processes
+using conventional I/O get a consistent view of the file.
+</p>
+</dd>
+<dt><code>MAP_FIXED</code>
+<span id="index-MAP_005fFIXED"></span>
+</dt>
+<dd><p>This forces the system to use the exact mapping address specified in
+<var>address</var> and fail if it can&rsquo;t.
+</p>
+</dd>
+<dt><code>MAP_ANONYMOUS</code>
+<span id="index-MAP_005fANONYMOUS"></span>
+</dt>
+<dt><code>MAP_ANON</code>
+<span id="index-MAP_005fANON"></span>
+</dt>
+<dd><p>This flag tells the system to create an anonymous mapping, not connected
+to a file.  <var>filedes</var> and <var>offset</var> are ignored, and the region is
+initialized with zeros.
+</p>
+<p>Anonymous maps are used as the basic primitive to extend the heap on some
+systems.  They are also useful to share data between multiple tasks
+without creating a file.
+</p>
+<p>On some systems using private anonymous mmaps is more efficient than using
+<code>malloc</code> for large blocks.  This is not an issue with the GNU C Library,
+as the included <code>malloc</code> automatically uses <code>mmap</code> where appropriate.
+</p>
+</dd>
+<dt><code>MAP_HUGETLB</code>
+<span id="index-MAP_005fHUGETLB"></span>
+</dt>
+<dd>
+<p>This requests that the system uses an alternative page size which is
+larger than the default page size for the mapping.  For some workloads,
+increasing the page size for large mappings improves performance because
+the system needs to handle far fewer pages.  For other workloads which
+require frequent transfer of pages between storage or different nodes,
+the decreased page granularity may cause performance problems due to the
+increased page size and larger transfers.
+</p>
+<p>In order to create the mapping, the system needs physically contiguous
+memory of the size of the increased page size.  As a result,
+<code>MAP_HUGETLB</code> mappings are affected by memory fragmentation, and
+their creation can fail even if plenty of memory is available in the
+system.
+</p>
+<p>Not all file systems support mappings with an increased page size.
+</p>
+<p>The <code>MAP_HUGETLB</code> flag is specific to Linux.
+</p>
+
+
+</dd>
+</dl>
+
+<p><code>mmap</code> returns the address of the new mapping, or
+<code>MAP_FAILED</code> for an error.
+</p>
+<p>Possible errors include:
+</p>
+<dl compact="compact">
+<dt><code>EINVAL</code></dt>
+<dd>
+<p>Either <var>address</var> was unusable (because it is not a multiple of the
+applicable page size), or inconsistent <var>flags</var> were given.
+</p>
+<p>If <code>MAP_HUGETLB</code> was specified, the file or system does not support
+large page sizes.
+</p>
+</dd>
+<dt><code>EACCES</code></dt>
+<dd>
+<p><var>filedes</var> was not open for the type of access specified in <var>protect</var>.
+</p>
+</dd>
+<dt><code>ENOMEM</code></dt>
+<dd>
+<p>Either there is not enough memory for the operation, or the process is
+out of address space.
+</p>
+</dd>
+<dt><code>ENODEV</code></dt>
+<dd>
+<p>This file is of a type that doesn&rsquo;t support mapping.
+</p>
+</dd>
+<dt><code>ENOEXEC</code></dt>
+<dd>
+<p>The file is on a filesystem that doesn&rsquo;t support mapping.
+</p>
+
+</dd>
+</dl>
+
+</dd></dl>
+
+<dl>
+<dt id="index-mmap64">Function: <em>void *</em> <strong>mmap64</strong> <em>(void *<var>address</var>, size_t <var>length</var>, int <var>protect</var>, int <var>flags</var>, int <var>filedes</var>, off64_t <var>offset</var>)</em></dt>
+<dd>
+<p>Preliminary:
+| MT-Safe 
+| AS-Safe 
+| AC-Safe 
+| See <a href="POSIX-Safety-Concepts.html#POSIX-Safety-Concepts">POSIX Safety Concepts</a>.
+</p>
+
+<p>The <code>mmap64</code> function is equivalent to the <code>mmap</code> function but
+the <var>offset</var> parameter is of type <code>off64_t</code>.  On 32-bit systems
+this allows the file associated with the <var>filedes</var> descriptor to be
+larger than 2GB.  <var>filedes</var> must be a descriptor returned from a
+call to <code>open64</code> or <code>fopen64</code> and <code>freopen64</code> where the
+descriptor is retrieved with <code>fileno</code>.
+</p>
+<p>When the sources are translated with <code>_FILE_OFFSET_BITS == 64</code> this
+function is actually available under the name <code>mmap</code>.  I.e., the
+new, extended API using 64 bit file sizes and offsets transparently
+replaces the old API.
+</p></dd></dl>
+
+<dl>
+<dt id="index-munmap">Function: <em>int</em> <strong>munmap</strong> <em>(void *<var>addr</var>, size_t <var>length</var>)</em></dt>
+<dd>
+<p>Preliminary:
+| MT-Safe 
+| AS-Safe 
+| AC-Safe 
+| See <a href="POSIX-Safety-Concepts.html#POSIX-Safety-Concepts">POSIX Safety Concepts</a>.
+</p>
+
+
+<p><code>munmap</code> removes any memory maps from (<var>addr</var>) to (<var>addr</var> +
+<var>length</var>).  <var>length</var> should be the length of the mapping.
+</p>
+<p>It is safe to unmap multiple mappings in one command, or include unmapped
+space in the range.  It is also possible to unmap only part of an existing
+mapping.  However, only entire pages can be removed.  If <var>length</var> is not
+an even number of pages, it will be rounded up.
+</p>
+<p>It returns <em>0</em> for success and <em>-1</em> for an error.
+</p>
+<p>One error is possible:
+</p>
+<dl compact="compact">
+<dt><code>EINVAL</code></dt>
+<dd><p>The memory range given was outside the user mmap range or wasn&rsquo;t page
+aligned.
+</p>
+</dd>
+</dl>
+
+</dd></dl>
+
+<dl>
+<dt id="index-msync">Function: <em>int</em> <strong>msync</strong> <em>(void *<var>address</var>, size_t <var>length</var>, int <var>flags</var>)</em></dt>
+<dd>
+<p>Preliminary:
+| MT-Safe 
+| AS-Safe 
+| AC-Safe 
+| See <a href="POSIX-Safety-Concepts.html#POSIX-Safety-Concepts">POSIX Safety Concepts</a>.
+</p>
+
+
+<p>When using shared mappings, the kernel can write the file at any time
+before the mapping is removed.  To be certain data has actually been
+written to the file and will be accessible to non-memory-mapped I/O, it
+is necessary to use this function.
+</p>
+<p>It operates on the region <var>address</var> to (<var>address</var> + <var>length</var>).
+It may be used on part of a mapping or multiple mappings, however the
+region given should not contain any unmapped space.
+</p>
+<p><var>flags</var> can contain some options:
+</p>
+<dl compact="compact">
+<dt><code>MS_SYNC</code>
+<span id="index-MS_005fSYNC"></span>
+</dt>
+<dd>
+<p>This flag makes sure the data is actually written <em>to disk</em>.
+Normally <code>msync</code> only makes sure that accesses to a file with
+conventional I/O reflect the recent changes.
+</p>
+</dd>
+<dt><code>MS_ASYNC</code>
+<span id="index-MS_005fASYNC"></span>
+</dt>
+<dd>
+<p>This tells <code>msync</code> to begin the synchronization, but not to wait for
+it to complete.
+</p>
+
+</dd>
+</dl>
+
+<p><code>msync</code> returns <em>0</em> for success and <em>-1</em> for
+error.  Errors include:
+</p>
+<dl compact="compact">
+<dt><code>EINVAL</code></dt>
+<dd><p>An invalid region was given, or the <var>flags</var> were invalid.
+</p>
+</dd>
+<dt><code>EFAULT</code></dt>
+<dd><p>There is no existing mapping in at least part of the given region.
+</p>
+</dd>
+</dl>
+
+</dd></dl>
+
+<dl>
+<dt id="index-mremap">Function: <em>void *</em> <strong>mremap</strong> <em>(void *<var>address</var>, size_t <var>length</var>, size_t <var>new_length</var>, int <var>flag</var>)</em></dt>
+<dd>
+<p>Preliminary:
+| MT-Safe 
+| AS-Safe 
+| AC-Safe 
+| See <a href="POSIX-Safety-Concepts.html#POSIX-Safety-Concepts">POSIX Safety Concepts</a>.
+</p>
+
+
+<p>This function can be used to change the size of an existing memory
+area. <var>address</var> and <var>length</var> must cover a region entirely mapped
+in the same <code>mmap</code> statement.  A new mapping with the same
+characteristics will be returned with the length <var>new_length</var>.
+</p>
+<p>One option is possible, <code>MREMAP_MAYMOVE</code>.  If it is given in
+<var>flags</var>, the system may remove the existing mapping and create a new
+one of the desired length in another location.
+</p>
+<p>The address of the resulting mapping is returned, or <em>-1</em>.  Possible
+error codes include:
+</p>
+<dl compact="compact">
+<dt><code>EFAULT</code></dt>
+<dd><p>There is no existing mapping in at least part of the original region, or
+the region covers two or more distinct mappings.
+</p>
+</dd>
+<dt><code>EINVAL</code></dt>
+<dd><p>The address given is misaligned or inappropriate.
+</p>
+</dd>
+<dt><code>EAGAIN</code></dt>
+<dd><p>The region has pages locked, and if extended it would exceed the
+process&rsquo;s resource limit for locked pages.  See <a href="Limits-on-Resources.html#Limits-on-Resources">Limits on Resources</a>.
+</p>
+</dd>
+<dt><code>ENOMEM</code></dt>
+<dd><p>The region is private writable, and insufficient virtual memory is
+available to extend it.  Also, this error will occur if
+<code>MREMAP_MAYMOVE</code> is not given and the extension would collide with
+another mapped region.
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<p>This function is only available on a few systems.  Except for performing
+optional optimizations one should not rely on this function.
+</p>
+<p>Not all file descriptors may be mapped.  Sockets, pipes, and most devices
+only allow sequential access and do not fit into the mapping abstraction.
+In addition, some regular files may not be mmapable, and older kernels may
+not support mapping at all.  Thus, programs using <code>mmap</code> should
+have a fallback method to use should it fail. See <a href="https://www.gnu.org/prep/standards/html_node/Mmap.html#Mmap">Mmap</a> in <cite>GNU
+Coding Standards</cite>.
+</p>
+<dl>
+<dt id="index-madvise">Function: <em>int</em> <strong>madvise</strong> <em>(void *<var>addr</var>, size_t <var>length</var>, int <var>advice</var>)</em></dt>
+<dd>
+<p>Preliminary:
+| MT-Safe 
+| AS-Safe 
+| AC-Safe 
+| See <a href="POSIX-Safety-Concepts.html#POSIX-Safety-Concepts">POSIX Safety Concepts</a>.
+</p>
+
+
+<p>This function can be used to provide the system with <var>advice</var> about
+the intended usage patterns of the memory region starting at <var>addr</var>
+and extending <var>length</var> bytes.
+</p>
+<p>The valid BSD values for <var>advice</var> are:
+</p>
+<dl compact="compact">
+<dt><code>MADV_NORMAL</code>
+<span id="index-MADV_005fNORMAL"></span>
+</dt>
+<dd><p>The region should receive no further special treatment.
+</p>
+</dd>
+<dt><code>MADV_RANDOM</code>
+<span id="index-MADV_005fRANDOM"></span>
+</dt>
+<dd><p>The region will be accessed via random page references.  The kernel
+should page-in the minimal number of pages for each page fault.
+</p>
+</dd>
+<dt><code>MADV_SEQUENTIAL</code>
+<span id="index-MADV_005fSEQUENTIAL"></span>
+</dt>
+<dd><p>The region will be accessed via sequential page references.  This
+may cause the kernel to aggressively read-ahead, expecting further
+sequential references after any page fault within this region.
+</p>
+</dd>
+<dt><code>MADV_WILLNEED</code>
+<span id="index-MADV_005fWILLNEED"></span>
+</dt>
+<dd><p>The region will be needed.  The pages within this region may
+be pre-faulted in by the kernel.
+</p>
+</dd>
+<dt><code>MADV_DONTNEED</code>
+<span id="index-MADV_005fDONTNEED"></span>
+</dt>
+<dd><p>The region is no longer needed.  The kernel may free these pages,
+causing any changes to the pages to be lost, as well as swapped
+out pages to be discarded.
+</p>
+</dd>
+<dt><code>MADV_HUGEPAGE</code>
+<span id="index-MADV_005fHUGEPAGE"></span>
+</dt>
+<dd>
+<p>Indicate that it is beneficial to increase the page size for this
+mapping.  This can improve performance for larger mappings because the
+system needs to handle far fewer pages.  However, if parts of the
+mapping are frequently transferred between storage or different nodes,
+performance may suffer because individual transfers can become
+substantially larger due to the increased page size.
+</p>
+<p>This flag is specific to Linux.
+</p>
+</dd>
+<dt><code>MADV_NOHUGEPAGE</code>
+<span id="index-MADV_005fNOHUGEPAGE"></span>
+</dt>
+<dd><p>Undo the effect of a previous <code>MADV_HUGEPAGE</code> advice.  This flag
+is specific to Linux.
+</p>
+</dd>
+</dl>
+
+<p>The POSIX names are slightly different, but with the same meanings:
+</p>
+<dl compact="compact">
+<dt><code>POSIX_MADV_NORMAL</code>
+<span id="index-POSIX_005fMADV_005fNORMAL"></span>
+</dt>
+<dd><p>This corresponds with BSD&rsquo;s <code>MADV_NORMAL</code>.
+</p>
+</dd>
+<dt><code>POSIX_MADV_RANDOM</code>
+<span id="index-POSIX_005fMADV_005fRANDOM"></span>
+</dt>
+<dd><p>This corresponds with BSD&rsquo;s <code>MADV_RANDOM</code>.
+</p>
+</dd>
+<dt><code>POSIX_MADV_SEQUENTIAL</code>
+<span id="index-POSIX_005fMADV_005fSEQUENTIAL"></span>
+</dt>
+<dd><p>This corresponds with BSD&rsquo;s <code>MADV_SEQUENTIAL</code>.
+</p>
+</dd>
+<dt><code>POSIX_MADV_WILLNEED</code>
+<span id="index-POSIX_005fMADV_005fWILLNEED"></span>
+</dt>
+<dd><p>This corresponds with BSD&rsquo;s <code>MADV_WILLNEED</code>.
+</p>
+</dd>
+<dt><code>POSIX_MADV_DONTNEED</code>
+<span id="index-POSIX_005fMADV_005fDONTNEED"></span>
+</dt>
+<dd><p>This corresponds with BSD&rsquo;s <code>MADV_DONTNEED</code>.
+</p>
+</dd>
+</dl>
+
+<p><code>madvise</code> returns <em>0</em> for success and <em>-1</em> for
+error.  Errors include:
+</p><dl compact="compact">
+<dt><code>EINVAL</code></dt>
+<dd><p>An invalid region was given, or the <var>advice</var> was invalid.
+</p>
+</dd>
+<dt><code>EFAULT</code></dt>
+<dd><p>There is no existing mapping in at least part of the given region.
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl>
+<dt id="index-shm_005fopen">Function: <em>int</em> <strong>shm_open</strong> <em>(const char *<var>name</var>, int <var>oflag</var>, mode_t <var>mode</var>)</em></dt>
+<dd>
+<p>Preliminary:
+| MT-Safe locale
+| AS-Unsafe init heap lock
+| AC-Unsafe lock mem fd
+| See <a href="POSIX-Safety-Concepts.html#POSIX-Safety-Concepts">POSIX Safety Concepts</a>.
+</p>
+
+
+<p>This function returns a file descriptor that can be used to allocate shared
+memory via mmap.  Unrelated processes can use same <var>name</var> to create or
+open existing shared memory objects.
+</p>
+<p>A <var>name</var> argument specifies the shared memory object to be opened.
+In the GNU C Library it must be a string smaller than <code>NAME_MAX</code> bytes starting
+with an optional slash but containing no other slashes.
+</p>
+<p>The semantics of <var>oflag</var> and <var>mode</var> arguments is same as in <code>open</code>.
+</p>
+<p><code>shm_open</code> returns the file descriptor on success or <em>-1</em> on error.
+On failure <code>errno</code> is set.
+</p></dd></dl>
+
+<dl>
+<dt id="index-shm_005funlink">Function: <em>int</em> <strong>shm_unlink</strong> <em>(const char *<var>name</var>)</em></dt>
+<dd><p>Preliminary:
+| MT-Safe locale
+| AS-Unsafe init heap lock
+| AC-Unsafe lock mem fd
+| See <a href="POSIX-Safety-Concepts.html#POSIX-Safety-Concepts">POSIX Safety Concepts</a>.
+</p>
+
+
+<p>This function is the inverse of <code>shm_open</code> and removes the object with
+the given <var>name</var> previously created by <code>shm_open</code>.
+</p>
+<p><code>shm_unlink</code> returns <em>0</em> on success or <em>-1</em> on error.
+On failure <code>errno</code> is set.
+</p></dd></dl>
+
+<dl>
+<dt id="index-memfd_005fcreate">Function: <em>int</em> <strong>memfd_create</strong> <em>(const char *<var>name</var>, unsigned int <var>flags</var>)</em></dt>
+<dd>
+<p>Preliminary:
+| MT-Safe 
+| AS-Safe 
+| AC-Safe fd
+| See <a href="POSIX-Safety-Concepts.html#POSIX-Safety-Concepts">POSIX Safety Concepts</a>.
+</p>
+
+<p>The <code>memfd_create</code> function returns a file descriptor which can be
+used to create memory mappings using the <code>mmap</code> function.  It is
+similar to the <code>shm_open</code> function in the sense that these mappings
+are not backed by actual files.  However, the descriptor returned by
+<code>memfd_create</code> does not correspond to a named object; the
+<var>name</var> argument is used for debugging purposes only (e.g., will
+appear in <samp>/proc</samp>), and separate invocations of <code>memfd_create</code>
+with the same <var>name</var> will not return descriptors for the same region
+of memory.  The descriptor can also be used to create alias mappings
+within the same process.
+</p>
+<p>The descriptor initially refers to a zero-length file.  Before mappings
+can be created which are backed by memory, the file size needs to be
+increased with the <code>ftruncate</code> function.  See <a href="File-Size.html#File-Size">File Size</a>.
+</p>
+<p>The <var>flags</var> argument can be a combination of the following flags:
+</p>
+<dl compact="compact">
+<dt><code>MFD_CLOEXEC</code>
+<span id="index-MFD_005fCLOEXEC"></span>
+</dt>
+<dd>
+<p>The descriptor is created with the <code>O_CLOEXEC</code> flag.
+</p>
+</dd>
+<dt><code>MFD_ALLOW_SEALING</code>
+<span id="index-MFD_005fALLOW_005fSEALING"></span>
+</dt>
+<dd>
+<p>The descriptor supports the addition of seals using the <code>fcntl</code>
+function.
+</p>
+</dd>
+<dt><code>MFD_HUGETLB</code>
+<span id="index-MFD_005fHUGETLB"></span>
+</dt>
+<dd>
+<p>This requests that mappings created using the returned file descriptor
+use a larger page size.  See <code>MAP_HUGETLB</code> above for details.
+</p>
+<p>This flag is incompatible with <code>MFD_ALLOW_SEALING</code>.
+</p></dd>
+</dl>
+
+<p><code>memfd_create</code> returns a file descriptor on success, and <em>-1</em>
+on failure.
+</p>
+<p>The following <code>errno</code> error conditions are defined for this
+function:
+</p>
+<dl compact="compact">
+<dt><code>EINVAL</code></dt>
+<dd><p>An invalid combination is specified in <var>flags</var>, or <var>name</var> is
+too long.
+</p>
+</dd>
+<dt><code>EFAULT</code></dt>
+<dd><p>The <var>name</var> argument does not point to a string.
+</p>
+</dd>
+<dt><code>EMFILE</code></dt>
+<dd><p>The operation would exceed the file descriptor limit for this process.
+</p>
+</dd>
+<dt><code>ENFILE</code></dt>
+<dd><p>The operation would exceed the system-wide file descriptor limit.
+</p>
+</dd>
+<dt><code>ENOMEM</code></dt>
+<dd><p>There is not enough memory for the operation.
+</p></dd>
+</dl>
+</dd></dl>
+
+<hr>
+<div class="header">
+<p>
+Next: <a href="Waiting-for-I_002fO.html#Waiting-for-I_002fO" accesskey="n" rel="next">Waiting for I/O</a>, Previous: <a href="Copying-File-Data.html#Copying-File-Data" accesskey="p" rel="prev">Copying File Data</a>, Up: <a href="Low_002dLevel-I_002fO.html#Low_002dLevel-I_002fO" accesskey="u" rel="up">Low-Level I/O</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Concept-Index.html#Concept-Index" title="Index" rel="index">Index</a>]</p>
+</div>
+
+
+
+</body>
+</html>

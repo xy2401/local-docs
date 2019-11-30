@@ -1,0 +1,156 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!-- 
+Copyright (C) 1989, 1991, 1992, 1993, 1996-2005, 2007, 2009-2019 
+
+Free Software Foundation, Inc.
+
+
+
+This is Edition 5.0 of GAWK: Effective AWK Programming: A User's Guide for GNU Awk,
+for the 5.0.0 (or later) version of the GNU
+implementation of AWK.
+
+Permission is granted to copy, distribute and/or modify this document
+under the terms of the GNU Free Documentation License, Version 1.3 or
+any later version published by the Free Software Foundation; with the
+Invariant Sections being "GNU General Public License", with the
+Front-Cover Texts being "A GNU Manual", and with the Back-Cover Texts
+as in (a) below.
+A copy of the license is included in the section entitled
+"GNU Free Documentation License".
+
+a. The FSF's Back-Cover Text is: "You have the freedom to
+copy and modify this GNU manual." -->
+<!-- Created by GNU Texinfo 6.5, http://www.gnu.org/software/texinfo/ -->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Readfile Function (The GNU Awk User&rsquo;s Guide)</title>
+
+<meta name="description" content="Readfile Function (The GNU Awk User&rsquo;s Guide)">
+<meta name="keywords" content="Readfile Function (The GNU Awk User&rsquo;s Guide)">
+<meta name="resource-type" content="document">
+<meta name="distribution" content="global">
+<meta name="Generator" content="makeinfo">
+<link href="index.html#Top" rel="start" title="Top">
+<link href="Index.html#Index" rel="index" title="Index">
+<link href="index.html#SEC_Contents" rel="contents" title="Table of Contents">
+<link href="General-Functions.html#General-Functions" rel="up" title="General Functions">
+<link href="Shell-Quoting.html#Shell-Quoting" rel="next" title="Shell Quoting">
+<link href="Getlocaltime-Function.html#Getlocaltime-Function" rel="prev" title="Getlocaltime Function">
+<style type="text/css">
+<!--
+a.summary-letter {text-decoration: none}
+blockquote.indentedblock {margin-right: 0em}
+blockquote.smallindentedblock {margin-right: 0em; font-size: smaller}
+blockquote.smallquotation {font-size: smaller}
+div.display {margin-left: 3.2em}
+div.example {margin-left: 3.2em}
+div.lisp {margin-left: 3.2em}
+div.smalldisplay {margin-left: 3.2em}
+div.smallexample {margin-left: 3.2em}
+div.smalllisp {margin-left: 3.2em}
+kbd {font-style: oblique}
+pre.display {font-family: inherit}
+pre.format {font-family: inherit}
+pre.menu-comment {font-family: serif}
+pre.menu-preformatted {font-family: serif}
+pre.smalldisplay {font-family: inherit; font-size: smaller}
+pre.smallexample {font-size: smaller}
+pre.smallformat {font-family: inherit; font-size: smaller}
+pre.smalllisp {font-size: smaller}
+span.nolinebreak {white-space: nowrap}
+span.roman {font-family: initial; font-weight: normal}
+span.sansserif {font-family: sans-serif; font-weight: normal}
+ul.no-bullet {list-style: none}
+-->
+</style>
+<link rel="stylesheet" type="text/css" href="/software/gnulib/manual.css">
+
+
+</head>
+
+<body lang="en">
+<a name="Readfile-Function"></a>
+<div class="header">
+<p>
+Next: <a href="Shell-Quoting.html#Shell-Quoting" accesskey="n" rel="next">Shell Quoting</a>, Previous: <a href="Getlocaltime-Function.html#Getlocaltime-Function" accesskey="p" rel="prev">Getlocaltime Function</a>, Up: <a href="General-Functions.html#General-Functions" accesskey="u" rel="up">General Functions</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Index.html#Index" title="Index" rel="index">Index</a>]</p>
+</div>
+<hr>
+<a name="Reading-a-Whole-File-at-Once"></a>
+<h4 class="subsection">10.2.8 Reading a Whole File at Once</h4>
+
+<p>Often, it is convenient to have the entire contents of a file available
+in memory as a single string. A straightforward but naive way to
+do that might be as follows:
+</p>
+<div class="example">
+<pre class="example">function readfile1(file,    tmp, contents)
+{
+    if ((getline tmp &lt; file) &lt; 0)
+        return
+
+    contents = tmp RT
+    while ((getline tmp &lt; file) &gt; 0)
+        contents = contents tmp RT
+
+    close(file)
+    return contents
+}
+</pre></div>
+
+<p>This function reads from <code>file</code> one record at a time, building
+up the full contents of the file in the local variable <code>contents</code>.
+It works, but is not necessarily efficient.
+</p>
+<p>The following function, based on a suggestion by Denis Shirokov,
+reads the entire contents of the named file in one shot:
+</p>
+<a name="index-readfile_0028_0029-user_002ddefined-function"></a>
+<div class="example">
+<pre class="example"># readfile.awk --- read an entire file at once
+
+function readfile(file,     tmp, save_rs)
+{
+    save_rs = RS
+    RS = &quot;^$&quot;
+    getline tmp &lt; file
+    close(file)
+    RS = save_rs
+
+    return tmp
+}
+</pre></div>
+
+<p>It works by setting <code>RS</code> to &lsquo;<samp>^$</samp>&rsquo;, a regular expression that
+will never match if the file has contents.  <code>gawk</code> reads data from
+the file into <code>tmp</code>, attempting to match <code>RS</code>.  The match fails
+after each read, but fails quickly, such that <code>gawk</code> fills
+<code>tmp</code> with the entire contents of the file.
+(See section <a href="Records.html#Records">How Input Is Split into Records</a> for information on <code>RT</code> and <code>RS</code>.)
+</p>
+<p>In the case that <code>file</code> is empty, the return value is the null
+string.  Thus, calling code may use something like:
+</p>
+<div class="example">
+<pre class="example">contents = readfile(&quot;/some/path&quot;)
+if (length(contents) == 0)
+    # file was empty &hellip;
+</pre></div>
+
+<p>This tests the result to see if it is empty or not. An equivalent
+test would be &lsquo;<samp>contents&nbsp;==&nbsp;&quot;&quot;<!-- /@w --></samp>&rsquo;.
+</p>
+<p>See section <a href="Extension-Sample-Readfile.html#Extension-Sample-Readfile">Reading an Entire File</a> for an extension function that
+also reads an entire file into memory.
+</p>
+<hr>
+<div class="header">
+<p>
+Next: <a href="Shell-Quoting.html#Shell-Quoting" accesskey="n" rel="next">Shell Quoting</a>, Previous: <a href="Getlocaltime-Function.html#Getlocaltime-Function" accesskey="p" rel="prev">Getlocaltime Function</a>, Up: <a href="General-Functions.html#General-Functions" accesskey="u" rel="up">General Functions</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Index.html#Index" title="Index" rel="index">Index</a>]</p>
+</div>
+
+
+
+</body>
+</html>

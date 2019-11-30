@@ -1,0 +1,329 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!-- 
+Copyright (C) 1989, 1991, 1992, 1993, 1996-2005, 2007, 2009-2019 
+
+Free Software Foundation, Inc.
+
+
+
+This is Edition 5.0 of GAWK: Effective AWK Programming: A User's Guide for GNU Awk,
+for the 5.0.0 (or later) version of the GNU
+implementation of AWK.
+
+Permission is granted to copy, distribute and/or modify this document
+under the terms of the GNU Free Documentation License, Version 1.3 or
+any later version published by the Free Software Foundation; with the
+Invariant Sections being "GNU General Public License", with the
+Front-Cover Texts being "A GNU Manual", and with the Back-Cover Texts
+as in (a) below.
+A copy of the license is included in the section entitled
+"GNU Free Documentation License".
+
+a. The FSF's Back-Cover Text is: "You have the freedom to
+copy and modify this GNU manual." -->
+<!-- Created by GNU Texinfo 6.5, http://www.gnu.org/software/texinfo/ -->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Two-way I/O (The GNU Awk User&rsquo;s Guide)</title>
+
+<meta name="description" content="Two-way I/O (The GNU Awk User&rsquo;s Guide)">
+<meta name="keywords" content="Two-way I/O (The GNU Awk User&rsquo;s Guide)">
+<meta name="resource-type" content="document">
+<meta name="distribution" content="global">
+<meta name="Generator" content="makeinfo">
+<link href="index.html#Top" rel="start" title="Top">
+<link href="Index.html#Index" rel="index" title="Index">
+<link href="index.html#SEC_Contents" rel="contents" title="Table of Contents">
+<link href="Advanced-Features.html#Advanced-Features" rel="up" title="Advanced Features">
+<link href="TCP_002fIP-Networking.html#TCP_002fIP-Networking" rel="next" title="TCP/IP Networking">
+<link href="Array-Sorting-Functions.html#Array-Sorting-Functions" rel="prev" title="Array Sorting Functions">
+<style type="text/css">
+<!--
+a.summary-letter {text-decoration: none}
+blockquote.indentedblock {margin-right: 0em}
+blockquote.smallindentedblock {margin-right: 0em; font-size: smaller}
+blockquote.smallquotation {font-size: smaller}
+div.display {margin-left: 3.2em}
+div.example {margin-left: 3.2em}
+div.lisp {margin-left: 3.2em}
+div.smalldisplay {margin-left: 3.2em}
+div.smallexample {margin-left: 3.2em}
+div.smalllisp {margin-left: 3.2em}
+kbd {font-style: oblique}
+pre.display {font-family: inherit}
+pre.format {font-family: inherit}
+pre.menu-comment {font-family: serif}
+pre.menu-preformatted {font-family: serif}
+pre.smalldisplay {font-family: inherit; font-size: smaller}
+pre.smallexample {font-size: smaller}
+pre.smallformat {font-family: inherit; font-size: smaller}
+pre.smalllisp {font-size: smaller}
+span.nolinebreak {white-space: nowrap}
+span.roman {font-family: initial; font-weight: normal}
+span.sansserif {font-family: sans-serif; font-weight: normal}
+ul.no-bullet {list-style: none}
+-->
+</style>
+<link rel="stylesheet" type="text/css" href="/software/gnulib/manual.css">
+
+
+</head>
+
+<body lang="en">
+<a name="Two_002dway-I_002fO"></a>
+<div class="header">
+<p>
+Next: <a href="TCP_002fIP-Networking.html#TCP_002fIP-Networking" accesskey="n" rel="next">TCP/IP Networking</a>, Previous: <a href="Array-Sorting.html#Array-Sorting" accesskey="p" rel="prev">Array Sorting</a>, Up: <a href="Advanced-Features.html#Advanced-Features" accesskey="u" rel="up">Advanced Features</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Index.html#Index" title="Index" rel="index">Index</a>]</p>
+</div>
+<hr>
+<a name="Two_002dWay-Communications-with-Another-Process"></a>
+<h3 class="section">12.3 Two-Way Communications with Another Process</h3>
+
+
+<a name="index-advanced-features_002c-processes_002c-communicating-with"></a>
+<a name="index-processes_002c-two_002dway-communications-with"></a>
+<p>It is often useful to be able to
+send data to a separate program for
+processing and then read the result.  This can always be
+done with temporary files:
+</p>
+<div class="example">
+<pre class="example"># Write the data for processing
+tempfile = (&quot;mydata.&quot; PROCINFO[&quot;pid&quot;])
+while (<var>not done with data</var>)
+    print <var>data</var> | (&quot;subprogram &gt; &quot; tempfile)
+close(&quot;subprogram &gt; &quot; tempfile)
+
+# Read the results, remove tempfile when done
+while ((getline newdata &lt; tempfile) &gt; 0)
+    <var>process</var> newdata <var>appropriately</var>
+close(tempfile)
+system(&quot;rm &quot; tempfile)
+</pre></div>
+
+<p>This works, but not elegantly.  Among other things, it requires that
+the program be run in a directory that cannot be shared among users;
+for example, <samp>/tmp</samp> will not do, as another user might happen
+to be using a temporary file with the same name.<a name="DOCF86" href="#FOOT86"><sup>86</sup></a> </p>
+<a name="index-coprocesses-1"></a>
+<a name="index-input_002foutput_002c-two_002dway"></a>
+<a name="index-_007c-_0028vertical-bar_0029_002c-_007c_0026-operator-_0028I_002fO_0029-3"></a>
+<a name="index-vertical-bar-_0028_007c_0029_002c-_007c_0026-operator-_0028I_002fO_0029-2"></a>
+<a name="index-csh-utility_002c-_007c_0026-operator_002c-comparison-with"></a>
+<p>However, with <code>gawk</code>, it is possible to
+open a <em>two-way</em> pipe to another process.  The second process is
+termed a <em>coprocess</em>, as it runs in parallel with <code>gawk</code>.
+The two-way connection is created using the &lsquo;<samp>|&amp;</samp>&rsquo; operator
+(borrowed from the Korn shell, <code>ksh</code>):<a name="DOCF87" href="#FOOT87"><sup>87</sup></a>
+</p>
+<div class="example">
+<pre class="example">do {
+    print <var>data</var> |&amp; &quot;subprogram&quot;
+    &quot;subprogram&quot; |&amp; getline results
+} while (<var>data left to process</var>)
+close(&quot;subprogram&quot;)
+</pre></div>
+
+<p>The first time an I/O operation is executed using the &lsquo;<samp>|&amp;</samp>&rsquo;
+operator, <code>gawk</code> creates a two-way pipeline to a child process
+that runs the other program.  Output created with <code>print</code>
+or <code>printf</code> is written to the program&rsquo;s standard input, and
+output from the program&rsquo;s standard output can be read by the <code>gawk</code>
+program using <code>getline</code>.
+As is the case with processes started by &lsquo;<samp>|</samp>&rsquo;, the subprogram
+can be any program, or pipeline of programs, that can be started by
+the shell.
+</p>
+<p>There are some cautionary items to be aware of:
+</p>
+<ul>
+<li> As the code inside <code>gawk</code> currently stands, the coprocess&rsquo;s
+standard error goes to the same place that the parent <code>gawk</code>&rsquo;s
+standard error goes. It is not possible to read the child&rsquo;s
+standard error separately.
+
+</li><li> <a name="index-deadlocks"></a>
+<a name="index-buffering_002c-input_002foutput-1"></a>
+<a name="index-getline-command_002c-deadlock-and"></a>
+I/O buffering may be a problem.  <code>gawk</code> automatically
+flushes all output down the pipe to the coprocess.
+However, if the coprocess does not flush its output,
+<code>gawk</code> may hang when doing a <code>getline</code> in order to read
+the coprocess&rsquo;s results.  This could lead to a situation
+known as <em>deadlock</em>, where each process is waiting for the
+other one to do something.
+</li></ul>
+
+<a name="index-close_0028_0029-function_002c-two_002dway-pipes-and"></a>
+<p>It is possible to close just one end of the two-way pipe to
+a coprocess, by supplying a second argument to the <code>close()</code>
+function of either <code>&quot;to&quot;</code> or <code>&quot;from&quot;</code>
+(see section <a href="Close-Files-And-Pipes.html#Close-Files-And-Pipes">Closing Input and Output Redirections</a>).
+These strings tell <code>gawk</code> to close the end of the pipe
+that sends data to the coprocess or the end that reads from it,
+respectively.
+</p>
+<a name="index-sort-utility_002c-coprocesses-and"></a>
+<p>This is particularly necessary in order to use
+the system <code>sort</code> utility as part of a coprocess;
+<code>sort</code> must read <em>all</em> of its input
+data before it can produce any output.
+The <code>sort</code> program does not receive an end-of-file indication
+until <code>gawk</code> closes the write end of the pipe.
+</p>
+<p>When you have finished writing data to the <code>sort</code>
+utility, you can close the <code>&quot;to&quot;</code> end of the pipe, and
+then start reading sorted data via <code>getline</code>.
+For example:
+</p>
+<div class="example">
+<pre class="example">BEGIN {
+    command = &quot;LC_ALL=C sort&quot;
+    n = split(&quot;abcdefghijklmnopqrstuvwxyz&quot;, a, &quot;&quot;)
+
+    for (i = n; i &gt; 0; i--)
+        print a[i] |&amp; command
+    close(command, &quot;to&quot;)
+
+    while ((command |&amp; getline line) &gt; 0)
+        print &quot;got&quot;, line
+    close(command)
+}
+</pre></div>
+
+<p>This program writes the letters of the alphabet in reverse order, one
+per line, down the two-way pipe to <code>sort</code>.  It then closes the
+write end of the pipe, so that <code>sort</code> receives an end-of-file
+indication.  This causes <code>sort</code> to sort the data and write the
+sorted data back to the <code>gawk</code> program.  Once all of the data
+has been read, <code>gawk</code> terminates the coprocess and exits.
+</p>
+<p>As a side note, the assignment &lsquo;<samp>LC_ALL=C</samp>&rsquo; in the <code>sort</code>
+command ensures traditional Unix (ASCII) sorting from <code>sort</code>.
+This is not strictly necessary here, but it&rsquo;s good to know how to do this.
+</p>
+<p>Be careful when closing the <code>&quot;from&quot;</code> end of a two-way pipe; in this
+case <code>gawk</code> waits for the child process to exit, which may cause
+your program to hang.  (Thus, this particular feature is of much less
+use in practice than being able to close the <code>&quot;to&quot;</code> end.)
+</p>
+<blockquote>
+<p><b>CAUTION:</b> Normally,
+it is a fatal error to write to the <code>&quot;to&quot;</code> end of a two-way
+pipe which has been closed, and it is also a fatal error to read
+from the <code>&quot;from&quot;</code> end of a two-way pipe that has been closed.
+</p>
+<p>You may set <code>PROCINFO[&quot;<var>command</var>&quot;, &quot;NONFATAL&quot;]</code> to
+make such operations become nonfatal. If you do so, you then need
+to check <code>ERRNO</code> after each <code>print</code>, <code>printf</code>,
+or <code>getline</code>.
+See section <a href="Nonfatal.html#Nonfatal">Enabling Nonfatal Output</a>, for more information.
+</p></blockquote>
+
+<a name="index-gawk_002c-PROCINFO-array-in-2"></a>
+<a name="index-PROCINFO-array_002c-communications-via-ptys-and"></a>
+<p>You may also use pseudo-ttys (ptys) for
+two-way communication instead of pipes, if your system supports them.
+This is done on a per-command basis, by setting a special element
+in the <code>PROCINFO</code> array
+(see section <a href="Auto_002dset.html#Auto_002dset">Built-in Variables That Convey Information</a>),
+like so:
+</p>
+<div class="example">
+<pre class="example">command = &quot;sort -nr&quot;           # command, save in convenience variable
+PROCINFO[command, &quot;pty&quot;] = 1   # update PROCINFO
+print &hellip; |&amp; command           # start two-way pipe
+&hellip;
+</pre></div>
+
+<p>If your system does not have ptys, or if all the system&rsquo;s ptys are in use,
+<code>gawk</code> automatically falls back to using regular pipes.
+</p>
+<p>Using ptys usually avoids the buffer deadlock issues described earlier,
+at some loss in performance. This is because the tty driver buffers
+and sends data line-by-line.  On systems with the <code>stdbuf</code>
+(part of the <a href="https://www.gnu.org/software/coreutils/coreutils.html">GNU Coreutils package</a>), you can use that program instead of ptys.
+</p>
+<p>Note also that ptys are not fully transparent. Certain binary control
+codes, such <kbd>Ctrl-d</kbd> for end-of-file, are interpreted by the tty
+driver and not passed through.
+</p>
+<blockquote>
+<p><b>CAUTION:</b> Finally, coprocesses open up the possibility of <em>deadlock</em> between
+<code>gawk</code> and the program running in the coprocess. This can occur
+if you send &ldquo;too much&rdquo; data to the coprocess before reading any back;
+each process is blocked writing data with no one available to read what
+they&rsquo;ve already written.  There is no workaround for deadlock; careful
+programming and knowledge of the behavior of the coprocess are required.
+</p></blockquote>
+
+<p>The following example, due to Andrew Schorr, demonstrates how
+using ptys can help deal with buffering deadlocks.
+</p>
+<p>Suppose <code>gawk</code> were unable to add numbers.
+You could use a coprocess to do it. Here&rsquo;s an exceedingly
+simple program written for that purpose: 
+</p>
+<div class="example">
+<pre class="example">$ <kbd>cat add.c</kbd>
+#include &lt;stdio.h&gt; 
+
+int 
+main(void) 
+{ 
+    int x, y; 
+    while (scanf(&quot;%d %d&quot;, &amp; x, &amp; y) == 2) 
+        printf(&quot;%d\n&quot;, x + y); 
+    return 0; 
+} 
+$ <kbd>cc -O add.c -o add</kbd>	<i>Compile the program</i>
+</pre></div>
+
+<p>You could then write an exceedingly simple <code>gawk</code> program
+to add numbers by passing them to the coprocess:
+</p>
+<div class="example">
+<pre class="example">$ <kbd>echo 1 2 |</kbd>
+&gt; <kbd>gawk -v cmd=./add '{ print |&amp; cmd; cmd |&amp; getline x; print x }'</kbd>
+</pre></div>
+
+<p>And it would deadlock, because <samp>add.c</samp> fails to call
+&lsquo;<samp>setlinebuf(stdout)</samp>&rsquo;. The <code>add</code> program freezes. 
+</p>
+<p>Now try instead: 
+</p>
+<div class="example">
+<pre class="example">$ <kbd>echo 1 2 |</kbd>
+&gt; <kbd>gawk -v cmd=add 'BEGIN { PROCINFO[cmd, &quot;pty&quot;] = 1 }</kbd>
+&gt; <kbd>                 { print |&amp; cmd; cmd |&amp; getline x; print x }'</kbd>
+-| 3 
+</pre></div>
+
+<p>By using a pty, <code>gawk</code> fools the standard I/O library into
+thinking it has an interactive session, so it defaults to line buffering.
+And now, magically, it works!
+</p>
+<div class="footnote">
+<hr>
+<h4 class="footnotes-heading">Footnotes</h4>
+
+<h3><a name="FOOT86" href="#DOCF86">(86)</a></h3>
+<p>Michael
+Brennan suggests the use of <code>rand()</code> to generate unique
+file names. This is a valid point; nevertheless, temporary files
+remain more difficult to use than two-way pipes.</p>
+<h3><a name="FOOT87" href="#DOCF87">(87)</a></h3>
+<p>This is very
+different from the same operator in the C shell and in Bash.</p>
+</div>
+<hr>
+<div class="header">
+<p>
+Next: <a href="TCP_002fIP-Networking.html#TCP_002fIP-Networking" accesskey="n" rel="next">TCP/IP Networking</a>, Previous: <a href="Array-Sorting.html#Array-Sorting" accesskey="p" rel="prev">Array Sorting</a>, Up: <a href="Advanced-Features.html#Advanced-Features" accesskey="u" rel="up">Advanced Features</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Index.html#Index" title="Index" rel="index">Index</a>]</p>
+</div>
+
+
+
+</body>
+</html>

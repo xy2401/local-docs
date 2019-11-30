@@ -1,0 +1,194 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!-- 
+Copyright (C) 1989, 1991, 1992, 1993, 1996-2005, 2007, 2009-2019 
+
+Free Software Foundation, Inc.
+
+
+
+This is Edition 5.0 of GAWK: Effective AWK Programming: A User's Guide for GNU Awk,
+for the 5.0.0 (or later) version of the GNU
+implementation of AWK.
+
+Permission is granted to copy, distribute and/or modify this document
+under the terms of the GNU Free Documentation License, Version 1.3 or
+any later version published by the Free Software Foundation; with the
+Invariant Sections being "GNU General Public License", with the
+Front-Cover Texts being "A GNU Manual", and with the Back-Cover Texts
+as in (a) below.
+A copy of the license is included in the section entitled
+"GNU Free Documentation License".
+
+a. The FSF's Back-Cover Text is: "You have the freedom to
+copy and modify this GNU manual." -->
+<!-- Created by GNU Texinfo 6.5, http://www.gnu.org/software/texinfo/ -->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Cached values (The GNU Awk User&rsquo;s Guide)</title>
+
+<meta name="description" content="Cached values (The GNU Awk User&rsquo;s Guide)">
+<meta name="keywords" content="Cached values (The GNU Awk User&rsquo;s Guide)">
+<meta name="resource-type" content="document">
+<meta name="distribution" content="global">
+<meta name="Generator" content="makeinfo">
+<link href="index.html#Top" rel="start" title="Top">
+<link href="Index.html#Index" rel="index" title="Index">
+<link href="index.html#SEC_Contents" rel="contents" title="Table of Contents">
+<link href="Symbol-Table-Access.html#Symbol-Table-Access" rel="up" title="Symbol Table Access">
+<link href="Array-Manipulation.html#Array-Manipulation" rel="next" title="Array Manipulation">
+<link href="Symbol-table-by-cookie.html#Symbol-table-by-cookie" rel="prev" title="Symbol table by cookie">
+<style type="text/css">
+<!--
+a.summary-letter {text-decoration: none}
+blockquote.indentedblock {margin-right: 0em}
+blockquote.smallindentedblock {margin-right: 0em; font-size: smaller}
+blockquote.smallquotation {font-size: smaller}
+div.display {margin-left: 3.2em}
+div.example {margin-left: 3.2em}
+div.lisp {margin-left: 3.2em}
+div.smalldisplay {margin-left: 3.2em}
+div.smallexample {margin-left: 3.2em}
+div.smalllisp {margin-left: 3.2em}
+kbd {font-style: oblique}
+pre.display {font-family: inherit}
+pre.format {font-family: inherit}
+pre.menu-comment {font-family: serif}
+pre.menu-preformatted {font-family: serif}
+pre.smalldisplay {font-family: inherit; font-size: smaller}
+pre.smallexample {font-size: smaller}
+pre.smallformat {font-family: inherit; font-size: smaller}
+pre.smalllisp {font-size: smaller}
+span.nolinebreak {white-space: nowrap}
+span.roman {font-family: initial; font-weight: normal}
+span.sansserif {font-family: sans-serif; font-weight: normal}
+ul.no-bullet {list-style: none}
+-->
+</style>
+<link rel="stylesheet" type="text/css" href="/software/gnulib/manual.css">
+
+
+</head>
+
+<body lang="en">
+<a name="Cached-values"></a>
+<div class="header">
+<p>
+Previous: <a href="Symbol-table-by-cookie.html#Symbol-table-by-cookie" accesskey="p" rel="prev">Symbol table by cookie</a>, Up: <a href="Symbol-Table-Access.html#Symbol-Table-Access" accesskey="u" rel="up">Symbol Table Access</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Index.html#Index" title="Index" rel="index">Index</a>]</p>
+</div>
+<hr>
+<a name="Creating-and-Using-Cached-Values"></a>
+<h4 class="subsubsection">17.4.10.3 Creating and Using Cached Values</h4>
+
+<p>The routines in this section allow you to create and release
+cached values.  Like scalar cookies, in theory, cached values
+are not necessary. You can create numbers and strings using
+the functions in <a href="Constructor-Functions.html#Constructor-Functions">Constructor Functions</a>. You can then
+assign those values to variables using <code>sym_update()</code>
+or <code>sym_update_scalar()</code>, as you like.
+</p>
+<p>However, you can understand the point of cached values if you remember that
+<em>every</em> string value&rsquo;s storage <em>must</em> come from <code>gawk_malloc()</code>,
+<code>gawk_calloc()</code>, or <code>gawk_realloc()</code>.
+If you have 20 variables, all of which have the same string value, you
+must create 20 identical copies of the string.<a name="DOCF108" href="#FOOT108"><sup>108</sup></a>
+</p>
+<p>It is clearly more efficient, if possible, to create a value once, and
+then tell <code>gawk</code> to reuse the value for multiple variables. That
+is what the routines in this section let you do.  The functions are as follows:
+</p>
+<dl compact="compact">
+<dt><code>awk_bool_t create_value(awk_value_t *value, awk_value_cookie_t *result);</code></dt>
+<dd><p>Create a cached string or numeric value from <code>value</code> for
+efficient later assignment.  Only values of type <code>AWK_NUMBER</code>, <code>AWK_REGEX</code>, <code>AWK_STRNUM</code>,
+and <code>AWK_STRING</code> are allowed.  Any other type is rejected.
+<code>AWK_UNDEFINED</code> could be allowed, but doing so would result in
+inferior performance.
+</p>
+</dd>
+<dt><code>awk_bool_t release_value(awk_value_cookie_t vc);</code></dt>
+<dd><p>Release the memory associated with a value cookie obtained
+from <code>create_value()</code>.
+</p></dd>
+</dl>
+
+<p>You use value cookies in a fashion similar to the way you use scalar cookies.
+In the extension initialization routine, you create the value cookie:
+</p>
+<div class="example">
+<pre class="example">static awk_value_cookie_t answer_cookie;  /* static value cookie */
+
+static void
+my_extension_init()
+{
+    awk_value_t value;
+    char *long_string;
+    size_t long_string_len;
+
+    /* code from earlier */
+    &hellip;
+    /* &hellip; fill in long_string and long_string_len &hellip; */
+    make_malloced_string(long_string, long_string_len, &amp; value);
+    create_value(&amp; value, &amp; answer_cookie);    /* create cookie */
+    &hellip;
+}
+</pre></div>
+
+<p>Once the value is created, you can use it as the value of any number
+of variables:
+</p>
+<div class="example">
+<pre class="example">static awk_value_t *
+do_magic(int nargs, awk_value_t *result)
+{
+    awk_value_t new_value;
+
+    &hellip;    /* as earlier */
+
+    value.val_type = AWK_VALUE_COOKIE;
+    value.value_cookie = answer_cookie;
+    sym_update(&quot;VAR1&quot;, &amp; value);
+    sym_update(&quot;VAR2&quot;, &amp; value);
+    &hellip;
+    sym_update(&quot;VAR100&quot;, &amp; value);
+    &hellip;
+}
+</pre></div>
+
+<p>Using value cookies in this way saves considerable storage, as all of
+<code>VAR1</code> through <code>VAR100</code> share the same value.
+</p>
+<p>You might be wondering, &ldquo;Is this sharing problematic?
+What happens if <code>awk</code> code assigns a new value to <code>VAR1</code>;
+are all the others changed too?&rdquo;
+</p>
+<p>That&rsquo;s a great question. The answer is that no, it&rsquo;s not a problem.
+Internally, <code>gawk</code> uses <em>reference-counted strings</em>. This means
+that many variables can share the same string value, and <code>gawk</code>
+keeps track of the usage.  When a variable&rsquo;s value changes, <code>gawk</code>
+simply decrements the reference count on the old value and updates
+the variable to use the new value.
+</p>
+<p>Finally, as part of your cleanup action (see section <a href="Exit-Callback-Functions.html#Exit-Callback-Functions">Registering An Exit Callback Function</a>)
+you should release any cached values that you created, using
+<code>release_value()</code>.
+</p>
+<div class="footnote">
+<hr>
+<h4 class="footnotes-heading">Footnotes</h4>
+
+<h3><a name="FOOT108" href="#DOCF108">(108)</a></h3>
+<p>Numeric values
+are clearly less problematic, requiring only a C <code>double</code> to store.
+But of course, GMP and MPFR values <em>do</em> take up more memory.</p>
+</div>
+<hr>
+<div class="header">
+<p>
+Previous: <a href="Symbol-table-by-cookie.html#Symbol-table-by-cookie" accesskey="p" rel="prev">Symbol table by cookie</a>, Up: <a href="Symbol-Table-Access.html#Symbol-Table-Access" accesskey="u" rel="up">Symbol Table Access</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Index.html#Index" title="Index" rel="index">Index</a>]</p>
+</div>
+
+
+
+</body>
+</html>
