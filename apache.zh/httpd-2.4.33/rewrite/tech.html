@@ -1,174 +1,95 @@
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
-<meta content="text/html; charset=ISO-8859-1" http-equiv="Content-Type" />
-<title>Apache mod_rewrite Technical Details - Apache HTTP Server Version 2.4</title>
-<link href="../style/css/manual-zip.css" rel="stylesheet" media="all" type="text/css" title="Main stylesheet" />
-<link href="../style/css/manual-zip-100pc.css" rel="alternate stylesheet" media="all" type="text/css" title="No Sidebar - Default font size" />
-<link href="../style/css/manual-print.css" rel="stylesheet" media="print" type="text/css" /><link rel="stylesheet" type="text/css" href="../style/css/prettify.css" />
+<html lang="zh-Hans"  xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head>
+<meta content="text/html; charset=ISO-8859-1" http-equiv="Content-Type">
+<title>Apache mod_rewrite技术详细信息-Apache HTTP Server版本2.4</title>
+<link href="../style/css/manual-zip.css" rel="stylesheet" type="text/css" title="Main stylesheet" media="all">
+<link href="../style/css/manual-zip-100pc.css" rel="alternate stylesheet" type="text/css" title="No Sidebar - Default font size" media="all">
+<link href="../style/css/manual-print.css" rel="stylesheet" type="text/css" media="print"><link rel="stylesheet" type="text/css" href="../style/css/prettify.css">
 <script src="../style/scripts/prettify.min.js" type="text/javascript">
 </script>
 </head>
-<body id="manual-page"><div id="page-header">
-<p class="menu"><a href="../mod/index.html">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="http://wiki.apache.org/httpd/FAQ">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p>
-<p class="apache">Apache HTTP Server Version 2.4</p>
-<img alt="" src="../images/feather.png" /></div>
-<div class="up"><a href="./index.html"><img title="&lt;-" alt="&lt;-" src="../images/left.gif" /></a></div>
+<body id="manual-page" ><div id="page-header">
+<p class="menu"><a href="../mod/index.html">模块</a> | <a href="../mod/directives.html">指令</a> | <a href="http://wiki.apache.org/httpd/FAQ">常见问题</a> | <a href="../glossary.html">词汇表</a> | <a href="../sitemap.html">网站地图</a></p>
+<p class="apache">Apache HTTP服务器版本2.4</p>
+<img alt="" src="../images/feather.png"></div>
+<div class="up"><a href="./index.html"><img title="<-" alt="<-" src="../images/left.gif"></a></div>
 <div id="path">
-<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../index.html">Version 2.4</a> &gt; <a href="./index.html">Rewrite</a></div><div id="page-content"><div id="preamble"><h1>Apache mod_rewrite Technical Details</h1>
+<a href="http://www.apache.org/">Apache</a> > <a href="http://httpd.apache.org/">HTTP服务器</a> > <a href="http://httpd.apache.org/docs/">文档</a> > <a href="../index.html">版本2.4</a> > <a href="./index.html">重写</a></div><div id="page-content"><div id="preamble"><h1>Apache mod_rewrite技术细节</h1>
 
 
-<p>This document discusses some of the technical details of mod_rewrite
-and URL matching.</p>
+<p>本文档讨论了mod_rewrite和URL匹配的一些技术细节。</p>
 </div>
-<div id="quickview"><a href="https://www.apache.org/foundation/contributing.html" class="badge"><img src="https://www.apache.org/images/SupportApache-small.png" alt="Support Apache!" /></a><ul id="toc"><li><img alt="" src="../images/down.gif" /> <a href="#InternalAPI">API Phases</a></li>
-<li><img alt="" src="../images/down.gif" /> <a href="#InternalRuleset">Ruleset Processing</a></li>
-</ul><h3>See also</h3><ul class="seealso"><li><a href="../mod/mod_rewrite.html">Module documentation</a></li><li><a href="intro.html">mod_rewrite introduction</a></li><li><a href="remapping.html">Redirection and remapping</a></li><li><a href="access.html">Controlling access</a></li><li><a href="vhosts.html">Virtual hosts</a></li><li><a href="proxy.html">Proxying</a></li><li><a href="rewritemap.html">Using RewriteMap</a></li><li><a href="advanced.html">Advanced techniques</a></li><li><a href="avoid.html">When not to use mod_rewrite</a></li></ul></div>
-<div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
+<div id="quickview"><a href="https://www.apache.org/foundation/contributing.html" class="badge"><img src="https://www.apache.org/images/SupportApache-small.png" alt="支持Apache！"></a><ul id="toc"><li><img alt="" src="../images/down.gif"> <a href="#InternalAPI">API阶段</a></li>
+<li><img alt="" src="../images/down.gif"> <a href="#InternalRuleset">规则集处理</a></li>
+</ul><h3>也可以看看</h3><ul class="seealso"><li><a href="../mod/mod_rewrite.html">模块文件</a></li><li><a href="intro.html">mod_rewrite简介</a></li><li><a href="remapping.html">重定向和重新映射</a></li><li><a href="access.html">控制访问</a></li><li><a href="vhosts.html">虚拟主机</a></li><li><a href="proxy.html">代理</a></li><li><a href="rewritemap.html">使用RewriteMap</a></li><li><a href="advanced.html">先进技术</a></li><li><a href="avoid.html">何时不使用mod_rewrite</a></li></ul></div>
+<div class="top"><a href="#page-header"><img alt="最佳" src="../images/up.gif"></a></div>
 <div class="section">
-<h2><a name="InternalAPI" id="InternalAPI">API Phases</a></h2>
+<h2><a name="InternalAPI" id="InternalAPI">API阶段</a></h2>
 
-    <p>The Apache HTTP Server handles requests in several phases. At
-    each of these phases, one or more modules may be called upon to
-    handle that portion of the request lifecycle. Phases include things
-    like URL-to-filename translation, authentication, authorization,
-    content, and logging. (This is not an exhaustive list.)</p>
+    <p>Apache HTTP Server分几个阶段处理请求。在这些阶段的每个阶段，可以调用一个或多个模块来处理请求生命周期的这一部分。阶段包括URL到文件名的转换，身份验证，授权，内容和日志记录。（这不是详尽的清单。）</p>
 
-    <p>mod_rewrite acts in two of these phases (or "hooks", as they are
-    often called) to influence how URLs may be rewritten.</p>
+    <p>mod_rewrite在这两个阶段（或经常被称为“钩子”）中起作用，以影响URL的重写方式。</p>
 
-    <p>First, it uses the URL-to-filename translation hook, which occurs
-    after the HTTP request has been read, but before any authorization
-    starts. Secondly, it uses the Fixup hook, which is after the
-    authorization phases, and after per-directory configuration files
-    (<code>.htaccess</code> files) have been read, but before the
-    content handler is called.</p>
+    <p>首先，它使用URL到文件名转换挂钩，该挂钩在读取HTTP请求之后但开始任何授权之前发生。其次，它使用Fixup钩子，该钩子在授权阶段之后，在每个目录的配置文件之后（ <code>.htaccess</code>文件）已被读取，但是在调用内容处理程序之前。</p>
 
-    <p>So, after a request comes in and a corresponding server or
-    virtual host has been determined, the rewriting engine starts
-    processing any <code>mod_rewrite</code> directives appearing in the
-    per-server configuration. (i.e., in the main server configuration file
-    and <code class="directive"><a href="../mod/core.html#virtualhost">&lt;Virtualhost&gt;</a></code>
-    sections.) This happens in the URL-to-filename phase.</p>
+    <p>因此，在请求进入并确定了相应的服务器或虚拟主机之后，重写引擎将开始处理任何<code>mod_rewrite</code>每服务器配置中显示的指令。 （即在主服务器配置文件中<code class="directive"><a href="../mod/core.html#virtualhost"><Virtualhost></a></code>部分。）这发生在URL到文件名阶段。</p>
 
-    <p>A few steps later, once the final data directories have been found,
-    the per-directory configuration directives (<code>.htaccess</code>
-    files and <code class="directive"><a href="../mod/core.html#directory">&lt;Directory&gt;</a></code> blocks) are applied. This
-    happens in the Fixup phase.</p>
+    <p>几步后，找到最终数据目录后，按目录配置指令（ <code>.htaccess</code>文件和<code class="directive"><a href="../mod/core.html#directory"><Directory></a></code>块）。这发生在修复阶段。</p>
 
-    <p>In each of these cases, mod_rewrite rewrites the
-    <code>REQUEST_URI</code> either to a new URL, or to a filename.</p>
+    <p>在上述每种情况下，mod_rewrite都会重写<code>REQUEST_URI</code>或新网址或文件名。</p>
 
-    <p>In per-directory context (i.e., within <code>.htaccess</code> files
-    and <code>Directory</code> blocks), these rules are being applied
-    after a URL has already been translated to a filename. Because of
-    this, the URL-path that mod_rewrite initially compares <code class="directive"><a href="../mod/mod_rewrite.html#rewriterule">RewriteRule</a></code> directives against
-    is the full filesystem path to the translated filename with the current
-    directories path (including a trailing slash) removed from the front.</p>
+    <p>在每个目录的上下文中（即，在<code>.htaccess</code>文件和<code>Directory</code>块），则在将URL转换为文件名后将应用这些规则。因此，mod_rewrite最初比较的URL路径<code class="directive"><a href="../mod/mod_rewrite.html#rewriterule">RewriteRule</a></code>指令反对是已翻译文件名的完整文件系统路径，并且当前目录路径（包括斜杠）从前面删除。</p>
 
-    <p> To illustrate: If rules are in /var/www/foo/.htaccess and a request
-    for /foo/bar/baz is being processed, an expression like ^bar/baz$ would
-    match.</p>
+    <p>举例说明：如果规则位于/var/www/foo/.htaccess中，并且正在处理对/ foo / bar / baz的请求，则匹配^ bar / baz $之类的表达式。</p>
 
-    <p> If a substitution is made in per-directory context, a new internal 
-    subrequest is issued with the new URL, which restarts processing of the 
-    request phases. If the substitution is a relative path, the <code class="directive"><a href="../mod/mod_rewrite.html#rewritebase">RewriteBase</a></code> directive 
-    determines the URL-path prefix prepended to the substitution.
-    In per-directory context, care must be taken to 
-    create rules which will eventually (in some future "round" of per-directory
-    rewrite processing) not perform a substitution to avoid looping.
-    (See <a href="http://wiki.apache.org/httpd/RewriteLooping">RewriteLooping</a>
-    for further discussion of this problem.)</p>
+    <p>如果在每个目录上下文中进行替换，则会使用新的URL发出新的内部子请求，从而重新开始请求阶段的处理。如果替代是相对路径，则<code class="directive"><a href="../mod/mod_rewrite.html#rewritebase">RewriteBase</a></code>指令确定替换之前的URL路径前缀。在每个目录的上下文中，必须小心创建规则，这些规则最终（在将来的每个目录重写处理中）将不执行替换操作以避免循环。（有关此问题的进一步讨论，请参见<a href="http://wiki.apache.org/httpd/RewriteLooping">RewriteLooping</a> 。）</p>
 
-    <p>Because of this further manipulation of the URL in per-directory
-    context, you'll need to take care to craft your rewrite rules
-    differently in that context. In particular, remember that the
-    leading directory path will be stripped off of the URL that your
-    rewrite rules will see. Consider the examples below for further
-    clarification.</p>
+    <p>由于在每个目录上下文中对URL进行了进一步的处理，因此您需要注意在该上下文中以不同的方式编写重写规则。特别是，请记住，将删除重写规则将看到的URL的开头目录路径。请考虑以下示例以进一步说明。</p>
 
     <table class="bordered">
 
-        <tr>
-            <th>Location of rule</th>
-            <th>Rule</th>
+        <tbody><tr>
+            <th>规则位置</th>
+            <th>规则</th>
         </tr>
 
         <tr>
-            <td>VirtualHost section</td>
-            <td>RewriteRule "^/images/(.+)\.jpg" "/images/$1.gif"</td>
+            <td>VirtualHost部分</td>
+            <td>RewriteRule“ ^ / images /（。+）\。jpg“” /images/$1.gif“</td>
         </tr>
 
         <tr>
-            <td>.htaccess file in document root</td>
-            <td>RewriteRule "^images/(.+)\.jpg" "images/$1.gif"</td>
+            <td>文件根目录中的.htaccess文件</td>
+            <td>RewriteRule“ ^ images /（。+）\。jpg“” images / $ 1.gif“</td>
         </tr>
 
         <tr>
-            <td>.htaccess file in images directory</td>
-            <td>RewriteRule "^(.+)\.jpg" "$1.gif"</td>
+            <td>.htaccess文件在images目录中</td>
+            <td>RewriteRule“ ^（。+）\。jpg“” $ 1.gif“</td>
         </tr>
 
-    </table>
+    </tbody></table>
 
-    <p>For even more insight into how mod_rewrite manipulates URLs in
-    different contexts, you should consult the <a href="../mod/mod_rewrite.html#logging">log entries</a> made during 
-    rewriting.</p>
+    <p>要进一步了解mod_rewrite如何在不同上下文中操纵URL，您应该查阅重写期间创建的<a href="../mod/mod_rewrite.html#logging">日志条目</a> 。</p>
 
-</div><div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
+</div><div class="top"><a href="#page-header"><img alt="最佳" src="../images/up.gif"></a></div>
 <div class="section">
-<h2><a name="InternalRuleset" id="InternalRuleset">Ruleset Processing</a></h2>
+<h2><a name="InternalRuleset" id="InternalRuleset">规则集处理</a></h2>
 
-      <p>Now when mod_rewrite is triggered in these two API phases, it
-      reads the configured rulesets from its configuration
-      structure (which itself was either created on startup for
-      per-server context or during the directory walk of the Apache
-      kernel for per-directory context). Then the URL rewriting
-      engine is started with the contained ruleset (one or more
-      rules together with their conditions). The operation of the
-      URL rewriting engine itself is exactly the same for both
-      configuration contexts. Only the final result processing is
-      different.</p>
+      <p>现在，当在这两个API阶段中触发mod_rewrite时，它将从其配置结构中读取已配置的规则集（该规则集本身是在针对每个服务器上下文启动时创建的，或者是针对每个目录上下文在Apache内核的目录遍历期间创建的）。然后，使用包含的规则集（一个或多个规则及其条件）启动URL重写引擎。对于两个配置上下文，URL重写引擎本身的操作是完全相同的。仅最终结果处理有所不同。</p>
 
-      <p>The order of rules in the ruleset is important because the
-      rewriting engine processes them in a special (and not very
-      obvious) order. The rule is this: The rewriting engine loops
-      through the ruleset rule by rule (<code class="directive"><a href="../mod/mod_rewrite.html#rewriterule">RewriteRule</a></code> directives) and
-      when a particular rule matches it optionally loops through
-      existing corresponding conditions (<code>RewriteCond</code>
-      directives). For historical reasons the conditions are given
-      first, and so the control flow is a little bit long-winded. See
-      Figure 1 for more details.</p>
+      <p>规则集中的规则顺序很重要，因为重写引擎以特殊（但不是很明显）的顺序处理它们。规则是这样的：重写引擎按规则遍历规则集（ <code class="directive"><a href="../mod/mod_rewrite.html#rewriterule">RewriteRule</a></code>指令），并在匹配特定规则时有选择地遍历现有的相应条件（ <code>RewriteCond</code>指令）。由于历史原因，首先要给出条件，因此控制流程有些冗长。有关更多详细信息，请参见图1。</p>
 <p class="figure">
-      <img src="../images/rewrite_process_uri.png" alt="Flow of RewriteRule and RewriteCond matching" /><br />
-      <dfn>Figure 1:</dfn>The control flow through the rewriting ruleset
-</p>
-      <p>First the URL is matched against the
-      <em>Pattern</em> of each rule. If it fails, mod_rewrite
-      immediately stops processing this rule, and continues with the
-      next rule. If the <em>Pattern</em> matches, mod_rewrite looks
-      for corresponding rule conditions (RewriteCond directives,
-      appearing immediately above the RewriteRule in the configuration).
-      If none are present, it substitutes the URL with a new value, which is
-      constructed from the string <em>Substitution</em>, and goes on
-      with its rule-looping. But if conditions exist, it starts an
-      inner loop for processing them in the order that they are
-      listed. For conditions, the logic is different: we don't match
-      a pattern against the current URL. Instead we first create a
-      string <em>TestString</em> by expanding variables,
-      back-references, map lookups, <em>etc.</em> and then we try
-      to match <em>CondPattern</em> against it. If the pattern
-      doesn't match, the complete set of conditions and the
-      corresponding rule fails. If the pattern matches, then the
-      next condition is processed until no more conditions are
-      available. If all conditions match, processing is continued
-      with the substitution of the URL with
-      <em>Substitution</em>.</p>
+      <img src="../images/rewrite_process_uri.png" alt="RewriteRule和RewriteCond匹配的流程"><br>
+      <dfn>图1：</dfn>重写规则集的控制流</p>
+      <p>首先，URL与每个规则的<em>模式</em>匹配。如果失败，则mod_rewrite立即停止处理此规则，并继续执行下一个规则。如果<em>模式</em>匹配，则mod_rewrite查找相应的规则条件（RewriteCond指令，出现在配置中RewriteRule的紧上方）。如果不存在，则将URL <em>替换</em>为由字符串<em>Substitution</em>构造的新值，然后继续进行规则循环。但是，如果条件存在，它将启动一个内部循环以按列出的顺序对其进行处理。对于条件，逻辑是不同的：我们没有将模式与当前URL匹配。相反，我们首先通过扩展变量，反向引用，映射查找<em>等来</em>创建字符串<em>TestString</em> ，然后尝试将<em>CondPattern</em>与之匹配。如果模式不匹配，则完整的条件集和相应的规则将失败。如果模式匹配，则处理下一个条件，直到没有其他条件可用为止。如果所有条件都匹配，则继续处理，将URL <em>替换为Substitution</em> 。</p>
 
 </div></div>
 <div id="footer">
-<p class="apache">Copyright 2018 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
-<p class="menu"><a href="../mod/index.html">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="http://wiki.apache.org/httpd/FAQ">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p></div><script type="text/javascript"><!--//--><![CDATA[//><!--
+<p class="apache">版权所有2018 The Apache Software Foundation。<br>根据<a href="http://www.apache.org/licenses/LICENSE-2.0">Apache许可，版本2.0许可</a> 。</p>
+<p class="menu"><a href="../mod/index.html">模块</a> | <a href="../mod/directives.html">指令</a> | <a href="http://wiki.apache.org/httpd/FAQ">常见问题</a> | <a href="../glossary.html">词汇表</a> | <a href="../sitemap.html">网站地图</a></p></div><script type="text/javascript"><!--//--><![CDATA[//><!--
 if (typeof(prettyPrint) !== 'undefined') {
     prettyPrint();
 }
 //--><!]]></script>
+
 </body></html>
