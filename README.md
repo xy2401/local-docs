@@ -163,14 +163,14 @@
 
 # Spring 
 
-原 
+v 201911 原 
 [Spring Initializr 0.8.0](spring1/initializr-docs-0.8.0.RELEASE/reference/html/) , 
 [Spring Boot 2.2.1](spring1/spring-boot-docs-2.2.1.RELEASE/reference/htmlsingle/) , 
 [Spring Framework 5.2.1](spring1/spring-framework-5.2.1.RELEASE/docs/spring-framework-reference/) , 
 [Spring Cloud Greenwich.SR4](spring1/Greenwich.SR4/single/spring-cloud.html) , 
 [Spring Cloud Hoxton.RELEASE](spring1/Hoxton.RELEASE/reference/htmlsingle/) , 
 
-中 
+v 201911 中 
 [Spring Initializr 0.8.0](spring1.zh/initializr-docs-0.8.0.RELEASE/reference/html/) , 
 [Spring Boot 2.2.1](spring1.zh/spring-boot-docs-2.2.1.RELEASE/reference/htmlsingle/) , 
 [Spring Framework 5.2.1](spring1.zh/spring-framework-5.2.1.RELEASE/docs/spring-framework-reference/) , 
@@ -178,7 +178,7 @@
 [Spring Cloud Hoxton.RELEASE](spring1.zh/Hoxton.RELEASE/reference/htmlsingle/) , 
 
 
-`spring-boot-docs-2.2.1.RELEASE` 原 
+**spring-boot-docs-2.2.1.RELEASE** 原 
  [Reference](spring1/spring-boot-docs-2.2.1.RELEASE/reference/htmlsingle/) , 
  [API](spring1/spring-boot-docs-2.2.1.RELEASE/api/) , 
  [Actuator Web API](spring1/spring-boot-docs-2.2.1.RELEASE/actuator-api/html/) , 
@@ -186,7 +186,7 @@
  [Gradle Plugin API](spring1/spring-boot-docs-2.2.1.RELEASE/gradle-plugin/api/) , 
  [Maven Plugin](spring1/spring-boot-docs-2.2.1.RELEASE/maven-plugin/) , 
 
-`spring-boot-docs-2.2.1.RELEASE` 中 
+**spring-boot-docs-2.2.1.RELEASE** 中 
  [Reference](spring1.zh/spring-boot-docs-2.2.1.RELEASE/reference/htmlsingle/) , 
  [API](spring1.zh/spring-boot-docs-2.2.1.RELEASE/api/) , 
  [Actuator Web API](spring1.zh/spring-boot-docs-2.2.1.RELEASE/actuator-api/html/) , 
@@ -194,35 +194,22 @@
  [Gradle Plugin API](spring1.zh/spring-boot-docs-2.2.1.RELEASE/gradle-plugin/api/) , 
  [Maven Plugin](spring1.zh/spring-boot-docs-2.2.1.RELEASE/maven-plugin/) , 
 
-`spring-framework-5.2.1.RELEASE` 
+**spring-framework-5.2.1.RELEASE**
  [reference](spring1/spring-framework-5.2.1.RELEASE/docs/spring-framework-reference/) , 
  [javadoc-api](spring1/spring-framework-5.2.1.RELEASE/docs/javadoc-api/) , 
  [kdoc-api](spring1/spring-framework-5.2.1.RELEASE/docs/kdoc-api/spring-framework/) , 
  
 
-`spring-framework-reference`
+**spring-framework-reference**
 [5.1.6](spring/spring-framework-5.1.6.RELEASE/docs/spring-framework-reference/) , 
 [4.3.9](spring/spring-framework-4.3.9.RELEASE/docs/spring-framework-reference/htmlsingle/) , 
 [3.2.9](spring/spring-framework-3.2.9.RELEASE/docs/spring-framework-reference/htmlsingle/) , 
 [2.5 满江红 翻译](spring/spring-framework-2.5-reference-redsaga-zh/)
 
-
-
-
-`spring-boot-docs-1.5.20.RELEASE`
-[Reference Guide](spring/spring-boot-docs-1.5.20.RELEASE/reference/htmlsingle/) , 
-[API](spring/spring-boot-docs-1.5.20.RELEASE/api/) , 
-[Maven Plugin](spring/spring-boot-docs-1.5.20.RELEASE/maven-plugin/) , 
-
  
-[Spring IO Platform Reference Guide](spring/platform-Cairo-SR8-docs-reference/htmlsingle/) , 
-[Spring Shell Reference Documentation](spring/spring-shell-docs-2.0.1.RELEASE/reference/htmlsingle/) , 
-[Spring Shell Documentation](spring/spring-shell-1.2.0.RELEASE/docs/reference/htmlsingle/) , 
-
-
 # Jboss  
 
-Drools 原
+**Drools** 原
  [6.5.0](jboss/drools-6.5.0/) ,
  [7.30.0](jboss/drools-7.30.0/) ,
  [expert-5.0.1](jboss/drools-expert-5.0.1/) ,
@@ -232,7 +219,7 @@ Drools 原
  [introduction-5.0.1](jboss/drools-introduction-5.0.1/) ,
  [solver-5.0.1](jboss/drools-solver-5.0.1/) ,
 
-Drools 中
+**Drools** 中
  [6.5.0](jboss.zh/drools-6.5.0/) ,
  [7.30.0](jboss.zh/drools-7.30.0/) ,
  [expert-5.0.1](jboss.zh/drools-expert-5.0.1/) ,
@@ -243,23 +230,24 @@ Drools 中
  [solver-5.0.1](jboss.zh/drools-solver-5.0.1/) ,
 
 
-原
+**hibernate** 原
  [5.4.9](jboss/hibernate-5.4.9/userguide/html_single/Hibernate_User_Guide.html) , 
  [search-5.11.4](jboss/hibernate-search-5.11.4.Final/reference/en-US/html_single/) , 
  [validator-6.1.0](jboss/hibernate-validator-6.1.0.Final/reference/en-US/html_single/) , 
-中
+
+**hibernate** 中
  [5.4.9](jboss.zh/hibernate-5.4.9/userguide/html_single/Hibernate_User_Guide.html) , 
  [search-5.11.4](jboss.zh/hibernate-search-5.11.4.Final/reference/en-US/html_single/) , 
  [validator-6.1.0](jboss.zh/hibernate-validator-6.1.0.Final/reference/en-US/html_single/) , 
 
-hibernate-5.4.9 原
+**hibernate-5.4.9** 原
   [integration guide](jboss/hibernate-5.4.9/integrationguide/html_single/Hibernate_Integration_Guide.html)
   [javadocs](jboss/hibernate-5.4.9/javadocs/)
   [quick start](jboss/hibernate-5.4.9/quickstart/html_single/)
   [topical](jboss/hibernate-5.4.9/topical/html_single/)
   [user guide](jboss/hibernate-5.4.9/userguide/html_single/Hibernate_User_Guide.html)
 
-hibernate-5.4.9 中
+**hibernate-5.4.9** 中
   [integration guide](jboss.zh/hibernate-5.4.9/integrationguide/html_single/Hibernate_Integration_Guide.html)
   [javadocs](jboss.zh/hibernate-5.4.9/javadocs/)
   [quick start](jboss.zh/hibernate-5.4.9/quickstart/html_single/)
@@ -267,20 +255,13 @@ hibernate-5.4.9 中
   [user guide](jboss.zh/hibernate-5.4.9/userguide/html_single/Hibernate_User_Guide.html)
 
 
-`hibernate-release-4.3.11.Final`
+**hibernate-release-4.3.11.Final**
 [manual](jboss/hibernate-release-4.3.11.Final/documentation/manual/en-US/html_single/) , 
 [Getting Started Guide](jboss/hibernate-release-4.3.11.Final/documentation/quickstart/en-US/html_single/) , 
 [Topical Guides](jboss/hibernate-release-4.3.11.Final/documentation/topical/html/) , 
 [Developer Guide](jboss/hibernate-release-4.3.11.Final/documentation/devguide/en-US/html_single/) , 
 [JavaDocs](jboss/hibernate-release-4.3.11.Final/documentation/javadocs/)
-
-`hibernate-release-5.4.2.Final`
-[User Guide](jboss/hibernate-release-5.4.2.Final/documentation/userguide/html_single/Hibernate_User_Guide.html) , 
-[Topical Guides](jboss/hibernate-release-5.4.2.Final/documentation/topical/html_single/) , 
-[Getting Started Guide](jboss/hibernate-release-5.4.2.Final/documentation/quickstart/html_single/) , 
-[JavaDocs](jboss/hibernate-release-5.4.2.Final/documentation/javadocs/) , 
-[Integration Guide](jboss/hibernate-release-5.4.2.Final/documentation/integrationguide/html_single/Hibernate_Integration_Guide.html)
-
+ 
 
 `hibernate-validator-6.0.16.Final`
 [Reference Guide](jboss/hibernate-validator-6.0.16.Final/docs/reference/en-US/html_single/)
@@ -300,8 +281,9 @@ hibernate-5.4.9 中
 [api](jboss/hibernate-search-5.11.1.Final/docs/api/) , 
 [Reference Guide](jboss/hibernate-search-5.11.1.Final/docs/reference/en-US/html_single/)
 
- 
-[WildFly Documentation](jboss/wildfly/)
+
+**WildFly**
+[Documentation](jboss/wildfly/)
 , [17](jboss/wildfly/17/)
 , [16](jboss/wildfly/16/)
 , [15](jboss/wildfly/15/)
