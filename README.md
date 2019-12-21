@@ -62,11 +62,13 @@
 # Java 
 
 `The Java™ Tutorials` 
+[详细目录](DETAIL.md#javaTutorial) , 
 [原](oracle/java/tutorial/) , 
 [中](oracle/java.zh/tutorial/) ,     
 
  
 `JDK 11 Documentation Books` 原
+[详细目录](DETAIL.md#java11book) , 
 ,[access](oracle/java/11/access)
 ,[core](oracle/java/11/core)
 ,[gctuning](oracle/java/11/gctuning)
@@ -90,6 +92,7 @@
 
  
 `JDK 11 Documentation Books` 中 
+[详细目录](DETAIL.md#java11book) , 
 ,[access](oracle/java.zh/11/access)
 ,[core](oracle/java.zh/11/core)
 ,[gctuning](oracle/java.zh/11/gctuning)

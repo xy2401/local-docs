@@ -417,36 +417,36 @@ oracle
 ## javaTutorial
 
 
-- The Java™ Tutorials Java™教程 [/javase/tutorial/tutorialLearningPaths.html][tutorial-tutorialLearningPaths] [local][tutorial-tutorialLearningPaths-3]  [本地][tutorial-tutorialLearningPaths-4]
-- **New To Java 新到Java**
-    - Getting Started 入门 [/javase/tutorial/getStarted/index.html][tutorial-getStarted] [local][tutorial-getStarted-3]  [本地][tutorial-getStarted-4]
-    - Learning the Java Language 学习Java语言[/javase/tutorial/java/index.html][tutorial-java] [local][tutorial-java-3]  [本地][tutorial-java-4]
-    - Essential Java Classes 基本Java类[/javase/tutorial/essential/index.html][tutorial-essential] [local][tutorial-essential-3]  [本地][tutorial-essential-4]
-- **Building On The Foundation 建立在基础上**
-    - Collections 集合   [/javase/tutorial/collections/index.html][tutorial-collections] [local][tutorial-collections-3]  [本地][tutorial-collections-4]              
-    - Lambda Expressions Lambda表达式             [/javase/tutorial/java/javaOO/lambdaexpressions.html][tutorial-java-javaOO-lambdaexpressions]    [local][tutorial-java-javaOO-lambdaexpressions-3]  [本地][tutorial-java-javaOO-lambdaexpressions-4]
-    - Aggregate Operations 聚合操作    [/javase/tutorial/collections/streams/index.html][tutorial-collections-streams]  [local][tutorial-collections-streams-3]  [本地][tutorial-collections-streams-4]      
-    - Packaging Programs In JAR Files JAR文件中的打包程序 [/javase/tutorial/deployment/jar/index.html][tutorial-deployment-jar]  [local][tutorial-deployment-jar-3]  [本地][tutorial-deployment-jar-4]
-    - Internationalization 国际化           [/javase/tutorial/i18n/index.html][tutorial-i18n] [local][tutorial-i18n-3]  [本地][tutorial-i18n-4]
-    - Reflection    反射                 [/javase/tutorial/reflect/index.html][tutorial-reflect] [local][tutorial-reflect-3]  [本地][tutorial-reflect-4]
-    - Security   安全性                    [/javase/tutorial/security/index.html][tutorial-security] [local][tutorial-security-3]  [本地][tutorial-security-4]
-    - JavaBeans  JavaBeans                    [/javase/tutorial/javabeans/index.html][tutorial-javabeans] [local][tutorial-javabeans-3]  [本地][tutorial-javabeans-4]
-    - The Extension Mechanism 扩展机制        [/javase/tutorial/ext/index.html][tutorial-ext] [local][tutorial-ext-3]  [本地][tutorial-ext-4]
-    - Generics   泛型  [/javase/tutorial/extra/generics/index.html][tutorial-extra-generics] [local][tutorial-extra-generics-3]  [本地][tutorial-extra-generics-4]                
-- **Cherish the Client? 珍惜客户？**
-    - Get Started with JavaFX   JavaFX入门 [/javase/8/javafx/get-started-tutorial/get_start_apps.htm][get-started-tutorial-get_start_apps]  [local][get-started-tutorial-get_start_apps-3]  [本地][get-started-tutorial-get_start_apps-4]
-    - Get Started with Scene Builder  Scene Builder入门   [/javase/8/scene-builder-2/get-started-tutorial/jfxsb-get_started.htm][get-started-tutorial-jfxsb-get_started]  [local][get-started-tutorial-jfxsb-get_started-3]  [本地][get-started-tutorial-jfxsb-get_started-4]
-    - Creating a GUI with Swing  使用Swing创建GUI         [/javase/tutorial/uiswing/index.html][tutorial-uiswing] [local][tutorial-uiswing-3]  [本地][tutorial-uiswing-4]
-    - Deployment      部署                   [/javase/tutorial/deployment/index.html][tutorial-deployment] relative][tutorial-deployment-3]  [本地][tutorial-deployment-4]
-    - 2D Graphics   2D图形                    [/javase/tutorial/2d/index.html][tutorial-2d]  [local][tutorial-2d-3]  [本地][tutorial-2d-4]
-    - Full-Screen Exclusive Mode API  全屏独占模式API   [/javase/tutorial/extra/fullscreen/index.html][tutorial-extra-fullscreen] [local][tutorial-extra-fullscreen-3]  [本地][tutorial-extra-fullscreen-4]
-- **Fervor Over Server! 热情服务器！**
-    - JDBC Database Access JDBC数据库访问 [/javase/tutorial/jdbc/index.html][tutorial-jdbc] [local][tutorial-jdbc-3]  [本地][tutorial-jdbc-4]
-    - JMX      [/javase/tutorial/jmx/index.html][tutorial-jmx] [local][tutorial-jmx-3]  [本地][tutorial-jmx-4]
-    - JNDI     [/javase/tutorial/jndi/index.html][tutorial-jndi] [local][tutorial-jndi-3]  [本地][tutorial-jndi-4]
-    - JAXP                [/javase/tutorial/jaxp/index.html][tutorial-jaxp] [local][tutorial-jaxp-3]  [本地][tutorial-jaxp-4]
-    - RMI   [/javase/tutorial/rmi/index.html][tutorial-rmi] [local][tutorial-rmi-3]  [本地][tutorial-rmi-4]            
-    - Concurrency    并发    [/javase/tutorial/essential/concurrency/index.html][tutorial-essential-concurrency]  [local][tutorial-essential-concurrency-3]  [本地][tutorial-essential-concurrency-4] 
+- The Java™ Tutorials Java™教程 [/javase/tutorial/tutorialLearningPaths.html][tutorial-tutorialLearningPaths] [local][tutorial-tutorialLearningPaths-3]  [本地][tutorial-tutorialLearningPaths-4]    
+ **New To Java 新到Java**
+ - Getting Started 入门 [/javase/tutorial/getStarted/index.html][tutorial-getStarted] [local][tutorial-getStarted-3]  [本地][tutorial-getStarted-4]    
+ - Learning the Java Language 学习Java语言[/javase/tutorial/java/index.html][tutorial-java] [local][tutorial-java-3]  [本地][tutorial-java-4]    
+ - Essential Java Classes 基本Java类[/javase/tutorial/essential/index.html][tutorial-essential] [local][tutorial-essential-3]  [本地][tutorial-essential-4]    
+ **Building On The Foundation 建立在基础上**
+ - Collections 集合   [/javase/tutorial/collections/index.html][tutorial-collections] [local][tutorial-collections-3]  [本地][tutorial-collections-4]              
+ - Lambda Expressions Lambda表达式             [/javase/tutorial/java/javaOO/lambdaexpressions.html][tutorial-java-javaOO-lambdaexpressions]    [local][tutorial-java-javaOO-lambdaexpressions-3]  [本地][tutorial-java-javaOO-lambdaexpressions-4]    
+ - Aggregate Operations 聚合操作    [/javase/tutorial/collections/streams/index.html][tutorial-collections-streams]  [local][tutorial-collections-streams-3]  [本地][tutorial-collections-streams-4]      
+ - Packaging Programs In JAR Files JAR文件中的打包程序 [/javase/tutorial/deployment/jar/index.html][tutorial-deployment-jar]  [local][tutorial-deployment-jar-3]  [本地][tutorial-deployment-jar-4]    
+ - Internationalization 国际化           [/javase/tutorial/i18n/index.html][tutorial-i18n] [local][tutorial-i18n-3]  [本地][tutorial-i18n-4]    
+ - Reflection    反射                 [/javase/tutorial/reflect/index.html][tutorial-reflect] [local][tutorial-reflect-3]  [本地][tutorial-reflect-4]    
+ - Security   安全性                    [/javase/tutorial/security/index.html][tutorial-security] [local][tutorial-security-3]  [本地][tutorial-security-4]    
+ - JavaBeans  JavaBeans                    [/javase/tutorial/javabeans/index.html][tutorial-javabeans] [local][tutorial-javabeans-3]  [本地][tutorial-javabeans-4]    
+ - The Extension Mechanism 扩展机制        [/javase/tutorial/ext/index.html][tutorial-ext] [local][tutorial-ext-3]  [本地][tutorial-ext-4]    
+ - Generics   泛型  [/javase/tutorial/extra/generics/index.html][tutorial-extra-generics] [local][tutorial-extra-generics-3]  [本地][tutorial-extra-generics-4]                
+ **Cherish the Client? 珍惜客户？**
+ - Get Started with JavaFX   JavaFX入门 [/javase/8/javafx/get-started-tutorial/get_start_apps.htm][get-started-tutorial-get_start_apps]  [local][get-started-tutorial-get_start_apps-3]  [本地][get-started-tutorial-get_start_apps-4]    
+ - Get Started with Scene Builder  Scene Builder入门   [/javase/8/scene-builder-2/get-started-tutorial/jfxsb-get_started.htm][get-started-tutorial-jfxsb-get_started]  [local][get-started-tutorial-jfxsb-get_started-3]  [本地][get-started-tutorial-jfxsb-get_started-4]    
+ - Creating a GUI with Swing  使用Swing创建GUI         [/javase/tutorial/uiswing/index.html][tutorial-uiswing] [local][tutorial-uiswing-3]  [本地][tutorial-uiswing-4]    
+ - Deployment      部署                   [/javase/tutorial/deployment/index.html][tutorial-deployment] relative][tutorial-deployment-3]  [本地][tutorial-deployment-4]    
+ - 2D Graphics   2D图形                    [/javase/tutorial/2d/index.html][tutorial-2d]  [local][tutorial-2d-3]  [本地][tutorial-2d-4]    
+ - Full-Screen Exclusive Mode API  全屏独占模式API   [/javase/tutorial/extra/fullscreen/index.html][tutorial-extra-fullscreen] [local][tutorial-extra-fullscreen-3]  [本地][tutorial-extra-fullscreen-4]    
+ **Fervor Over Server! 热情服务器！**
+ - JDBC Database Access JDBC数据库访问 [/javase/tutorial/jdbc/index.html][tutorial-jdbc] [local][tutorial-jdbc-3]  [本地][tutorial-jdbc-4]    
+ - JMX      [/javase/tutorial/jmx/index.html][tutorial-jmx] [local][tutorial-jmx-3]  [本地][tutorial-jmx-4]    
+ - JNDI     [/javase/tutorial/jndi/index.html][tutorial-jndi] [local][tutorial-jndi-3]  [本地][tutorial-jndi-4]    
+ - JAXP                [/javase/tutorial/jaxp/index.html][tutorial-jaxp] [local][tutorial-jaxp-3]  [本地][tutorial-jaxp-4]    
+ - RMI   [/javase/tutorial/rmi/index.html][tutorial-rmi] [local][tutorial-rmi-3]  [本地][tutorial-rmi-4]            
+ - Concurrency    并发    [/javase/tutorial/essential/concurrency/index.html][tutorial-essential-concurrency]  [local][tutorial-essential-concurrency-3]  [本地][tutorial-essential-concurrency-4] 
 
 
 [tutorial-tutorialLearningPaths]: https://docs.oracle.com/javase/tutorial/tutorialLearningPaths.html
@@ -634,70 +634,70 @@ oracle
  [JDK 11 Documentation - Books](https://docs.oracle.com/en/java/javase/11/books.html)
 
 - books 图书
-- Migration Guide 迁移指南 [/en/java/javase/11/migrate/index.html][migrate] [local][migrate-3]  [本地][migrate-4]
+- Migration Guide 迁移指南 [/en/java/javase/11/migrate/index.html][migrate] [local][migrate-3]  [本地][migrate-4]  
     > Helps to identify potential issues and provides suggestions for migrating your existing Java application from JDK 8 to the latest JDK.    
     > 帮助识别潜在问题并提供将现有Java应用程序从JDK 8迁移到最新JDK的建议。  
--   Installation Guide 安装指南 [/en/java/javase/11/install/index.html][install][local][install-3]  [本地][install-4]
+-   Installation Guide 安装指南 [/en/java/javase/11/install/index.html][install][local][install-3]  [本地][install-4]  
     >Describes the process to install JDK 11 and JRE 11 on your Windows, Oracle Solaris, macOS, and Linux platforms.    
     >介绍在Windows，Oracle Solaris，macOS和Linux平台上安装JDK 11和JRE 11的过程。    
--  **Core Libraries 核心库**
-- Internationalization Guide  国际化指南  [/en/java/javase/11/intl/index.html][intl][local][intl-3]  [本地][intl-4]
+  **Core Libraries 核心库**  
+- Internationalization Guide  国际化指南  [/en/java/javase/11/intl/index.html][intl][local][intl-3]  [本地][intl-4]  
     >Summarizes internationalization APIs and features of Java SE.  
     >总结了Java SE的国际化API和功能。   
-- Java Core Libraries Developer Guide  Java核心库开发人员指南  [/en/java/javase/11/core/index.html][core]  [local][core-3]  [本地][core-4]
+- Java Core Libraries Developer Guide  Java核心库开发人员指南  [/en/java/javase/11/core/index.html][core]  [local][core-3]  [本地][core-4]  
     >Provides information about the Java core libraries.    
     >提供有关Java核心库的信息。 
-- Java Remote Method Invocation API Guide Java远程方法调用API指南 [/en/java/javase/11/rmi/index.html][rmi]  [local][rmi-3]  [本地][rmi-4]
+- Java Remote Method Invocation API Guide Java远程方法调用API指南 [/en/java/javase/11/rmi/index.html][rmi]  [local][rmi-3]  [本地][rmi-4]  
     >Provides security recommendations for RMI applications.    
     >为RMI应用程序提供安全建议。    
-- **HotSpot Virtual Machine** 
-- HotSpot Virtual Machine Garbage Collection Tuning Guide HotSpot虚拟机垃圾收集调整指南[/en/java/javase/11/gctuning/index.html][gctuning]  [local][gctuning-3]  [本地][gctuning-4]
+  **HotSpot Virtual Machine** 
+- HotSpot Virtual Machine Garbage Collection Tuning Guide HotSpot虚拟机垃圾收集调整指南[/en/java/javase/11/gctuning/index.html][gctuning]  [local][gctuning-3]  [本地][gctuning-4]    
     >Describes the garbage collection methods included in the Java HotSpot Virtual Machine (Java HotSpot VM) and helps you determine the best method for your needs.    
     >描述Java HotSpot虚拟机（Java HotSpot VM）中包含的垃圾收集方法，并帮助您确定满足您需求的最佳方法。  
-- Java Virtual Machine Guide Java虚拟机指南 [/en/java/javase/11/vm/index.html][vm]  [local][vm-3]  [本地][vm-4]
+- Java Virtual Machine Guide Java虚拟机指南 [/en/java/javase/11/vm/index.html][vm]  [local][vm-3]  [本地][vm-4]    
     >Describes the features of the Java Virtual Machine technology, including the Java HotSpot VM technology.   
     >介绍Java虚拟机技术的功能，包括Java HotSpot VM技术。    
-- JRockit to HotSpot Migration Guide JRockit到HotSpot迁移指南[/en/java/javase/11/jrockit-hotspot/index.html][jrockit-hotspot]   [local][jrockit-hotspot-3]  [本地][jrockit-hotspot-4]
+- JRockit to HotSpot Migration Guide JRockit到HotSpot迁移指南[/en/java/javase/11/jrockit-hotspot/index.html][jrockit-hotspot]   [local][jrockit-hotspot-3]  [本地][jrockit-hotspot-4]    
     >Describes how to migrate Oracle JRockit to Java HotSpot VM.    
     >介绍如何将Oracle JRockit迁移到Java HotSpot VM。    
-- **Language**
-- Java SE Language Updates Java SE语言更新[/en/java/javase/11/language/index.html][language]  [local][language-3]  [本地][language-4]
+  **Language**
+- Java SE Language Updates Java SE语言更新[/en/java/javase/11/language/index.html][language]  [local][language-3]  [本地][language-4]    
     >Describes the new and updated language features in Java SE 9 and subsequent releases.  
     >描述Java SE 9及后续版本中的新增和更新语言功能。    
-- **Management**
-- Java Management Extensions Guide Java管理扩展指南 [/en/java/javase/11/jmx/index.html][jmx]  [local][jmx-3]  [本地][jmx-4]
+  **Management**
+- Java Management Extensions Guide Java管理扩展指南 [/en/java/javase/11/jmx/index.html][jmx]  [local][jmx-3]  [本地][jmx-4]    
     >Provides an introduction to Java Management Extension technology.  
     >介绍Java Management Extension技术。    
-- Java SE Monitoring and Management Guide Java SE监控和管理指南[/en/java/javase/11/management/index.html][management]  [local][management-3]  [本地][management-4]
+- Java SE Monitoring and Management Guide Java SE监控和管理指南[/en/java/javase/11/management/index.html][management]  [local][management-3]  [本地][management-4]    
     >Describes the utilities provided with Java Platform, Standard Edition (Java SE) for monitoring and managing the performance of a Java Virtual Machine and the Java applications that are running in it.    
     >描述Java平台标准版（Java SE）提供的实用程序，用于监视和管理Java虚拟机的性能以及在其中运行的Java应用程序。  
-- **Scripting**
-- Java Scripting Programmer’s Guide Java脚本编程程序员指南[/en/java/javase/11/scripting/index.html][scripting]  [local][scripting-3]  [本地][scripting-4]
+  **Scripting**
+- Java Scripting Programmer’s Guide Java脚本编程程序员指南[/en/java/javase/11/scripting/index.html][scripting]  [local][scripting-3]  [本地][scripting-4]    
     >Provides an overview of the scripting features in Java SE. 
     >概述Java SE中的脚本功能。  
-- Nashorn User's Guide Nashorn用户指南 [/en/java/javase/11/nashorn/index.html][nashorn] [local][nashorn-3]  [本地][nashorn-4]
+- Nashorn User's Guide Nashorn用户指南 [/en/java/javase/11/nashorn/index.html][nashorn] [local][nashorn-3]  [本地][nashorn-4]    
     >Describes the use of the Nashorn engine for Java application development with scripting features provided by Java SE.  
     >描述了使用Java SE提供的脚本功能将Nashorn引擎用于Java应用程序开发。 
-- **Security**
-- Security Developer Guide 安全开发者指南 [/en/java/javase/11/security/index.html][security]   [local][security-3]  [本地][security-4]
+  **Security**
+- Security Developer Guide 安全开发者指南 [/en/java/javase/11/security/index.html][security]   [local][security-3]  [本地][security-4]    
     >Provides information about Java security technology, tools, and implementations of commonly used security algorithms, mechanisms, and protocols.   
     >提供有关Java安全技术，工具以及常用安全算法，机制和协议的实现的信息。   
-- **Tools**
-- Java Shell User Guide Java Shell用户指南 [/en/java/javase/11/jshell/index.html][jshell] [local][jshell-3]  [本地][jshell-4]
+  **Tools**
+- Java Shell User Guide Java Shell用户指南 [/en/java/javase/11/jshell/index.html][jshell] [local][jshell-3]  [本地][jshell-4]    
     >Describes how to use Java Shell (JShell), a Read-Eval-Print Loop (REPL) tool for exploring the Java language.  
     >描述如何使用Java Shell（JShell），一种用于探索Java语言的Read-Eval-Print Loop（REPL）工具。 
-- Javadoc Guide Javadoc指南 [/en/java/javase/11/javadoc/index.html][javadoc] [local][javadoc-3]  [本地][javadoc-4]
+- Javadoc Guide Javadoc指南 [/en/java/javase/11/javadoc/index.html][javadoc] [local][javadoc-3]  [本地][javadoc-4]    
     >Explains how to use the Javadoc tool that is installed with the Java Development Kit (JDK).    
     >说明如何使用随Java Development Kit（JDK）一起安装的Javadoc工具。   
-- Tools Reference 工具参考 [/en/java/javase/11/tools/index.html][tools][local][tools-3]  [本地][tools-4]
+- Tools Reference 工具参考 [/en/java/javase/11/tools/index.html][tools][local][tools-3]  [本地][tools-4]    
     >Describes the valid options and arguments for Java SE commands.    
     >描述Java SE命令的有效选项和参数。  
-- **Troubleshooting**
-- Troubleshooting Guide 故障排除指南[/en/java/javase/11/troubleshoot/index.html][troubleshoot]  [local][troubleshoot-3]  [本地][troubleshoot-4]
+  **Troubleshooting**
+- Troubleshooting Guide 故障排除指南[/en/java/javase/11/troubleshoot/index.html][troubleshoot]  [local][troubleshoot-3]  [本地][troubleshoot-4]    
     >Helps troubleshoot issues that might occur with Java Client applications created on the Java Platform, Standard Edition (Java SE) and Java HotSpot VM. 
     >帮助解决在Java平台，标准版（Java SE）和Java HotSpot VM上创建的Java客户端应用程序可能出现的问题。   
-- **Accessibility**
-- Java Accessibility Guide Java辅助功能指南[/en/java/javase/11/access/index.html][access] [local][access-3]  [本地][access-4]
+  **Accessibility**
+- Java Accessibility Guide Java辅助功能指南[/en/java/javase/11/access/index.html][access] [local][access-3]  [本地][access-4]    
     >Describes Java Access Bridge, Java Accessibility API (JAAPI), and Java Accessibility Utilities, which enable you to create accessible applications.    
     >描述Java Access Bridge，Java Accessibility API（JAAPI）和Java Accessibility Utilities，它们使您能够创建可访问的应用程序。  
 
@@ -1034,7 +1034,7 @@ oracle
 **虚拟化**    
 
   虚拟机的部署，管理和调整  
-   
+
 - [Building, running, and managing containers ](epub.html?path=redhat/8.zh-Hans/building-running-and-managing-containers/OEBPS/)    
 - [Configuring and managing virtualization ](epub.html?path=redhat/8.zh-Hans/configuring-and-managing-virtualization/OEBPS/)    
 - [Deploying Red Hat Enterprise Linux 8 on public cloud platforms ](epub.html?path=redhat/8.zh-Hans/deploying-red-hat-enterprise-linux-8-on-public-cloud-platforms/OEBPS/)    
