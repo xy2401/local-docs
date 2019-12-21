@@ -263,24 +263,27 @@ v 201911 中
 [JavaDocs](jboss/hibernate-release-4.3.11.Final/documentation/javadocs/)
  
 
-`hibernate-validator-6.0.16.Final`
+**hibernate-validator-6.0.16.Final**
 [Reference Guide](jboss/hibernate-validator-6.0.16.Final/docs/reference/en-US/html_single/)
 [api](jboss/hibernate-validator-6.0.16.Final/docs/api/) , 
 
 
-`hibernate-validator-5.4.3.Final`
+**hibernate-validator-5.4.3.Final**
 [api](jboss/hibernate-validator-5.4.3.Final/docs/api/) , 
 [Reference Guide](jboss/hibernate-validator-5.4.3.Final/docs/reference/en-US/html_single/)
 
-`hibernate-validator-4.3.2.Final`
+**hibernate-validator-4.3.2.Final**
 [api](jboss/hibernate-validator-4.3.2.Final/docs/api/) , 
 [reference](jboss/hibernate-validator-4.3.2.Final/docs/reference/en-US/html_single/) , 
 [reference 中](jboss/hibernate-validator-4.3.2.Final/docs/reference/zh-CN/html_single/)
 
-`hibernate-search-5.11.1.Final`
+**hibernate-search-5.11.1.Final**
 [api](jboss/hibernate-search-5.11.1.Final/docs/api/) , 
 [Reference Guide](jboss/hibernate-search-5.11.1.Final/docs/reference/en-US/html_single/)
 
+满江红翻译 
+[HIBERNATE 3.6.10](jboss/hibernate-distribution-3.6.10.Final/documentation/manual/zh-CN/html_single/) , 
+[jboss-seam-2.0.0](jboss/jboss-seam-2.0.0.GA/doc/reference/zh/html_single/) , 
 
 **WildFly**
 [Documentation](jboss/wildfly/)
@@ -290,25 +293,13 @@ v 201911 中
 , [14](jboss/wildfly/14/)
 , [13](jboss/wildfly/13/)
 , [12](jboss/wildfly/12/)
-
-`详细目录` 
-, [17](DETAIL.md#wildfly17)
-, [16](DETAIL.md#wildfly16)
-, [15](DETAIL.md#wildfly15)
-, [14](DETAIL.md#wildfly14)
-, [13](DETAIL.md#wildfly13)
-, [12](DETAIL.md#wildfly12)
-
-
-`Red Hat JBoss Enterprise Application Platform`
-, [7.2](jboss/red_hat_jboss/7.2/)
-, [6.4](jboss/red_hat_jboss/6.4/)
-, [5](jboss/red_hat_jboss/5/)
-
-`详细目录`
-, [7.2](DETAIL.md#JBossEAP7.2)
-, [6.4](DETAIL.md#JBossEAP6.4)
-, [5](DETAIL.md#JBossEAP5)
+ 
+ 
+`JBoss Enterprise Application Platform`
+`book 详细目录`
+, [7.2](DETAIL.md#jbosseap7.2)
+, [6.4](DETAIL.md#jbosseap6.4)
+, [5](DETAIL.md#jbosseap5)
 
 
 

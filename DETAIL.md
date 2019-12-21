@@ -264,7 +264,7 @@
 - Quickstarts
 - [jboss-developer-shared-resources/CONTRIBUTING.md at master · jboss-developer/jboss-developer-shared-resources](https://github.com/jboss-developer/jboss-developer-shared-resources/blob/master/guides/CONTRIBUTING.md#contribute-a-quickstart)
 
-# JBossEAP7.2
+# jbosseap7.2
 
 `官方地址`
 [Product Documentation for Red Hat JBoss Enterprise Application Platform 7.2 - Red Hat Customer Portal](https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/)
@@ -309,7 +309,7 @@
 - [Performance Tuning Guide](epub.html?path=jboss/red_hat_jboss/7.2/performance_tuning_guide/)
 - [API Javadocs ](https://access.redhat.com/webassets/avalon/d/red-hat-jboss-enterprise-application-platform/7.2/javadocs/)
  
-# JBossEAP6.4
+# jbosseap6.4
 
 `官方地址`
 [Product Documentation for Red Hat JBoss Enterprise Application Platform 6.4 - Red Hat Customer Portal](https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/6.4/)
@@ -340,7 +340,7 @@ Release Notes
 
 
 
-# JBossEAP5
+# jbosseap5
 
 [Product Documentation for JBoss Enterprise Application Platform - Red Hat Customer Portal](https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/5/)
 
