@@ -838,17 +838,24 @@ oracle
 
 # red_hat_enterprise_linux8
 
-[Product Documentation for Red Hat Enterprise Linux 8 - Red Hat Customer Portal](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/)
+`reference` [Product Documentation for Red Hat Enterprise Linux 8 - Red Hat Customer Portal](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/)
 
-- Release Notes
+**Release Notes**
+
 - [8.0 Release Notes](epub.html?path=redhat/8/80-release-notes/OEBPS/)    
   Release Notes for Red Hat Enterprise Linux 8.0
 - [Package manifest](epub.html?path=redhat/8/package-manifest/OEBPS/)    
   Package listing for Red Hat Enterprise Linux 8.0
-- Planning
+
+
+**Planning**
+
 - [Considerations in adopting RHEL 8](epub.html?path=redhat/8/considerations-in-adopting-rhel-8/OEBPS/)    
   An overview of changes in Red Hat Enterprise Linux 8 since Red Hat Enterprise Linux 7
-- Installing
+
+
+**Installing**
+
 - [Upgrading to RHEL 8](epub.html?path=redhat/8/upgrading-to-rhel-8/OEBPS/)    
   Instructions for an in-place upgrade to Red Hat Enterprise Linux 8
 - [Performing a standard RHEL installation](epub.html?path=redhat/8/performing-a-standard-rhel-installation/OEBPS/)    
@@ -859,59 +866,78 @@ oracle
   Installing Red Hat Enterprise Linux 8 using Kickstart
 - [Installing, managing, and removing user space components](epub.html?path=redhat/8/installing-managing-and-removing-user-space-components/OEBPS/)    
   An introduction to AppStream and BaseOS in Red Hat Enterprise Linux 8
-- System Administration    
+
+
+**System Administration**    
+
   Deployment, administration, and tuning
+
 - [Configuring basic system settings](epub.html?path=redhat/8/configuring-basic-system-settings/OEBPS/)    
 - [Managing systems using the web console](epub.html?path=redhat/8/managing-systems-using-the-web-console/OEBPS/)    
-   A guide to using the web console for managing systems in Red Hat Enterprise Linux 8
+   A guide to using the web console for managing systems in Red Hat Enterprise Linux 8    
 - [Deploying different types of servers ](epub.html?path=redhat/8/deploying-different-types-of-servers/OEBPS/)    
 - [Configuring and managing networking ](epub.html?path=redhat/8/configuring-and-managing-networking/OEBPS/)    
 - [Managing, monitoring and updating the kernel ](epub.html?path=redhat/8/managing-monitoring-and-updating-the-kernel/OEBPS/)    
-   A guide to managing the Linux kernel on Red Hat Enterprise Linux 8
+   A guide to managing the Linux kernel on Red Hat Enterprise Linux 8  
 - [Managing RHEL systems from your desktop ](epub.html?path=redhat/8/managing-rhel-systems-from-your-desktop/OEBPS/)    
-   A guide to managing Red Hat Enterprise Linux 8 from your desktop
+   A guide to managing Red Hat Enterprise Linux 8 from your desktop  
 - [Using authselect on a Red Hat Enterprise Linux host ](epub.html?path=redhat/8/using-authselect-on-a-red-hat-enterprise-linux-host/OEBPS/)    
 - [Recording sessions ](epub.html?path=redhat/8/recording-sessions/OEBPS/)    
-  Using the session recording solution in Red Hat Enterprise Linux 8
+  Using the session recording solution in Red Hat Enterprise Linux 8  
 - [Monitoring and managing system status and performance ](epub.html?path=redhat/8/monitoring-and-managing-system-status-and-performance/OEBPS/)    
-  Optimizing system throughput, latency, and power consumption
-- Security
+  Optimizing system throughput, latency, and power consumption  
+
+
+**Security**
+
 - [Managing and monitoring security updates ](epub.html?path=redhat/8/managing-and-monitoring-security-updates/OEBPS/)    
-  A guide to managing and monitoring security updates in Red Hat Enterprise Linux 8
+  A guide to managing and monitoring security updates in Red Hat Enterprise Linux 8  
 - [Security hardening ](epub.html?path=redhat/8/security-hardening/OEBPS/)    
 - [Using SELinux ](epub.html?path=redhat/8/using-selinux/OEBPS/)    
-  Basic and advanced configuration of Security-Enhanced Linux (SELinux)
+  Basic and advanced configuration of Security-Enhanced Linux (SELinux)  
 - [Securing networks ](epub.html?path=redhat/8/securing-networks/OEBPS/)    
-  Configuring secured networks and network communication
-- Identity Management    
-  Identity management and policy
+  Configuring secured networks and network communication  
+
+
+**Identity Management** 
+
+  Identity management and policy   
+
 - [Planning Identity Management ](epub.html?path=redhat/8/planning-identity-management/OEBPS/)    
 - [Installing Identity Management ](epub.html?path=redhat/8/installing-identity-management/OEBPS/)    
 - [Configuring and managing Identity Management ](epub.html?path=redhat/8/configuring-and-managing-identity-management/OEBPS/)    
-  Configuring, managing and maintaining Identity Management in Red Hat Enterprise Linux 8
-- Storage and Clusters
+  Configuring, managing and maintaining Identity Management in Red Hat Enterprise Linux 8   
+
+
+**Storage and Clusters**
+
 - [Managing file systems ](epub.html?path=redhat/8/managing-file-systems/OEBPS/)    
-  Creating, modifying, and administering file systems in Red Hat Enterprise Linux 8
+  Creating, modifying, and administering file systems in Red Hat Enterprise Linux 8  
 - [Managing storage devices ](epub.html?path=redhat/8/managing-storage-devices/OEBPS/)    
 - [Configuring and managing logical volumes ](epub.html?path=redhat/8/configuring-and-managing-logical-volumes/OEBPS/)    
-  A guide to the configuration and management of LVM logical volumes
+  A guide to the configuration and management of LVM logical volumes  
 - [Configuring device mapper multipath ](epub.html?path=redhat/8/configuring-device-mapper-multipath/OEBPS/)    
-  Using the Device Mapper Multipath feature
+  Using the Device Mapper Multipath feature  
 - [Configuring GFS2 file systems ](epub.html?path=redhat/8/configuring-gfs2-file-systems/OEBPS/)    
-  A guide to the configuration and management of GFS2 file systems
+  A guide to the configuration and management of GFS2 file systems  
 - [Deduplicating and compressing storage ](epub.html?path=redhat/8/deduplicating-and-compressing-storage/OEBPS/)    
-  Using VDO to optimize storage capacity in Red Hat Enterprise Linux 8
+  Using VDO to optimize storage capacity in Red Hat Enterprise Linux 8  
 - [Configuring and managing high availability clusters](epub.html?path=redhat/8/configuring-and-managing-high-availability-clusters/OEBPS/)    
-- Virtualization    
-  Deployment, administration, and tuning of virtual machines
+
+
+**Virtualization**    
+
+  Deployment, administration, and tuning of virtual machines   
 - [Building, running, and managing containers ](epub.html?path=redhat/8/building-running-and-managing-containers/OEBPS/)    
 - [Configuring and managing virtualization ](epub.html?path=redhat/8/configuring-and-managing-virtualization/OEBPS/)    
 - [Deploying Red Hat Enterprise Linux 8 on public cloud platforms ](epub.html?path=redhat/8/deploying-red-hat-enterprise-linux-8-on-public-cloud-platforms/OEBPS/)    
-- Developing applications
+
+**Developing applications**
+
 - [Developing applications in RHEL 8 ](epub.html?path=redhat/8/developing-applications-in-rhel-8/OEBPS/)    
-  An introduction to application development tools in Red Hat Enterprise Linux 8
+  An introduction to application development tools in Red Hat Enterprise Linux 8   
 - [Packaging and distributing software ](epub.html?path=redhat/8/packaging-and-distributing-software/OEBPS/)    
-  A guide to packaging and distributing software on Red Hat Enterprise Linux 8.
+  A guide to packaging and distributing software on Red Hat Enterprise Linux 8.   
 
 
   
@@ -920,64 +946,105 @@ oracle
 
 [红帽企业Linux 8的产品文档 - 红帽客户门户](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/)
 
-- 发行说明
- -  [8.0发行说明](epub.html?path=redhat/8.zh-Hans/80-release-notes/OEBPS/)
-  红帽企业版Linux 8.0发行说明
- -  [包清单](epub.html?path=redhat/8.zh-Hans/package-manifest/OEBPS/)
-  Red Hat Enterprise Linux 8.0的软件包列表
- - 规划
- -  [采用RHEL 8的注意事项](epub.html?path=redhat/8.zh-Hans/considerations-in-adopting-rhel-8/OEBPS/)
-  自Red Hat Enterprise Linux 7以来红帽企业Linux 8的变化概述
- - 安装
- -  [升级到RHEL 8](epub.html?path=redhat/8.zh-Hans/upgrading-to-rhel-8/OEBPS/)
-  有关就地升级到Red Hat Enterprise Linux 8的说明
- -  [执行标准RHEL安装](epub.html?path=redhat/8.zh-Hans/performing-a-standard-rhel-installation/OEBPS/)
-  使用图形用户界面安装Red Hat Enterprise Linux 8
- -  [编写自定义的RHEL系统映像](epub.html?path=redhat/8.zh-Hans/composing-a-customized-rhel-system-image/OEBPS/)
-  在Red Hat Enterprise Linux 8上使用Image Builder创建自定义系统映像
- -  [执行高级RHEL安装](epub.html?path=redhat/8.zh-Hans/performing-an-advanced-rhel-installation/OEBPS/)
-  使用Kickstart安装Red Hat Enterprise Linux 8
- -  [安装，管理和删除用户空间组件](epub.html?path=redhat/8.zh-Hans/installing-managing-and-removing-user-space-components/OEBPS/)
-  Red Hat Enterprise Linux 8中的AppStream和BaseOS简介
- - 系统管理
-  部署，管理和调优
- -  [配置基本系统设置](epub.html?path=redhat/8.zh-Hans/configuring-basic-system-settings/OEBPS/)
- -  [使用Web控制台管理系统](epub.html?path=redhat/8.zh-Hans/managing-systems-using-the-web-console/OEBPS/)
-   使用Web控制台管理Red Hat Enterprise Linux 8系统的指南
+**发行说明**
+
+ -  [8.0发行说明](epub.html?path=redhat/8.zh-Hans/80-release-notes/OEBPS/)   
+  红帽企业版Linux 8.0发行说明    
+ -  [包清单](epub.html?path=redhat/8.zh-Hans/package-manifest/OEBPS/)   
+  Red Hat Enterprise Linux 8.0的软件包列表    
+
+
+**规划**
+
+ -  [采用RHEL 8的注意事项](epub.html?path=redhat/8.zh-Hans/considerations-in-adopting-rhel-8/OEBPS/)   
+  自Red Hat Enterprise Linux 7以来红帽企业Linux 8的变化概述    
+
+
+**安装**
+
+ -  [升级到RHEL 8](epub.html?path=redhat/8.zh-Hans/upgrading-to-rhel-8/OEBPS/)   
+  有关就地升级到Red Hat Enterprise Linux 8的说明    
+ -  [执行标准RHEL安装](epub.html?path=redhat/8.zh-Hans/performing-a-standard-rhel-installation/OEBPS/)   
+  使用图形用户界面安装Red Hat Enterprise Linux 8    
+ -  [编写自定义的RHEL系统映像](epub.html?path=redhat/8.zh-Hans/composing-a-customized-rhel-system-image/OEBPS/)  
+   在Red Hat Enterprise Linux 8上使用Image Builder创建自定义系统映像    
+ -  [执行高级RHEL安装](epub.html?path=redhat/8.zh-Hans/performing-an-advanced-rhel-installation/OEBPS/)  
+  使用Kickstart安装Red Hat Enterprise Linux 8    
+ -  [安装，管理和删除用户空间组件](epub.html?path=redhat/8.zh-Hans/installing-managing-and-removing-user-space-components/OEBPS/)  
+  Red Hat Enterprise Linux 8中的AppStream和BaseOS简介   
+ 
+ 
+ **系统管理** 
+
+  部署，管理和调优    
+
+ -  [配置基本系统设置](epub.html?path=redhat/8.zh-Hans/configuring-basic-system-settings/OEBPS/)   
+ -  [使用Web控制台管理系统](epub.html?path=redhat/8.zh-Hans/managing-systems-using-the-web-console/OEBPS/)    
+   使用Web控制台管理Red Hat Enterprise Linux 8系统的指南    
  -  [部署不同类型的服务器](epub.html?path=redhat/8.zh-Hans/deploying-different-types-of-servers/OEBPS/)
  -  [配置和管理网络](epub.html?path=redhat/8.zh-Hans/configuring-and-managing-networking/OEBPS/)
- -  [管理，监控和更新内核](epub.html?path=redhat/8.zh-Hans/managing-monitoring-and-updating-the-kernel/OEBPS/)
-   在Red Hat Enterprise Linux 8上管理Linux内核的指南
- -  [从桌面管理RHEL系统](epub.html?path=redhat/8.zh-Hans/managing-rhel-systems-from-your-desktop/OEBPS/)
-   从桌面管理Red Hat Enterprise Linux 8的指南
+ -  [管理，监控和更新内核](epub.html?path=redhat/8.zh-Hans/managing-monitoring-and-updating-the-kernel/OEBPS/)  
+   在Red Hat Enterprise Linux 8上管理Linux内核的指南   
+ -  [从桌面管理RHEL系统](epub.html?path=redhat/8.zh-Hans/managing-rhel-systems-from-your-desktop/OEBPS/)  
+   从桌面管理Red Hat Enterprise Linux 8的指南    
  -  [在Red Hat Enterprise Linux主机上使用authselect](epub.html?path=redhat/8.zh-Hans/using-authselect-on-a-red-hat-enterprise-linux-host/OEBPS/)
  -  [录制会话](epub.html?path=redhat/8.zh-Hans/recording-sessions/OEBPS/)
-  使用Red Hat Enterprise Linux 8中的会话录制解决方案
- -  [监控和管理系统状态和性能](epub.html?path=redhat/8.zh-Hans/monitoring-and-managing-system-status-and-performance/OEBPS/)
-  优化系统吞吐量，延迟和功耗
- - 安全
- -  [管理和监控安全更新](epub.html?path=redhat/8.zh-Hans/managing-and-monitoring-security-updates/OEBPS/)
-  管理和监控Red Hat Enterprise Linux 8中的安全更新的指南
+  使用Red Hat Enterprise Linux 8中的会话录制解决方案  
+ -  [监控和管理系统状态和性能](epub.html?path=redhat/8.zh-Hans/monitoring-and-managing-system-status-and-performance/OEBPS/)  
+  优化系统吞吐量，延迟和功耗  
+ 
+
+ **安全**
+
+ -  [管理和监控安全更新](epub.html?path=redhat/8.zh-Hans/managing-and-monitoring-security-updates/OEBPS/)  
+  管理和监控Red Hat Enterprise Linux 8中的安全更新的指南   
  -  [安全加固](epub.html?path=redhat/8.zh-Hans/security-hardening/OEBPS/)
- -  [使用SELinux](epub.html?path=redhat/8.zh-Hans/using-selinux/OEBPS/)
-  安全增强型Linux（SELinux）的基本和高级配置
- -  [保护网络](epub.html?path=redhat/8.zh-Hans/securing-networks/OEBPS/)
+ -  [使用SELinux](epub.html?path=redhat/8.zh-Hans/using-selinux/OEBPS/)  
+  安全增强型Linux（SELinux）的基本和高级配置   
+ -  [保护网络](epub.html?path=redhat/8.zh-Hans/securing-networks/OEBPS/)  
   配置安全网络和网络通信
- - 身份管理
-  身份管理和政策
+ 
+ 
+ **身份管理**
+
+  身份管理和政策    
+
  -  [规划身份管理](epub.html?path=redhat/8.zh-Hans/planning-identity-management/OEBPS/)
  -  [安装身份管理](epub.html?path=redhat/8.zh-Hans/installing-identity-management/OEBPS/)
- -  [配置和管理身份管理](epub.html?path=redhat/8.zh-Hans/configuring-and-managing-identity-management/OEBPS/)
-  在Red Hat Enterprise Linux 8中配置，管理和维护Identity Management
- - 存储和集群
- -  [管理文件系统](epub.html?path=redhat/8.zh-Hans/managing-file-systems/OEBPS/)
-  在Red Hat Enterprise Linux 8中创建，修改和管理文件系统
- -  [管理存储设备](epub.html?path=redhat/8.zh-Hans/managing-storage-devices/OEBPS/)
- -  [配置和管理逻辑卷](epub.html?path=redhat/8.zh-Hans/configuring-and-managing-logical-volumes/OEBPS/)
-  LVM逻辑卷的配置和管理指南
- -  [配置设备映射多路径](epub.html?path=redhat/8.zh-Hans/configuring-device-mapper-multipath/OEBPS/)
-  使用Device Mapper Multipat
+ -  [配置和管理身份管理](epub.html?path=redhat/8.zh-Hans/configuring-and-managing-identity-management/OEBPS/)  
+  在Red Hat Enterprise Linux 8中配置，管理和维护Identity Management   
+ 
 
+ **存储和集群**
+
+ -  [管理文件系统](epub.html?path=redhat/8.zh-Hans/managing-file-systems/OEBPS/)  
+  在Red Hat Enterprise Linux 8中创建，修改和管理文件系统   
+ -  [管理存储设备](epub.html?path=redhat/8.zh-Hans/managing-storage-devices/OEBPS/)
+ -  [配置和管理逻辑卷](epub.html?path=redhat/8.zh-Hans/configuring-and-managing-logical-volumes/OEBPS/)  
+  LVM逻辑卷的配置和管理指南  
+ -  [配置设备映射多路径](epub.html?path=redhat/8.zh-Hans/configuring-device-mapper-multipath/OEBPS/)  
+  使用Device Mapper Multipat    
+- [Configuring GFS2 file systems ](epub.html?path=redhat/8.zh-Hans/configuring-gfs2-file-systems/OEBPS/)    
+  GFS2文件系统配置和管理指南  
+- [Deduplicating and compressing storage ](epub.html?path=redhat/8.zh-Hans/deduplicating-and-compressing-storage/OEBPS/)    
+  在Red Hat Enterprise Linux 8中使用VDO优化存储容量   
+- [Configuring and managing high availability clusters](epub.html?path=redhat/8.zh-Hans/configuring-and-managing-high-availability-clusters/OEBPS/)    
+
+
+**虚拟化**    
+
+  虚拟机的部署，管理和调整  
+   
+- [Building, running, and managing containers ](epub.html?path=redhat/8.zh-Hans/building-running-and-managing-containers/OEBPS/)    
+- [Configuring and managing virtualization ](epub.html?path=redhat/8.zh-Hans/configuring-and-managing-virtualization/OEBPS/)    
+- [Deploying Red Hat Enterprise Linux 8 on public cloud platforms ](epub.html?path=redhat/8.zh-Hans/deploying-red-hat-enterprise-linux-8-on-public-cloud-platforms/OEBPS/)    
+
+**开发应用程序**
+
+- [Developing applications in RHEL 8 ](epub.html?path=redhat/8.zh-Hans/developing-applications-in-rhel-8/OEBPS/)    
+  红帽企业版Linux 8中的应用程序开发工具简介   
+- [Packaging and distributing software ](epub.html?path=redhat/8.zh-Hans/packaging-and-distributing-software/OEBPS/)    
+ 在Red Hat Enterprise Linux 8上打包和分发软件的指南。  
 
 
 # EOF
